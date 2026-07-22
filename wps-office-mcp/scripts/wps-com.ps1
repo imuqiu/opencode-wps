@@ -489,6 +489,54 @@ switch ($Action) {
         Output-Json @{ success = $true; data = @{ cell = $p.cell; formula = $formula; currentValue = $value; errorType = $errorType; diagnosis = $diagnosis; suggestion = $suggestion; precedents = $precedents } }
     }
 
+    "evaluateFormula" {
+        $excel = Get-WpsExcel
+        if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; exit }
+        $wb = $excel.ActiveWorkbook
+        if ($null -eq $wb) { Output-Json @{ success = $false; error = "No active workbook" }; exit }
+        $result = $null
+        try {
+            $result = $excel.Evaluate($p.formula)
+            Output-Json @{ success = $true; data = @{ result = $result } }
+        } catch {
+            Output-Json @{ success = $false; error = "Formula evaluation failed: $_" }
+        }
+    }
+
+    "autoSum" {
+        $excel = Get-WpsExcel
+        if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; exit }
+        $wb = $excel.ActiveWorkbook
+        if ($null -eq $wb) { Output-Json @{ success = $false; error = "No active workbook" }; exit }
+        $sheet = $wb.ActiveSheet
+        $range = if ($p.range) { $sheet.Range($p.range) } else { $sheet.UsedRange }
+        $range.Select()
+        $result = $null
+        try {
+            $result = $excel.WorksheetFunction.Sum($range)
+        } catch {
+            $cells = $range.Cells
+            $sum = 0
+            for ($i = 1; $i -le $cells.Count; $i++) {
+                $v = $cells.Item($i).Value2
+                if ($v -is [double]) { $sum += $v }
+            }
+            $result = $sum
+        }
+        if ($p.targetCell) {
+            $sheet.Range($p.targetCell).Value2 = $result
+        }
+        Output-Json @{ success = $true; data = @{ range = $p.range; targetCell = $p.targetCell; result = $result } }
+    }
+
+    "setZoom" {
+        $excel = Get-WpsExcel
+        if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; exit }
+        if ($p.percent -lt 10 -or $p.percent -gt 400) { Output-Json @{ success = $false; error = "缩放比例必须在10-400之间" }; exit }
+        $excel.ActiveWindow.Zoom = $p.percent
+        Output-Json @{ success = $true; data = @{ percent = $p.percent } }
+    }
+
     "cleanData" {
         $excel = Get-WpsExcel
         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; exit }
@@ -1962,12 +2010,28 @@ switch ($Action) {
         if ($null -ne $p.italic) { $range.Font.Italic = $p.italic }
         if ($null -ne $p.underline) { $range.Font.Underline = $p.underline }
         if ($p.color) {
-            $colorMap = @{ red = 255; blue = 16711680; green = 65280; black = 0 }
+            $colorMap = @{ red = 255; blue = 16711680; green = 65280; yellow = 65535; cyan = 16776960; magenta = 16711935; white = 16777215; black = 0; gray = 8421504; grey = 8421504; orange = 42495; purple = 8388736; pink = 13353215; brown = 2763429; navy = 8388608; teal = 8421376; maroon = 128; lime = 65280; silver = 12632256; gold = 55295 }
             $colorValue = $colorMap[$p.color.ToLower()]
             if ($null -eq $colorValue) { $colorValue = Convert-HexColorToRgbInt([string]$p.color) }
             if ($null -ne $colorValue) { $range.Font.Color = $colorValue }
         }
         Output-Json @{ success = $true; data = @{ settings = @{ fontName = $p.fontName; fontSize = $p.fontSize; bold = $p.bold; italic = $p.italic; underline = $p.underline; color = $p.color } } }
+    }
+
+    "setTextColor" {
+        $word = Get-WpsWord
+        if ($null -eq $word) { Output-Json @{ success = $false; error = "WPS Word not running" }; exit }
+        $doc = $word.ActiveDocument
+        if ($null -eq $doc) { Output-Json @{ success = $false; error = "No active document" }; exit }
+        $colorMap = @{ red = 255; blue = 16711680; green = 65280; yellow = 65535; cyan = 16776960; magenta = 16711935; white = 16777215; black = 0; gray = 8421504; grey = 8421504; orange = 42495; purple = 8388736; pink = 13353215; brown = 2763429; navy = 8388608; teal = 8421376; maroon = 128; lime = 65280; silver = 12632256; gold = 55295 }
+        $colorValue = $colorMap[$p.color.ToLower()]
+        if ($null -eq $colorValue) { $colorValue = Convert-HexColorToRgbInt([string]$p.color) }
+        if ($null -ne $colorValue) {
+            $word.Selection.Range.Font.Color = $colorValue
+            Output-Json @{ success = $true; data = @{ color = $p.color } }
+        } else {
+            Output-Json @{ success = $false; error = "Invalid color value: $($p.color)" }
+        }
     }
 
     "findReplace" {
@@ -2029,6 +2093,34 @@ switch ($Action) {
         if ($null -ne $p.leftIndent) { $para.LeftIndent = [double]$p.leftIndent * 28.35 }
         if ($null -ne $p.rightIndent) { $para.RightIndent = [double]$p.rightIndent * 28.35 }
         Output-Json @{ success = $true }
+    }
+
+    "setLineSpacing" {
+        $word = Get-WpsWord
+        if ($null -eq $word) { Output-Json @{ success = $false; error = "WPS Word not running" }; exit }
+        $doc = $word.ActiveDocument
+        if ($null -eq $doc) { Output-Json @{ success = $false; error = "No active document" }; exit }
+        if ($null -eq $p.lineSpacing -or $p.lineSpacing -le 0) { Output-Json @{ success = $false; error = "行距值必须为正数" }; exit }
+        $range = if ($null -ne $p.paragraphIndex) {
+            $paraIdx = [int]$p.paragraphIndex
+            if ($paraIdx -lt 0 -or $paraIdx -ge $doc.Paragraphs.Count) { Output-Json @{ success = $false; error = "段落索引超出范围" }; exit }
+            $doc.Paragraphs.Item($paraIdx + 1).Range
+        } else { $word.Selection.Range }
+        $range.ParagraphFormat.LineSpacingRule = 5
+        $range.ParagraphFormat.LineSpacing = [double]$p.lineSpacing
+        Output-Json @{ success = $true; data = @{ lineSpacing = $p.lineSpacing } }
+    }
+
+    "insertSectionBreak" {
+        $word = Get-WpsWord
+        if ($null -eq $word) { Output-Json @{ success = $false; error = "WPS Word not running" }; exit }
+        $doc = $word.ActiveDocument
+        $breakType = if ($p.breakType) { $p.breakType } else { "nextPage" }
+        $typeMap = @{ nextPage = 2; continuous = 3; evenPage = 4; oddPage = 5 }
+        $bt = $typeMap[$breakType]
+        if ($null -eq $bt) { $bt = 2 }
+        $word.Selection.InsertBreak($bt)
+        Output-Json @{ success = $true; data = @{ breakType = $breakType } }
     }
 
     "setPageSetup" {
@@ -3160,6 +3252,67 @@ switch ($Action) {
         $height = if ($p.height) { $p.height } else { 720 }
         $slide.Export($outputPath, $filterName, $width, $height)
         Output-Json @{ success = $true; data = @{ slideIndex = $slideIndex; outputPath = $outputPath; format = $filterName; width = $width; height = $height } }
+    }
+
+    "setSlideSize" {
+        $ppt = Get-WpsPpt
+        if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; exit }
+        $pres = $ppt.ActivePresentation
+        if ($null -eq $pres) { Output-Json @{ success = $false; error = "No active presentation" }; exit }
+        $pres.PageSetup.SlideWidth = if ($p.width) { [double]$p.width } else { $pres.PageSetup.SlideWidth }
+        $pres.PageSetup.SlideHeight = if ($p.height) { [double]$p.height } else { $pres.PageSetup.SlideHeight }
+        Output-Json @{ success = $true; data = @{ width = $pres.PageSetup.SlideWidth; height = $pres.PageSetup.SlideHeight } }
+    }
+
+    "setSlideTheme" {
+        $ppt = Get-WpsPpt
+        if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; exit }
+        $pres = $ppt.ActivePresentation
+        if ($null -eq $pres) { Output-Json @{ success = $false; error = "No active presentation" }; exit }
+        $theme = $p.theme
+        if ([string]::IsNullOrEmpty($theme)) { Output-Json @{ success = $false; error = "缺少主题路径" }; exit }
+        $pres.ApplyTheme($theme)
+        Output-Json @{ success = $true; data = @{ theme = $theme } }
+    }
+
+    "setShapeFill" {
+        $ppt = Get-WpsPpt
+        if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; exit }
+        $pres = $ppt.ActivePresentation
+        if ($null -eq $pres) { Output-Json @{ success = $false; error = "No active presentation" }; exit }
+        $slideIndex = if ($p.slideIndex) { [int]$p.slideIndex } else { 1 }
+        $slide = $pres.Slides.Item($slideIndex)
+        $shape = if ($p.shapeName) {
+            $slide.Shapes.Item($p.shapeName)
+        } elseif ($p.shapeIndex) {
+            $slide.Shapes.Item([int]$p.shapeIndex)
+        } else {
+            $slide.Shapes.Item(1)
+        }
+        if ($p.fillColor) {
+            $shape.Fill.ForeColor.RGB = Convert-HexColorToRgbInt([string]$p.fillColor)
+        }
+        Output-Json @{ success = $true; data = @{ shapeName = $shape.Name } }
+    }
+
+    "setFontColor" {
+        $ppt = Get-WpsPpt
+        if ($null -eq $ppt) { Output-Json @{ success = $false; error = "WPS PPT not running" }; exit }
+        $pres = $ppt.ActivePresentation
+        if ($null -eq $pres) { Output-Json @{ success = $false; error = "No active presentation" }; exit }
+        $slideIndex = if ($p.slideIndex) { [int]$p.slideIndex } else { 1 }
+        $slide = $pres.Slides.Item($slideIndex)
+        $shape = if ($p.shapeName) {
+            $slide.Shapes.Item($p.shapeName)
+        } elseif ($p.shapeIndex) {
+            $slide.Shapes.Item([int]$p.shapeIndex)
+        } else {
+            $slide.Shapes.Item(1)
+        }
+        if ($p.color) {
+            $shape.TextFrame.TextRange.Font.Color.RGB = Convert-HexColorToRgbInt([string]$p.color)
+        }
+        Output-Json @{ success = $true; data = @{ shapeName = $shape.Name } }
     }
 
     "insertPptTable" {

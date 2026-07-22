@@ -108,12 +108,18 @@ const COMMAND_APP_MAP: Record<string, string> = {
   updateChart: 'excel',
   updatePivotTable: 'excel',
   wrapText: 'excel',
+  setZoom: 'excel',
+  evaluateFormula: 'excel',
+  autoSum: 'excel',
+  exportChartAsImage: 'excel',
+  exportRangeAsImage: 'excel',
   // ==================== Word 命令 ====================
   getActiveDocument: 'word',
   getDocumentText: 'word',
   insertText: 'word',
   findReplace: 'word',
   setFont: 'word',
+  setTextColor: 'word',
   applyStyle: 'word',
   insertTable: 'word',
   generateTOC: 'word',
@@ -131,6 +137,9 @@ const COMMAND_APP_MAP: Record<string, string> = {
   openDocument: 'word',
   setPageSetup: 'word',
   setParagraph: 'word',
+  setLineSpacing: 'word',
+  insertSectionBreak: 'word',
+  createDocument: 'word',
   switchDocument: 'word',
   // ==================== PPT 命令 ====================
   getActivePresentation: 'ppt',
@@ -225,11 +234,16 @@ const COMMAND_APP_MAP: Record<string, string> = {
   setShapeZOrder: 'ppt',
   setSlideBackground: 'ppt',
   setSlideContent: 'ppt',
+  setSlideSize: 'ppt',
+  setSlideTheme: 'ppt',
+  setFontColor: 'ppt',
+  setShapeFill: 'ppt',
   setSlideLayout: 'ppt',
   setSlideNotes: 'ppt',
   setSlideNumber: 'ppt',
   setSlideSubtitle: 'ppt',
   setSlideTitle: 'ppt',
+  exportSlideAsImage: 'ppt',
   setSlideTransition: 'ppt',
   setTextBoxStyle: 'ppt',
   setTextBoxText: 'ppt',
@@ -440,8 +454,8 @@ class MacPollServer {
    * 调用wps-auto.sh脚本自动关闭当前应用并启动目标应用
    */
   private async switchApp(app: string): Promise<void> {
-    // wps-auto.sh脚本路径 - 在wps-claude-assistant目录下
-    const scriptPath = path.join(__dirname, '../../../wps-claude-assistant/wps-auto.sh');
+    // wps-auto.sh脚本路径 - 在opencode-wps-assistant目录下
+    const scriptPath = path.join(__dirname, '../../../opencode-wps-assistant/wps-auto.sh');
 
     return new Promise((resolve, _reject) => {
       log.info(`[Mac] Executing switch script: ${scriptPath} switch ${app}`);

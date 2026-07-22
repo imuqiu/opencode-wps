@@ -1472,9 +1472,6 @@ export const setSlideSizeDefinition: ToolDefinition = {
 export const setSlideSizeHandler: ToolHandler = async (
   args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  if (process.platform === 'darwin') {
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: '此功能仅在 Windows 上支持' }], error: 'macOS not supported' };
-  }
   const { width, height } = args as {
     width: number;
     height: number;
@@ -1485,7 +1482,7 @@ export const setSlideSizeHandler: ToolHandler = async (
       success: boolean;
       message: string;
     }>(
-      'setSlideSize', // NOTE: macOS未实现，仅Windows支持
+      'setSlideSize',
       { width, height },
       WpsAppType.PRESENTATION
     );
@@ -1633,32 +1630,28 @@ export const setShapeFillDefinition: ToolDefinition = {
     properties: {
       slideIndex: { type: 'number', description: '幻灯片索引（从1开始）' },
       shapeIndex: { type: 'number', description: '形状索引（从1开始）' },
-      color: { type: 'string', description: '填充颜色，十六进制如 #FF0000' },
+      fillColor: { type: 'string', description: '填充颜色，十六进制如 #FF0000' },
     },
-    required: ['slideIndex', 'shapeIndex', 'color'],
+    required: ['slideIndex', 'shapeIndex', 'fillColor'],
   },
 };
 
 export const setShapeFillHandler: ToolHandler = async (
   args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  if (process.platform === 'darwin') {
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: '此功能仅在 Windows 上支持' }], error: 'macOS not supported' };
-  }
-  const { slideIndex, shapeIndex, color } = args as {
+  const { slideIndex, shapeIndex, fillColor } = args as {
     slideIndex: number;
     shapeIndex: number;
-    color: string;
+    fillColor: string;
   };
 
   try {
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-      name?: string;
     }>(
-      'setShapeFill', // NOTE: macOS未实现，仅Windows支持
-      { slideIndex, shapeIndex, color },
+      'setShapeFill',
+      { slideIndex, shapeIndex, fillColor },
       WpsAppType.PRESENTATION
     );
 
@@ -1669,7 +1662,7 @@ export const setShapeFillHandler: ToolHandler = async (
         content: [
           {
             type: 'text',
-            text: `形状填充颜色设置成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个\n填充颜色: ${color}`,
+            text: `形状填充颜色设置成功！\n幻灯片: 第 ${slideIndex} 页\n形状: 第 ${shapeIndex} 个\n填充颜色: ${fillColor}`,
           },
         ],
       };
