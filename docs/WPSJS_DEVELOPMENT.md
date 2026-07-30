@@ -374,32 +374,34 @@ install-addons.js 会自动完成：
 
 ### 浏览器版本限制
 
-WPS Office 内置的 Chromium 版本停留在 **Chrome 103**（2022年），这意味着：
+WPS Office 内置的 Chromium 版本停留在 **Chrome 104**（2022年），这意味着：
 
 | 特性 | 支持情况 |
 |------|----------|
-| ES6 (let/const, arrow functions) | ✅ 支持 |
-| ES6+ (async/await, class) | ✅ 支持 |
+| ES6 (let/const, arrow functions) | ⚠️ 引擎支持但项目禁止使用 ES6 语法 |
+| ES6+ (async/await, class) | ⚠️ 引擎支持但项目禁止使用 |
 | ES2017+ (dynamic import) | ⚠️ 部分支持 |
 | Modern APIs (fetch, ES Modules) | ⚠️ 有限支持 |
 
+> **注意**：Chrome 104 引擎层面支持 ES6 语法，但项目经实测发现 WPS 各版本存在兼容性差异，统一要求 ES5 语法。详见 [CODE_REVIEW_GUIDE.md §5.4 红线](./CODE_REVIEW_GUIDE.md#54-项目专属红线do-not-touch)。
+
 ### 代码风格要求
 
-为确保最大兼容性，项目采用 **ES5 语法**：
+项目有强制要求：WPS 侧**必须使用 ES5 语法**（见 CODE_REVIEW_GUIDE.md §5.4 红线）：
 
 ```javascript
-// ✅ 推荐：ES5 语法（兼容 WPS 内置浏览器）
+// ✅ 正确：ES5 语法（兼容 WPS 内置浏览器）
 var API_BASE = 'http://127.0.0.1:14096';
 function fetchJSON(method, path, body, onSuccess, onError) { }
 
-// ❌ 避免：箭头函数（在某些旧版本可能有问题）
+// ❌ 禁止：箭头函数（RED LINE — CODE_REVIEW_GUIDE.md §5.4）
 const fetchJSON = (method, path) => { };
 
-// ❌ 避免：async/await（优先使用回调风格）
+// ❌ 禁止：async/await（RED LINE — CODE_REVIEW_GUIDE.md §5.4）
 async function fetchJSON() { }
 ```
 
-### 开发规范
+### 开发规范（强制 RED LINE — CODE_REVIEW_GUIDE.md §5.4）
 
 1. **使用 `var`** 而非 `let/const`
 2. **使用 `function`** 而非箭头函数
@@ -410,7 +412,7 @@ async function fetchJSON() { }
 
 ### 原因说明
 
-- WPS 内置浏览器内核较旧（Chrome 103/104），新语法可能导致解析错误
+- WPS 内置浏览器内核较旧（Chrome 104），新语法可能导致解析错误
 - callback 模式比 async/await 在旧浏览器中更可靠
 - XMLHttpRequest 在 WPS 环境中经过验证，兼容性更好
 - `fetch()` 在 WPS 104 中的 Promise 会永远 pending（不 resolve 也不 reject），不能使用
@@ -428,7 +430,7 @@ async function fetchJSON() { }
 
 ### 已知不兼容库（2026-06 验证）
 
-以下库/协议在 WPS Chromium 103/104 环境中已验证不可用：
+以下库/协议在 WPS Chromium 104 环境中已验证不可用：
 
 | 库/协议 | 失败原因 | 现象 |
 |---------|---------|------|
