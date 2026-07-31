@@ -866,13 +866,17 @@ function toggleModelDropdown(e) {
     createDropdown(btn, html, 'bottom-up')
 }
 function selectModel(id) { CURRENT_MODEL = id; PERSIST.model = id; $modelName.textContent = id; closeAllDropdowns() }
-// Fallback models now sourced from config.js (CONFIG.fallbackModels)
-var OLLAMA_FALLBACK_MODELS = CONFIG.fallbackModels.ollama
-var FALLBACK_MODELS = CONFIG.fallbackModels.opencode.concat(OLLAMA_FALLBACK_MODELS)
-var FALLBACK_PROVIDERS = [
-    { id: 'opencode', name: 'OpenCode', models: CONFIG.fallbackModels.opencode },
-    { id: 'ollama', name: 'Ollama (本地)', models: OLLAMA_FALLBACK_MODELS }
-]
+// 从 config.js 取回退模型时做一次深拷贝，避免未来对 provider.models 的
+// push/splice 等变异操作反向污染 CONFIG.fallbackModels（slice() 仅浅拷贝顶层数组）
+function applyFallbackModels() {
+    var ollamaModels = CONFIG.fallbackModels.ollama.slice()
+    var opencodeModels = CONFIG.fallbackModels.opencode.slice()
+    AVAILABLE_MODELS = opencodeModels.concat(ollamaModels)
+    AVAILABLE_PROVIDERS = [
+        { id: 'opencode', name: 'OpenCode', models: opencodeModels },
+        { id: 'ollama', name: 'Ollama (本地)', models: ollamaModels }
+    ]
+}
 function fetchAvailableModels(cb) {
     // 主数据源：从 OpenCode 服务器获取已配置的提供商和模型
     fetchJSON('GET', '/config/providers', null, function(data) {
@@ -911,15 +915,13 @@ function fetchAvailableModels(cb) {
             }
         } else {
             // 服务器不可用或未配置时使用最小后备列表
-            AVAILABLE_MODELS = FALLBACK_MODELS.slice()
-            AVAILABLE_PROVIDERS = FALLBACK_PROVIDERS.slice()
+            applyFallbackModels()
         }
         if (!CURRENT_MODEL && AVAILABLE_MODELS.length > 0) { CURRENT_MODEL = AVAILABLE_MODELS[0].id }
         if (cb) cb()
     }, function() {
         // 网络/HTTP 错误时使用后备方案
-        AVAILABLE_MODELS = FALLBACK_MODELS.slice()
-        AVAILABLE_PROVIDERS = FALLBACK_PROVIDERS.slice()
+        applyFallbackModels()
         if (!CURRENT_MODEL && AVAILABLE_MODELS.length > 0) { CURRENT_MODEL = AVAILABLE_MODELS[0].id }
         if (cb) cb()
     })
