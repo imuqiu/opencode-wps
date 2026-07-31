@@ -30,6 +30,14 @@ jobs:
           cd wps-office-mcp
           npm run build
 
+      - name: Check PowerShell syntax
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $script = Get-Content -Raw -Encoding UTF8 'wps-office-mcp/scripts/wps-com.ps1'
+          [scriptblock]::Create($script) | Out-Null
+          Write-Host "PowerShell syntax check passed"
+
       - name: Run tests
         run: |
           node tests/security.test.js
