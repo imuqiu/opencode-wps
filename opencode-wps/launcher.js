@@ -86,14 +86,18 @@ function startOpenCode(cwd, port) {
     var opencodeBin = findOpenCodeBin();
     console.log('[launcher] Starting with: ' + opencodeBin);
 
-    var opencodeArgs = opencodeBin.endsWith('.ps1')
-        ? ['serve', '--port', String(port || 14096), '--hostname', '127.0.0.1', '--cors', 'file://']
-        : ['serve', '--port', String(port || 14096), '--hostname', '127.0.0.1', '--cors', 'file://'];
+    var isPs1 = opencodeBin.endsWith('.ps1');
+    var isExe = /\.exe$/i.test(opencodeBin);
+    var opencodeArgs = ['serve', '--port', String(port || 14096), '--hostname', '127.0.0.1', '--cors', 'file://'];
+    // .ps1 用 powershell.exe 直接执行、.exe 直接 CreateProcess，均无需 shell；
+    // 无扩展名（如 PATH 中的 'opencode'，npm 全局安装实为 .cmd 脚本）时，
+    // spawn 不带 shell 无法启动 .cmd 文件，必须保留 shell。
+    var needShell = !isPs1 && !isExe;
     
     try {
         opencodeProcess = spawn(
-            opencodeBin.endsWith('.ps1') ? 'powershell.exe' : opencodeBin,
-            opencodeBin.endsWith('.ps1') 
+            isPs1 ? 'powershell.exe' : opencodeBin,
+            isPs1 
                 ? ['-ExecutionPolicy', 'Bypass', '-File', opencodeBin, ...opencodeArgs]
                 : opencodeArgs,
             {
@@ -101,7 +105,7 @@ function startOpenCode(cwd, port) {
                 stdio: 'ignore',
                 detached: false,
                 windowsHide: true,
-                shell: true
+                shell: needShell
             }
         );
 
