@@ -866,25 +866,11 @@ function toggleModelDropdown(e) {
     createDropdown(btn, html, 'bottom-up')
 }
 function selectModel(id) { CURRENT_MODEL = id; PERSIST.model = id; $modelName.textContent = id; closeAllDropdowns() }
-var OLLAMA_FALLBACK_MODELS = [
-    { id: 'ollama/Monica:latest', name: 'Monica', providerID: 'ollama' },
-    { id: 'ollama/R4C3R/minicpm5-1b-heretic:latest', name: 'MiniCPM5 1B Heretic', providerID: 'ollama' },
-    { id: 'ollama/huihui_ai/qwen3.5-abliterated:9b-Qwopus', name: 'Qwen3.5 9B Abliterated', providerID: 'ollama' },
-    { id: 'ollama/gemma4:e4b', name: 'Gemma 4 4B', providerID: 'ollama' },
-    { id: 'ollama/gemma4:e2b', name: 'Gemma 4 2B', providerID: 'ollama' },
-    { id: 'ollama/qwen3.5-32k:0.8b', name: 'Qwen3.5 32K 0.8B', providerID: 'ollama' },
-    { id: 'ollama/qwen3.5-32k:2b', name: 'Qwen3.5 32K 2B', providerID: 'ollama' },
-    { id: 'ollama/qwen3.5:2b', name: 'Qwen3.5 2B', providerID: 'ollama' },
-    { id: 'ollama/qwen3.5:0.8b', name: 'Qwen3.5 0.8B', providerID: 'ollama' },
-    { id: 'ollama/qianwen:latest', name: 'Qianwen', providerID: 'ollama' },
-    { id: 'ollama/lukey03/qwen3.5-9b-abliterated:latest', name: 'Qwen3.5 9B Abliterated', providerID: 'ollama' },
-    { id: 'ollama/qwen3.5:4b', name: 'Qwen3.5 4B', providerID: 'ollama' }
-]
-var FALLBACK_MODELS = [
-    { id: 'opencode/deepseek-v4-flash-free', name: 'DeepSeek V4 Flash Free', providerID: 'opencode', free: true }
-].concat(OLLAMA_FALLBACK_MODELS)
+// Fallback models now sourced from config.js (CONFIG.fallbackModels)
+var OLLAMA_FALLBACK_MODELS = CONFIG.fallbackModels.ollama
+var FALLBACK_MODELS = CONFIG.fallbackModels.opencode.concat(OLLAMA_FALLBACK_MODELS)
 var FALLBACK_PROVIDERS = [
-    { id: 'opencode', name: 'OpenCode', models: [{ id: 'opencode/deepseek-v4-flash-free', name: 'DeepSeek V4 Flash Free', providerID: 'opencode', free: true }] },
+    { id: 'opencode', name: 'OpenCode', models: CONFIG.fallbackModels.opencode },
     { id: 'ollama', name: 'Ollama (本地)', models: OLLAMA_FALLBACK_MODELS }
 ]
 function fetchAvailableModels(cb) {
