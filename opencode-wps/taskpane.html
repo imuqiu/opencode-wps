@@ -369,8 +369,6 @@ function getCK(key) { try { var m = document.cookie.match(new RegExp('(^| )' + k
 function setCK(key, val) { try { document.cookie = key + '=' + encodeURIComponent(val) + ';path=/;max-age=31536000' } catch(e) {} }
 function clearCK(key) { try { document.cookie = key + '=;path=/;max-age=0' } catch(e) {} }
 
-// --- 安全函数 ---
-
 // --- 配置持久化 ---
 var PERSIST = {
     get apiUrl() { return getPS('opencode_api_url') || 'http://127.0.0.1:14096'; },
@@ -1453,19 +1451,34 @@ function renderMarkdown(text) {
     return out
 }
 /**
+ * 解码 HTML 实体为原始字符（与 escapeHtml 的 5 个基本实体 + 数字实体对应）
+ * @param {string} s - 待解码字符串
+ * @returns {string} 解码后的字符串
+ */
+function decodeHtmlEntities(s) {
+    if (!s) return ''
+    // 注意：&amp; 必须最先解码，避免二次解码
+    return s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&#x([0-9a-fA-F]+);/g, function(m, h) { return String.fromCharCode(parseInt(h, 16)) }).replace(/&#(\d+);/g, function(m, d) { return String.fromCharCode(parseInt(d, 10)) })
+}
+/**
  * 安全处理 URL 链接，防止 XSS
- * @param {string} url - 待处理的 URL
+ * 注：入参 url 在 renderMarkdown 中已被全局 escapeHtml 转义（如 & 已为 &amp;），
+ *     此处先完整解码还原真实 URL 再校验，避免二次转义破坏带 & 参数的合法链接；
+ *     同时 `jav&#x61;script:` 之类的编码混淆绕过也能有效拦截。
+ * @param {string} url - 待处理的 URL（可为已转义文本）
  * @returns {string} 安全的 URL 或 "#"
  */
 function safeHref(url) {
     if (!url) return '#'
-    var trimmed = url.replace(/^\s+|\s+$/g, '')
-    var low = trimmed.toLowerCase()
-    if (low.indexOf('http:') === 0 || low.indexOf('https:') === 0 || low.indexOf('mailto:') === 0) return url
+    var decoded = decodeHtmlEntities(url)
+    var trimmed = decoded.replace(/^\s+|\s+$/g, '')
+    // 协议检测前去除控制字符/空白（OWASP 建议），防 `jav\nascript:` 之类混淆绕过
+    var low = trimmed.replace(/[\x00-\x20\x7f]/g, '').toLowerCase()
+    if (low.indexOf('http:') === 0 || low.indexOf('https:') === 0 || low.indexOf('mailto:') === 0) return escapeHtml(trimmed)
     if (low.indexOf('javascript:') === 0 || low.indexOf('data:') === 0 || low.indexOf('vbscript:') === 0) return '#'
     // 协议相对 URL（//evil.com）在 file:// 环境下解析为 UNC 路径，非预期行为
     if (trimmed.indexOf('//') === 0) return '#'
-    return escapeHtml(url)
+    return escapeHtml(trimmed)
 }
 /**
  * 处理行内 Markdown 格式：粗体、斜体、删除线、图片、链接
