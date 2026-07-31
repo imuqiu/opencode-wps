@@ -1,4 +1,4 @@
-# Input: Action 名称与 JSON 参数
+﻿# Input: Action 名称与 JSON 参数
 # Output: WPS COM 调用结果 JSON
 # Pos: Windows COM 桥接脚本。一旦我被修改，请更新我的头部注释（Updated: 2026-05-24 15:30:00 CST），以及所属文件夹的md。
 # WPS COM Bridge - PowerShell script for WPS COM operations
@@ -114,6 +114,10 @@ function Get-PptSaveFormat([string]$format) {
 }
 
 try { $p = $Params | ConvertFrom-Json } catch { $p = @{} }
+
+# Alignment constants (shared by setCellFormat / setCellStyle)
+$script:H_ALIGN_MAP = @{ left = -4131; center = -4108; right = -4152 }
+$script:V_ALIGN_MAP = @{ top = -4160; center = -4108; bottom = -4107 }
 
 switch ($Action) {
 
@@ -723,11 +727,11 @@ switch ($Action) {
     "setCellFormat" {
         $excel = Get-WpsExcel
         if ($null -eq $excel) { Output-Json @{ success = $false; error = "WPS Excel not running" }; exit }
-        $sheet = $excel.ActiveSheet
+        $sheet = if ($p.sheet) { $excel.ActiveWorkbook.Sheets.Item($p.sheet) } else { $excel.ActiveSheet }
         $range = $sheet.Range($p.range)
-        # 数字格式（顶层或 format 对象内）
-        if ($p.numberFormat) { $range.NumberFormat = $p.numberFormat }
-        elseif ($p.format -and $p.format.numberFormat) { $range.NumberFormat = $p.format.numberFormat }
+        # 数字格式（format 对象内的优先，顶层兼容旧调用）
+        if ($p.format -and $p.format.numberFormat) { $range.NumberFormat = $p.format.numberFormat }
+        elseif ($p.numberFormat) { $range.NumberFormat = $p.numberFormat }
         # 视觉格式（从 format 对象读取，与 setCellStyle 参数对齐）
         if ($p.format) {
             $fmt = $p.format
@@ -746,13 +750,11 @@ switch ($Action) {
             if ($null -ne $fmt.underline) { $range.Font.Underline = [bool]$fmt.underline }
             if ($null -ne $fmt.strikethrough) { $range.Font.Strikethrough = [bool]$fmt.strikethrough }
             if ($fmt.horizontalAlignment) {
-                $hAlignMap = @{ left = -4131; center = -4108; right = -4152 }
-                $hAlign = $hAlignMap[$fmt.horizontalAlignment]
+                $hAlign = $script:H_ALIGN_MAP[$fmt.horizontalAlignment]
                 if ($null -ne $hAlign) { $range.HorizontalAlignment = $hAlign }
             }
             if ($fmt.verticalAlignment) {
-                $vAlignMap = @{ top = -4160; center = -4108; bottom = -4107 }
-                $vAlign = $vAlignMap[$fmt.verticalAlignment]
+                $vAlign = $script:V_ALIGN_MAP[$fmt.verticalAlignment]
                 if ($null -ne $vAlign) { $range.VerticalAlignment = $vAlign }
             }
             if ($null -ne $fmt.wrapText) { $range.WrapText = [bool]$fmt.wrapText }
@@ -781,13 +783,11 @@ switch ($Action) {
             if ($null -ne $fc) { $range.Font.Color = $fc }
         }
         if ($p.horizontalAlignment) {
-            $hAlignMap = @{ left = -4131; center = -4108; right = -4152 }
-            $hAlign = $hAlignMap[$p.horizontalAlignment]
+            $hAlign = $script:H_ALIGN_MAP[$p.horizontalAlignment]
             if ($null -ne $hAlign) { $range.HorizontalAlignment = $hAlign }
         }
         if ($p.verticalAlignment) {
-            $vAlignMap = @{ top = -4160; center = -4108; bottom = -4107 }
-            $vAlign = $vAlignMap[$p.verticalAlignment]
+            $vAlign = $script:V_ALIGN_MAP[$p.verticalAlignment]
             if ($null -ne $vAlign) { $range.VerticalAlignment = $vAlign }
         }
         if ($null -ne $p.border -and $p.border) {
