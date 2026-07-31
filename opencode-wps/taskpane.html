@@ -866,27 +866,17 @@ function toggleModelDropdown(e) {
     createDropdown(btn, html, 'bottom-up')
 }
 function selectModel(id) { CURRENT_MODEL = id; PERSIST.model = id; $modelName.textContent = id; closeAllDropdowns() }
-var OLLAMA_FALLBACK_MODELS = [
-    { id: 'ollama/Monica:latest', name: 'Monica', providerID: 'ollama' },
-    { id: 'ollama/R4C3R/minicpm5-1b-heretic:latest', name: 'MiniCPM5 1B Heretic', providerID: 'ollama' },
-    { id: 'ollama/huihui_ai/qwen3.5-abliterated:9b-Qwopus', name: 'Qwen3.5 9B Abliterated', providerID: 'ollama' },
-    { id: 'ollama/gemma4:e4b', name: 'Gemma 4 4B', providerID: 'ollama' },
-    { id: 'ollama/gemma4:e2b', name: 'Gemma 4 2B', providerID: 'ollama' },
-    { id: 'ollama/qwen3.5-32k:0.8b', name: 'Qwen3.5 32K 0.8B', providerID: 'ollama' },
-    { id: 'ollama/qwen3.5-32k:2b', name: 'Qwen3.5 32K 2B', providerID: 'ollama' },
-    { id: 'ollama/qwen3.5:2b', name: 'Qwen3.5 2B', providerID: 'ollama' },
-    { id: 'ollama/qwen3.5:0.8b', name: 'Qwen3.5 0.8B', providerID: 'ollama' },
-    { id: 'ollama/qianwen:latest', name: 'Qianwen', providerID: 'ollama' },
-    { id: 'ollama/lukey03/qwen3.5-9b-abliterated:latest', name: 'Qwen3.5 9B Abliterated', providerID: 'ollama' },
-    { id: 'ollama/qwen3.5:4b', name: 'Qwen3.5 4B', providerID: 'ollama' }
-]
-var FALLBACK_MODELS = [
-    { id: 'opencode/deepseek-v4-flash-free', name: 'DeepSeek V4 Flash Free', providerID: 'opencode', free: true }
-].concat(OLLAMA_FALLBACK_MODELS)
-var FALLBACK_PROVIDERS = [
-    { id: 'opencode', name: 'OpenCode', models: [{ id: 'opencode/deepseek-v4-flash-free', name: 'DeepSeek V4 Flash Free', providerID: 'opencode', free: true }] },
-    { id: 'ollama', name: 'Ollama (本地)', models: OLLAMA_FALLBACK_MODELS }
-]
+// 从 config.js 取回退模型时做一次深拷贝，避免未来对 provider.models 的
+// push/splice 等变异操作反向污染 CONFIG.fallbackModels（slice() 仅浅拷贝顶层数组）
+function applyFallbackModels() {
+    var ollamaModels = CONFIG.fallbackModels.ollama.slice()
+    var opencodeModels = CONFIG.fallbackModels.opencode.slice()
+    AVAILABLE_MODELS = opencodeModels.concat(ollamaModels)
+    AVAILABLE_PROVIDERS = [
+        { id: 'opencode', name: 'OpenCode', models: opencodeModels },
+        { id: 'ollama', name: 'Ollama (本地)', models: ollamaModels }
+    ]
+}
 function fetchAvailableModels(cb) {
     // 主数据源：从 OpenCode 服务器获取已配置的提供商和模型
     fetchJSON('GET', '/config/providers', null, function(data) {
@@ -925,15 +915,13 @@ function fetchAvailableModels(cb) {
             }
         } else {
             // 服务器不可用或未配置时使用最小后备列表
-            AVAILABLE_MODELS = FALLBACK_MODELS.slice()
-            AVAILABLE_PROVIDERS = FALLBACK_PROVIDERS.slice()
+            applyFallbackModels()
         }
         if (!CURRENT_MODEL && AVAILABLE_MODELS.length > 0) { CURRENT_MODEL = AVAILABLE_MODELS[0].id }
         if (cb) cb()
     }, function() {
         // 网络/HTTP 错误时使用后备方案
-        AVAILABLE_MODELS = FALLBACK_MODELS.slice()
-        AVAILABLE_PROVIDERS = FALLBACK_PROVIDERS.slice()
+        applyFallbackModels()
         if (!CURRENT_MODEL && AVAILABLE_MODELS.length > 0) { CURRENT_MODEL = AVAILABLE_MODELS[0].id }
         if (cb) cb()
     })
