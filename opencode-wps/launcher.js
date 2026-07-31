@@ -1,15 +1,15 @@
 // launcher.js - OpenCode 进程管理服务
-var http = require('http');
-var { spawn, exec } = require('child_process');
-var path = require('path');
-var fs = require('fs');
-var os = require('os');
+const http = require('http');
+const { spawn, exec } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
 
-var PORT = 14097;
-var opencodeProcess = null;
-var opencodeCwd = '';
-var dockedPid = 0;
-var stateLock = false;
+const PORT = 14097;
+let opencodeProcess = null;
+let opencodeCwd = '';
+let dockedPid = 0;
+let stateLock = false;
 
 // ===== 启动时清理孤儿 MCP 进程 =====
 function cleanupOrphanedMcp() {
@@ -167,13 +167,13 @@ function stopOpenCodeByPort(port) {
                 if (listenPort === port) {
                     var pid = parseInt(parts[parts.length - 1], 10);
                     if (pid > 0) {
-                        console.log('[launcher] Found process占用端口 ' + port + ', PID: ' + pid);
+                        console.log('[launcher] Found process on port ' + port + ', PID: ' + pid);
                         // 验证进程名，避免误杀
                         try {
                             var nameOut = execSync('wmic process where ProcessId=' + pid + ' get Name /format:csv', { encoding: 'utf8', timeout: 3000, shell: 'cmd.exe' });
                             var procName = (nameOut.split('\n')[1] || '').trim().toLowerCase();
                             if (procName !== 'node.exe' && procName !== 'opencode.exe' && procName !== '') {
-                                console.log('[launcher] 跳过非 OpenCode 进程: ' + procName);
+                                console.log('[launcher] Skipping non-OpenCode process: ' + procName);
                                 continue;
                             }
                         } catch(e) { /* wmic 可能失败，继续尝试 kill */ }
@@ -183,10 +183,10 @@ function stopOpenCodeByPort(port) {
                                 stdio: 'ignore',
                                 timeout: 5000
                             });
-                            console.log('[launcher] 已终止 PID: ' + pid);
+                            console.log('[launcher] Terminated PID: ' + pid);
                             killed = true;
                         } catch(e) {
-                            console.log('[launcher] 终止 PID ' + pid + ' 失败: ' + e.message);
+                            console.log('[launcher] Failed to terminate PID ' + pid + ': ' + e.message);
                         }
                     }
                 }
@@ -194,11 +194,11 @@ function stopOpenCodeByPort(port) {
         }
         
         if (!killed) {
-            console.log('[launcher] 未找到占用端口 ' + port + ' 的进程');
+            console.log('[launcher] No process found on port ' + port);
         }
         
     } catch(e) {
-        console.log('[launcher] 按端口关闭失败: ' + e.message);
+        console.log('[launcher] Port-based shutdown failed: ' + e.message);
     }
     
     return { success: true };
@@ -212,7 +212,7 @@ function stopOpenCode() {
         try {
             opencodeProcess.kill();
         } catch(e) {
-            console.error('[launcher] 终止子进程失败: ' + e.message);
+            console.error('[launcher] Failed to kill child process: ' + e.message);
         }
         opencodeProcess = null;
     }
@@ -221,7 +221,7 @@ function stopOpenCode() {
     try {
         stopOpenCodeByPort(14096);
     } catch(e) {
-        console.log('[launcher] 按端口关闭失败: ' + e.message);
+        console.log('[launcher] Port-based shutdown failed: ' + e.message);
     }
     
     // 清理 PID 文件
@@ -240,7 +240,7 @@ function loadOpenCodeConfig() {
     var defaultConfig = { opencodePath: 'opencode' };
 
     if (!fs.existsSync(configPath)) {
-        console.log('[launcher] 配置文件不存在，使用默认值（请运行 install-addons.js）');
+        console.log('[launcher] Config file not found, using defaults (run install-addons.js)');
         return defaultConfig;
     }
 
@@ -250,7 +250,7 @@ function loadOpenCodeConfig() {
             return config;
         }
     } catch (e) {
-        console.error('[launcher] 配置文件解析失败，使用默认值: ' + e.message);
+        console.error('[launcher] Config file parse failed, using defaults: ' + e.message);
     }
 
     return defaultConfig;
@@ -285,8 +285,8 @@ function findOpenCodeBin() {
     }
 
     // 3. 回退到 PATH 中的 opencode
-    console.log('[launcher] ⚠️ 未找到 OpenCode，将从 PATH 查找');
-    console.log('[launcher] 提示: 请确保 opencode 已安装或运行 install-addons.js');
+    console.log('[launcher] ⚠️ OpenCode not found, searching PATH');
+    console.log('[launcher] Tip: ensure opencode is installed or run install-addons.js');
     return 'opencode';
 }
 
