@@ -35,9 +35,10 @@ main:
         type: npc:go
         options:
           # 指定模型 ID（取消注释并填入实际模型 ID 即可生效）
-          # model: glm-5  # 示例：GLM 模型
-          # model: kimi   # 示例：Kimi 模型
-          # model: hunyuan # 示例：混元模型
+          # model: hy3    # ✅ 免费模型（混元 3），不消耗 AI Credits 账单
+          # model: glm-5  # GLM 模型
+          # model: kimi   # Kimi 模型
+          # model: hunyuan # 混元模型
 
 # 兜底事件（仓库级别事件在此处理）
 $:
