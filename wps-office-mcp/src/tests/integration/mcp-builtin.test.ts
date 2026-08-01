@@ -124,6 +124,20 @@ describe('MCP Server 内置工具注册', () => {
     });
   });
 
+  describe('五维评分校对报告工具不直连注册（统一走网关）', () => {
+    it('wps_word_proofread_accumulate / wps_word_generate_proofread_report 不应作为直接 MCP 工具暴露', () => {
+      expect(registry.hasTool('wps_word_proofread_accumulate')).toBe(false);
+      expect(registry.hasTool('wps_word_generate_proofread_report')).toBe(false);
+    });
+
+    it('listTools 不应包含这两个直连工具（唯一入口为 wps_office_execute 网关）', () => {
+      const { tools } = registry.listTools();
+      const names = tools.map(t => t.name);
+      expect(names).not.toContain('wps_word_proofread_accumulate');
+      expect(names).not.toContain('wps_word_generate_proofread_report');
+    });
+  });
+
   describe('listTools 应返回 14 个工具', () => {
     it('listTools 返回数量应为 14', () => {
       const { tools } = registry.listTools();
@@ -184,6 +198,30 @@ describe('MCP Server 内置工具注册', () => {
       });
       const result = await registry.callTool(request);
       expect(result.success).toBe(false);
+    });
+
+    it('wps_office_execute 经网关可执行五维评分校对报告工具（proofreadAccumulate / generateProofreadReport）', async () => {
+      // 先累加（首次调用带 doc_info）
+      const accRequest = ToolRegistry.createRequest('wps_office_execute', {
+        tool_name: 'proofreadAccumulate',
+        arguments: {
+          session_id: '11111111-2222-3333-4444-555555555555',
+          issues: [{ offset: 0, length: 4, original: '测试', suggestion: '测试2', type: '测试', source: 'mcp' }],
+          doc_info: { fileName: '测试.docx', filePath: 'C:/test/测试.docx', totalParagraphs: 1, totalWords: 2 },
+        },
+      });
+      const accResult = await registry.callTool(accRequest);
+      expect(accResult.success).toBe(true);
+
+      // 生成报告
+      const repRequest = ToolRegistry.createRequest('wps_office_execute', {
+        tool_name: 'generateProofreadReport',
+        arguments: { session_id: '11111111-2222-3333-4444-555555555555' },
+      });
+      const repResult = await registry.callTool(repRequest);
+      expect(repResult.success).toBe(true);
+      const text = repResult.content[0].text ?? '';
+      expect(text).toContain('校对报告');
     });
   });
 

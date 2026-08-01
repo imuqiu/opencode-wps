@@ -64,6 +64,46 @@ interface SessionData {
   totalRevisions?: number;
 }
 
+// ==================== 会话 Map 与清理机制 ====================
+
+/**
+ * 会话 Map 上限（防止长时运行内存无限增长）
+ * 达到上限后，淘汰最久未更新的会话（LRU 近似：按 createdAt 排序淘汰最旧）
+ */
+const SESSION_MAP_MAX_SIZE = 200;
+
+/** 最近一次访问时间戳（用于 LRU 淘汰） */
+const sessionLastAccess = new Map<string, number>();
+
+/** 淘汰最久未访问的会话（超过上限时） */
+function enforceSessionLimit(): void {
+  if (sessionIssues.size <= SESSION_MAP_MAX_SIZE) return;
+  // 按最后访问时间升序（最旧优先），逐出超限部分
+  const evictable = Array.from(sessionLastAccess.entries())
+    .sort((a, b) => a[1] - b[1])
+    .slice(0, sessionIssues.size - SESSION_MAP_MAX_SIZE);
+  for (const [sid] of evictable) {
+    sessionIssues.delete(sid);
+    sessionLastAccess.delete(sid);
+  }
+}
+
+/** 触摸会话：刷新最后访问时间并执行上限淘汰 */
+function touchSession(sessionId: string): void {
+  sessionLastAccess.set(sessionId, Date.now());
+  enforceSessionLimit();
+}
+
+/**
+ * 报告生成后回收会话（报告是流程终点，问题数据已固化到报告文本）
+ * 导出供测试使用
+ */
+export function releaseSession(sessionId: string): boolean {
+  const removed = sessionIssues.delete(sessionId);
+  sessionLastAccess.delete(sessionId);
+  return removed;
+}
+
 // ==================== TYPE_METRIC_MAP ====================
 
 /**
@@ -280,6 +320,8 @@ export const proofreadAccumulateHandler: ToolHandler = async (
     };
     sessionIssues.set(session_id, session);
   }
+  // 刷新最后访问时间并执行上限淘汰
+  touchSession(session_id);
 
   // 更新 docInfo（如果提供了新的）
   if (doc_info) {
@@ -401,6 +443,8 @@ export const generateProofreadReportHandler: ToolHandler = async (
         // 文件写入失败不影响返回
       }
     }
+    // 空报告同样回收会话
+    releaseSession(session_id);
     return {
       id: uuidv4(),
       success: true,
@@ -586,6 +630,9 @@ export const generateProofreadReportHandler: ToolHandler = async (
   report += `| AI 智能校对 | ${aiCount} 处 |\n`;
   report += `| **合计** | **${issues.length} 处** |\n`;
   report += `| 全部已修复 | ✅ |\n`;
+
+  // 报告生成后回收会话，释放内存（报告文本已固化，会话数据不再需要）
+  releaseSession(session_id);
 
   // 写入文件（如果指定）
   if (output_file) {

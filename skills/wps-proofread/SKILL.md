@@ -20,8 +20,9 @@ description: "WPS 文档校对专家，专注于文档的错别字检测、语�
 | 7 | `wps_word_proofread_accumulate` | `wps_office_execute({ tool_name: "proofreadAccumulate", arguments: {...} })` | 累加本批校对问题到会话 Map（走网关） |
 | 8 | `wps_word_generate_proofread_report` | `wps_office_execute({ tool_name: "generateProofreadReport", arguments: {...} })` | 生成五维评分校对报告（走网关） |
 
-> **⚠️ 校对流程中强制走网关**：以下 6 个工具在 `batchStarted=true` 后**禁止直接调用 MCP 原接口**，必须通过 `wps_office_execute({ tool_name: "...", ... })` 调用：
+> **⚠️ 校对流程中强制走网关**：以下 8 个工具在 `batchStarted=true` 后**禁止直接调用 MCP 原接口**，必须通过 `wps_office_execute({ tool_name: "...", ... })` 调用：
 > - `getActiveDocument` / `insertText` / `getActiveWorkbook` / `getCellValue` / `setCellValue` / `getActivePresentation`
+> - `proofreadAccumulate` / `generateProofreadReport`（这两个只存在于网关索引，MCP 侧未直连注册，唯一入口就是 `wps_office_execute`）
 >
 > 直接调用原接口会被插件拦截并报错。
 

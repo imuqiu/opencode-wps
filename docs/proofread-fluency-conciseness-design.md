@@ -739,8 +739,8 @@ const METRIC_WEIGHT_FORMULA = {
 
 - `session_id` 由 AI 手动生成（UUID v4），在 `inputSchema` 中显式声明为必填参数
 - SKILL.md 引导 AI 生成并传递 `session_id`
-- `wps_word_proofread_accumulate` 和 `wps_word_generate_proofread_report` 在 MCP Server 注册为直接工具，同时加入 gateway `COM_ACTIONS` 索引兜底（`proofreadAccumulate` / `generateProofreadReport`），**统一经 `wps_office_execute` 网关调用**（网关路由到对应 handler）
-- 双通道可用：直接 MCP 调用与网关调用均可达，但 SKILL.md 引导统一走网关（用户侧 MCP 工具仅能通过网关调用）
+- `wps_word_proofread_accumulate` 和 `wps_word_generate_proofread_report` 不直连注册到 MCP Server，仅存在于 gateway `COM_ACTIONS` 索引（`proofreadAccumulate` / `generateProofreadReport`），**统一经 `wps_office_execute` 网关调用**（网关路由到对应 handler），与治理规则 G1「所有双路径工具强制走网关」一致
+- MCP 侧工具列表不暴露这两个工具，杜绝直接调用路径（唯一入口为 `wps_office_execute`）
 - MCP Server 侧 `sessionIssues` Map 与 governance.js 的 `sessions` Map 完全解耦（两个进程、两个内存空间）
 
 ---
@@ -756,7 +756,7 @@ const METRIC_WEIGHT_FORMULA = {
 | 5 | 五维评分量表归一化 | `normalizeToTwoPointScale()` [1,5] → [0,2] |
 | 6 | 权重公式下限 | fluency 下限 0（非 1）；completeness 下限 0（非 1） |
 | 7 | governance.js 与 MCP Map | 完全独立，不共享 |
-| 8 | `generateProofreadReport` / `proofreadAccumulate` 走不走网关 | **走网关**（`wps_office_execute` 路由到 handler；同时保留直接 MCP 注册作为兜底） |
+| 8 | `generateProofreadReport` / `proofreadAccumulate` 走不走网关 | **必须走网关**（`wps_office_execute` 路由到 handler）；不直连注册 MCP，无直接调用路径 |
 
 ---
 
