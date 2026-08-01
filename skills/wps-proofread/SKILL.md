@@ -335,13 +335,54 @@ wps_office_execute({
 ```
 
 **Layer 2 — AI 智能校对（你作为 LLM 直接分析）：**
+
 ```markdown
 用你的 LLM 能力分析以下文本的语义/逻辑/语病问题。
-特别注意检查：
+
+## 通顺度检测（五维评分卡）
+
+对每句逐维打分（0–2 分），总分 0–10。
+
+| 维度 | 0分（硬伤） | 1分（可优化） | 2分（规范） |
+|------|-----------|-------------|-----------|
+| ① 成分完整 | 缺主语/缺宾语/双主语（如"通过…，使得…"） | 介词短语前置但成分全 | 主谓宾清晰 |
+| ② 搭配得当 | 动宾不当（如"履行作用"应为"发挥作用"） | 搭配生僻但可接受 | 搭配自然 |
+| ③ 语序自然 | 否定词错位（如"我把作业没有做完"）、状语错位 | 稍欧化但可接受 | 语序流畅 |
+| ④ 句式干净 | 句式杂糅（如"根据调查显示"）、滥用被动 | 含框架废话但可容忍 | 句式精炼 |
+| ⑤ 衔接连贯 | 关联词失配/指代不明 | 无关联词但可推断 | 衔接自然 |
+
+## 简洁度检测（最小化测试）
+
+对候选冗余成分逐项做最小化测试：删除 → LLM 自检"语义是否完全不变"？
+- 语义不变 → 判定冗余 ✅（可删）
+- 语义变化 → 保留 ❌（不删）
+
+冗余占比 = 可删除字数 / 总字数
+
+冗余成分四类（由易到难）：
+| 类型 | 示例 |
+|------|------|
+| ① 同义反复 | 大约…左右、目的是为了、首次开创、亲眼目睹 |
+| ② 空洞填充词 | 进行研究→研究、作出决定→决定、予以解决→解决、加以完善→完善 |
+| ③ 框架废话 | "我们需要注意的是"、"众所周知"、"可以说"、"毫无疑问" |
+| ④ 可压缩从句 | "在当今…的时代背景下"、"从某种意义上来说"、"就目前而言" |
+
+## ⚠️ 铁律：通顺 > 简洁
+
+任何简洁修复必须：
+1. 通过"删除后语义不变"自检
+2. 修复后不得触发新的通顺 issue（若可能导致通顺度下降，只报告不修）
+3. 修复建议至少提供 2 个选项（保守/激进），用户可择其一
+4. 简洁修复尝试最多 1 轮（1 次修复 + 1 次通顺自检），若不通过则放弃修复，降级为「优化建议」
+
+## 特别注意检查
 - 占位/测试文本（如 "check test sample placeholder xxx" 等）
 - 明显口语化表达（正式文档中不应出现的随意用语）
 - 语病/逻辑矛盾
 - **编号连续性**：跨段落检查编号是否重复（如两个段落同为 "2.2.3"）、是否跳号、是否倒序
+
+## 输出格式
+
 输出严格 JSON 数组（如无问题则输出空数组 []）：
 [
   {
@@ -349,9 +390,27 @@ wps_office_execute({
     "offset_in_paragraph": 0,
     "original": "有问题文本",
     "suggestion": "修正文本",
-    "reason": "语病说明"
+    "reason": "语病说明",
+    "metric": "fluency",
+    "score": {
+      "fluency": { "components": 0, "collocation": 2, "order": 2, "clean": 0, "coherence": 2, "total": 6 },
+      "conciseness_ratio": null
+    },
+    "fix_action": "fix"
   }
 ]
+
+字段说明：
+- metric（必填）："fluency" | "conciseness"（枚举约束，禁止编造其他值）
+- score.fluency：通顺问题时含五维评分（每个维度 0-2 分 + total）
+- score.conciseness_ratio：简洁问题时含冗余占比（如 0.25 = 25%）
+- fix_action（必填）："fix"（触发修复） | "report_only"（只进优化建议）
+
+修复触发条件（写死，不许编造）：
+- fluency fix: 单维 0 分 或 总分 < 6
+- fluency report_only: 6 ≤ 总分 < 8（且无 0 分）
+- conciseness fix: 冗余占比 ≥ 25%
+- conciseness report_only: 10% ≤ 冗余占比 < 25%
 
 文本内容：
 ```
@@ -392,36 +451,49 @@ wps_office_execute({
 })
 ```
 
-**2d. 结果合并去重**
+**2d. 结果合并去重 + metric 分类**
 
 ```javascript
 // 合并两层结果
-const layer1 = responseProofreadBasic.issues || []      // { original, offset, length, suggestion, type }
-const layer2 = aiProofreadIssues || []                  // { original, offset, suggestion, reason }
+const layer1 = responseProofreadBasic.issues || []      // { original, offset, length, suggestion, type, metric? }
+const layer2 = aiProofreadIssues || []                  // { original, offset, suggestion, reason, metric, score?, fix_action }
 
 const allIssues = [
-  // Layer 1: 基础校对
-  ...layer1.map(i => ({ ...i, source: 'mcp' })),
-  // Layer 2: AI 校对
+  // Layer 1: 基础校对（metric 来自 proofread.ts Rule 定义）
+  ...layer1.map(i => ({ ...i, source: 'mcp', fix_action: 'fix' })),
+  // Layer 2: AI 校对（metric 来自 AI 输出）
   ...layer2.map(i => ({ ...i, type: 'ai', source: 'ai' })),
 ]
 
-// 按 offset + original 去重
-const seen = new Set()
-const deduped = allIssues.filter(i => {
-  const key = `${i.offset}|${i.original}`
-  if (seen.has(key)) return false
-  seen.add(key)
-  return true
-}).sort((a, b) => a.offset - b.offset)
+// 按 offset + original 去重（优先保留含 score 的条目）
+const seen = new Map()
+for (const issue of allIssues) {
+  const key = `${issue.offset}|${issue.original}`
+  const existing = seen.get(key)
+  // Layer 2 命中同一问题 → 保留 Layer 2 的（含 score 等元数据）
+  if (!existing || (issue.source === 'ai' && issue.score)) {
+    seen.set(key, issue)
+  }
+}
+const deduped = [...seen.values()].sort((a, b) => a.offset - b.offset)
+
+// 按 fix_action 分流：需修复 vs 仅报告
+const toFix = deduped.filter(i => i.fix_action !== 'report_only')
+const toReport = deduped.filter(i => i.fix_action === 'report_only')
+// Layer 1（正则）的 issue 默认 fix_action = 'fix'（P16 天然放行）
+// Layer 2（AI）的 issue 按评分卡/最小化测试结果决定 fix_action
 ```
 
-**注意**：如果 AI 校对输出的 `original` 与正则发现同一问题，`key` 相同会被去重，不会重复修复。
+**注意**：如果 AI 校对输出的 `original` 与正则发现同一问题，`key` 相同会被去重，优先保留 AI 输出的条目（含 `score` 维度信息）。
 
 **2e. 修复（禁用 findReplace 和 replaceRange，仅用 replaceInParagraph）：**
 
 **⚠️ 两层返回的都是 offset 偏移量，而 replaceInParagraph 需要段落索引 + 文本匹配。**
 需要将 issue.offset 映射为段落索引 + 查找文本。
+
+**修复分类**：
+- `toFix`：需要修复的问题（Layer 1 正则发现 + Layer 2 命中修复阈值），走 `replaceInParagraph`
+- `toReport`：仅报告的问题（Layer 2 评分 6–8 通顺 / 10–25% 简洁），不进修复循环，直接进报告"优化建议"
 
 **映射方法 1：从 getDocumentParagraphs 返回的 [start-end] 中查找 offset 所在的段落。**
 ```javascript
@@ -430,21 +502,36 @@ const deduped = allIssues.filter(i => {
 // [2] (正文) [44-89]    → 第2段：44-89
 // ...
 
-// 对每个 issue，找到 offset 落在哪个段落的 [start-end] 范围内
+// 对每个 toFix issue，找到 offset 落在哪个段落的 [start-end] 范围内
 function findParagraph(ranges, offset) {
   return ranges.find(r => offset >= r.start && offset < r.end)
 }
 
-for (const issue of sortedResults) {
+for (const issue of toFix) {
   const para = findParagraph(ranges, issue.offset)
   if (para) {
+    const replaceArgs = {
+      paragraphIndex: para.index,
+      findText: issue.original,
+      replaceText: issue.suggestion
+    }
+    // Layer 2 语义性问题（source='ai' 且不在 Layer 1 issue 列表中）需走 _force_ai_fix 通道
+    const isSemanticFix = issue.source === 'ai' && issue.metric &&
+      !layer1.some(l1 => l1.original === issue.original ||
+        l1.original?.includes(issue.original) ||
+        issue.original?.includes(l1.original))
+    if (isSemanticFix) {
+      replaceArgs._force_ai_fix = true
+      replaceArgs._ai_evidence = issue.reason  // 必须附评分卡/最小化测试证据
+    }
+    // 通顺 > 简洁铁律：简洁修复前检查是否会导致通顺度下降
+    if (issue.metric === 'conciseness' && isSemanticFix) {
+      // 标记此修复需人工复核：简洁修复可能影响通顺
+      replaceArgs._needs_fluency_check = true
+    }
     wps_office_execute({
       tool_name: "replaceInParagraph",
-      arguments: {
-        paragraphIndex: para.index,
-        findText: issue.original,
-        replaceText: issue.suggestion
-      }
+      arguments: replaceArgs
     })
     // 每修一条建议调用 getTrackChangesStatus 确认修订数增加
     wps_office_execute({
