@@ -45,6 +45,14 @@ jobs:
           node tests/launcher.test.js
           node tests/setcellformat-mac.test.js
 
+      # 单测门控：无真实 WPS 环境（CI）只跑单元测试，确保 npm run test:unit 全绿
+      # 集成测试（含 wps_execute_method 真实链路）依赖真实 WPS，本地设置 WPS_INTEGRATION=1 才运行
+      - name: Run unit tests (Jest, no WPS required)
+        shell: bash
+        run: |
+          cd wps-office-mcp
+          npm run test:unit -- --silent
+
   lint:
     runs-on: windows-latest
 

@@ -27,7 +27,10 @@ jest.mock('@modelcontextprotocol/sdk/types.js', () => ({
   ListToolsRequestSchema: { method: 'tools/list' },
   ErrorCode: { InternalError: -32603, InvalidParams: -32602 },
   McpError: class MockMcpError extends Error {
-    constructor(public code: number, message: string) {
+    constructor(
+      public code: number,
+      message: string
+    ) {
       super(message);
     }
   },
@@ -37,7 +40,10 @@ jest.mock('@modelcontextprotocol/sdk/types.js', () => ({
 jest.mock('../../utils/logger', () => ({
   log: { info: jest.fn(), debug: jest.fn(), warn: jest.fn(), error: jest.fn() },
   createChildLogger: jest.fn(() => ({
-    info: jest.fn(), debug: jest.fn(), warn: jest.fn(), error: jest.fn(),
+    info: jest.fn(),
+    debug: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
   })),
 }));
 
@@ -59,7 +65,11 @@ jest.mock('../../client/wps-client', () => ({
 // Mock错误类
 jest.mock('../../utils/error', () => ({
   McpError: class McpError extends Error {
-    constructor(message: string, public code: string, public details?: unknown) {
+    constructor(
+      message: string,
+      public code: string,
+      public details?: unknown
+    ) {
       super(message);
       this.name = 'McpError';
     }
@@ -215,14 +225,32 @@ describe('MCP Server 内置工具注册', () => {
       expect(result.success).toBe(true);
     });
 
-    it('wps_execute_method 应执行方法', async () => {
+    it('wps_execute_method 应拦截白名单外的方法', async () => {
+      // 安全白名单：方法必须以 Application.ActiveDocument / ActiveWorkbook / ActivePresentation 开头
+      // 传 ping（不在白名单）应返回 success:false 且含拒绝原因，不应走到真实 wpsClient
       const request = ToolRegistry.createRequest('wps_execute_method', {
         method: 'ping',
         params: {},
         appType: 'wps',
       });
       const result = await registry.callTool(request);
+      expect(result.success).toBe(false);
+      const text = result.content[0].text ?? '';
+      expect(text).toContain('not allowed');
+    });
+
+    it('wps_execute_method 白名单内方法应透传至 wpsClient', async () => {
+      // 合法前缀（Application.ActiveDocument.*）应放行并调用 mock 的 executeMethod，验证透传链路
+      const request = ToolRegistry.createRequest('wps_execute_method', {
+        method: 'Application.ActiveDocument.SaveAs',
+        params: { path: '/tmp/test.docx' },
+        appType: 'wps',
+      });
+      const result = await registry.callTool(request);
       expect(result.success).toBe(true);
+      const text = result.content[0].text ?? '';
+      const parsed = JSON.parse(text);
+      expect(parsed.success).toBe(true);
     });
   });
 
@@ -238,10 +266,12 @@ describe('MCP Server 内置工具注册', () => {
 
     it('wps_get_cached_data 应获取缓存数据', async () => {
       // 先缓存
-      await registry.callTool(ToolRegistry.createRequest('wps_cache_data', {
-        key: 'test_key',
-        data: { foo: 'bar' },
-      }));
+      await registry.callTool(
+        ToolRegistry.createRequest('wps_cache_data', {
+          key: 'test_key',
+          data: { foo: 'bar' },
+        })
+      );
       // 再获取
       const request = ToolRegistry.createRequest('wps_get_cached_data', {
         key: 'test_key',
