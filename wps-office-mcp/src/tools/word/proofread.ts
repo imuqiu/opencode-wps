@@ -512,12 +512,14 @@ interface ProofreadIssue {
   suggestion: string;
   type: string;
   context: string;
+  metric?: 'fluency' | 'conciseness';
 }
 
 
 type Rule = {
   pattern: RegExp;
   type: string;
+  metric?: 'fluency' | 'conciseness';
   getSuggestion: (match: string) => string;
 };
 
@@ -959,8 +961,65 @@ const rules: Rule[] = [
     type: '占位文本',
     getSuggestion: (m) => m.replace(/x+/gi, '[名称]'),
   },
+
+  // ===== 通顺/简洁规则 — metric 驱动 =====
+  // 句式杂糅（fluency）：结构混乱，一个句子里套了两个句式
+  {
+    pattern: /通过(.*?)(使|让|令)/g,
+    type: '句式杂糅',
+    metric: 'fluency',
+    getSuggestion: (m) => {
+      // "通过A使B" → "A使B" 或 "通过A，B"
+      // 原original捕获完整短语，建议去除"通过"
+      return m.replace(/^通过/, '');
+    },
+  },
+  {
+    pattern: /根据(.*?)显示/g,
+    type: '句式杂糅',
+    metric: 'fluency',
+    getSuggestion: (m) => {
+      // "根据A显示" → "根据A" 或 "A显示"
+      return m.replace(/^根据/, '').replace(/显示$/, '');
+    },
+  },
+
+  // 冗余词（conciseness）：动词本身已表达完整语义，额外成分是赘余
+  {
+    pattern: /进行(了)?(研究|分析|讨论|处理|调查)/g,
+    type: '冗余词',
+    metric: 'conciseness',
+    getSuggestion: (m) => m.replace(/^进行(了)?/, ''),
+  },
+  {
+    pattern: /作出(了)?(决定|部署|安排)/g,
+    type: '冗余词',
+    metric: 'conciseness',
+    getSuggestion: (m) => m.replace(/^作出(了)?/, ''),
+  },
+  {
+    pattern: /予以(了)?(解决|处理|落实)/g,
+    type: '冗余词',
+    metric: 'conciseness',
+    getSuggestion: (m) => m.replace(/^予以(了)?/, ''),
+  },
+  {
+    pattern: /加以(了)?(解决|完善|规范)/g,
+    type: '冗余词',
+    metric: 'conciseness',
+    getSuggestion: (m) => m.replace(/^加以(了)?/, ''),
+  },
+  {
+    pattern: /针对(.*?)这一问题/g,
+    type: '冗余词',
+    metric: 'conciseness',
+    getSuggestion: (m) => {
+      // "针对A这一问题" → "针对A" 或 "对A"
+      return m.replace(/针对/, '对').replace(/这一问题$/, '');
+    },
+  },
 ];
-function runBasicProofreading(text: string, baseOffset: number = 0): ProofreadIssue[] {
+export function runBasicProofreading(text: string, baseOffset: number = 0): ProofreadIssue[] {
   const issues: ProofreadIssue[] = [];
   const offset = baseOffset || 0;
 
@@ -992,14 +1051,18 @@ function runBasicProofreading(text: string, baseOffset: number = 0): ProofreadIs
         const docOffset = useCleaned ? (charMap[start] ?? start) : start;
         const beforeCtx = effectiveText.substring(Math.max(0, start - 10), start);
         const afterCtx = effectiveText.substring(start + orig.length, start + orig.length + 10);
-        issues.push({
+        const issue: ProofreadIssue = {
           offset: offset + docOffset,
           length: orig.length,
           original: orig,
           suggestion,
           type: rule.type,
           context: `...${beforeCtx}[${orig}]${afterCtx}...`,
-        });
+        };
+        if (rule.metric) {
+          issue.metric = rule.metric;
+        }
+        issues.push(issue);
       }
     }
   }
