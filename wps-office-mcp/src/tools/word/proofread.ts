@@ -11,7 +11,11 @@
  * - wps_word_replace_range: 按字符范围替换文本（修订模式下跟踪）
  * - wps_word_replace_in_paragraph: 按段落+文本匹配替换（修订模式下跟踪，推荐用于校对）
  * - wps_word_proofread_basic: 基础文本校对（正则检测错别字/语病）
-
+ *
+ * Layer 1 通顺/简洁规则（metric 驱动）：
+ * - fluency 句式杂糅：通过…使/让/令、根据…显示/表明/证实、由于…的原因导致/使/造成
+ * - conciseness 冗余词：进行/作出/予以/加以(+修饰语)+动词、针对…这一问题
+ * - 旧规则增强：大约+数量+左右/上下、并(非|不)是、在(次|来|去)→再（排除正/现前缀）
  */
 
 import { v4 as uuidv4 } from 'uuid';
@@ -548,10 +552,11 @@ const rules: Rule[] = [
   },
 
   // ===== 在/再 混淆 =====
-  // 只保留确定性高的替换（在次→再次、在来→再来），
+  // 只保留确定性高的替换（在次→再次、在来→再来、在去→再去），
   // 避免误报正确用法（如"正在做"、"在考虑"）
+  // 注：前接"正/现"时（"正在去/现在来"）为合法用法，需排除
   {
-    pattern: /在(次|来)/g,
+    pattern: /(?<![正现])在(次|来|去)/g,
     type: '在再混淆',
     getSuggestion: (m) => '再' + m.substring(1),
   },
@@ -621,9 +626,11 @@ const rules: Rule[] = [
     getSuggestion: () => '是由于',
   },
   {
-    pattern: /大约(左右|上下)/g,
+    // 大约 + 数量成分（1-8 字）+ 左右/上下 — 如"大约需要两小时左右"
+    // 限定中间字符数防止误报（如"大约在左右"这类合法用法）
+    pattern: /大约([^，。；！？\n]{1,8})(左右|上下)/g,
     type: '句式冗余',
-    getSuggestion: (m) => m.includes('左右') ? '大约' : '大约',
+    getSuggestion: (m) => '大约' + m.replace(/^大约/, '').replace(/(左右|上下)$/, ''),
   },
   {
     pattern: /目的是为了/g,
@@ -886,10 +893,11 @@ const rules: Rule[] = [
   },
 
   // 冗余判断
+  // 兼容"并非是"与"并不是"（语义等价，都是冗余的否定强调）
   {
-    pattern: /并非是/g,
+    pattern: /并(非|不)是/g,
     type: '多字',
-    getSuggestion: () => '并非',
+    getSuggestion: (m) => (m.includes('非') ? '并非' : '并不'),
   },
   {
     pattern: /必须要/g,
@@ -975,18 +983,31 @@ const rules: Rule[] = [
     },
   },
   {
-    pattern: /根据(.*?)显示/g,
+    pattern: /根据(.*?)(显示|表明|证实)/g,
     type: '句式杂糅',
     metric: 'fluency',
     getSuggestion: (m) => {
       // "根据A显示" → "根据A" 或 "A显示"
-      return m.replace(/^根据/, '').replace(/显示$/, '');
+      return m.replace(/^根据/, '').replace(/(显示|表明|证实)$/, '');
+    },
+  },
+  {
+    // "由于A的原因导致/使/造成" — 双重因果句式杂糅
+    // 语义上"由于"与"的原因"重复表达因果关系，搭配"导致/使/造成"构成杂糅
+    pattern: /由于(.*?)的原因(导致|使|造成)/g,
+    type: '句式杂糅',
+    metric: 'fluency',
+    getSuggestion: (m) => {
+      // "由于A的原因导致B" → "由于A，B" 或 "A导致B"
+      // 去除"的原因"，保留因果逻辑
+      return m.replace('的原因', '');
     },
   },
 
   // 冗余词（conciseness）：动词本身已表达完整语义，额外成分是赘余
+  // "进行/进行了" + 可选修饰语 + 动词 — 如"进行研究"、"进行了讨论"、"进行深入的分析"
   {
-    pattern: /进行(了)?(研究|分析|讨论|处理|调查)/g,
+    pattern: /进行(了)?((深入|详细|认真|充分|全面|系统|细致|专门|彻底|有效)[的])?(研究|分析|讨论|处理|调查)/g,
     type: '冗余词',
     metric: 'conciseness',
     getSuggestion: (m) => m.replace(/^进行(了)?/, ''),
