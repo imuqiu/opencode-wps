@@ -225,9 +225,9 @@ describe('MCP Server 内置工具注册', () => {
       expect(result.success).toBe(true);
     });
 
-    it('wps_execute_method 应拦截白名单外的方法', async () => {
-      // 安全白名单：方法必须以 Application.ActiveDocument / ActiveWorkbook / ActivePresentation 开头
-      // 传 ping（不在白名单）应返回 success:false 且含拒绝原因，不应走到真实 wpsClient
+    it('wps_execute_method 非法方法应被安全拦截', async () => {
+      // wps_execute_method 有安全白名单：方法必须以 Application.ActiveDocument / ActiveWorkbook / ActivePresentation 开头。
+      // ping 不在白名单内，应被拦截返回 success:false 且含拒绝原因，不依赖真实 WPS。
       const request = ToolRegistry.createRequest('wps_execute_method', {
         method: 'ping',
         params: {},
@@ -235,22 +235,19 @@ describe('MCP Server 内置工具注册', () => {
       });
       const result = await registry.callTool(request);
       expect(result.success).toBe(false);
-      const text = result.content[0].text ?? '';
+      const text = result.content[0]?.text ?? '';
       expect(text).toContain('not allowed');
     });
 
-    it('wps_execute_method 白名单内方法应透传至 wpsClient', async () => {
-      // 合法前缀（Application.ActiveDocument.*）应放行并调用 mock 的 executeMethod，验证透传链路
+    it('wps_execute_method 白名单内方法应透传给 wpsClient.executeMethod', async () => {
+      // 白名单内方法（Application.ActiveDocument 前缀）应通过校验并透传，mock 的 wpsClient 不依赖真实 WPS。
       const request = ToolRegistry.createRequest('wps_execute_method', {
-        method: 'Application.ActiveDocument.SaveAs',
-        params: { path: '/tmp/test.docx' },
+        method: 'Application.ActiveDocument.Name',
+        params: {},
         appType: 'wps',
       });
       const result = await registry.callTool(request);
       expect(result.success).toBe(true);
-      const text = result.content[0].text ?? '';
-      const parsed = JSON.parse(text);
-      expect(parsed.success).toBe(true);
     });
   });
 

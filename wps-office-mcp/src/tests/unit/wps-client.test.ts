@@ -79,46 +79,41 @@ const mockedOs = os as jest.Mocked<typeof os>;
 const mockedSpawn = child_process.spawn as jest.Mock;
 
 function mockPsProcess(stdoutData: string, exitCode: number = 0, stderrData: string = '') {
-  // 修复：spawnPowerShell 的调用顺序是「先 spawn() 返回进程，再注册 stdout/stderr/close 事件」
-  // 旧实现在 spawn() 同步调用时检查 handlers，此时事件监听器尚未注册，导致事件永不触发、测试超时。
-  // 新实现：在 mock 进程的 on() 注册回调时，用微任务异步触发对应事件（若有数据），
-  // 与真实 child_process 的事件时序一致，Promise 能正常 resolve。
-  mockedSpawn.mockImplementation(() => {
-    const procHandlers: Record<string, (code?: number) => void> = {};
-    const stdoutHandlers: Record<string, (data: Buffer) => void> = {};
-    const stderrHandlers: Record<string, (data: Buffer) => void> = {};
-
-    const mockProcess = {
-      pid: 12345,
-      kill: jest.fn(),
-      stdout: {
-        on: jest.fn((event: string, cb: (data: Buffer) => void) => {
-          stdoutHandlers[event] = cb;
-          if (event === 'data' && stdoutData) {
-            queueMicrotask(() => cb(Buffer.from(stdoutData)));
-          }
-        }),
-      },
-      stderr: {
-        on: jest.fn((event: string, cb: (data: Buffer) => void) => {
-          stderrHandlers[event] = cb;
-          if (event === 'data' && stderrData) {
-            queueMicrotask(() => cb(Buffer.from(stderrData)));
-          }
-        }),
-      },
-      on: jest.fn((event: string, cb: (code?: number) => void) => {
-        procHandlers[event] = cb;
-        if (event === 'close' && exitCode !== undefined) {
-          queueMicrotask(() => cb(exitCode));
-        }
-        if (event === 'error') {
-          // error 事件由需要模拟进程启动失败的用例通过专门函数覆盖
-          procHandlers[event] = cb;
-        }
+  const handlers: Record<string, (...args: unknown[]) => void> = {};
+  const mockProcess = {
+    stdout: {
+      on: jest.fn((event: string, cb: (...args: unknown[]) => void) => {
+        handlers['stdout.' + event] = cb;
       }),
-    };
+    },
+    stderr: {
+      on: jest.fn((event: string, cb: (...args: unknown[]) => void) => {
+        handlers['stderr.' + event] = cb;
+      }),
+    },
+    on: jest.fn((event: string, cb: (...args: unknown[]) => void) => {
+      handlers[event] = cb;
+    }),
+    // 超时路径需要 kill 方法（wps-client.ts 超时时调用 ps.kill('SIGTERM')）
+    kill: jest.fn(),
+    pid: 12345,
+  };
 
+  mockedSpawn.mockImplementation(() => {
+    // 延迟到下一轮事件循环再触发事件，确保 spawn 返回后 ps.on('close') 等监听器已注册。
+    // 之前用 Promise.resolve().then()（微任务）在监听器注册前就执行了检查，
+    // 导致 close 事件从未触发、result 永远 pending，最终 10s 超时。
+    setImmediate(() => {
+      if (stdoutData && handlers['stdout.data']) {
+        handlers['stdout.data'](Buffer.from(stdoutData));
+      }
+      if (stderrData && handlers['stderr.data']) {
+        handlers['stderr.data'](Buffer.from(stderrData));
+      }
+      if (exitCode !== undefined && handlers['close']) {
+        handlers['close'](exitCode);
+      }
+    });
     return mockProcess;
   });
 }

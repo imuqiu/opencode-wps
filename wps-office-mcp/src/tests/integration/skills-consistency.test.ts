@@ -3,14 +3,13 @@
  * 验证 Skills 和 Agents 中引用的所有工具名称在 TOOLS_INDEX 中存在
  *
  * @date 2026-05-18
+ * @updated 2026-08-01 重构：三处重复校验逻辑抽取公共函数（Issue #49）
  */
 
 import { TOOLS_INDEX } from '../../tools/gateway';
 
-// Mock uuid（v14 为 ESM-only，jest 无法直接解析，需 mock）
-jest.mock('uuid', () => ({
-  v4: jest.fn(() => 'mock-uuid-skills-consistency'),
-}));
+// uuid v14 是 ESM-only，Jest CJS 无法解析，手动 mock（与 gateway.test.ts 一致）
+jest.mock('uuid', () => ({ v4: () => '00000000-0000-0000-0000-000000000000' }));
 
 // Mock logger
 jest.mock('../../utils/logger', () => ({
@@ -53,7 +52,7 @@ const ALL_MCP_TOOLS = new Set([
 
 const indexNames = TOOLS_INDEX.map(t => t.name);
 
-// Legacy 工具名称映射：旧的 wps_office_* 工具名 -> gateway index 中的实际工具名
+// Legacy 工具名称映射：旧版 wps_office_* 工具名 -> gateway index 中的实际工具名
 const LEGACY_TOOLS: Record<string, string> = {
   wps_office_check_status: 'getContext',
   wps_office_activate_app: 'getContext',
@@ -68,6 +67,72 @@ const LEGACY_TOOLS: Record<string, string> = {
   wps_office_print: 'convertToPDF',
 };
 
+/**
+ * 提取反引号包裹的工具名称
+ * @param content 待扫描内容
+ * @param excludeLayout 是否排除布局/动画类型（Skills 专属，如 title_content / fly_in）
+ */
+function extractToolNames(content: string, excludeLayout = false): string[] {
+  const toolNamePattern = /`(\w+(?:_\w+)+)`/g;
+  const matches = new Set<string>();
+  let m: RegExpExecArray | null;
+  while ((m = toolNamePattern.exec(content)) !== null) {
+    const name = m[1];
+    // 排除纯下划线占位符（如 ___ / ____）
+    if (/^_+$/.test(name)) continue;
+    // 排除布局/动画类型
+    if (
+      excludeLayout &&
+      /^(title_content|two_column|comparison|blank|fly_in|zoom|fade|wipe|appear)$/.test(name)
+    )
+      continue;
+    matches.add(name);
+  }
+  return [...matches];
+}
+
+/**
+ * 校验工具名称是否在已知白名单内（ALL_MCP_TOOLS / LEGACY_TOOLS / TOOLS_INDEX 含去前缀匹配），
+ * 返回未知工具名称列表
+ */
+function findUnknownTools(names: string[]): string[] {
+  const unknown: string[] = [];
+  names.forEach(name => {
+    if (ALL_MCP_TOOLS.has(name)) return;
+    if (LEGACY_TOOLS[name]) return; // 已映射到 legacy
+
+    // gateway index 工具名称不带 wps_ 前缀，尝试去掉前缀
+    const shortName = name
+      .replace('wps_excel_', '')
+      .replace('wps_word_', '')
+      .replace('wps_ppt_', '');
+
+    if (indexNames.includes(name) || indexNames.includes(shortName)) return;
+    unknown.push(name);
+  });
+  return unknown;
+}
+
+/**
+ * 断言文件引用的所有工具名称均存在（文件缺失时跳过）
+ * @param filePath 待校验文件绝对路径
+ * @param excludeLayout 是否排除布局/动画类型（Skills 专属）
+ */
+function expectValidToolRefs(filePath: string, excludeLayout = false): void {
+  if (!fs.existsSync(filePath)) {
+    // 在 MCP 测试环境中，skills/agents 目录可能不存在，跳过
+    return;
+  }
+
+  const content = fs.readFileSync(filePath, 'utf8');
+  const unknown = findUnknownTools(extractToolNames(content, excludeLayout));
+
+  if (unknown.length > 0) {
+    console.error(`\n${filePath} 引用了不存在的工具\n${unknown.map(n => `  ${n}`).join('\n')}`);
+  }
+  expect(unknown.length).toBe(0);
+}
+
 describe('Skills 引用的工具名称一致性', () => {
   const skillFiles = [
     'wps-excel/SKILL.md',
@@ -77,54 +142,8 @@ describe('Skills 引用的工具名称一致性', () => {
   ];
 
   skillFiles.forEach(skillPath => {
-    const filePath = path.join(skillsDir, skillPath);
-
     it(`文件 ${skillPath} 不应引用不存在的工具`, () => {
-      if (!fs.existsSync(filePath)) {
-        // 在 MCP 测试环境中，skills 目录可能不存在，跳过
-        return;
-      }
-
-      const content = fs.readFileSync(filePath, 'utf8');
-
-      // 提取所有反引号包裹的工具名称
-      // 排除：纯下划线（如 ___）、布局类型（如 title_content）、动画类型（如 fly_in）
-      const toolNamePattern = /`(\w+(?:_\w+)+)`/g;
-      const matches = new Set<string>();
-      let m;
-      while ((m = toolNamePattern.exec(content)) !== null) {
-        const name = m[1];
-        // 排除纯下划线、布局类型（含有常见分隔符）、动画类型
-        if (/^_+$/.test(name)) continue; // 纯下划线如 ___
-        if (/^(title_content|two_column|comparison|blank|fly_in|zoom|fade|wipe|appear)$/.test(name))
-          continue; // 布局/动画类型
-        matches.add(name);
-      }
-
-      // 验证每个引用的工具名称
-      const errors: string[] = [];
-      const indexNames = TOOLS_INDEX.map(t => t.name);
-
-      matches.forEach(name => {
-        if (ALL_MCP_TOOLS.has(name)) return;
-        if (LEGACY_TOOLS[name]) return; // 已映射到 legacy
-        if (indexNames.includes(name)) return;
-
-        // gateway index 工具名称不带 wps_ 前缀，尝试去掉前缀
-        const shortName = name
-          .replace('wps_excel_', '')
-          .replace('wps_word_', '')
-          .replace('wps_ppt_', '');
-
-        if (indexNames.includes(shortName)) return;
-
-        errors.push(`  ${name} (尝试匹配: ${shortName})`);
-      });
-
-      if (errors.length > 0) {
-        console.error(`\n${skillPath} 引用了不存在的工具:\n${errors.join('\n')}`);
-      }
-      expect(errors.length).toBe(0);
+      expectValidToolRefs(path.join(skillsDir, skillPath), true);
     });
   });
 });
@@ -133,87 +152,14 @@ describe('Agents 引用的工具名称一致性', () => {
   const agentFiles = ['wps-expert.md', 'wps-excel.md', 'wps-word.md', 'wps-ppt.md'];
 
   agentFiles.forEach(agentPath => {
-    const filePath = path.join(agentsDir, agentPath);
-
     it(`文件 ${agentPath} 不应引用不存在的工具`, () => {
-      if (!fs.existsSync(filePath)) {
-        // 在 MCP 测试环境中，agents 目录可能不存在，跳过
-        return;
-      }
-
-      const content = fs.readFileSync(filePath, 'utf8');
-
-      const toolNamePattern = /`(\w+(?:_\w+)+)`/g;
-      const matches = new Set<string>();
-      let m;
-      while ((m = toolNamePattern.exec(content)) !== null) {
-        const name = m[1];
-        // 排除纯下划线占位符（如 ___ / ____，wps-expert.md 中用于标记待填字段）
-        if (/^_+$/.test(name)) continue;
-        matches.add(name);
-      }
-
-      const errors: string[] = [];
-      matches.forEach(name => {
-        if (ALL_MCP_TOOLS.has(name)) return;
-        if (LEGACY_TOOLS[name]) return;
-
-        const shortName = name
-          .replace('wps_excel_', '')
-          .replace('wps_word_', '')
-          .replace('wps_ppt_', '');
-
-        const inIndex = indexNames.includes(name) || indexNames.includes(shortName);
-        if (!inIndex) {
-          errors.push(`  ${name}`);
-        }
-      });
-
-      if (errors.length > 0) {
-        console.error(`\n${agentPath} 引用了不存在的工具:\n${errors.join('\n')}`);
-      }
-      expect(errors.length).toBe(0);
+      expectValidToolRefs(path.join(agentsDir, agentPath));
     });
   });
 });
 
 describe('wps-expert.md tools 字段验证', () => {
   it('wps-expert.md 不应引用不存在的工具', () => {
-    const filePath = path.resolve(agentsDir, 'wps-expert.md');
-    if (!fs.existsSync(filePath)) return;
-
-    const content = fs.readFileSync(filePath, 'utf8');
-
-    const toolNamePattern = /`(\w+(?:_\w+)+)`/g;
-    const tools: string[] = [];
-    let m;
-    while ((m = toolNamePattern.exec(content)) !== null) {
-      const name = m[1];
-      // 排除纯下划线占位符（如 ___ / ____）
-      if (/^_+$/.test(name)) continue;
-      tools.push(name);
-    }
-
-    const errors: string[] = [];
-
-    tools.forEach(name => {
-      if (ALL_MCP_TOOLS.has(name)) return;
-      if (LEGACY_TOOLS[name]) return;
-
-      const shortName = name
-        .replace('wps_excel_', '')
-        .replace('wps_word_', '')
-        .replace('wps_ppt_', '');
-
-      const inIndex = indexNames.includes(name) || indexNames.includes(shortName);
-      if (!inIndex) {
-        errors.push(`  ${name}`);
-      }
-    });
-
-    if (errors.length > 0) {
-      console.error(`\nwps-expert.md 引用了不存在的工具:\n${errors.join('\n')}`);
-    }
-    expect(errors.length).toBe(0);
+    expectValidToolRefs(path.resolve(agentsDir, 'wps-expert.md'));
   });
 });

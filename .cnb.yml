@@ -10,11 +10,12 @@ main:
     - services:
         - docker
       stages:
-        - name: Validate NPC settings
+        - name: Validate NPC settings & unit tests
           image: node:22
           script: |
             npm ci
             node scripts/validate-settings.js
+            cd wps-office-mcp && npm ci && npm run test:unit
         - name: Docker build
           script: |
             docker build -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:latest .
