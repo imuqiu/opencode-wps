@@ -20,13 +20,13 @@ import { pptTools } from './ppt';
 import { commonTools } from './common';
 
 /**
- * 所有MCP Tools集合（共240个注册工具，另有12个内置工具 + 240个 Gateway COM Actions）
- * 注意：实际注册工具数 = excelTools + wordTools + pptTools + commonTools，新增子模块工具时需同步更新此注释
+ * 所有MCP Tools集合（注册工具数 = excelTools + wordTools + pptTools + commonTools，见下方分类；另含 12 个内置工具 + ~256 个 Gateway COM Actions）
+ * 注意：实际注册工具数随开发持续演进，数量以代码为准（运行时可用 allTools.length 计算）
  *
  * 三层工具体系：
  *   1. 内置工具（12个，在 mcp-server.ts 中注册）：wps_check_connection, wps_get_cell_value 等
  *   2. Gateway 工具（2个）：wps_office_search（搜索）、wps_office_execute（执行）
- *   3. COM Actions（240个，在 gateway/index.ts 索引，通过 Gateway 按需加载）
+ *   3. COM Actions（~256个，在 gateway/index.ts 索引，通过 Gateway 按需加载）
  *
  * 直接注册工具分类：
  *   Excel (82个):   公式/数据/图表/透视表/工作表/格式化/工作簿/高级数据
