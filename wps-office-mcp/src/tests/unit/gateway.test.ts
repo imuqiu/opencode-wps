@@ -29,8 +29,8 @@ import { wpsClient } from '../../client/wps-client';
 const mockedWpsClient = wpsClient as jest.Mocked<typeof wpsClient>;
 
 describe('TOOLS_INDEX 完整性验证', () => {
-    it('索引数量应为 256 个', () => {
-      expect(TOOLS_INDEX.length).toBe(256);
+    it('索引数量应为 258 个', () => {
+      expect(TOOLS_INDEX.length).toBe(258);
     });
 
   it('索引名称应该唯一（无重复）', () => {
@@ -85,6 +85,20 @@ describe('TOOLS_INDEX 完整性验证', () => {
     required.forEach(name => {
       expect(names).toContain(name);
     });
+  });
+
+  it('五维评分校对报告工具必须存在于索引（网关兜底）', () => {
+    const names = TOOLS_INDEX.map(t => t.name);
+    expect(names).toContain('proofreadAccumulate');
+    expect(names).toContain('generateProofreadReport');
+    const acc = TOOLS_INDEX.find(t => t.name === 'proofreadAccumulate');
+    const rep = TOOLS_INDEX.find(t => t.name === 'generateProofreadReport');
+    expect(acc!.category).toBe('word');
+    expect(rep!.category).toBe('word');
+    expect(acc!.appType).toBe('wps');
+    expect(rep!.appType).toBe('wps');
+    expect(acc!.paramsSchema.session_id.required).toBe(true);
+    expect(rep!.paramsSchema.session_id.required).toBe(true);
   });
 
   it('关键 PPT 工具必须存在', () => {

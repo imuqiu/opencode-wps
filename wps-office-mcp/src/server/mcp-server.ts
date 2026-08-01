@@ -23,6 +23,7 @@ import { createChildLogger } from '../utils/logger';
 import { McpError } from '../utils/error';
 import { fetchDocInfoFromLauncher } from '../utils/launcher';
 import { searchTools, executeTool } from '../tools/gateway';
+import { proofreadReportTools } from '../tools/word/proofread-report';
 import { WpsAppType } from '../types/wps';
 
 const logger = createChildLogger('McpServer');
@@ -884,6 +885,11 @@ export class WpsMcpServer {
     // 注册网关工具 (渐进式加载，隐藏 250+ 专业工具)
     // 所有功能通过 wps_office_search + wps_office_execute 调用
     // wps_execute_method 作为兜底
+
+    // 注册五维评分校对报告工具（直接 MCP 工具，不走网关）
+    // 设计文档 §11：wps_word_proofread_accumulate / wps_word_generate_proofread_report
+    // 注册为直接 MCP 工具，不走 wps_office_execute 网关，DIRECT_TO_GATEWAY 不拦截
+    this.registry.registerAll(proofreadReportTools);
 
     // 创建stdio传输层
     const transport = new StdioServerTransport();
