@@ -4,8 +4,16 @@
  * Pos: unit test for proofread rule engine. Once I'm modified, update my header comment and the folder md.
  *
  * 测试 proofread 规则引擎 — 通顺/简洁规则与 metric 字段
- * @author 架构师 NPC
+ * @author 架构师 NPC + CodeBuddy
  * @date 2026-08-01
+ *
+ * #25 验收修补（CodeBuddy）：
+ * - Rule 8 由于(.*?)的原因(导致|使|造成) — F03/F09
+ * - 根据(.*?)(显示|表明|证实) — F08
+ * - 进行(了)?修饰语+动词 — C06
+ * - 大约+数量+左右/上下 — F05
+ * - 并(非|不)是 — C11
+ * - 在(次|来|去)→再（排除正/现前缀） — C17
  */
 
 // Mock uuid ESM to avoid Jest transform issue
@@ -72,8 +80,52 @@ describe('proofread rule engine — fluency & conciseness rules', () => {
       expect(issues.filter(i => i.metric === 'fluency')).toHaveLength(0);
     });
 
+    test('Rule 2: 根据(.*?)(显示|表明|证实) — 检测"根据A证实"（F08）', () => {
+      const issues = runBasicProofreading('根据数据证实这一假设成立');
+      const issue = issues.find(i => i.type === '句式杂糅' && i.metric === 'fluency');
+      expect(issue).toBeDefined();
+      expect(issue!.original).toBe('根据数据证实');
+      expect(issue!.suggestion).toBe('数据');
+    });
+
+    test('Rule 2: 根据(.*?)(显示|表明|证实) — 检测"根据A表明"', () => {
+      const issues = runBasicProofreading('根据研究结果表明该方案可行');
+      const issue = issues.find(i => i.type === '句式杂糅' && i.metric === 'fluency');
+      expect(issue).toBeDefined();
+      expect(issue!.original).toBe('根据研究结果表明');
+    });
+
     test('fluency: 不应误报正常"通过"用法（非杂糅）', () => {
       const issues = runBasicProofreading('通过验收的项目可以投入运营');
+      const fluencyIssues = issues.filter(i => i.metric === 'fluency');
+      expect(fluencyIssues).toHaveLength(0);
+    });
+
+    test('Rule 8: 由于(.*?)的原因(导致|使|造成) — 检测"由于A的原因导致"句式杂糅', () => {
+      const issues = runBasicProofreading('由于天气的原因导致了航班延误');
+      const issue = issues.find(i => i.type === '句式杂糅' && i.metric === 'fluency');
+      expect(issue).toBeDefined();
+      expect(issue!.original).toBe('由于天气的原因导致');
+      expect(issue!.suggestion).toBe('由于天气导致');
+    });
+
+    test('Rule 8: 由于…的原因使 — 检测"由于A的原因使B"', () => {
+      const issues = runBasicProofreading('由于缺乏锻炼的原因使他体重增加');
+      const issue = issues.find(i => i.type === '句式杂糅' && i.metric === 'fluency');
+      expect(issue).toBeDefined();
+      expect(issue!.original).toBe('由于缺乏锻炼的原因使');
+      expect(issue!.suggestion).toBe('由于缺乏锻炼使');
+    });
+
+    test('Rule 8: 由于…的原因造成 — 检测"由于A的原因造成B"', () => {
+      const issues = runBasicProofreading('由于管理疏漏的原因造成了重大损失');
+      const issue = issues.find(i => i.type === '句式杂糅' && i.metric === 'fluency');
+      expect(issue).toBeDefined();
+      expect(issue!.original).toBe('由于管理疏漏的原因造成');
+    });
+
+    test('Rule 8: 正常"由于"用法（无"的原因+导致"）不应误报', () => {
+      const issues = runBasicProofreading('由于天气原因，航班取消');
       const fluencyIssues = issues.filter(i => i.metric === 'fluency');
       expect(fluencyIssues).toHaveLength(0);
     });
@@ -100,6 +152,14 @@ describe('proofread rule engine — fluency & conciseness rules', () => {
       const issue = issues[0];
       expect(issue.original).toBe('进行分析');
       expect(issue.metric).toBe('conciseness');
+    });
+
+    test('Rule 3: 进行(了)?修饰语+分析 — 检测"进行深入的分析"（C06）', () => {
+      const issues = runBasicProofreading('我们对数据进行深入的分析');
+      const issue = issues.find(i => i.type === '冗余词' && i.metric === 'conciseness');
+      expect(issue).toBeDefined();
+      expect(issue!.original).toBe('进行深入的分析');
+      expect(issue!.suggestion).toBe('深入的分析');
     });
 
     test('Rule 3: 进行(了)?(讨论) — 检测"进行了讨论"', () => {
@@ -273,6 +333,18 @@ describe('proofread rule engine — fluency & conciseness rules', () => {
       expect(issue.metric).toBeUndefined();
     });
 
+    test('旧规则（句式冗余：大约…左右）支持中间夹数量成分（F05）', () => {
+      const issues = runBasicProofreading('大约需要两小时左右');
+      const issue = issues.find(i => i.type === '句式冗余');
+      expect(issue).toBeDefined();
+      expect(issue!.original).toBe('大约需要两小时左右');
+    });
+
+    test('旧规则（句式冗余：大约…左右）紧邻形式仍检出', () => {
+      const issues = runBasicProofreading('大约30人左右');
+      expect(issues.some(i => i.type === '句式冗余' && i.original.includes('大约'))).toBe(true);
+    });
+
     test('旧规则（多字：涉及到）不携带 metric 字段', () => {
       const issues = runBasicProofreading('这涉及到多方利益');
       const issue = issues[0];
@@ -374,6 +446,28 @@ describe('proofread rule engine — fluency & conciseness rules', () => {
       const issues = runBasicProofreading('这并非是正确的');
       const multiWordIssues = issues.filter(i => i.type === '多字');
       expect(multiWordIssues.some(i => i.original.includes('并非'))).toBe(true);
+    });
+
+    test('并不是 也由"多字"规则检出（C11）', () => {
+      const issues = runBasicProofreading('并不是所有人都认可这个方案');
+      const multiWordIssues = issues.filter(i => i.type === '多字');
+      expect(multiWordIssues.some(i => i.original === '并不是')).toBe(true);
+      const hit = multiWordIssues.find(i => i.original === '并不是');
+      expect(hit!.suggestion).toBe('并不');
+    });
+
+    test('在去 → 再去 由"在再混淆"检出（C17）', () => {
+      const issues = runBasicProofreading('我明天在去找你');
+      const hit = issues.find(i => i.type === '在再混淆');
+      expect(hit).toBeDefined();
+      expect(hit!.original).toBe('在去');
+      expect(hit!.suggestion).toBe('再去');
+    });
+
+    test('正在去/现在来 合法用法不应被"在再混淆"误报', () => {
+      const issues = runBasicProofreading('我正在去公司，他现在来家里');
+      const confusions = issues.filter(i => i.type === '在再混淆');
+      expect(confusions).toHaveLength(0);
     });
 
     test('全部都 仍由旧规则"多字"处理', () => {
