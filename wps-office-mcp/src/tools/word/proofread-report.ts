@@ -8,6 +8,13 @@
  * - wps_word_proofread_accumulate: 累加校对问题到会话
  * - wps_word_generate_proofread_report: 生成五维校对报告
  *
+ * ⚠️ 重要：这两个工具是 GATEWAY_ONLY（网关专用）——定义在 allTools 中
+ * 仅用于 gateway HANDLER_MAP 路由映射（gateway/index.ts 遍历 allTools 建索引），
+ * 并不直连注册为 MCP 工具。唯一入口是 wps_office_execute 网关
+ * （COM_ACTIONS 索引：proofreadAccumulate / generateProofreadReport）。
+ * 结构性防护见 ToolRegistry.GATEWAY_ONLY_TOOLS 黑名单；请勿误删本模块的
+ * proofreadReportTools 导出，否则网关路由会失效。
+ *
  * 五维评分维度：
  * - fluency（流畅度）: 成分完整、语句通顺
  * - conciseness（简洁度）: 无冗余、不啰嗦
@@ -28,7 +35,7 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { validateFilePath } from '../../utils/path-safety';
+import { validateFilePath, ALLOWED_WRITE_ROOTS } from '../../utils/path-safety';
 
 // ==================== 类型定义 ====================
 
@@ -62,6 +69,46 @@ interface SessionData {
   docInfo: DocInfo;
   createdAt: string;
   totalRevisions?: number;
+}
+
+// ==================== 会话 Map 与清理机制 ====================
+
+/**
+ * 会话 Map 上限（防止长时运行内存无限增长）
+ * 达到上限后，淘汰最久未更新的会话（近似 LRU：按 sessionLastAccess 最后访问时间升序淘汰最旧）
+ */
+const SESSION_MAP_MAX_SIZE = 200;
+
+/** 最近一次访问时间戳（用于 LRU 淘汰） */
+const sessionLastAccess = new Map<string, number>();
+
+/** 淘汰最久未访问的会话（超过上限时） */
+function enforceSessionLimit(): void {
+  if (sessionIssues.size <= SESSION_MAP_MAX_SIZE) return;
+  // 按最后访问时间升序（最旧优先），逐出超限部分
+  const evictable = Array.from(sessionLastAccess.entries())
+    .sort((a, b) => a[1] - b[1])
+    .slice(0, sessionIssues.size - SESSION_MAP_MAX_SIZE);
+  for (const [sid] of evictable) {
+    sessionIssues.delete(sid);
+    sessionLastAccess.delete(sid);
+  }
+}
+
+/** 触摸会话：刷新最后访问时间并执行上限淘汰 */
+function touchSession(sessionId: string): void {
+  sessionLastAccess.set(sessionId, Date.now());
+  enforceSessionLimit();
+}
+
+/**
+ * 报告生成后回收会话（报告是流程终点，问题数据已固化到报告文本）
+ * 导出供测试使用
+ */
+export function releaseSession(sessionId: string): boolean {
+  const removed = sessionIssues.delete(sessionId);
+  sessionLastAccess.delete(sessionId);
+  return removed;
 }
 
 // ==================== TYPE_METRIC_MAP ====================
@@ -280,6 +327,8 @@ export const proofreadAccumulateHandler: ToolHandler = async (
     };
     sessionIssues.set(session_id, session);
   }
+  // 刷新最后访问时间并执行上限淘汰
+  touchSession(session_id);
 
   // 更新 docInfo（如果提供了新的）
   if (doc_info) {
@@ -393,13 +442,19 @@ export const generateProofreadReportHandler: ToolHandler = async (
 
   if (issues.length === 0) {
     const emptyReport = buildEmptyReport(docInfo, createdAt);
+    let wroteFile = false;
     if (output_file) {
       try {
-        const safePath = validateFilePath(output_file, ['.md', '.txt']);
+        const safePath = validateFilePath(output_file, ALLOWED_WRITE_ROOTS);
         fs.writeFileSync(safePath, emptyReport, 'utf-8');
+        wroteFile = true;
       } catch (err) {
-        // 文件写入失败不影响返回
+        // 文件写入失败不影响文本返回（但保留会话，便于 AI 重试生成）
       }
+    }
+    // 空报告同样回收会话——仅当写入成功（或未指定 output_file）时释放；写失败保留供重试
+    if (!output_file || wroteFile) {
+      releaseSession(session_id);
     }
     return {
       id: uuidv4(),
@@ -587,18 +642,26 @@ export const generateProofreadReportHandler: ToolHandler = async (
   report += `| **合计** | **${issues.length} 处** |\n`;
   report += `| 全部已修复 | ✅ |\n`;
 
-  // 写入文件（如果指定）
+  // 写入文件（如果指定）——仅当写入成功（或未指定 output_file）后才回收会话；
+  // 写失败时保留会话，AI 可修正 output_file 后重试生成（评审建议）
+  let wroteFile = false;
   if (output_file) {
     try {
-      const safePath = validateFilePath(output_file, ['.md', '.txt']);
+      const safePath = validateFilePath(output_file, ALLOWED_WRITE_ROOTS);
       const dir = path.dirname(safePath);
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
       fs.writeFileSync(safePath, report, 'utf-8');
+      wroteFile = true;
     } catch (err) {
-      // 文件写入失败不影响文本返回
+      // 文件写入失败不影响文本返回（但保留会话，便于重试）
     }
+  }
+
+  // 报告生成后回收会话，释放内存（报告文本已固化，会话数据不再需要）
+  if (!output_file || wroteFile) {
+    releaseSession(session_id);
   }
 
   return {

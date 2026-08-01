@@ -67,6 +67,43 @@ const LEGACY_TOOLS: Record<string, string> = {
   wps_office_print: 'convertToPDF',
 };
 
+// 文档中反引号包裹的**参数名/非工具名**（仅用于说明 JSON 字段/参数），
+// 一致性校验只关心工具名，这些不参与匹配
+const NON_TOOL_NAMES = new Set([
+  'file_path',
+  'session_id',
+  'output_file',
+  '_force_ai_fix',
+  'offset_in_paragraph',
+  'paragraph_index',
+  'start_paragraph',
+  'end_paragraph',
+  'paragraph_count',
+  'start_offset',
+  'startOffset',
+  'replaceAll',
+  'total_revisions',
+  'doc_info',
+  'findText',
+  'replaceText',
+  'paragraphIndex',
+  'matchCase',
+  'matchWholeWord',
+  // wps-proofread/SKILL.md 中的 JSON 字段/参数名（#44 校验覆盖新增）
+  'text',
+  'issues',
+  'key',
+  'length',
+  'score',
+  'original',
+  'toFix',
+  'toReport',
+  'batchStarted',
+  'lastBatchParaIndex',
+  'sessionIssues',
+  'filePath',
+]);
+
 /**
  * 提取反引号包裹的工具名称
  * @param content 待扫描内容
@@ -98,6 +135,7 @@ function extractToolNames(content: string, excludeLayout = false): string[] {
 function findUnknownTools(names: string[]): string[] {
   const unknown: string[] = [];
   names.forEach(name => {
+    if (NON_TOOL_NAMES.has(name)) return;
     if (ALL_MCP_TOOLS.has(name)) return;
     if (LEGACY_TOOLS[name]) return; // 已映射到 legacy
 
@@ -139,6 +177,7 @@ describe('Skills 引用的工具名称一致性', () => {
     'wps-word/SKILL.md',
     'wps-ppt/SKILL.md',
     'wps-office/SKILL.md',
+    'wps-proofread/SKILL.md',
   ];
 
   skillFiles.forEach(skillPath => {

@@ -38,6 +38,10 @@ const DIRECT_TO_GATEWAY = {
   "wps-office_wps_get_cell_value":          "getCellValue",
   "wps-office_wps_set_cell_value":          "setCellValue",
   "wps-office_wps_get_active_presentation": "getActivePresentation",
+  // 五维评分校对报告工具（#25 TC-13）：MCP 侧不直连注册，但仍加入 G1 兜底拦截，
+  // 若未来误注册为直接 MCP 工具也会被强制改走 wps_office_execute 网关
+  "wps-office_wps_word_proofread_accumulate":        "proofreadAccumulate",
+  "wps-office_wps_word_generate_proofread_report":   "generateProofreadReport",
 };
 
 const WRITE_TOOLS = new Set([
