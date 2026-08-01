@@ -33,6 +33,10 @@ import { commonTools } from './common';
  *   Word   (37个):  格式化(5)/内容(14)/文档管理(9)/校对(6+2报告)/其他(3)
  *   PPT   (112个):  幻灯片/幻灯片操作/演示文稿管理/文本框/动画/背景/图片/表格/形状
  *   Common (9个):   转换/通用
+ *
+ * ⚠️ 注意：wordTools 含 proofreadReportTools（2 个报告工具），但它们是 GATEWAY_ONLY：
+ *   ToolRegistry.register() 有黑名单拦截，即使 registerAll(allTools) 也不会直连注册；
+ *   唯一入口是 wps_office_execute 网关（COM_ACTIONS 索引：proofreadAccumulate / generateProofreadReport）。
  */
 export const allTools: RegisteredTool[] = [
   ...excelTools,

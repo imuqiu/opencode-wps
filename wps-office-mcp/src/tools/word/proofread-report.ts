@@ -68,7 +68,7 @@ interface SessionData {
 
 /**
  * 会话 Map 上限（防止长时运行内存无限增长）
- * 达到上限后，淘汰最久未更新的会话（LRU 近似：按 createdAt 排序淘汰最旧）
+ * 达到上限后，淘汰最久未更新的会话（近似 LRU：按 sessionLastAccess 最后访问时间升序淘汰最旧）
  */
 const SESSION_MAP_MAX_SIZE = 200;
 
@@ -435,16 +435,20 @@ export const generateProofreadReportHandler: ToolHandler = async (
 
   if (issues.length === 0) {
     const emptyReport = buildEmptyReport(docInfo, createdAt);
+    let wroteFile = false;
     if (output_file) {
       try {
         const safePath = validateFilePath(output_file, ['.md', '.txt']);
         fs.writeFileSync(safePath, emptyReport, 'utf-8');
+        wroteFile = true;
       } catch (err) {
-        // 文件写入失败不影响返回
+        // 文件写入失败不影响文本返回（但保留会话，便于 AI 重试生成）
       }
     }
-    // 空报告同样回收会话
-    releaseSession(session_id);
+    // 空报告同样回收会话——仅当写入成功（或未指定 output_file）时释放；写失败保留供重试
+    if (!output_file || wroteFile) {
+      releaseSession(session_id);
+    }
     return {
       id: uuidv4(),
       success: true,
@@ -631,10 +635,9 @@ export const generateProofreadReportHandler: ToolHandler = async (
   report += `| **合计** | **${issues.length} 处** |\n`;
   report += `| 全部已修复 | ✅ |\n`;
 
-  // 报告生成后回收会话，释放内存（报告文本已固化，会话数据不再需要）
-  releaseSession(session_id);
-
-  // 写入文件（如果指定）
+  // 写入文件（如果指定）——仅当写入成功（或未指定 output_file）后才回收会话；
+  // 写失败时保留会话，AI 可修正 output_file 后重试生成（评审建议）
+  let wroteFile = false;
   if (output_file) {
     try {
       const safePath = validateFilePath(output_file, ['.md', '.txt']);
@@ -643,9 +646,15 @@ export const generateProofreadReportHandler: ToolHandler = async (
         fs.mkdirSync(dir, { recursive: true });
       }
       fs.writeFileSync(safePath, report, 'utf-8');
+      wroteFile = true;
     } catch (err) {
-      // 文件写入失败不影响文本返回
+      // 文件写入失败不影响文本返回（但保留会话，便于重试）
     }
+  }
+
+  // 报告生成后回收会话，释放内存（报告文本已固化，会话数据不再需要）
+  if (!output_file || wroteFile) {
+    releaseSession(session_id);
   }
 
   return {

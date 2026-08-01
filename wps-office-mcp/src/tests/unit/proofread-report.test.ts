@@ -437,3 +437,55 @@ describe('Session isolation', () => {
     expect(sessionIssues.get('session-b')!.docInfo.fileName).toBe('b.docx');
   });
 });
+
+// ==================== releaseSession 时序（评审 warning #1/#2） ====================
+
+describe('releaseSession 时序：文件写入失败时保留会话', () => {
+  const sessId = 'retry-session';
+
+  const setupSession = (issues: Array<Record<string, unknown>> = []) => {
+    sessionIssues.set(sessId, {
+      issues: issues as any,
+      docInfo: { fileName: 'doc.docx', filePath: '/path/doc.docx', totalParagraphs: 10, totalWords: 100 },
+      createdAt: new Date().toISOString(),
+    });
+  };
+
+  it('不指定 output_file 时：报告生成后会话被回收', async () => {
+    setupSession([{ offset: 0, length: 2, original: 'xx', suggestion: 'yy', type: '的得混淆', context: '...', source: 'mcp' }]);
+    const result = await generateProofreadReportHandler({ session_id: sessId });
+    expect(result.success).toBe(true);
+    expect(sessionIssues.has(sessId)).toBe(false);
+  });
+
+  it('output_file 写入成功时：报告生成后会话被回收', async () => {
+    setupSession([{ offset: 0, length: 2, original: 'xx', suggestion: 'yy', type: '的得混淆', context: '...', source: 'mcp' }]);
+    const result = await generateProofreadReportHandler({
+      session_id: sessId,
+      output_file: `/tmp/proofread-report-${Date.now()}.md`,
+    });
+    expect(result.success).toBe(true);
+    expect(sessionIssues.has(sessId)).toBe(false);
+  });
+
+  it('output_file 写入失败时：会话保留（可重试生成）', async () => {
+    // 目标是已存在目录：writeFileSync 抛 EISDIR，写入必然失败（被 catch 吞掉）
+    setupSession([{ offset: 0, length: 2, original: 'xx', suggestion: 'yy', type: '的得混淆', context: '...', source: 'mcp' }]);
+    const result = await generateProofreadReportHandler({
+      session_id: sessId,
+      output_file: '/tmp/not-a-file-dir',
+    });
+    expect(result.success).toBe(true); // 文本返回不受影响
+    expect(sessionIssues.has(sessId)).toBe(true); // 会话保留，可重试
+  });
+
+  it('空报告（0 问题）+ output_file 写入失败：会话同样保留', async () => {
+    setupSession([]);
+    const result = await generateProofreadReportHandler({
+      session_id: sessId,
+      output_file: '/tmp/not-a-file-dir',
+    });
+    expect(result.success).toBe(true);
+    expect(sessionIssues.has(sessId)).toBe(true);
+  });
+});

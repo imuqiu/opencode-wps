@@ -17,8 +17,8 @@ description: "WPS 文档校对专家，专注于文档的错别字检测、语�
 | 4 | `confirmBatchAiProofread` | `wps_office_execute({ tool_name: "confirmBatchAiProofread", arguments: {} })` | **强制调用**：确认本批 AI 智能校对已完成 |
 | 5 | `replaceInParagraph` | `wps_office_execute({ tool_name: "replaceInParagraph", arguments: { paragraphIndex, findText, replaceText, replaceAll? } })` | **唯一允许的修复工具**，按段落+文本匹配替换 |
 | 6 | ~~`replaceRange`~~ | **禁止使用** | ~~按字符范围替换（偏移量在含不可见字符的文档中不可靠，已禁用）~~ |
-| 7 | `wps_word_proofread_accumulate` | `wps_office_execute({ tool_name: "proofreadAccumulate", arguments: {...} })` | 累加本批校对问题到会话 Map（走网关） |
-| 8 | `wps_word_generate_proofread_report` | `wps_office_execute({ tool_name: "generateProofreadReport", arguments: {...} })` | 生成五维评分校对报告（走网关） |
+| 7 | `proofreadAccumulate` | `wps_office_execute({ tool_name: "proofreadAccumulate", arguments: {...} })` | 累加本批校对问题到会话 Map（走网关） |
+| 8 | `generateProofreadReport` | `wps_office_execute({ tool_name: "generateProofreadReport", arguments: {...} })` | 生成五维评分校对报告（走网关） |
 
 > **⚠️ 校对流程中强制走网关**：以下 8 个工具在 `batchStarted=true` 后**禁止直接调用 MCP 原接口**，必须通过 `wps_office_execute({ tool_name: "...", ... })` 调用：
 > - `getActiveDocument` / `insertText` / `getActiveWorkbook` / `getCellValue` / `setCellValue` / `getActivePresentation`
@@ -271,7 +271,7 @@ const docInfo = await wps_office_execute({
 // 注意：首次累加在第一批校对完成后执行（见 Step 2h）
 ```
 
-> **⚠️ session_id 是必填参数**，由 AI 手动生成并传入 `wps_word_proofread_accumulate` 和 `wps_word_generate_proofread_report`。
+> **⚠️ session_id 是必填参数**，由 AI 手动生成并传入 `proofreadAccumulate` 和 `generateProofreadReport`。
 > 两个工具**统一走网关**：通过 `wps_office_execute({ tool_name: "proofreadAccumulate" / "generateProofreadReport", ... })` 调用，网关会自动路由到对应的 MCP handler（见下方 Step 2h / Step 3 示例）。
 
 ### Step 1: 开启修订模式
@@ -461,7 +461,7 @@ documentOffset = paragraphStartOffset + offsetInParagraph
 
 **注意**：插件不再要求 `text.length` 精确等于 `[end]-[start]`。因为 WPS COM 的 `Range.Text` 在含 `\f`(分页符)、`\a`(表格分隔符)等控制字符的文档中，返回长度可能与段落偏移计算值不一致。proofreadBasic 内部会自动剥离控制字符并校正偏移量。
 
-**如果文本含控制字符导致 JSON 序列化失败**（错误：`JSON Parse error: Unterminated string`），请先用 `wps_common_write_file` 写入临时文件再传 `file_path`：
+**如果文本含控制字符导致 JSON 序列化失败**（错误：`JSON Parse error: Unterminated string`），请先用 `writeFile` 写入临时文件再传 `file_path`：
 ```javascript
 // 写法 1：直接传 text（文本不含 \f 等控制字符时）
 wps_office_execute({
@@ -602,7 +602,7 @@ wps_office_execute({
 **2h. 累加本批问题到会话（proofreadAccumulate）：**
 
 本批修复完成后，将合并去重后的 issues 累加到 MCP Server 的会话 Map。
-**统一走 `wps_office_execute` 网关**（网关自动路由到 `wps_word_proofread_accumulate` handler）：
+**统一走 `wps_office_execute` 网关**（网关自动路由到 `proofreadAccumulate` handler）：
 
 ```javascript
 // 首次调用需要 doc_info，后续只需 session_id + issues
@@ -639,7 +639,7 @@ await wps_office_execute({
 ### Step 3: 生成五维校对报告
 
 所有批次完成后，调用 `generateProofreadReport` 生成五维评分报告。
-**统一走 `wps_office_execute` 网关**（网关自动路由到 `wps_word_generate_proofread_report` handler）：
+**统一走 `wps_office_execute` 网关**（网关自动路由到 `generateProofreadReport` handler）：
 
 ```javascript
 // 1. 生成报告（仅返回文本）
