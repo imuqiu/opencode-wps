@@ -17,8 +17,8 @@ description: "WPS 文档校对专家，专注于文档的错别字检测、语�
 | 4 | `confirmBatchAiProofread` | `wps_office_execute({ tool_name: "confirmBatchAiProofread", arguments: {} })` | **强制调用**：确认本批 AI 智能校对已完成 |
 | 5 | `replaceInParagraph` | `wps_office_execute({ tool_name: "replaceInParagraph", arguments: { paragraphIndex, findText, replaceText, replaceAll? } })` | **唯一允许的修复工具**，按段落+文本匹配替换 |
 | 6 | ~~`replaceRange`~~ | **禁止使用** | ~~按字符范围替换（偏移量在含不可见字符的文档中不可靠，已禁用）~~ |
-| 7 | `wps_word_proofread_accumulate` | **直接 MCP 调用**（不走网关） | 累加本批校对问题到会话 Map |
-| 8 | `wps_word_generate_proofread_report` | **直接 MCP 调用**（不走网关） | 生成五维评分校对报告 |
+| 7 | `wps_word_proofread_accumulate` | `wps_office_execute({ tool_name: "proofreadAccumulate", arguments: {...} })` | 累加本批校对问题到会话 Map（走网关） |
+| 8 | `wps_word_generate_proofread_report` | `wps_office_execute({ tool_name: "generateProofreadReport", arguments: {...} })` | 生成五维评分校对报告（走网关） |
 
 > **⚠️ 校对流程中强制走网关**：以下 6 个工具在 `batchStarted=true` 后**禁止直接调用 MCP 原接口**，必须通过 `wps_office_execute({ tool_name: "...", ... })` 调用：
 > - `getActiveDocument` / `insertText` / `getActiveWorkbook` / `getCellValue` / `setCellValue` / `getActivePresentation`
@@ -234,10 +234,10 @@ deduped.sort((a, b) => a.offset - b.offset)
 │ │ 2e. 按段落逐条 → replaceInParagraph 修复     │           │
 │ │ 2f. getTrackChangesStatus 确认修订数增加     │           │
 │ │ 2g. 输出 [batch/N] ✓                       │           │
-│ │ 2h. wps_word_proofread_accumulate（累加）    │           │
+│ │ 2h. proofreadAccumulate（走网关累加）     │           │
 │ └────────────────────────────────────────────┘           │
 ├──────────────────────────────────────────────────────────┤
-│ 第3步：全部完成 → wps_word_generate_proofread_report     │
+│ 第3步：全部完成 → generateProofreadReport（走网关）      │
 │ 输入 session_id，自动生成五维评分报告                     │
 ├──────────────────────────────────────────────────────────┤
 │ 第4步：提示用户 Ctrl+S 保存 + 查看修订记录               │
@@ -271,7 +271,7 @@ const docInfo = await wps_office_execute({
 ```
 
 > **⚠️ session_id 是必填参数**，由 AI 手动生成并传入 `wps_word_proofread_accumulate` 和 `wps_word_generate_proofread_report`。
-> 两个新工具**不走网关**，无需 `wps_office_execute` 包装，直接调用 MCP 原接口。
+> 两个工具**统一走网关**：通过 `wps_office_execute({ tool_name: "proofreadAccumulate" / "generateProofreadReport", ... })` 调用，网关会自动路由到对应的 MCP handler（见下方 Step 2h / Step 3 示例）。
 
 ### Step 1: 开启修订模式
 
@@ -598,31 +598,37 @@ wps_office_execute({
 // 确认 XX 相比本批开始时增加，且与本批修复条数一致
 ```
 
-**2h. 累加本批问题到会话（wps_word_proofread_accumulate）：**
+**2h. 累加本批问题到会话（proofreadAccumulate）：**
 
 本批修复完成后，将合并去重后的 issues 累加到 MCP Server 的会话 Map。
-**直接调用 MCP 原接口，不走 `wps_office_execute` 网关**：
+**统一走 `wps_office_execute` 网关**（网关自动路由到 `wps_word_proofread_accumulate` handler）：
 
 ```javascript
 // 首次调用需要 doc_info，后续只需 session_id + issues
 // 首次（batch=1）:
-await wps_word_proofread_accumulate({
-  session_id: sessionId,
-  issues: allIssues,  // 2d 中合并去重后的结果
-  doc_info: {
-    fileName: "文档.docx",
-    filePath: "C:\\Users\\...\\文档.docx",
-    totalParagraphs: totalParagraphs,
-    totalWords: totalWords
-  },
-  total_revisions: currentRevisionCount
+await wps_office_execute({
+  tool_name: "proofreadAccumulate",
+  arguments: {
+    session_id: sessionId,
+    issues: allIssues,  // 2d 中合并去重后的结果
+    doc_info: {
+      fileName: "文档.docx",
+      filePath: "C:\\Users\\...\\文档.docx",
+      totalParagraphs: totalParagraphs,
+      totalWords: totalWords
+    },
+    total_revisions: currentRevisionCount
+  }
 })
 
 // 后续批次（batch≥2）:
-await wps_word_proofread_accumulate({
-  session_id: sessionId,
-  issues: allIssues,  // 本批合并去重后的 issues（不含前几批）
-  total_revisions: currentRevisionCount
+await wps_office_execute({
+  tool_name: "proofreadAccumulate",
+  arguments: {
+    session_id: sessionId,
+    issues: allIssues,  // 本批合并去重后的 issues（不含前几批）
+    total_revisions: currentRevisionCount
+  }
 })
 ```
 
@@ -631,13 +637,14 @@ await wps_word_proofread_accumulate({
 
 ### Step 3: 生成五维校对报告
 
-所有批次完成后，调用 `wps_word_generate_proofread_report` 生成五维评分报告。
-**直接调用 MCP 原接口，不走 `wps_office_execute` 网关**：
+所有批次完成后，调用 `generateProofreadReport` 生成五维评分报告。
+**统一走 `wps_office_execute` 网关**（网关自动路由到 `wps_word_generate_proofread_report` handler）：
 
 ```javascript
 // 1. 生成报告（仅返回文本）
-const report = await wps_word_generate_proofread_report({
-  session_id: sessionId
+const report = await wps_office_execute({
+  tool_name: "generateProofreadReport",
+  arguments: { session_id: sessionId }
 })
 // report.content[0].text 包含完整的 Markdown 格式五维报告
 
@@ -668,9 +675,12 @@ await wps_office_execute({
 
 > **⚠️ 替代方案**：也可传 `output_file` 参数让报告直接写入文件：
 > ```javascript
-> await wps_word_generate_proofread_report({
->   session_id: sessionId,
->   output_file: "C:\\Users\\...\\文档.校对报告.md"
+> await wps_office_execute({
+>   tool_name: "generateProofreadReport",
+>   arguments: {
+>     session_id: sessionId,
+>     output_file: "C:\\Users\\...\\文档.校对报告.md"
+>   }
 > })
 > ```
 

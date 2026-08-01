@@ -301,3 +301,48 @@ describe('executeTool 执行功能', () => {
     expect(result.success).toBe(true);
   });
 });
+
+describe('网关路由 proofread 报告工具（#25 验收 TC-13）', () => {
+  it('search 搜"报告"能返回 generateProofreadReport', () => {
+    const r = searchTools({ query: '报告' });
+    expect(r.results.some((x) => x.name === 'generateProofreadReport')).toBe(true);
+    const r2 = searchTools({ query: 'accumulate' });
+    expect(r2.results.some((x) => x.name === 'proofreadAccumulate')).toBe(true);
+  });
+
+  it('executeTool 走 handler 路径而非 PS1 透传（累加器）', async () => {
+    const result = await executeTool({
+      tool_name: 'proofreadAccumulate',
+      arguments: {
+        session_id: '11111111-2222-3333-4444-555555555555',
+        issues: [{ offset: 0, length: 4, original: '测试', suggestion: '测试2', type: '测试', source: 'mcp' }],
+        doc_info: { fileName: '测试.docx', filePath: 'C:/test/测试.docx', totalParagraphs: 1, totalWords: 2 },
+      },
+    });
+    const text = result.content[0].text || '';
+    expect(result.success).toBe(true);
+    // handler 路径特征：返回累加成功信息，而非 PS1 透传的 {"result":...} 包装
+    expect(text).not.toContain('"result"');
+  });
+
+  it('executeTool 走 handler 路径（报告生成，accumulate→generate 闭环）', async () => {
+    // 先累加（与上一用例共用同一 session_id，sessionIssues 为模块级 Map）
+    const acc = await executeTool({
+      tool_name: 'proofreadAccumulate',
+      arguments: {
+        session_id: '11111111-2222-3333-4444-555555555555',
+        issues: [{ offset: 0, length: 4, original: '测试', suggestion: '测试2', type: '测试', source: 'mcp' }],
+      },
+    });
+    expect(acc.success).toBe(true);
+
+    const result = await executeTool({
+      tool_name: 'generateProofreadReport',
+      arguments: { session_id: '11111111-2222-3333-4444-555555555555' },
+    });
+    const text = result.content[0].text || '';
+    expect(result.success).toBe(true);
+    expect(text).toContain('校对报告');
+    expect(text).not.toContain('"result"');
+  });
+});

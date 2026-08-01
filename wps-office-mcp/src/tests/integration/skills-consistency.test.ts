@@ -5,6 +5,9 @@
  * @date 2026-05-18
  */
 
+// uuid v14 是 ESM-only，Jest CJS 无法解析，手动 mock（与 gateway.test.ts 一致）
+jest.mock('uuid', () => ({ v4: () => '00000000-0000-0000-0000-000000000000' }));
+
 import { TOOLS_INDEX } from '../../tools/gateway';
 
 // Mock logger
@@ -60,7 +63,7 @@ const LEGACY_TOOLS: Record<string, string> = {
   'wps_office_print': 'convertToPDF',
 };
 
-describe('Skills å¼•ç”¨çš„å·¥å…·åç§°ä¸€è‡´æ€?, () => {
+describe('Skills 引用的工具名称一致性', () => {
   const skillFiles = [
     'wps-excel/SKILL.md',
     'wps-word/SKILL.md',
@@ -120,7 +123,7 @@ describe('Skills å¼•ç”¨çš„å·¥å…·åç§°ä¸€è‡´æ�
   });
 });
 
-describe('Agents å¼•ç”¨çš„å·¥å…·åç§°ä¸€è‡´æ€?, () => {
+describe('Agents 引用的工具名称一致性', () => {
   const agentFiles = [
     'wps-expert.md',
     'wps-excel.md',
@@ -143,6 +146,8 @@ describe('Agents å¼•ç”¨çš„å·¥å…·åç§°ä¸€è‡´æ�
       const matches = new Set<string>();
       let m;
       while ((m = toolNamePattern.exec(content)) !== null) {
+        // 排除纯下划线占位符（如 `____` / `___`），与 skills 部分一致
+        if (/^_+$/.test(m[1])) continue;
         matches.add(m[1]);
       }
 
@@ -170,7 +175,7 @@ describe('Agents å¼•ç”¨çš„å·¥å…·åç§°ä¸€è‡´æ�
   });
 });
 
-describe('wps-expert.md tools å­—æ®µéªŒè¯', () => {
+describe('wps-expert.md 工具字段验证', () => {
   it('wps-expert.md ä¸åº”å¼•ç”¨ä¸å­˜åœ¨çš„å·¥å…·', () => {
     const filePath = path.resolve(agentsDir, 'wps-expert.md');
     if (!fs.existsSync(filePath)) return;
@@ -181,6 +186,8 @@ describe('wps-expert.md tools å­—æ®µéªŒè¯', () => {
     const tools: string[] = [];
     let m;
     while ((m = toolNamePattern.exec(content)) !== null) {
+      // 排除纯下划线占位符（如 `____` / `___`）
+      if (/^_+$/.test(m[1])) continue;
       tools.push(m[1]);
     }
 

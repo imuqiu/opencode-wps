@@ -705,7 +705,7 @@ const METRIC_WEIGHT_FORMULA = {
 
 ## 10. 数据流（MCP 工具层）
 
-本节描述 MCP 工具层的 session-based 数据流，由 PR #40 实现的两个直接 MCP 工具驱动。
+本节描述 MCP 工具层的 session-based 数据流，由 PR #40 实现的两个报告工具驱动（统一经 `wps_office_execute` 网关调用，网关路由到对应 MCP handler）。
 
 ```
 ┌─────────────┐     ┌──────────────────┐     ┌─────────────────────────┐
@@ -739,8 +739,8 @@ const METRIC_WEIGHT_FORMULA = {
 
 - `session_id` 由 AI 手动生成（UUID v4），在 `inputSchema` 中显式声明为必填参数
 - SKILL.md 引导 AI 生成并传递 `session_id`
-- `wps_word_proofread_accumulate` 和 `wps_word_generate_proofread_report` 注册为直接 MCP 工具，不走 `wps_office_execute` 网关
-- governance.js 的 `DIRECT_TO_GATEWAY` 不会拦截这两个新工具
+- `wps_word_proofread_accumulate` 和 `wps_word_generate_proofread_report` 在 MCP Server 注册为直接工具，同时加入 gateway `COM_ACTIONS` 索引兜底（`proofreadAccumulate` / `generateProofreadReport`），**统一经 `wps_office_execute` 网关调用**（网关路由到对应 handler）
+- 双通道可用：直接 MCP 调用与网关调用均可达，但 SKILL.md 引导统一走网关（用户侧 MCP 工具仅能通过网关调用）
 - MCP Server 侧 `sessionIssues` Map 与 governance.js 的 `sessions` Map 完全解耦（两个进程、两个内存空间）
 
 ---
@@ -756,7 +756,7 @@ const METRIC_WEIGHT_FORMULA = {
 | 5 | 五维评分量表归一化 | `normalizeToTwoPointScale()` [1,5] → [0,2] |
 | 6 | 权重公式下限 | fluency 下限 0（非 1）；completeness 下限 0（非 1） |
 | 7 | governance.js 与 MCP Map | 完全独立，不共享 |
-| 8 | `generateProofreadReport` 走不走网关 | 不走网关 |
+| 8 | `generateProofreadReport` / `proofreadAccumulate` 走不走网关 | **走网关**（`wps_office_execute` 路由到 handler；同时保留直接 MCP 注册作为兜底） |
 
 ---
 
