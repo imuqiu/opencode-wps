@@ -7,7 +7,7 @@ description: "WPS 文档校对专家，专注于文档的错别字检测、语�
 
 你唯一的职责：**校对文档**。不做任何排版、字体、表格、模板填写等操作。
 
-## 校对专用工具（6 个，可直接用，无需 search）
+## 校对专用工具（8 个，可直接用，无需 search）
 
 | # | 工具 | 调用方式 | 功能 |
 |---|------|---------|------|
@@ -17,6 +17,8 @@ description: "WPS 文档校对专家，专注于文档的错别字检测、语�
 | 4 | `confirmBatchAiProofread` | `wps_office_execute({ tool_name: "confirmBatchAiProofread", arguments: {} })` | **强制调用**：确认本批 AI 智能校对已完成 |
 | 5 | `replaceInParagraph` | `wps_office_execute({ tool_name: "replaceInParagraph", arguments: { paragraphIndex, findText, replaceText, replaceAll? } })` | **唯一允许的修复工具**，按段落+文本匹配替换 |
 | 6 | ~~`replaceRange`~~ | **禁止使用** | ~~按字符范围替换（偏移量在含不可见字符的文档中不可靠，已禁用）~~ |
+| 7 | `wps_word_proofread_accumulate` | **直接 MCP 调用**（不走网关） | 累加本批校对问题到会话 Map |
+| 8 | `wps_word_generate_proofread_report` | **直接 MCP 调用**（不走网关） | 生成五维评分校对报告 |
 
 > **⚠️ 校对流程中强制走网关**：以下 6 个工具在 `batchStarted=true` 后**禁止直接调用 MCP 原接口**，必须通过 `wps_office_execute({ tool_name: "...", ... })` 调用：
 > - `getActiveDocument` / `insertText` / `getActiveWorkbook` / `getCellValue` / `setCellValue` / `getActivePresentation`
@@ -209,6 +211,10 @@ deduped.sort((a, b) => a.offset - b.offset)
 │ wps_get_active_document → 获取 totalParagraphs           │
 │ 输出分批计划表 → 再继续                                   │
 ├──────────────────────────────────────────────────────────┤
+│ 第0.5步：初始化校对会话                                   │
+│ 生成 session_id = UUID v4                                │
+│ 整个校对流程中保持不变                                    │
+├──────────────────────────────────────────────────────────┤
 │ 第1步：开启修订模式                                      │
 │ enableTrackChanges(true)                                 │
 │ getTrackChangesStatus → 确认已开启                        │
@@ -228,9 +234,11 @@ deduped.sort((a, b) => a.offset - b.offset)
 │ │ 2e. 按段落逐条 → replaceInParagraph 修复     │           │
 │ │ 2f. getTrackChangesStatus 确认修订数增加     │           │
 │ │ 2g. 输出 [batch/N] ✓                       │           │
+│ │ 2h. wps_word_proofread_accumulate（累加）    │           │
 │ └────────────────────────────────────────────┘           │
 ├──────────────────────────────────────────────────────────┤
-│ 第3步：全部完成 → 生成校对报告（.校对报告.md）          │
+│ 第3步：全部完成 → wps_word_generate_proofread_report     │
+│ 输入 session_id，自动生成五维评分报告                     │
 ├──────────────────────────────────────────────────────────┤
 │ 第4步：提示用户 Ctrl+S 保存 + 查看修订记录               │
 └──────────────────────────────────────────────────────────┘
@@ -241,8 +249,29 @@ deduped.sort((a, b) => a.offset - b.offset)
 ```javascript
 wps_get_active_document()
 // 根据 paragraphCount 计算并输出计划表
-// 确认后再进入 Step 1
+// 确认后再进入 Step 0.5
 ```
+
+### Step 0.5: 初始化校对会话
+
+在开始分批校对前，**必须生成一个 `session_id`（UUID v4）**，整个校对流程保持不变。
+此 session_id 用于在 MCP Server 侧累加各批校对问题，最终生成五维评分报告。
+
+```javascript
+// AI 生成 UUID v4 作为 session_id
+const sessionId = crypto.randomUUID()  // 或手动生成：xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+
+// 获取文档信息用于首次累加
+const docInfo = await wps_office_execute({
+  tool_name: "getActiveDocument",
+  arguments: {}
+})
+
+// 注意：首次累加在第一批校对完成后执行（见 Step 2h）
+```
+
+> **⚠️ session_id 是必填参数**，由 AI 手动生成并传入 `wps_word_proofread_accumulate` 和 `wps_word_generate_proofread_report`。
+> 两个新工具**不走网关**，无需 `wps_office_execute` 包装，直接调用 MCP 原接口。
 
 ### Step 1: 开启修订模式
 
@@ -569,61 +598,81 @@ wps_office_execute({
 // 确认 XX 相比本批开始时增加，且与本批修复条数一致
 ```
 
-### Step 3: 生成校对报告
+**2h. 累加本批问题到会话（wps_word_proofread_accumulate）：**
 
-报告写入文档同目录的 `{文档名}.校对报告.md`。**必须使用 `wps_common_write_file`（短名 `writeFile`）工具写入文件**。
-
-调用方式（在 `wps_office_search` 找到后或直接用短名）：
+本批修复完成后，将合并去重后的 issues 累加到 MCP Server 的会话 Map。
+**直接调用 MCP 原接口，不走 `wps_office_execute` 网关**：
 
 ```javascript
-// 1. 先搜索找到工具
-const searchResult = await wps_office_execute({
-  tool_name: "wps_office_search",
-  arguments: { query: "writeFile" }
-});
-// → 返回 name: "writeFile"
+// 首次调用需要 doc_info，后续只需 session_id + issues
+// 首次（batch=1）:
+await wps_word_proofread_accumulate({
+  session_id: sessionId,
+  issues: allIssues,  // 2d 中合并去重后的结果
+  doc_info: {
+    fileName: "文档.docx",
+    filePath: "C:\\Users\\...\\文档.docx",
+    totalParagraphs: totalParagraphs,
+    totalWords: totalWords
+  },
+  total_revisions: currentRevisionCount
+})
+
+// 后续批次（batch≥2）:
+await wps_word_proofread_accumulate({
+  session_id: sessionId,
+  issues: allIssues,  // 本批合并去重后的 issues（不含前几批）
+  total_revisions: currentRevisionCount
+})
+```
+
+> **⚠️ 注意**：每批传入的 `issues` 只包含当前批次的合并去重结果，不需要重复传入之前批次的 issues。
+> MCP Server 的 `sessionIssues` Map 会自动追加，并自动按 `offset+original` 去重。
+
+### Step 3: 生成五维校对报告
+
+所有批次完成后，调用 `wps_word_generate_proofread_report` 生成五维评分报告。
+**直接调用 MCP 原接口，不走 `wps_office_execute` 网关**：
+
+```javascript
+// 1. 生成报告（仅返回文本）
+const report = await wps_word_generate_proofread_report({
+  session_id: sessionId
+})
+// report.content[0].text 包含完整的 Markdown 格式五维报告
 
 // 2. 获取文档路径
 const docInfo = await wps_office_execute({
   tool_name: "getActiveDocument",
   arguments: {}
-});
+})
 // 解析出文档路径，如 "C:\\Users\\...\\文档.docx"
+// 报告文件路径: "C:\\Users\\...\\文档.校对报告.md"
 
-// 3. 构造报告内容
-const reportContent = `# 校对报告
-
-- **文档**：文档.docx
-- **校对时间**：2026-06-23 15:30
-- **总字数**：12,345
-- **修订总数**：28
-
-## 发现的问题
-
-| # | 位置 | 原文 | 修改为 | 问题类型 | 检测方式 |
-|---|------|------|--------|---------|---------|
-| 1 | 段落3 | 发明了很多 | 发明了很多 | 重复字符 | MCP |
-| 2 | 段落8 | 这个方案非常好 | 这个方案非常好 | "的"多余 | MCP |
-
-## 统计摘要
-
-| 类型 | 数量 |
-|------|------|
-| 正则基础校对 | 18 处 |
-| AI 智能校对 | 10 处 |
-| **合计** | **28 处** |
-| 全部已修复 | ✅ |
-`;
-
-// 4. 写入报告文件（直接用短名）
+// 3. 写入报告文件
 await wps_office_execute({
   tool_name: "writeFile",
   arguments: {
-    filePath: "C:\\Users\\...\\文档.校对报告.md",
-    content: reportContent
+    filePath: docFilePath.replace('.docx', '.校对报告.md'),
+    content: report.content[0].text
   }
-});
+})
 ```
+
+**报告包含的内容**（由 MCP Server 自动生成）：
+- **五维评分摘要**：fluency（流畅度）、conciseness（简洁度）、accuracy（准确性）、consistency（一致性）、completeness（完整度）
+- **每维度评分**：问题数、原始分（1-5）、归一化分（0-2）、展示分（X.X/10）
+- **雷达图数据**：JSON 格式，方便前端渲染
+- **按维度分类的问题详情**：位置、原文、建议修改、类型、来源
+- **统计摘要**：MCP/AI 检测数量合计
+
+> **⚠️ 替代方案**：也可传 `output_file` 参数让报告直接写入文件：
+> ```javascript
+> await wps_word_generate_proofread_report({
+>   session_id: sessionId,
+>   output_file: "C:\\Users\\...\\文档.校对报告.md"
+> })
+> ```
 
 ### Step 4: 收尾
 

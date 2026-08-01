@@ -1,8 +1,9 @@
 # Word 校对通顺度/简洁度 — 技术设计文档
 
-> **Issue**: [#20](https://cnb.cool/lnxsun/opencode-wps/-/issues/20)
-> **作者**: lnxsun/opencode-wps(架构师)
-> **状态**: 设计阶段
+> **关联 Issue**: [#20](https://cnb.cool/lnxsun/opencode-wps/-/issues/20)（架构设计）、[#19](https://cnb.cool/lnxsun/opencode-wps/-/issues/19)（五维评分实现）
+> **关联 PR**: [#40](https://cnb.cool/lnxsun/opencode-wps/-/pulls/40)（B 方案 — 2 工具 MCP 累加器）
+> **作者**: lnxsun/opencode-wps(架构师)（设计）、lnxsun/opencode-wps(全栈开发工程师)（实现）
+> **状态**: 设计完成，实现阶段
 > **依赖**: 无（#22/#24 的前置判据基础）
 
 ---
@@ -17,12 +18,26 @@
 6. [报告输出格式](#6-报告输出格式)
 7. [治理兼容性分析](#7-治理兼容性分析)
 8. [风险评估](#8-风险评估)
+9. [实现细节](#9-实现细节)
+10. [数据流（MCP 工具层）](#10-数据流mcp-工具层)
+11. [session_id 传递策略](#11-session_id-传递策略)
+12. [架构评审决策记录](#12-架构评审决策记录)
 
 ---
 
 ## 1. 架构概览
 
-### 1.1 现有架构（不改动）
+### 1.1 五维定义
+
+| 维度 | 英文 | 定义 | 典型问题类型 |
+|------|------|------|-------------|
+| 流畅度 | fluency | 成分完整、语句通顺 | 的得混淆、少字、口语化、错别字 |
+| 简洁度 | conciseness | 无冗余、不啰嗦 | 重复字符、句式冗余、多字 |
+| 准确性 | accuracy | 事实/术语/数据准确 | 法律术语错误、工程术语错误 |
+| 一致性 | consistency | 格式规范、用语一致 | 中英混排、用词统一、异常空格 |
+| 完整度 | completeness | 无占位文本、内容完整 | 占位文本（placeholder） |
+
+### 1.2 现有架构（不改动）
 
 ```
                  getDocumentTextByRange (本批精确文本)
@@ -45,7 +60,7 @@
                   replaceInParagraph
 ```
 
-### 1.2 本次变更范围
+### 1.3 本次变更范围
 
 ```
 现有 Layer 1（不改架构，加规则）:
@@ -62,7 +77,7 @@
   P12-P14 规则             ✓ 无影响
 ```
 
-### 1.3 新增概念模型
+### 1.4 新增概念模型
 
 ```
 ┌──────────────────────────────────────────────────┐
@@ -617,6 +632,131 @@ Step 5: 修复
 | 简洁修复改变原意 | 高 | 中 | 强制最小化测试（语义不变自检）；通顺>简洁执行期约束；`_force_ai_fix` 二次确认 |
 | `metric` 字段未正确传递到报告 | 低 | 中 | 单测断言 Rule→Issue→合并→报告全链路 metric 传递 |
 | 报告统计失真（AI 层 metric 枚举值非预期） | 低 | 低 | AI 输出格式显式约束 metric 枚举值（`fluency` / `conciseness`），禁止编造 |
+
+---
+
+## 9. 实现细节
+
+以下内容由全栈开发工程师在 PR #40 中实现。更多实现细节见代码文件 `wps-office-mcp/src/tools/word/proofread-report.ts`。
+
+### 9.1 维度合并说明
+
+**`standardization`（规范性）维度在 Layer 1 实现中合并入 `consistency`（一致性）**。
+
+原因：Layer 1 正则规则检测到的"规范性问题"（中英混排、数字空格、中文标点、用词统一、异常空格）本质上属于格式一致性问题——规范即一致性。合并后 `consistency` 维度涵盖了所有格式层面的问题。
+
+AI Layer 2 中 `standardization` 仍可独立存在，用于检测更复杂的规范性语义问题（如措辞风格、行业规范等）。
+
+**`completeness`（完整度）为 Layer 1 新增维度**。
+
+原因：占位文本检测（如 "xxx有限公司"、"TODO"）是一个独立于其他四个维度的概念——它不涉及语言质量，而是内容完整性。占位文本属于 blocker 级问题（有则得 0 分）。
+
+### 9.2 评分量表与归一化
+
+**Layer 1 原始分**：1-5 量表（`METRIC_WEIGHT_FORMULA` 公式计算，completeness 可能为 0）
+
+**Layer 2 AI 评分卡**：0/1/2 三级制
+
+**归一化路径**：
+
+```
+Layer 1: rawScore (1-5) → normalizeToTwoPointScale → [0, 2]
+Layer 2: 0/1/2 (直接)
+
+综合分: min(L1_norm, L2) × 5 → X.X/10
+```
+
+归一化公式：`normalized = max(0, min(2, (rawScore - 1) / 2))`
+
+| rawScore | normalized | display |
+|----------|-----------|---------|
+| 5.0     | 2.00      | 10.0/10 |
+| 4.0     | 1.50      | 7.5/10  |
+| 3.0     | 1.00      | 5.0/10  |
+| 2.0     | 0.50      | 2.5/10  |
+| 1.0     | 0.00      | 0.0/10  |
+| 0.0     | 0.00      | 0.0/10  |
+
+### 9.3 TYPE_METRIC_MAP
+
+完整映射表见 `wps-office-mcp/src/tools/word/proofread-report.ts` 中的 `TYPE_METRIC_MAP`。
+
+### 9.4 权重公式
+
+```typescript
+const METRIC_WEIGHT_FORMULA = {
+  fluency:       (c) => Math.max(0, 5 - c * 0.2),
+  conciseness:   (c) => Math.max(0, 5 - c * 0.3),
+  accuracy:      (c) => Math.max(0, 5 - c * 1.0),
+  consistency:   (c) => Math.max(0, 5 - c * 0.1),
+  completeness:  (_c, hasPlaceholder) => hasPlaceholder ? 0 : 5,
+};
+```
+
+| 维度 | 权重 | 下限 |
+|------|------|------|
+| fluency（流畅度） | 5 - count×0.2 | 0 |
+| conciseness（简洁度） | 5 - count×0.3 | 0 |
+| accuracy（准确性） | 5 - count×1.0 | 0 |
+| consistency（一致性） | 5 - count×0.1 | 0 |
+| completeness（完整度） | hasPlaceholder?0:5 | 0 |
+
+---
+
+## 10. 数据流（MCP 工具层）
+
+本节描述 MCP 工具层的 session-based 数据流，由 PR #40 实现的两个直接 MCP 工具驱动。
+
+```
+┌─────────────┐     ┌──────────────────┐     ┌─────────────────────────┐
+│ SKILL.md    │────▶│ AI 生成 session_id │────▶│ MCP Server              │
+│ 引导 AI     │     │ UUID v4           │     │ sessionIssues Map       │
+│ 调用工具    │     └──────────────────┘     │ (与 governance.js 解耦)  │
+└─────────────┘              │               └───────────┬─────────────┘
+                              │                           │
+                              ▼                           ▼
+                     ┌────────────────┐         ┌──────────────────┐
+                     │ 每批校对完成后  │────────▶│ proofread_       │
+                     │ 调用 accumulate │         │ accumulate       │
+                     └────────────────┘         └────────┬─────────┘
+                                                         │
+                                                         ▼
+                                                ┌──────────────────┐
+                                                │ 所有批次完成后    │
+                                                │ generate_report  │
+                                                └──────────────────┘
+```
+
+**工作流**：
+1. AI 按 SKILL.md 指引生成 `session_id`（UUID v4）
+2. 每批校对完成后，将 issues 通过 `wps_word_proofread_accumulate` 累积到 `sessionIssues` Map
+3. 所有批次完成后，调用 `wps_word_generate_proofread_report` 生成五维评分报告
+4. `sessionIssues` Map 与 governance.js 的 `sessions` Map 完全解耦（两个进程、两个内存空间）
+
+---
+
+## 11. session_id 传递策略
+
+- `session_id` 由 AI 手动生成（UUID v4），在 `inputSchema` 中显式声明为必填参数
+- SKILL.md 引导 AI 生成并传递 `session_id`
+- `wps_word_proofread_accumulate` 和 `wps_word_generate_proofread_report` 注册为直接 MCP 工具，不走 `wps_office_execute` 网关
+- governance.js 的 `DIRECT_TO_GATEWAY` 不会拦截这两个新工具
+- MCP Server 侧 `sessionIssues` Map 与 governance.js 的 `sessions` Map 完全解耦（两个进程、两个内存空间）
+
+---
+
+## 12. 架构评审决策记录
+
+| # | 决策点 | 结论 |
+|---|--------|------|
+| 1 | `session_id` 传递方式 | SKILL.md 引导 AI 手动传 |
+| 2 | `standardization` → `consistency` 合并 | Layer 1 合并入 consistency，AI Layer 2 仍独立 |
+| 3 | `completeness` 新维度 | Layer 1 新增，占位文本检测 |
+| 4 | `少字` 分类 | fluency（成分残缺），非 accuracy |
+| 5 | 五维评分量表归一化 | `normalizeToTwoPointScale()` [1,5] → [0,2] |
+| 6 | 权重公式下限 | fluency 下限 0（非 1）；completeness 下限 0（非 1） |
+| 7 | governance.js 与 MCP Map | 完全独立，不共享 |
+| 8 | `generateProofreadReport` 走不走网关 | 不走网关 |
 
 ---
 
