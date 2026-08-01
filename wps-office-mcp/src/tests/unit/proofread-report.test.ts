@@ -11,8 +11,19 @@ jest.mock('uuid', () => ({
   v4: jest.fn(() => 'mock-uuid-12345'),
 }));
 
+// 包装 fs.writeFileSync 为可控 mock（默认调用真实实现），用于确定性模拟写入失败
+// （评审 Critical：原 /tmp/not-a-file-dir 会被 writeFileSync 自动创建文件，导致 flaky）
+jest.mock('fs', () => {
+  const actual = jest.requireActual('fs');
+  return {
+    ...actual,
+    writeFileSync: jest.fn(actual.writeFileSync),
+  };
+});
+
 jest.mock('../../utils/path-safety', () => ({
-  validateFilePath: jest.fn((p: string, _exts: string[]) => p),
+  validateFilePath: jest.fn((p: string) => p),
+  ALLOWED_WRITE_ROOTS: [],
 }));
 
 import {
@@ -20,6 +31,7 @@ import {
   generateProofreadReportHandler,
   sessionIssues,
 } from '../../tools/word/proofread-report';
+import * as fs from 'fs';
 
 // Reset sessionIssues before each test
 beforeEach(() => {
@@ -469,11 +481,15 @@ describe('releaseSession 时序：文件写入失败时保留会话', () => {
   });
 
   it('output_file 写入失败时：会话保留（可重试生成）', async () => {
-    // 目标是已存在目录：writeFileSync 抛 EISDIR，写入必然失败（被 catch 吞掉）
+    // mock fs.writeFileSync 必抛错，保证写入失败确定性（评审 Critical：原 /tmp/not-a-file-dir 会被
+    // writeFileSync 自动创建文件导致 flaky）；用 mock 而非真实路径，跨平台（Linux/Windows）均稳定
     setupSession([{ offset: 0, length: 2, original: 'xx', suggestion: 'yy', type: '的得混淆', context: '...', source: 'mcp' }]);
+    (fs.writeFileSync as jest.Mock).mockImplementationOnce(() => {
+      throw new Error('EACCES: permission denied');
+    });
     const result = await generateProofreadReportHandler({
       session_id: sessId,
-      output_file: '/tmp/not-a-file-dir',
+      output_file: '/path/unwritable-report.md',
     });
     expect(result.success).toBe(true); // 文本返回不受影响
     expect(sessionIssues.has(sessId)).toBe(true); // 会话保留，可重试
@@ -481,9 +497,12 @@ describe('releaseSession 时序：文件写入失败时保留会话', () => {
 
   it('空报告（0 问题）+ output_file 写入失败：会话同样保留', async () => {
     setupSession([]);
+    (fs.writeFileSync as jest.Mock).mockImplementationOnce(() => {
+      throw new Error('EACCES: permission denied');
+    });
     const result = await generateProofreadReportHandler({
       session_id: sessId,
-      output_file: '/tmp/not-a-file-dir',
+      output_file: '/path/unwritable-report.md',
     });
     expect(result.success).toBe(true);
     expect(sessionIssues.has(sessId)).toBe(true);

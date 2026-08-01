@@ -34,9 +34,11 @@ import { commonTools } from './common';
  *   PPT   (112个):  幻灯片/幻灯片操作/演示文稿管理/文本框/动画/背景/图片/表格/形状
  *   Common (9个):   转换/通用
  *
- * ⚠️ 注意：wordTools 含 proofreadReportTools（2 个报告工具），但它们是 GATEWAY_ONLY：
- *   ToolRegistry.register() 有黑名单拦截，即使 registerAll(allTools) 也不会直连注册；
- *   唯一入口是 wps_office_execute 网关（COM_ACTIONS 索引：proofreadAccumulate / generateProofreadReport）。
+ * ⚠️ 注意：wordTools 含 proofreadReportTools（2 个报告工具），但它们只存在于 allTools 中
+ *   用于 gateway/index.ts 的 HANDLER_MAP 路由映射（executeTool 按短名+appType 索引到 handler），
+ *   并不直连注册为 MCP 工具——ToolRegistry.register() 的 GATEWAY_ONLY_TOOLS 黑名单会拦截，
+ *   即使 registerAll(allTools) 也不会暴露直连；唯一入口是 wps_office_execute 网关
+ *   （COM_ACTIONS 索引：proofreadAccumulate / generateProofreadReport）。
  */
 export const allTools: RegisteredTool[] = [
   ...excelTools,

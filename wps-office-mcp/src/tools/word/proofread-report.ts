@@ -8,6 +8,13 @@
  * - wps_word_proofread_accumulate: 累加校对问题到会话
  * - wps_word_generate_proofread_report: 生成五维校对报告
  *
+ * ⚠️ 重要：这两个工具是 GATEWAY_ONLY（网关专用）——定义在 allTools 中
+ * 仅用于 gateway HANDLER_MAP 路由映射（gateway/index.ts 遍历 allTools 建索引），
+ * 并不直连注册为 MCP 工具。唯一入口是 wps_office_execute 网关
+ * （COM_ACTIONS 索引：proofreadAccumulate / generateProofreadReport）。
+ * 结构性防护见 ToolRegistry.GATEWAY_ONLY_TOOLS 黑名单；请勿误删本模块的
+ * proofreadReportTools 导出，否则网关路由会失效。
+ *
  * 五维评分维度：
  * - fluency（流畅度）: 成分完整、语句通顺
  * - conciseness（简洁度）: 无冗余、不啰嗦
@@ -28,7 +35,7 @@ import {
   ToolCategory,
   RegisteredTool,
 } from '../../types/tools';
-import { validateFilePath } from '../../utils/path-safety';
+import { validateFilePath, ALLOWED_WRITE_ROOTS } from '../../utils/path-safety';
 
 // ==================== 类型定义 ====================
 
@@ -438,7 +445,7 @@ export const generateProofreadReportHandler: ToolHandler = async (
     let wroteFile = false;
     if (output_file) {
       try {
-        const safePath = validateFilePath(output_file, ['.md', '.txt']);
+        const safePath = validateFilePath(output_file, ALLOWED_WRITE_ROOTS);
         fs.writeFileSync(safePath, emptyReport, 'utf-8');
         wroteFile = true;
       } catch (err) {
@@ -640,7 +647,7 @@ export const generateProofreadReportHandler: ToolHandler = async (
   let wroteFile = false;
   if (output_file) {
     try {
-      const safePath = validateFilePath(output_file, ['.md', '.txt']);
+      const safePath = validateFilePath(output_file, ALLOWED_WRITE_ROOTS);
       const dir = path.dirname(safePath);
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
