@@ -34,6 +34,7 @@ import {
   inferTypeFromContent,
   normalizeIssueType,
   normalizeIssueSource,
+  normalizeIssueLocation,
   AI_ONLY_PATTERN,
 } from '../../tools/word/proofread-report';
 import * as fs from 'fs';
@@ -885,6 +886,139 @@ describe('normalizeIssueSource（验收遗留 TC-13）', () => {
 
   it('缺 source 且无法按内容推断时，保守兜底为 mcp', () => {
     expect(normalizeIssueSource({ offset: 0, length: 2, original: '完全陌生的内容xyz', suggestion: '也陌生' } as any).source).toBe('mcp');
+  });
+});
+
+// ==================== 「偏移 undefined」展示瑕疵（PR #43 评审遗留） ====================
+
+describe('normalizeIssueLocation — 位置字段归一化（偏移 undefined 展示瑕疵）', () => {
+  it('paragraph_index（蛇形）→ paragraphIndex（驼峰）', () => {
+    const issue: any = {
+      paragraph_index: 3,
+      offset_in_paragraph: 12,
+      original: '的的',
+      suggestion: '的',
+      type: '重复字符',
+      source: 'mcp',
+    };
+    const normalized = normalizeIssueLocation(issue);
+    expect(normalized.paragraphIndex).toBe(3);
+    // 未提供 offset 时，offset_in_paragraph 兜底为 offset
+    expect(normalized.offset).toBe(12);
+  });
+
+  it('已有驼峰 paragraphIndex 时优先保留，不被蛇形覆盖', () => {
+    const issue: any = {
+      paragraphIndex: 5,
+      paragraph_index: 9, // 冲突时优先驼峰
+      offset: 100,
+      offset_in_paragraph: 3,
+      original: '的的',
+      suggestion: '的',
+      type: '重复字符',
+      source: 'mcp',
+    };
+    const normalized = normalizeIssueLocation(issue);
+    expect(normalized.paragraphIndex).toBe(5);
+    expect(normalized.offset).toBe(100);
+  });
+
+  it('仅提供 offset_in_paragraph（无 offset）时，offset 兜底为段落内偏移', () => {
+    const issue: any = {
+      original: '加强重视安全问题',
+      suggestion: '重视安全问题',
+      type: '动宾不当',
+      source: 'ai',
+      offset_in_paragraph: 7,
+    };
+    const normalized = normalizeIssueLocation(issue);
+    expect(normalized.offset).toBe(7);
+  });
+
+  it('offset 与 offset_in_paragraph 均缺失时，offset 为 undefined（展示层兜底「位置未知」）', () => {
+    const issue: any = {
+      original: '的的',
+      suggestion: '的',
+      type: '重复字符',
+      source: 'mcp',
+    };
+    const normalized = normalizeIssueLocation(issue);
+    expect(normalized.offset).toBeUndefined();
+    expect(normalized.paragraphIndex).toBeUndefined();
+  });
+
+  it('offset 为 0（合法值）时保留，不因 falsy 被覆盖', () => {
+    const issue: any = {
+      offset: 0,
+      offset_in_paragraph: 5,
+      original: '的的',
+      suggestion: '的',
+      type: '重复字符',
+      source: 'mcp',
+    };
+    const normalized = normalizeIssueLocation(issue);
+    expect(normalized.offset).toBe(0);
+  });
+});
+
+describe('proofreadAccumulate — 位置字段归一化链路（偏移 undefined 展示瑕疵）', () => {
+  it('累加 SKILL 蛇形字段（paragraph_index/offset_in_paragraph）后，报告不再显示「偏移 undefined」', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 'loc-session-1',
+      issues: [
+        {
+          paragraph_index: 2,
+          offset_in_paragraph: 6,
+          original: '加强重视安全问题',
+          suggestion: '重视安全问题',
+          type: '动宾不当',
+          source: 'ai' as const,
+        },
+        {
+          paragraph_index: 1,
+          offset_in_paragraph: 0,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+        },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 3, totalWords: 30 },
+    });
+
+    const session = sessionIssues.get('loc-session-1')!;
+    // 位置字段已归一化：蛇形 → 驼峰
+    expect(session.issues[0].paragraphIndex).toBe(2);
+    expect(session.issues[0].offset).toBe(6);
+    expect(session.issues[1].paragraphIndex).toBe(1);
+    expect(session.issues[1].offset).toBe(0);
+
+    const result = await generateProofreadReportHandler({ session_id: 'loc-session-1' });
+    const text = result.content[0].text!;
+    // 展示层：段落索引优先 → 不再出现「偏移 undefined」字面量
+    expect(text).toContain('段落 2');
+    expect(text).toContain('段落 1');
+    expect(text).not.toContain('偏移 undefined');
+  });
+
+  it('offset 与 paragraphIndex 均缺失时，报告展示「位置未知」而非「偏移 undefined」', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 'loc-session-2',
+      issues: [
+        {
+          original: '完全陌生的内容xyz',
+          suggestion: '也陌生',
+          type: '未分类',
+          source: 'ai' as const,
+        },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+
+    const result = await generateProofreadReportHandler({ session_id: 'loc-session-2' });
+    const text = result.content[0].text!;
+    expect(text).toContain('位置未知');
+    expect(text).not.toContain('偏移 undefined');
   });
 });
 

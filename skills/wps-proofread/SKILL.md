@@ -92,8 +92,14 @@ description: "WPS 文档校对专家，专注于文档的错别字检测、语�
 - **方法**：
   1. 将本批文本逐段传递给 LLM（你是 AI，可以直接在你的上下文中分析）
   2. 要求输出严格格式：`[{ "paragraph_index": 1, "offset_in_paragraph": 23, "original": "...", "suggestion": "...", "reason": "..." }]`
-  3. 将段落内偏移转换为文档绝对偏移（根据 getDocumentParagraphs 返回的段落 [start] 计算）
+  3. 将段落内偏移转换为文档绝对偏移（根据 getDocumentParagraphs 返回的段落 [start] 计算）：`offset = paragraphStartOffset + offset_in_paragraph`
   4. 与 Layer 1 的结果合并去重
+
+> **字段命名兼容说明（重要）**：Layer 2 输出用**蛇形命名**（`paragraph_index` / `offset_in_paragraph`），
+> 而 `proofreadAccumulate` 内部用**驼峰命名**（`paragraphIndex` / `offset`）。
+> 累加器已做归一化兜底（`paragraph_index` → `paragraphIndex`、`offset_in_paragraph` → `offset`），
+> 两种写法均可；但**推荐直接输出驼峰**（`paragraphIndex` + `offset`，offset 为文档绝对偏移），
+> 避免报告位置展示退化。
 
 **注意**：两层**并行运行**——先获取本批文本，然后调用 `proofreadBasic` 的同时你分析文本做 AI 校对，最后合并结果。
 
@@ -674,6 +680,9 @@ await wps_office_execute({
 > 若个别 issue 缺 type，MCP 会按原文/建议文本自动兜底推断（T2，#55）；
 > 缺 source 时 MCP 也会兜底推断（TC-13：按 Layer 1 规则命中判定 mcp，F11–F15 等 AI 专属模式判定 ai），
 > 但人工标注的 type/source 更准确，建议每项都显式携带。
+> **每项 issue 建议携带位置**：`paragraphIndex`（段落索引，从 1 起）与 `offset`（文档绝对偏移）；
+> 若只传蛇形别名（`paragraph_index` / `offset_in_paragraph`），MCP 会自动归一化（见 Layer 2 字段兼容说明）；
+> 两者都缺失时报告位置列显示「位置未知」——请尽量携带，便于用户定位问题。
 
 ### Step 3: 生成五维校对报告
 
