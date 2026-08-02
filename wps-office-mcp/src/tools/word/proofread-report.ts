@@ -350,6 +350,39 @@ export function normalizeIssueType(issue: ProofreadIssueEntry): ProofreadIssueEn
   return { ...issue, type: inferred || '未分类' };
 }
 
+/**
+ * 规整 issue.source：缺 source / 非法值 → 兜底推断（TC-13，验收遗留）
+ *
+ * 背景：第三轮会话 proofreadAccumulate 的 issues 未携带 source，报告统计摘要
+ * 出现"⚠️ 未标注来源 30 处"（TC-13 来源统计失真）。SKILL 已要求 AI 层输出
+ * source（mcp/ai），但代码侧缺少兜底，AI 漏传时报告仍失真。
+ *
+ * 兜底策略（保守、可追溯）：
+ * 1. source 已是 'mcp' / 'ai' → 直接返回
+ * 2. 能按原文/建议文本命中 Layer 1 规则（inferTypeFromContent 命中非 F11–F15 模式）→ 'mcp'
+ * 3. 其余（含 F11–F15 搭配冗余等 AI 专属模式）→ 'ai'
+ * 4. 仍无法判断 → 'mcp'（Layer 1 规则引擎命中优先，AI 补充场景由 SKILL 约束）
+ */
+export function normalizeIssueSource(issue: ProofreadIssueEntry): ProofreadIssueEntry {
+  const rawSource = typeof issue.source === 'string' ? issue.source.trim().toLowerCase() : '';
+  if (rawSource === 'mcp' || rawSource === 'ai') {
+    return issue;
+  }
+  // 依据原文推断来源：F11–F15 的 AI 专属搭配模式（搭配冗余/动宾不当/语义重复/修饰不当）
+  // 这些模式 Layer 1 不检出（#25 语料标注 Layer 2 专属），兜底归为 ai
+  const text = `${issue.original || ''} ${issue.suggestion || ''}`;
+  const aiOnlyPattern =
+    /存在着|具有着|加强重视|(进步|提升|提高)(提高|进步)|(很多|许多|大量|丰富).{0,6}(内容|经验|知识)/;
+  if (aiOnlyPattern.test(text)) {
+    return { ...issue, source: 'ai' };
+  }
+  const inferred = inferTypeFromContent(issue.original || '', issue.suggestion || '');
+  if (inferred && inferred !== '未分类') {
+    return { ...issue, source: 'mcp' };
+  }
+  return { ...issue, source: 'mcp' };
+}
+
 // ==================== 累加器工具 ====================
 
 export const proofreadAccumulateDefinition: ToolDefinition = {
@@ -475,8 +508,9 @@ export const proofreadAccumulateHandler: ToolHandler = async (
     session.totalRevisions = total_revisions;
   }
 
-  // 追加 issues（#55 T2：入口统一规整 type，缺 type / type='ai' 时兜底推断）
-  const normalizedIssues = issues.map(normalizeIssueType);
+  // 追加 issues（#55 T2：入口统一规整 type，缺 type / type='ai' 时兜底推断；
+  // 验收遗留：缺 source 时同样兜底推断，避免报告"未标注来源"失真 TC-13）
+  const normalizedIssues = issues.map((i) => normalizeIssueSource(normalizeIssueType(i)));
   const beforeCount = session.issues.length;
   session.issues.push(...normalizedIssues);
 
@@ -701,9 +735,21 @@ export const generateProofreadReportHandler: ToolHandler = async (
   if (totalRevisions !== undefined) {
     // TC-12 口径：WPS 修订模式下每次替换 = 1 次删除 + 1 次插入，即 2 条修订记录。
     // 报告「发现问题」与「修订总数」的换算口径：问题数 = 修订记录数 ÷ 2
-    report += `- **修订总数**: ${totalRevisions}（TC-12 口径：问题数 = 修订记录数 ÷ 2 = ${Math.floor(totalRevisions / 2)}，每次替换产生删除+插入 2 条修订）\n`;
+    // ⚠️ 验收遗留：删除类修复（如“存在着→空”）只产生 1 条修订，修订数可能为奇数。
+    // 此时 ÷2 换算不整除，需明示差异并提示人工核对，避免口径误判。
+    const half = totalRevisions / 2;
+    const isInteger = Number.isInteger(half);
+    report += `- **修订总数**: ${totalRevisions}（TC-12 口径：问题数 = 修订记录数 ÷ 2 = ${Math.floor(half)}`;
+    report += isInteger
+      ? `，每次替换产生删除+插入 2 条修订）\n`
+      : `；⚠️ 修订数为奇数（删除类修复只产生 1 条修订），换算不整除，请人工核对修订记录与问题清单是否一一对应）\n`;
+    report += `- **发现问题**: ${issues.length} 处（问题数按 issue 条数计；` +
+      (isInteger
+        ? `若开启修订模式，等价于修订记录数 ÷ 2）\n`
+        : `⚠️ 修订数为奇数时不等价于 ÷2，请人工核对）\n`);
+  } else {
+    report += `- **发现问题**: ${issues.length} 处（问题数按 issue 条数计）\n`;
   }
-  report += `- **发现问题**: ${issues.length} 处（问题数按 issue 条数计；若开启修订模式，等价于修订记录数 ÷ 2）\n`;
   if (unknownTypeIssues.length > 0) {
     report += `- **⚠️ 未分类问题**: ${unknownTypeIssues.length} 处（未计入五维评分，见下方"未分类问题"节；请检查 AI 层是否输出 type 字段）\n`;
   }
@@ -800,7 +846,12 @@ export const generateProofreadReportHandler: ToolHandler = async (
   report += `| **合计** | **${issues.length} 处** |\n`;
   report += `| 全部已修复 | ✅ |\n`;
   if (totalRevisions !== undefined) {
-    report += `\n> **TC-12 口径说明**：问题数 ${issues.length} 处对应修订记录数 ${totalRevisions} 条（每次替换 = 删除 + 插入各 1 条修订，即问题数 = 修订记录数 ÷ 2）。如不等，请检查是否有未跟踪修订的替换或人工修改。\n`;
+    const half = totalRevisions / 2;
+    const isInteger = Number.isInteger(half);
+    report += `\n> **TC-12 口径说明**：问题数 ${issues.length} 处对应修订记录数 ${totalRevisions} 条（每次替换 = 删除 + 插入各 1 条修订，即问题数 = 修订记录数 ÷ 2 = ${Math.floor(half)}）`;
+    report += isInteger
+      ? `。如不等，请检查是否有未跟踪修订的替换或人工修改。\n`
+      : `。⚠️ 当前修订数为奇数（删除类修复只产生 1 条修订，如“存在着→空”），换算不整除，请人工核对修订记录与问题清单是否一一对应。\n`;
   }
 
   // 写入文件（如果指定）——仅当写入成功（或未指定 output_file）后才回收会话；

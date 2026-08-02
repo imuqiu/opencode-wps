@@ -741,7 +741,7 @@ export const WpsGovernancePlugin = async () => {
               `请改用 replaceInParagraph。`
             );
           }
-          const findTextFR = innerArgs.findText || innerArgs.find || '';
+          const findTextFR = innerArgs.findText || innerArgs.find || innerArgs.find_text || '';
           const colonMatchFR = findTextFR.match(/^[\u4e00-\u9fff]+[：:]/);
           if (colonMatchFR && findTextFR.length >= 2 && findTextFR.length <= 20) {
             throw new Error(
@@ -753,7 +753,7 @@ export const WpsGovernancePlugin = async () => {
           return;
         }
         if (toolName === "replaceInParagraph") {
-          const findText = innerArgs.findText || innerArgs.find || '';
+          const findText = innerArgs.findText || innerArgs.find || innerArgs.find_text || '';
           const colonMatch = findText.match(/^[\u4e00-\u9fff]+[：:]/);
           if (colonMatch && findText.length >= 2 && findText.length <= 20) {
             throw new Error(
@@ -793,7 +793,10 @@ export const WpsGovernancePlugin = async () => {
           // P16：交叉校验 — 替换内容应与已知校对 issue 对应
           // 防止 AI 擅自修复 proofreadBasic 未发现的问题（"把正确的改成错误的"）
           if (!st.templateFilling.active && st.batchStarted && st.proofreadHadIssues && st.proofreadIssueOriginals.length > 0) {
-            const findText = innerArgs.findText || innerArgs.find || '';
+            // 参数名兼容：AI 走网关时可能传 camelCase（findText）或 snake_case（find_text），
+            // 两者都需兜底，否则 P16 会因 findText 为空而跳过校验（#55 遗留：F11–F15 零拦截）
+            const findText =
+              innerArgs.findText || innerArgs.find || innerArgs.find_text || '';
             if (findText && !innerArgs._force_ai_fix) {
               const matchesIssue = st.proofreadIssueOriginals.some(function(orig) {
                 return (orig && (orig.indexOf(findText) !== -1 || findText.indexOf(orig) !== -1));

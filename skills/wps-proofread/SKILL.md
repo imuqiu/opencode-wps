@@ -669,10 +669,11 @@ await wps_office_execute({
 })
 ```
 
-> **⚠️ 注意**：每批传入的 `issues` 只包含当前批次的合并去重结果，不需要重复传入之前批次的 issues。
-> MCP Server 的 `sessionIssues` Map 会自动追加，并自动按 `offset+original` 去重。
-> **每项 issue 必须携带 type**（Layer 1 来自 proofreadBasic 返回，Layer 2 由你输出真实类型）。
-> 若个别 issue 缺 type，MCP 会按原文/建议文本自动兜底推断（T2，#55），但人工标注的 type 更准确。
+> **⚠️ 每项 issue 必须携带 type**（Layer 1 来自 proofreadBasic 返回，Layer 2 由你输出真实类型）。
+> **每项 issue 必须携带 source**（Layer 1 标 `source: 'mcp'`，Layer 2 标 `source: 'ai'`）；
+> 若个别 issue 缺 type，MCP 会按原文/建议文本自动兜底推断（T2，#55）；
+> 缺 source 时 MCP 也会兜底推断（TC-13：按 Layer 1 规则命中判定 mcp，F11–F15 等 AI 专属模式判定 ai），
+> 但人工标注的 type/source 更准确，建议每项都显式携带。
 
 ### Step 3: 生成五维校对报告
 
@@ -722,6 +723,21 @@ await wps_office_execute({
 >   }
 > })
 > ```
+>
+> **✅ 落盘强制自检（验收遗留：第四轮报告只生成未写文件）**：
+> 无论用上面哪种方式，**最终必须保证报告文件实际存在于磁盘**。请在生成报告后执行以下确认：
+> ```javascript
+> // 用 writeFile 写盘后，确认文件存在（用 MCP 工具或 PowerShell 检查）
+> const check = await wps_office_execute({
+>   tool_name: "writeFile",
+>   arguments: {
+>     filePath: "C:\\Users\\...\\文档.校对报告.md",
+>     content: report.content[0].text
+>   }
+> })
+> // 或直接确认 generateProofreadReport 传了 output_file 且返回成功
+> ```
+> **如果报告没有写入任何文件，本次校对视为未完成**——必须补齐落盘后再进入 Step 4 收尾。
 
 ### Step 4: 收尾
 

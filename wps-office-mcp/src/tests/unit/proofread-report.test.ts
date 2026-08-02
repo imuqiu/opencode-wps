@@ -33,6 +33,7 @@ import {
   inferIssueType,
   inferTypeFromContent,
   normalizeIssueType,
+  normalizeIssueSource,
 } from '../../tools/word/proofread-report';
 import * as fs from 'fs';
 
@@ -727,6 +728,30 @@ describe('normalizeIssueType（#55 T2）', () => {
   });
 });
 
+describe('normalizeIssueSource（验收遗留 TC-13）', () => {
+  it('source 已为 mcp / ai 时保持不变', () => {
+    expect(normalizeIssueSource({ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' } as any).source).toBe('mcp');
+    expect(normalizeIssueSource({ offset: 0, length: 2, original: '存在着', suggestion: '', type: '搭配冗余', source: 'ai' } as any).source).toBe('ai');
+  });
+
+  it('缺 source 时，Layer 1 规则命中（如 的的/句式杂糅）兜底为 mcp', () => {
+    expect(normalizeIssueSource({ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符' } as any).source).toBe('mcp');
+    expect(normalizeIssueSource({ offset: 0, length: 7, original: '通过加强监督使效率提升', suggestion: '加强监督使效率提升' } as any).source).toBe('mcp');
+    expect(normalizeIssueSource({ offset: 0, length: 4, original: '进行了研究', suggestion: '研究' } as any).source).toBe('mcp');
+  });
+
+  it('缺 source 时，F11–F15 AI 专属模式（存在着/加强重视/进步提高等）兜底为 ai', () => {
+    expect(normalizeIssueSource({ offset: 0, length: 8, original: '这个方案存在着很多不足之处', suggestion: '这个方案存在很多不足之处' } as any).source).toBe('ai');
+    expect(normalizeIssueSource({ offset: 0, length: 6, original: '我们需要加强重视安全问题', suggestion: '我们需要重视安全问题' } as any).source).toBe('ai');
+    expect(normalizeIssueSource({ offset: 0, length: 6, original: '他取得了显著的进步提高', suggestion: '他取得了显著的进步' } as any).source).toBe('ai');
+    expect(normalizeIssueSource({ offset: 0, length: 10, original: '会议讨论了很多丰富的内容', suggestion: '会议讨论了很多内容' } as any).source).toBe('ai');
+  });
+
+  it('缺 source 且无法按内容推断时，保守兜底为 mcp', () => {
+    expect(normalizeIssueSource({ offset: 0, length: 2, original: '完全陌生的内容xyz', suggestion: '也陌生' } as any).source).toBe('mcp');
+  });
+});
+
 describe('proofreadAccumulate — 缺 type 自动兜底（#55 T2）', () => {
   it('累加时缺 type 的 issue 自动推断为冗余词，报告不再全 undefined/全 10 分', async () => {
     await proofreadAccumulateHandler({
@@ -783,5 +808,43 @@ describe('generateProofreadReport — TC-12 修订数口径（#55 T3）', () => 
     expect(text).toContain('60');
     expect(text).toContain('修订记录数 ÷ 2');
     expect(text).toContain('30'); // 60 ÷ 2 = 30
+  });
+
+  it('验收遗留：奇数修订数（删除类修复只产生 1 条修订）时明确提示不整除、不再硬算整除', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 't3-session-odd',
+      issues: [
+        { offset: 0, length: 8, original: '这个方案存在着很多不足之处', suggestion: '这个方案存在很多不足之处', type: '搭配冗余', source: 'ai' as const },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+      total_revisions: 63, // 验收现场：63 条修订（含删除类“存在着→空”等奇数修订）
+    });
+
+    const result = await generateProofreadReportHandler({ session_id: 't3-session-odd' });
+    const text = result.content[0].text!;
+    expect(text).toContain('修订总数');
+    expect(text).toContain('63');
+    // 偶数换算仍展示（63 ÷ 2 = 31），但必须带奇数提示
+    expect(text).toContain('修订数为奇数');
+    expect(text).toContain('换算不整除');
+    expect(text).toContain('人工核对');
+    // 不再出现误导性的"等价于修订记录数 ÷ 2"表述
+    expect(text).not.toContain('等价于修订记录数 ÷ 2');
+  });
+
+  it('偶数修订数时无奇数提示（回归：正常成对替换）', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 't3-session-even',
+      issues: [
+        { offset: 0, length: 2, original: '在去', suggestion: '再去', type: '在再混淆', source: 'mcp' as const },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+      total_revisions: 2,
+    });
+
+    const result = await generateProofreadReportHandler({ session_id: 't3-session-even' });
+    const text = result.content[0].text!;
+    expect(text).toContain('修订总数');
+    expect(text).not.toContain('修订数为奇数');
   });
 });
