@@ -11,6 +11,8 @@
  * - wps_word_replace_range: 按字符范围替换文本（修订模式下跟踪）
  * - wps_word_replace_in_paragraph: 按段落+文本匹配替换（修订模式下跟踪，推荐用于校对）
  * - wps_word_proofread_basic: 基础文本校对（正则检测错别字/语病）
+ *   - 返回结构化 issues 字段（{ issues: [{type, offset, length, original, suggestion, context, metric?}] }），
+ *     供 governance.js P15/P16 通过 JSON.parse 解析真实 issue 列表（T1，#55）
  *
  * Layer 1 通顺/简洁规则（metric 驱动）：
  * - fluency 句式杂糅：通过…使/让/令、根据…显示/表明/证实、由于…的原因导致/使/造成
@@ -479,6 +481,9 @@ export const proofreadBasicDefinition: ToolDefinition = {
 - 常见网络用语/拼写错误
 
 返回每个问题的位置、原文、建议修改和问题类型。
+返回格式：文本展示 + 结构化 issues 字段
+（issues 为 JSON 数组，每项含 type/offset/length/original/suggestion/context/metric，
+ 供治理插件 P15/P16 JSON.parse 解析真实问题列表）。
 
 使用场景：
 - 校对前先做基础检查
@@ -1135,26 +1140,43 @@ export const proofreadBasicHandler: ToolHandler = async (
     const baseOffset = typeof start_offset === 'number' ? start_offset : 0;
     const issues = runBasicProofreading(content, baseOffset);
 
+    // T1（#55）：结构化输出 — 文本展示 + issues JSON 数组
+    // governance.js P15/P16 通过 JSON.parse(outText) 解析 parsed.issues 判定
+    // proofreadHadIssues 与 proofreadIssueOriginals，因此返回文本必须包含
+    // 可直接 JSON.parse 的 issues 字段（兼容旧文本展示，不破坏现有消费方）。
+    const structured = {
+      issues: issues.map(({ offset, length, original, suggestion, type, context, metric }) => ({
+        offset,
+        length,
+        original,
+        suggestion,
+        type,
+        context,
+        ...(metric ? { metric } : {}),
+      })),
+    };
+    const issuesJson = JSON.stringify(structured);
+
     if (issues.length === 0) {
       return {
         id: uuidv4(),
         success: true,
         content: [
           {
-            // #55 T1：text 块直接输出 JSON（{issues: []}），P15 依赖 JSON.parse().issues.length=0 判定
             type: 'text',
-            text: JSON.stringify({ issues: [] }),
+            text: `基础校对完成，未发现明显问题。\n\n${issuesJson}`,
           },
         ],
       };
     }
 
-    // 结构化输出（#55 T1）：text 块直接输出 JSON（{issues: [...]}），
-    // 供 governance.js P15/P16 通过 JSON.parse 解析真实 issue 列表：
-    // P15：proofreadHadIssues = parsed.issues.length > 0；
-    // P16：proofreadIssueOriginals = parsed.issues[].original。
-    // SKILL.md Layer 1 输出约定即 `{ issues: [...] }`，AI 层按 issues 数组消费，兼容。
-    const structured = JSON.stringify({ issues });
+    const lines = issues.map(
+      (issue, i) =>
+        `${i + 1}. [${issue.type}] 位置 ${issue.offset}\n` +
+        `   原文: "${issue.original}"\n` +
+        `   建议: "${issue.suggestion}"\n` +
+        `   上下文: ${issue.context}`
+    );
 
     return {
       id: uuidv4(),
@@ -1162,7 +1184,7 @@ export const proofreadBasicHandler: ToolHandler = async (
       content: [
         {
           type: 'text',
-          text: structured,
+          text: `基础校对完成，发现 ${issues.length} 个问题：\n\n${lines.join('\n\n')}\n\n${issuesJson}`,
         },
       ],
     };

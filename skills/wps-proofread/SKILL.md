@@ -81,7 +81,7 @@ description: "WPS 文档校对专家，专注于文档的错别字检测、语�
 - **方式**：正则规则匹配（错别字、重复字、冗余、格式一致性）
 - **范围**：中英文文本
 - **特点**：零 token，纯正则，极快
-- **输出**：`{ issues: [{ type, offset, length, original, suggestion, reason }] }`
+- **输出**：文本展示 + 末尾 JSON 行 `{ "issues": [{ type, offset, length, original, suggestion, context, metric? }] }`（可直接 `JSON.parse`，供治理插件 P15/P16 解析）
 
 ### Layer 2：AI 智能校对（Agent LLM）
 
@@ -414,18 +414,20 @@ wps_office_execute({
 ## ⚠️ 不合理搭配强制逐句检查（F11–F15，Layer 2 凭据）
 
 以下 5 类"不合理搭配"是 Layer 1 正则**无法命中**的语义问题（验收语料 F11–F15），
-必须由 AI 层（Layer 2）逐句检出并输出**检出结论**——要么 `fix`（修复），要么 report_only（进优化建议），**不允许沉默漏检**：
+必须由 AI 层（Layer 2）逐句检出并输出**检出结论**——要么 `fix`（修复），要么 `report_only`（进优化建议），**不允许沉默漏检**：
 
 | ID | 模式 | 检出凭据（看到即检出） | 期望修复方向 | 建议 type |
 |----|------|----------------------|-------------|-----------|
-| F11 | `存在着` + 名词/数量 | "存在着"是"存在"的冗余叠加（`有`字句赘余） | 存在 → 删除"着" | 冗余词 / 多字 |
-| F12 | `加强重视` | 动宾不当："加强"不能带"重视"（应直接"重视"） | 加强重视 → 重视 | 冗余词 / 动宾不当 |
-| F13 | `进步提高` | 语义重复："进步"与"提高"同义叠加 | 进步提高 → 进步 / 提高 | 冗余词 |
-| F14 | `丰富的内容` 前接数量（"很多丰富"） | 修饰不当："很多"与"丰富"语义重复 | 很多丰富的内容 → 很多内容 | 冗余词 / 修饰不当 |
-| F15 | `具有着` | 搭配冗余："具有"不可加"着"（存现动词无进行体） | 具有着 → 具有 | 冗余词 / 多字 |
+| F11 | `存在着` + 名词/数量 | "存在着"是"存在"的冗余叠加（`有`字句赘余） | 这个方案有很多不足之处 | 搭配冗余 |
+| F12 | `加强重视` | 动宾不当："加强"不能带"重视"（应直接"重视"） | 我们需要重视安全问题 | 动宾不当 |
+| F13 | `进步提高` | 语义重复："进步"与"提高"同义叠加 | 他取得了显著的进步 | 语义重复 |
+| F14 | `丰富的内容` 前接数量（"很多丰富"） | 修饰不当："很多"与"丰富"语义重复 | 会议讨论了很多内容 | 修饰不当 |
+| F15 | `具有着` | 搭配冗余："具有"不可加"着"（存现动词无进行体） | 这一发现具有深远的意义 | 搭配冗余 |
 
 **逐句输出要求**：对每个 F11–F15 模式命中，AI 层必须输出一条带 `type` 的 issue（`fix_action: "fix"`）；
 若该句同时存在其他问题导致不宜直接修复，则输出 `fix_action: "report_only"` 并写明原因，进报告"优化建议"。
+- `type` 用上表建议值（或语义等价类型），**必须携带**（报告五维评分依赖）
+- `metric` 一律 `"fluency"`（这类问题影响通顺/搭配）
 
 ## 输出格式
 
@@ -439,6 +441,7 @@ wps_office_execute({
     "type": "句式杂糅",
     "reason": "语病说明",
     "metric": "fluency",
+    "type": "动宾不当",
     "score": {
       "fluency": { "components": 0, "collocation": 2, "order": 2, "clean": 0, "coherence": 2, "total": 6 },
       "conciseness_ratio": null
@@ -452,6 +455,7 @@ wps_office_execute({
   **禁止省略或写成 'ai'**——报告五维评分按 type 查 TYPE_METRIC_MAP 分类，缺 type 会落入"未分类"不计分；
   若确实无法归类，请根据 original/suggestion 内容推断（proofreadAccumulate 也会兜底推断，但尽量由 AI 层输出准确 type）。
 - metric（必填）："fluency" | "conciseness"（枚举约束，禁止编造其他值）
+- type（**必填**）：真实问题类型（如 动宾不当/语义重复/修饰不当/搭配冗余/句式杂糅/冗余词），**禁止写 "ai" 或留空**——报告五维评分按 type 分组，缺 type 会全部落入"未分类"导致评分失真
 - score.fluency：通顺问题时含五维评分（每个维度 0-2 分 + total）
 - score.conciseness_ratio：简洁问题时含冗余占比（如 0.25 = 25%）
 - fix_action（必填）："fix"（触发修复） | "report_only"（只进优化建议）
@@ -505,15 +509,14 @@ wps_office_execute({
 
 ```javascript
 // 合并两层结果
-const layer1 = responseProofreadBasic.issues || []      // { original, offset, length, suggestion, type, metric? }
-const layer2 = aiProofreadIssues || []                  // { original, offset, suggestion, reason, metric, score?, fix_action }
+const layer1 = responseProofreadBasic.issues || []      // { original, offset, length, suggestion, type, metric?, context }
+const layer2 = aiProofreadIssues || []                  // { original, offset, suggestion, reason, metric, type, score?, fix_action }
 
 const allIssues = [
   // Layer 1: 基础校对（metric 来自 proofread.ts Rule 定义）
   ...layer1.map(i => ({ ...i, source: 'mcp', fix_action: 'fix' })),
-  // Layer 2: AI 校对（⚠️ 保留 AI 输出的 type 字段，禁止覆盖为 'ai'！
-  //   type 用于报告五维评分 TYPE_METRIC_MAP 分类；若缺 type，proofreadAccumulate 会兜底推断）
-  ...layer2.map(i => ({ ...i, source: 'ai', type: i.type || 'ai', fix_action: i.fix_action })),
+  // Layer 2: AI 校对（type 必填！禁止覆盖为 'ai'，必须输出真实类型如 动宾不当/语义重复/搭配冗余）
+  ...layer2.map(i => ({ ...i, source: 'ai' })),
 ]
 
 // 按 offset + original 去重（优先保留含 score 的条目）
@@ -521,8 +524,12 @@ const seen = new Map()
 for (const issue of allIssues) {
   const key = `${issue.offset}|${issue.original}`
   const existing = seen.get(key)
-  // Layer 2 命中同一问题 → 保留 Layer 2 的（含 score 等元数据）
+  // Layer 2 命中同一问题 → 保留 Layer 2 的（含 score 等元数据），但必须保留 Layer 1 的 type（如 句式杂糅）
   if (!existing || (issue.source === 'ai' && issue.score)) {
+    if (issue.source === 'ai' && existing && existing.type && (!issue.type || issue.type === 'ai')) {
+      // 保留 Layer 1 已推断的 type，避免丢失
+      issue.type = existing.type
+    }
     seen.set(key, issue)
   }
 }
@@ -623,6 +630,7 @@ wps_office_execute({
 > **⚠️ TC-12 口径（修订数一致性）**：WPS 修订模式下，每次 `replaceInParagraph` 替换 = 1 次删除 + 1 次插入，即产生 **2 条修订记录**。因此：
 > `问题数 = 修订记录数 ÷ 2`（整除）
 > 报告中的「发现问题」按 issue 条数计；当 `total_revisions`（`getTrackChangesStatus` 的修订数量）传入报告时，报告会自动换算并标注口径，避免"修订 60 条 vs 问题 30 处"的困惑。
+> 若修订数 ≠ 问题数 × 2，请检查是否有：未开启修订模式的替换、`replace_all` 多次命中、或人工修改。
 
 **2h. 累加本批问题到会话（proofreadAccumulate）：**
 
@@ -660,6 +668,8 @@ await wps_office_execute({
 
 > **⚠️ 注意**：每批传入的 `issues` 只包含当前批次的合并去重结果，不需要重复传入之前批次的 issues。
 > MCP Server 的 `sessionIssues` Map 会自动追加，并自动按 `offset+original` 去重。
+> **每项 issue 必须携带 type**（Layer 1 来自 proofreadBasic 返回，Layer 2 由你输出真实类型）。
+> 若个别 issue 缺 type，MCP 会按原文/建议文本自动兜底推断（T2，#55），但人工标注的 type 更准确。
 
 ### Step 3: 生成五维校对报告
 

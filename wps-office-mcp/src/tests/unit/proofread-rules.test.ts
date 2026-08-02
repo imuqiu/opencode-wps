@@ -479,24 +479,44 @@ describe('proofread rule engine — fluency & conciseness rules', () => {
 });
 
 // ================================================================
-// #55 T1：proofreadBasicHandler 结构化输出（text 块为 JSON）
-// governance.js P15/P16 依赖 JSON.parse(outText).issues 解析真实 issue 列表
+// #55 T1：proofreadBasicHandler 结构化输出（文本展示 + 末尾 JSON 行）
+// governance.js P15/P16 依赖 extractJsonFromOutput(outText).issues 解析真实 issue 列表
 // ================================================================
 describe('proofreadBasicHandler — 结构化输出（#55 T1）', () => {
   const { proofreadBasicHandler } = require('../../tools/word/proofread');
 
-  test('发现问题时：text 块为可 JSON.parse 的 {issues: [...]}，字段齐全', async () => {
+  /** 从返回文本中提取末尾 JSON 行（与 governance.js extractJsonFromOutput 逻辑一致） */
+  function extractJson(text: string): { issues: Array<Record<string, unknown>> } | null {
+    const lines = text.split('\n');
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const candidate = lines.slice(i).join('\n').trim();
+      if (candidate.startsWith('{')) {
+        try {
+          return JSON.parse(candidate);
+        } catch {
+          // 继续往前找
+        }
+      }
+    }
+    return null;
+  }
+
+  test('发现问题时：文本含 {issues: [...]} JSON 行，字段齐全', async () => {
     const result = await proofreadBasicHandler({
       text: '通过加强监督使产品质量提升',
       start_offset: 10,
     });
     expect(result.success).toBe(true);
 
-    const parsed = JSON.parse(result.content[0].text!);
-    expect(Array.isArray(parsed.issues)).toBe(true);
-    expect(parsed.issues.length).toBeGreaterThan(0);
+    // 保留文本展示（Issue #55 要求兼容现有文本展示）
+    expect(result.content[0].text!).toContain('基础校对完成，发现');
 
-    const issue = parsed.issues[0];
+    const parsed = extractJson(result.content[0].text!);
+    expect(parsed).not.toBeNull();
+    expect(Array.isArray(parsed!.issues)).toBe(true);
+    expect(parsed!.issues.length).toBeGreaterThan(0);
+
+    const issue = parsed!.issues[0];
     // 字段齐全：P16 依赖 original，报告依赖 type/metric
     expect(typeof issue.type).toBe('string');
     expect(typeof issue.offset).toBe('number');
@@ -510,12 +530,14 @@ describe('proofreadBasicHandler — 结构化输出（#55 T1）', () => {
     expect(issue.metric).toBe('fluency');
   });
 
-  test('无问题时：text 块为 {issues: []}（P15 依赖 issues.length=0 判定）', async () => {
+  test('无问题时：文本含 {issues: []} JSON 行（P15 依赖 issues.length=0 判定）', async () => {
     const result = await proofreadBasicHandler({ text: '这是一段完全正常的文本内容。' });
     expect(result.success).toBe(true);
-    const parsed = JSON.parse(result.content[0].text!);
-    expect(Array.isArray(parsed.issues)).toBe(true);
-    expect(parsed.issues.length).toBe(0);
+    expect(result.content[0].text!).toContain('未发现明显问题');
+    const parsed = extractJson(result.content[0].text!);
+    expect(parsed).not.toBeNull();
+    expect(Array.isArray(parsed!.issues)).toBe(true);
+    expect(parsed!.issues.length).toBe(0);
   });
 
   test('空文本：返回错误', async () => {
