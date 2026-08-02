@@ -87,11 +87,11 @@ description: "WPS 文档校对专家，专注于文档的错别字检测、语�
 - **方式**：你（作为 AI agent）直接分析本批文本
 - **范围**：语义、逻辑、语病、上下文一致性、专业术语拼写
 - **特点**：消耗 token，但能发现规则无法覆盖的问题
-- **输出**：结构化的 issue 列表（必须包含 offset、original、suggestion）
+- **输出**：结构化的 issue 列表（必须包含 original、suggestion；**强烈建议**携带 `paragraphIndex` + `offset`，两者都缺失时报告位置列显示「位置未知」）
 - **方法**：
   1. 将本批文本逐段传递给 LLM（你是 AI，可以直接在你的上下文中分析）
   2. 要求输出严格格式：`[{ "paragraphIndex": 1, "offset": 123, "original": "...", "suggestion": "...", "reason": "..." }]`
-  3. `offset` 必须是**文档绝对偏移**（根据 getDocumentParagraphs 返回的段落 [start] 计算）：`offset = paragraphStartOffset + offset_in_paragraph`
+  3. `offset` 必须是**文档绝对偏移**（根据 getDocumentParagraphs 返回的段落 [start] 计算）：`offset = paragraphStartOffset + 段内字符位置`
   4. 与 Layer 1 的结果合并去重
 
 > **字段命名统一（重要，坐标系收敛）**：全链路只认**一套坐标系**——驼峰 `paragraphIndex`（段落索引，从 1 起）+
@@ -111,18 +111,25 @@ const allIssues = [
   ...aiProofreadIssues
 ]
 // 按 offset + original 去重（同一位置同一原文只修一次）
-// ⚠️ offset 缺失时退化的 `undefined|原文` 键会把不同位置 issue 误判重复，
-// 只对携带绝对 offset 的条目去重，缺失时保守保留全部
-const seen = new Set()
-const deduped = allIssues.filter(issue => {
-  if (issue.offset === undefined) return true
+// ⚠️ 只对携带绝对 offset 的条目去重，缺失时保守保留全部（退化 `undefined|原文` 键会误判重复）
+// ⚠️ 同键时优先保留 AI 条目（含 reason/更准确），用 AI 覆盖 MCP（与累加器合并口径一致）
+const seen = new Map()
+const deduped = []
+for (const issue of allIssues) {
+  if (issue.offset === undefined) { deduped.push(issue); continue }
   const key = `${issue.offset}|${issue.original}`
-  if (seen.has(key)) return false
-  seen.add(key)
-  return true
-})
+  const idx = seen.get(key)
+  if (idx === undefined) {
+    seen.set(key, deduped.length)
+    deduped.push(issue)
+  } else if (issue.source === 'ai' && deduped[idx].source !== 'ai') {
+    deduped[idx] = issue // AI 覆盖 MCP
+  }
+}
 // 按 offset 排序（offset 缺失时按 paragraphIndex 次级排序，避免 NaN 比较导致排序不稳定）
 deduped.sort((a, b) => (a.offset ?? Infinity) - (b.offset ?? Infinity) || (a.paragraphIndex ?? 0) - (b.paragraphIndex ?? 0))
+// 将合并结果通过 wps_word_proofread_accumulate 累加；若部分 issue 未携带绝对 offset，
+// 返回文本会提示「其中 N 条未携带绝对 offset，未参与去重」（报告侧位置列显示「位置未知」）
 ```
 
 ---

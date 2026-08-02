@@ -191,6 +191,62 @@ describe('proofreadAccumulateHandler', () => {
     expect(session.issues.length).toBe(2); // 不同位置同原文，不误并
   });
 
+  it('同 offset 同 original 不同 source 合并为 1 条，且 AI 优先覆盖 MCP（三轮评审 warning）', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 'test-session-3d',
+      issues: [
+        { offset: 10, length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+        { offset: 10, length: 2, original: '的的', suggestion: '的的', type: '重复字符', context: '...', source: 'ai' as const, reason: '重复字符' },
+      ],
+      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+    });
+
+    const session = sessionIssues.get('test-session-3d')!;
+    expect(session.issues.length).toBe(1); // 同位置同原文合并为 1 条
+    expect(session.issues[0].source).toBe('ai'); // AI 条目优先
+    expect(session.issues[0].reason).toBe('重复字符');
+  });
+
+  it('累加返回文本暴露 offset 缺失计数（三轮评审 warning：可观测性）', async () => {
+    const result = await proofreadAccumulateHandler({
+      session_id: 'test-session-3e',
+      issues: [
+        { length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+        { offset: 10, length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+      ],
+      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+    });
+
+    const text = result.content[0].text!;
+    expect(text).toContain('1 条未携带绝对 offset，未参与去重');
+  });
+
+  it('dedupedCount 只统计本批新增导致的去重（三轮评审 info：不把历史累计重复计入）', async () => {
+    // 第一批：1 条（无重复）
+    await proofreadAccumulateHandler({
+      session_id: 'test-session-3f',
+      issues: [
+        { offset: 10, length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+      ],
+      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+    });
+    // 第二批：与第一批重复 1 条（跨批重复） + 本批内重复 1 条 → 本批去重数应只计 1（本批内重复）
+    const result = await proofreadAccumulateHandler({
+      session_id: 'test-session-3f',
+      issues: [
+        { offset: 10, length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+        { offset: 20, length: 2, original: '的了', suggestion: '得了', type: '的得混淆', context: '...', source: 'mcp' },
+        { offset: 20, length: 2, original: '的了', suggestion: '得了', type: '的得混淆', context: '...', source: 'mcp' },
+      ],
+    });
+
+    const session = sessionIssues.get('test-session-3f')!;
+    // 第1批 1 条 + 第2批（重复的 offset=10 被丢弃、offset=20 去重剩 1） = 2 条
+    expect(session.issues.length).toBe(2);
+    const text = result.content[0].text!;
+    expect(text).toContain('本批去重 1 条'); // 只计本批内重复，不计跨批重复
+  });
+
   it('should update total_revisions when provided', async () => {
     await proofreadAccumulateHandler({
       session_id: 'test-session-4',

@@ -427,10 +427,12 @@ function toFiniteNumber(value: unknown): number | undefined {
 }
 
 export function normalizeIssueLocation(issue: ProofreadIssueEntry): ProofreadIssueEntry {
+  // 仅声明本函数真正消费的字段（评审 info：类型声明即承诺，不声明被有意忽略的
+  // offset_in_paragraph——它语义是段落内偏移，与绝对 offset 不可混用，统一由
+  // SKILL 约束 AI 层不输出该字段）
   const raw = issue as ProofreadIssueEntry & {
     paragraphIndex?: number | string;
     paragraph_index?: number | string;
-    offset_in_paragraph?: number | string;
     offset?: number | string;
   };
   // paragraphIndex 优先驼峰，其次蛇形旧别名（两种都可能带字符串数字）
@@ -618,14 +620,18 @@ export const proofreadAccumulateHandler: ToolHandler = async (
   const normalizedIssues = issues.map((i) =>
     normalizeIssueLocation(normalizeIssueSource(normalizeIssueType(i)))
   );
-  const beforeCount = session.issues.length;
+  // 本批中 offset 缺失的条数（评审 warning：返回文本需暴露这一可观测信号，
+  // 报告侧「位置未知」需能区分是漏传还是计算失败）
+  const missingOffsetCount = normalizedIssues.filter((i) => i.offset === undefined).length;
+  // 先把本批追加进会话，再做全量去重（保留历史累计语义，便于报告侧统计）
   session.issues.push(...normalizedIssues);
 
-  // 去重（按 offset + original；评审 warning：offset 可选后，缺失时退化的
-  // `${undefined}|原文` 键会把不同位置的 issue 误判重复丢弃）——
-  // offset 缺失时无法确认是否为同一位置，保守不去重（保留全部），
-  // 仅对携带绝对 offset 的条目做同位置同原文合并。
-  const seen = new Set<string>();
+  // 去重（评审 warning：offset 可选后，退化键会把不同位置 issue 误判重复丢弃；
+  // 三评审：去重键需与 SKILL 合并口径一致）——
+  // 策略：仅对携带绝对 offset 的条目按 `offset|original` 去重，同键时 **source=ai 优先覆盖 mcp**
+  // （SKILL 合并逻辑：同位置同原文只修一次，且优先保留含 reason/更准确的 AI 条目）；
+  // offset 缺失时无法确认是否为同一位置，保守不去重（保留全部）。
+  const seen = new Map<string, number>(); // key → deduped 数组下标（用于 ai 覆盖 mcp）
   const deduped: ProofreadIssueEntry[] = [];
   for (const entry of session.issues) {
     if (entry.offset === undefined) {
@@ -633,13 +639,34 @@ export const proofreadAccumulateHandler: ToolHandler = async (
       continue;
     }
     const key = `${entry.offset}|${entry.original}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    deduped.push(entry);
+    const existingIdx = seen.get(key);
+    if (existingIdx === undefined) {
+      seen.set(key, deduped.length);
+      deduped.push(entry);
+    } else if (entry.source === 'ai' && deduped[existingIdx].source !== 'ai') {
+      // 同位置同原文：AI 条目优先（SKILL 合并口径：优先保留含 reason/更准确的 AI 条目），
+      // 用 AI 条目覆盖 MCP 条目
+      deduped[existingIdx] = entry;
+    }
+    // 其余情况（同 source 重复 / mcp 撞 ai）保留先到者
   }
   session.issues = deduped;
 
-  const dedupedCount = beforeCount + issues.length - session.issues.length;
+  // 本批实际生效的去重数（评审 info：旧公式 beforeCount + issues.length -
+  // session.issues.length 会把「跨批重复」也计为去重——第 1 批去重 1 条、
+  // 第 2 批又重复 1 条会两次各报「去重 1 条」，误导口径）——
+  // 按评审建议「只统计本批新增导致的去重」：对本批条目单独跑一遍同款去重逻辑
+  // （不含历史），本批内部重复（同 offset 同 original 多次出现）才计入去重数；
+  // 与历史重复的条目不计（那只是重复提交已有问题，不是本批新增的去重）。
+  const batchSeen = new Set<string>();
+  let batchDeduped = 0;
+  for (const entry of normalizedIssues) {
+    if (entry.offset === undefined) continue;
+    const key = `${entry.offset}|${entry.original}`;
+    if (batchSeen.has(key)) batchDeduped++;
+    else batchSeen.add(key);
+  }
+  const dedupedCount = batchDeduped;
 
   return {
     id: uuidv4(),
@@ -650,7 +677,10 @@ export const proofreadAccumulateHandler: ToolHandler = async (
         text:
           `已累加 ${issues.length} 条问题到会话 ${session_id}。\n` +
           `当前会话累计: ${session.issues.length} 条问题` +
-          (dedupedCount > 0 ? `（去重 ${dedupedCount} 条）` : '') +
+          (dedupedCount > 0 ? `（本批去重 ${dedupedCount} 条）` : '') +
+          (missingOffsetCount > 0
+            ? `；其中 ${missingOffsetCount} 条未携带绝对 offset，未参与去重（报告位置列显示「位置未知」）`
+            : '') +
           '。',
       },
     ],
