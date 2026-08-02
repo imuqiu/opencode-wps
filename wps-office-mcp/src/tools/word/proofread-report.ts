@@ -60,7 +60,8 @@ interface DocInfo {
 
 /** 校对问题条目 */
 interface ProofreadIssueEntry {
-  offset: number;
+  /** 文档绝对偏移（可选：AI 层漏传时展示层降级为「位置未知」，不应用 offset_in_paragraph 冒充） */
+  offset?: number;
   length: number;
   original: string;
   suggestion: string;
@@ -393,37 +394,53 @@ export function normalizeIssueType(issue: ProofreadIssueEntry): ProofreadIssueEn
 }
 
 /**
- * 规整 issue 的定位字段（位置展示「偏移 undefined」瑕疵修复）：
+ * 规整 issue 的定位字段（位置展示「偏移 undefined」瑕疵修复，PR #71 评审 + 架构复盘收敛版）：
  *
- * SKILL.md Layer 2 输出规范使用**蛇形命名**（`paragraph_index` + `offset_in_paragraph`），
- * 而 ProofreadIssueEntry / inputSchema 使用**驼峰命名**（`paragraphIndex` + `offset`）。
- * AI 层按 SKILL 输出时若未做转换，报告生成读 `issue.paragraphIndex` 恒为 undefined，
- * 落入 `偏移 ${issue.offset}` 分支；若连 `offset` 也未携带（只有 offset_in_paragraph），
- * 报告会出现字面量「偏移 undefined」的展示瑕疵。
+ * ## 坐标系收敛背景
+ * 架构复盘结论：全链路只保留**一套坐标系**——驼峰 `paragraphIndex`（段落索引，从 1 起）
+ * + `offset`（文档**绝对**偏移）。
+ * - SKILL.md Layer 2 已改为**直接输出驼峰 + 绝对 offset**，不再要求蛇形 `paragraph_index` /
+ *   `offset_in_paragraph`，从源头消灭双坐标系。
+ * - `offset_in_paragraph`（段落内偏移）≠ `offset`（文档绝对偏移），语义不同，**绝不互相兜底**
+ *   （评审 warning：段落内偏移冒充绝对偏移会引入「偏移值语义错误」的隐性风险）。
  *
- * 本函数在累加入口统一归一化：
- * 1. `paragraph_index` → `paragraphIndex`（蛇形 → 驼峰）
- * 2. `offset_in_paragraph` → 若未提供 `offset`，则作为 `offset` 兜底
- * 3. `offset` 缺失/非数值 → undefined（报告展示层另有最后兜底「位置未知」）
+ * ## 本函数职责（纯防御，不再承担语义换算）
+ * 1. `paragraph_index`（蛇形旧别名）→ `paragraphIndex`（驼峰），兼容存量 AI 输出
+ * 2. `offset` 仅接受数值（兼容字符串数字如 `"3"`，评审 warning：AI 层可能输出字符串）
+ * 3. `offset_in_paragraph` **忽略不计**（不兜底为 offset）——该字段语义为段落内偏移，
+ *    与绝对偏移不可混用；缺失 offset 时展示层降级为「位置未知」
+ * 4. 不再用 `as number` 类型断言（评审 info：断言掩盖 undefined 可能性，类型不诚实），
+ *    直接返回 `offset?: number`
  */
+
+/**
+ * 将可能是字符串数字的输入安全转为数值（评审 warning：AI 层可能输出 "3" 而非 3）
+ * 非数值 / undefined / 空字符串 → undefined（不强行转换）
+ */
+function toFiniteNumber(value: unknown): number | undefined {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
+}
+
 export function normalizeIssueLocation(issue: ProofreadIssueEntry): ProofreadIssueEntry {
   const raw = issue as ProofreadIssueEntry & {
-    paragraph_index?: number;
-    offset_in_paragraph?: number;
+    paragraphIndex?: number | string;
+    paragraph_index?: number | string;
+    offset_in_paragraph?: number | string;
+    offset?: number | string;
   };
+  // paragraphIndex 优先驼峰，其次蛇形旧别名（两种都可能带字符串数字）
   const paragraphIndex =
-    typeof raw.paragraphIndex === 'number'
-      ? raw.paragraphIndex
-      : typeof raw.paragraph_index === 'number'
-        ? raw.paragraph_index
-        : undefined;
-  const offset =
-    typeof raw.offset === 'number'
-      ? raw.offset
-      : typeof raw.offset_in_paragraph === 'number'
-        ? raw.offset_in_paragraph
-        : undefined;
-  return { ...issue, paragraphIndex, offset: offset as number };
+    toFiniteNumber(raw.paragraphIndex) ??
+    toFiniteNumber(raw.paragraph_index) ??
+    undefined;
+  // offset 仅接受绝对偏移数值（含字符串数字）；offset_in_paragraph 语义不同，绝不兜底
+  const offset = toFiniteNumber(raw.offset);
+  return { ...issue, paragraphIndex, offset };
 }
 
 /**
@@ -498,8 +515,8 @@ export const proofreadAccumulateDefinition: ToolDefinition = {
         items: {
           type: 'object',
           properties: {
-            offset: { type: 'number', description: '文档绝对偏移位置（与 offset_in_paragraph 二选一，推荐绝对偏移）' },
-            offset_in_paragraph: { type: 'number', description: '段落内偏移（SKILL Layer 2 蛇形命名兼容；若未传 offset 则作为 offset 兜底）' },
+            offset: { type: 'number', description: '文档绝对偏移位置（Layer 2 输出驼峰字段，缺失时报告位置列显示「位置未知」）' },
+            offset_in_paragraph: { type: 'number', description: '（废弃别名，仅记录）段落内偏移，语义与绝对 offset 不同，不再作为 offset 兜底；Layer 2 请直接输出绝对 offset' },
             length: { type: 'number', description: '问题文本长度' },
             original: { type: 'string', description: '原文' },
             suggestion: { type: 'string', description: '建议修改' },
@@ -507,7 +524,7 @@ export const proofreadAccumulateDefinition: ToolDefinition = {
             context: { type: 'string', description: '上下文' },
             source: { type: 'string', description: '检测来源: mcp（Layer 1）或 ai（Layer 2）' },
             paragraphIndex: { type: 'number', description: '段落索引（可选，从 1 开始）' },
-            paragraph_index: { type: 'number', description: '段落索引蛇形别名（SKILL Layer 2 兼容；与 paragraphIndex 等价）' },
+            paragraph_index: { type: 'number', description: '段落索引蛇形旧别名（兼容存量 AI 输出，自动归一化到 paragraphIndex）' },
             reason: { type: 'string', description: 'AI 检测理由（仅 source=ai 时有效）' },
           },
         },
@@ -597,7 +614,8 @@ export const proofreadAccumulateHandler: ToolHandler = async (
 
   // 追加 issues（#55 T2：入口统一规整 type，缺 type / type='ai' 时兜底推断；
   // 验收遗留：缺 source 时同样兜底推断，避免报告"未标注来源"失真 TC-13）
-  // 「偏移 undefined」瑕疵：先归一化位置字段（paragraph_index/offset_in_paragraph → paragraphIndex/offset）
+  // 「偏移 undefined」瑕疵：先归一化位置字段（蛇形 paragraph_index → 驼峰 paragraphIndex；
+  // offset 仅接受绝对偏移数值，offset_in_paragraph 语义不同不兜底，缺失时报告降级「位置未知」）
   const normalizedIssues = issues.map((i) =>
     normalizeIssueLocation(normalizeIssueSource(normalizeIssueType(i)))
   );
@@ -638,6 +656,25 @@ export const proofreadAccumulateHandler: ToolHandler = async (
  */
 function metricForIssue(issue: ProofreadIssueEntry): ProofreadMetric | null {
   return TYPE_METRIC_MAP[issue.type] ?? null;
+}
+
+/**
+ * 报告位置列展示（三阶兜底：段落 → 偏移 → 位置未知）
+ *
+ * 「偏移 undefined」瑕疵修复后抽取的公共函数：
+ * 指标维度列表与未分类列表两处位置列逻辑相同，统一收口避免重复（评审 info）。
+ * - 段落索引优先（段落  N）
+ * - 否则有数值 offset → 偏移 N（含 offset=0 合法值，用 typeof 判断而非 falsy）
+ * - 否则「位置未知」——优雅降级，不再输出字面量「偏移 undefined」
+ */
+function formatIssueLocation(issue: ProofreadIssueEntry): string {
+  if (typeof issue.paragraphIndex === 'number') {
+    return `段落 ${issue.paragraphIndex}`;
+  }
+  if (typeof issue.offset === 'number') {
+    return `偏移 ${issue.offset}`;
+  }
+  return '位置未知';
 }
 
 // ==================== 报告生成工具 ====================
@@ -927,11 +964,7 @@ export const generateProofreadReportHandler: ToolHandler = async (
     report += `|---|------|------|---------|------|------|\n`;
 
     metricIssuesList.forEach((issue, idx) => {
-      const location = issue.paragraphIndex
-        ? `段落 ${issue.paragraphIndex}`
-        : typeof issue.offset === 'number'
-          ? `偏移 ${issue.offset}`
-          : '位置未知';
+      const location = formatIssueLocation(issue);
       const escapedOriginal = issue.original.replace(/\|/g, '\\|').replace(/\n/g, ' ');
       const escapedSuggestion = issue.suggestion.replace(/\|/g, '\\|').replace(/\n/g, ' ');
       report += `| ${idx + 1} | ${location} | ${escapedOriginal} | ${escapedSuggestion} | ${issue.type} | ${issue.source === 'ai' ? 'AI' : 'MCP'} |\n`;
@@ -950,11 +983,7 @@ export const generateProofreadReportHandler: ToolHandler = async (
     report += `| # | 位置 | 原文 | 建议修改 | 类型 | 来源 |\n`;
     report += `|---|------|------|---------|------|------|\n`;
     unknownTypeIssues.forEach((issue, idx) => {
-      const location = issue.paragraphIndex
-        ? `段落 ${issue.paragraphIndex}`
-        : typeof issue.offset === 'number'
-          ? `偏移 ${issue.offset}`
-          : '位置未知';
+      const location = formatIssueLocation(issue);
       const escapedOriginal = issue.original.replace(/\|/g, '\\|').replace(/\n/g, ' ');
       const escapedSuggestion = issue.suggestion.replace(/\|/g, '\\|').replace(/\n/g, ' ');
       report += `| ${idx + 1} | ${location} | ${escapedOriginal} | ${escapedSuggestion} | ${issue.type || '（空）'} | ${issue.source === 'ai' ? 'AI' : 'MCP'} |\n`;

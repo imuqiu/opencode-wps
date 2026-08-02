@@ -115,7 +115,7 @@ AI 识别：使用 `wps-proofread` skill（独立校对技能）
 1. 输出分批校对计划表（总段数 / 每批 200 段 / 总批次数）
 2. 调用 `enableTrackChanges` 开启修订模式
 3. 分批读取段落（每批 ~200 段），调用 `proofreadBasic` 检测问题
-4. 按 offset 降序调用 `replaceRange` 精确修复
+4. 按段落索引+文本匹配调用 `replaceInParagraph` 精确修复（`replaceRange` 已彻底移除：偏移在含不可见字符文档中不可靠）
 5. 所有批次完成后生成 `.校对报告.md` 保存到文档目录
 
 ### PPT 场景

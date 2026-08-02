@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
-- **修复报告位置展示「偏移 undefined」瑕疵**（PR #43 评审遗留）— `proofreadAccumulate` 累加入口新增 `normalizeIssueLocation` 位置归一化（SKILL Layer 2 蛇形命名 `paragraph_index`/`offset_in_paragraph` → 驼峰 `paragraphIndex`/`offset`，`offset_in_paragraph` 在缺 `offset` 时兜底为文档偏移）；报告位置列三阶兜底（段落 → 偏移 → 位置未知），彻底杜绝字面量「偏移 undefined」；累加器 inputSchema 补充蛇形字段别名，SKILL.md 同步字段兼容说明
+- **修复报告位置展示「偏移 undefined」瑕疵**（PR #43 评审遗留 + PR #71 评审收敛）— `normalizeIssueLocation` 收敛为**单坐标系**：Layer 2 统一输出驼峰 `paragraphIndex` + 绝对 `offset`（SKILL.md 同步删除蛇形 `paragraph_index`/`offset_in_paragraph` 输出要求）；`offset_in_paragraph`（段落内偏移）**不再兜底为绝对 offset**（评审 warning：语义错位）；offset 兼容字符串数字（评审 warning）；去掉 `as number` 类型断言（评审 info）；报告位置列抽公共函数 `formatIssueLocation` 三阶兜底（段落 → 偏移 → 位置未知，评审 info）；彻底移除 `replaceRange` 死代码（评审/架构建议：偏移不可靠 + 治理插件硬禁，网关/COM/MCP/超时/治理规则全链路清理）
 - **CI 增加 Jest 测试门禁**（Issue #50 P1-1）— `.github/workflows/ci.yml` 的 build job 新增 `npm test` 步骤，`wps-office-mcp` 的 9 个 Jest 套件 / 208 个测试正式进入 CI，不再形同虚设
 - **统一版本号为单一版本源 1.1.0**（Issue #50 P1-2）— 删除 `opencode-wps/manifest.xml` 冗余的小写 `<version>` 字段，`opencode-wps/package.json`、`wps-office-mcp/package.json` 及 lock 统一为 1.1.0；新增 `scripts/validate-versions.js` 校验脚本并接入 CI
 - **修复 install-addons.js 自启矛盾**（Issue #50 P2-3）— 删除第 77 行过时声明"不再自动注册开机自启任务"，改为如实提示"第 8 步将注册 Launcher 开机自启"，与第 8 步实际行为一致

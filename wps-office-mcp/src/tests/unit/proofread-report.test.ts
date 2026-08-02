@@ -889,13 +889,12 @@ describe('normalizeIssueSource（验收遗留 TC-13）', () => {
   });
 });
 
-// ==================== 「偏移 undefined」展示瑕疵（PR #43 评审遗留） ====================
+// ==================== 「偏移 undefined」展示瑕疵（PR #43 评审遗留 + 架构复盘收敛） ====================
 
 describe('normalizeIssueLocation — 位置字段归一化（偏移 undefined 展示瑕疵）', () => {
-  it('paragraph_index（蛇形）→ paragraphIndex（驼峰）', () => {
+  it('paragraph_index（蛇形旧别名）→ paragraphIndex（驼峰）', () => {
     const issue: any = {
       paragraph_index: 3,
-      offset_in_paragraph: 12,
       original: '的的',
       suggestion: '的',
       type: '重复字符',
@@ -903,8 +902,6 @@ describe('normalizeIssueLocation — 位置字段归一化（偏移 undefined �
     };
     const normalized = normalizeIssueLocation(issue);
     expect(normalized.paragraphIndex).toBe(3);
-    // 未提供 offset 时，offset_in_paragraph 兜底为 offset
-    expect(normalized.offset).toBe(12);
   });
 
   it('已有驼峰 paragraphIndex 时优先保留，不被蛇形覆盖', () => {
@@ -912,7 +909,6 @@ describe('normalizeIssueLocation — 位置字段归一化（偏移 undefined �
       paragraphIndex: 5,
       paragraph_index: 9, // 冲突时优先驼峰
       offset: 100,
-      offset_in_paragraph: 3,
       original: '的的',
       suggestion: '的',
       type: '重复字符',
@@ -923,7 +919,7 @@ describe('normalizeIssueLocation — 位置字段归一化（偏移 undefined �
     expect(normalized.offset).toBe(100);
   });
 
-  it('仅提供 offset_in_paragraph（无 offset）时，offset 兜底为段落内偏移', () => {
+  it('仅提供 offset_in_paragraph（无 offset）时，offset 不再兜底（段落内偏移 ≠ 绝对偏移）', () => {
     const issue: any = {
       original: '加强重视安全问题',
       suggestion: '重视安全问题',
@@ -932,10 +928,11 @@ describe('normalizeIssueLocation — 位置字段归一化（偏移 undefined �
       offset_in_paragraph: 7,
     };
     const normalized = normalizeIssueLocation(issue);
-    expect(normalized.offset).toBe(7);
+    // 评审 warning：offset_in_paragraph 语义与绝对 offset 不同，绝不互相兜底
+    expect(normalized.offset).toBeUndefined();
   });
 
-  it('offset 与 offset_in_paragraph 均缺失时，offset 为 undefined（展示层兜底「位置未知」）', () => {
+  it('offset 与 paragraph_index 均缺失时，offset 为 undefined（展示层兜底「位置未知」）', () => {
     const issue: any = {
       original: '的的',
       suggestion: '的',
@@ -959,24 +956,52 @@ describe('normalizeIssueLocation — 位置字段归一化（偏移 undefined �
     const normalized = normalizeIssueLocation(issue);
     expect(normalized.offset).toBe(0);
   });
+
+  it('字符串数字兼容：offset="3" / paragraph_index="4" 归一化为数值（评审 warning：AI 层可能输出字符串）', () => {
+    const issue: any = {
+      paragraph_index: '4',
+      offset: '3',
+      original: '的的',
+      suggestion: '的',
+      type: '重复字符',
+      source: 'ai',
+    };
+    const normalized = normalizeIssueLocation(issue);
+    expect(normalized.paragraphIndex).toBe(4);
+    expect(normalized.offset).toBe(3);
+  });
+
+  it('非法字符串（非数字）不采纳，offset/paragraphIndex 保持 undefined', () => {
+    const issue: any = {
+      paragraph_index: 'abc',
+      offset: 'xyz',
+      original: '的的',
+      suggestion: '的',
+      type: '重复字符',
+      source: 'ai',
+    };
+    const normalized = normalizeIssueLocation(issue);
+    expect(normalized.paragraphIndex).toBeUndefined();
+    expect(normalized.offset).toBeUndefined();
+  });
 });
 
 describe('proofreadAccumulate — 位置字段归一化链路（偏移 undefined 展示瑕疵）', () => {
-  it('累加 SKILL 蛇形字段（paragraph_index/offset_in_paragraph）后，报告不再显示「偏移 undefined」', async () => {
+  it('累加驼峰字段（paragraphIndex/offset）后，报告位置列正确展示「段落 N」', async () => {
     await proofreadAccumulateHandler({
       session_id: 'loc-session-1',
       issues: [
         {
-          paragraph_index: 2,
-          offset_in_paragraph: 6,
+          paragraphIndex: 2,
+          offset: 106,
           original: '加强重视安全问题',
           suggestion: '重视安全问题',
           type: '动宾不当',
           source: 'ai' as const,
         },
         {
-          paragraph_index: 1,
-          offset_in_paragraph: 0,
+          paragraphIndex: 1,
+          offset: 0,
           original: '的的',
           suggestion: '的',
           type: '重复字符',
@@ -987,9 +1012,8 @@ describe('proofreadAccumulate — 位置字段归一化链路（偏移 undefined
     });
 
     const session = sessionIssues.get('loc-session-1')!;
-    // 位置字段已归一化：蛇形 → 驼峰
     expect(session.issues[0].paragraphIndex).toBe(2);
-    expect(session.issues[0].offset).toBe(6);
+    expect(session.issues[0].offset).toBe(106);
     expect(session.issues[1].paragraphIndex).toBe(1);
     expect(session.issues[1].offset).toBe(0);
 
@@ -998,6 +1022,32 @@ describe('proofreadAccumulate — 位置字段归一化链路（偏移 undefined
     // 展示层：段落索引优先 → 不再出现「偏移 undefined」字面量
     expect(text).toContain('段落 2');
     expect(text).toContain('段落 1');
+    expect(text).not.toContain('偏移 undefined');
+  });
+
+  it('仅传蛇形 paragraph_index（无 offset）时段落索引仍归一化，offset 缺失 → 报告显示「偏移 undefined」不再出现', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 'loc-session-3',
+      issues: [
+        {
+          paragraph_index: 2,
+          original: '加强重视安全问题',
+          suggestion: '重视安全问题',
+          type: '动宾不当',
+          source: 'ai' as const,
+        },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 3, totalWords: 30 },
+    });
+
+    const session = sessionIssues.get('loc-session-3')!;
+    expect(session.issues[0].paragraphIndex).toBe(2);
+    expect(session.issues[0].offset).toBeUndefined();
+
+    const result = await generateProofreadReportHandler({ session_id: 'loc-session-3' });
+    const text = result.content[0].text!;
+    // 段落索引优先展示，不落入 offset 分支 → 无「偏移 undefined」
+    expect(text).toContain('段落 2');
     expect(text).not.toContain('偏移 undefined');
   });
 
@@ -1016,6 +1066,30 @@ describe('proofreadAccumulate — 位置字段归一化链路（偏移 undefined
     });
 
     const result = await generateProofreadReportHandler({ session_id: 'loc-session-2' });
+    const text = result.content[0].text!;
+    expect(text).toContain('位置未知');
+    expect(text).not.toContain('偏移 undefined');
+  });
+
+  it('只传 offset_in_paragraph（无 offset）时不再兜底为 offset，报告位置列显示「位置未知」', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 'loc-session-4',
+      issues: [
+        {
+          offset_in_paragraph: 7,
+          original: '加强重视安全问题',
+          suggestion: '重视安全问题',
+          type: '动宾不当',
+          source: 'ai' as const,
+        },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 3, totalWords: 30 },
+    });
+
+    const session = sessionIssues.get('loc-session-4')!;
+    expect(session.issues[0].offset).toBeUndefined();
+
+    const result = await generateProofreadReportHandler({ session_id: 'loc-session-4' });
     const text = result.content[0].text!;
     expect(text).toContain('位置未知');
     expect(text).not.toContain('偏移 undefined');

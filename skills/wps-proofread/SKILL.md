@@ -7,7 +7,7 @@ description: "WPS 文档校对专家，专注于文档的错别字检测、语�
 
 你唯一的职责：**校对文档**。不做任何排版、字体、表格、模板填写等操作。
 
-## 校对专用工具（8 个，可直接用，无需 search）
+## 校对专用工具（7 个，可直接用，无需 search）
 
 | # | 工具 | 调用方式 | 功能 |
 |---|------|---------|------|
@@ -16,11 +16,10 @@ description: "WPS 文档校对专家，专注于文档的错别字检测、语�
 | 3 | `proofreadBasic` | `wps_office_execute({ tool_name: "proofreadBasic", arguments: { text, startOffset } })` | 零 token 基础校对。text 过长或含 `\f` 时可用 `file_path` 代替 |
 | 4 | `confirmBatchAiProofread` | `wps_office_execute({ tool_name: "confirmBatchAiProofread", arguments: {} })` | **强制调用**：确认本批 AI 智能校对已完成 |
 | 5 | `replaceInParagraph` | `wps_office_execute({ tool_name: "replaceInParagraph", arguments: { paragraphIndex, findText, replaceText, replaceAll? } })` | **唯一允许的修复工具**，按段落+文本匹配替换 |
-| 6 | ~~`replaceRange`~~ | **禁止使用** | ~~按字符范围替换（偏移量在含不可见字符的文档中不可靠，已禁用）~~ |
-| 7 | `proofreadAccumulate` | `wps_office_execute({ tool_name: "proofreadAccumulate", arguments: {...} })` | 累加本批校对问题到会话 Map（走网关） |
-| 8 | `generateProofreadReport` | `wps_office_execute({ tool_name: "generateProofreadReport", arguments: {...} })` | 生成五维评分校对报告（走网关）。传 `output_file` 时写盘；写盘失败返回 `success=false`，必须重试 |
+| 6 | `proofreadAccumulate` | `wps_office_execute({ tool_name: "proofreadAccumulate", arguments: {...} })` | 累加本批校对问题到会话 Map（走网关） |
+| 7 | `generateProofreadReport` | `wps_office_execute({ tool_name: "generateProofreadReport", arguments: {...} })` | 生成五维评分校对报告（走网关）。传 `output_file` 时写盘；写盘失败返回 `success=false`，必须重试 |
 
-> **⚠️ 校对流程中强制走网关**：以下 8 个工具在 `batchStarted=true` 后**禁止直接调用 MCP 原接口**，必须通过 `wps_office_execute({ tool_name: "...", ... })` 调用：
+> **⚠️ 校对流程中强制走网关**：以下 7 个工具在 `batchStarted=true` 后**禁止直接调用 MCP 原接口**，必须通过 `wps_office_execute({ tool_name: "...", ... })` 调用：
 > - `getActiveDocument` / `insertText` / `getActiveWorkbook` / `getCellValue` / `setCellValue` / `getActivePresentation`
 > - `proofreadAccumulate` / `generateProofreadReport`（这两个只存在于网关索引，MCP 侧未直连注册，唯一入口就是 `wps_office_execute`）
 >
@@ -91,15 +90,14 @@ description: "WPS 文档校对专家，专注于文档的错别字检测、语�
 - **输出**：结构化的 issue 列表（必须包含 offset、original、suggestion）
 - **方法**：
   1. 将本批文本逐段传递给 LLM（你是 AI，可以直接在你的上下文中分析）
-  2. 要求输出严格格式：`[{ "paragraph_index": 1, "offset_in_paragraph": 23, "original": "...", "suggestion": "...", "reason": "..." }]`
-  3. 将段落内偏移转换为文档绝对偏移（根据 getDocumentParagraphs 返回的段落 [start] 计算）：`offset = paragraphStartOffset + offset_in_paragraph`
+  2. 要求输出严格格式：`[{ "paragraphIndex": 1, "offset": 123, "original": "...", "suggestion": "...", "reason": "..." }]`
+  3. `offset` 必须是**文档绝对偏移**（根据 getDocumentParagraphs 返回的段落 [start] 计算）：`offset = paragraphStartOffset + offset_in_paragraph`
   4. 与 Layer 1 的结果合并去重
 
-> **字段命名兼容说明（重要）**：Layer 2 输出用**蛇形命名**（`paragraph_index` / `offset_in_paragraph`），
-> 而 `proofreadAccumulate` 内部用**驼峰命名**（`paragraphIndex` / `offset`）。
-> 累加器已做归一化兜底（`paragraph_index` → `paragraphIndex`、`offset_in_paragraph` → `offset`），
-> 两种写法均可；但**推荐直接输出驼峰**（`paragraphIndex` + `offset`，offset 为文档绝对偏移），
-> 避免报告位置展示退化。
+> **字段命名统一（重要，坐标系收敛）**：全链路只认**一套坐标系**——驼峰 `paragraphIndex`（段落索引，从 1 起）+
+> `offset`（文档**绝对**偏移）。**请直接输出驼峰字段**，不要使用蛇形 `paragraph_index` / `offset_in_paragraph`。
+> 累加器对旧蛇形 `paragraph_index` 仍做兼容归一化（→ `paragraphIndex`），但 `offset_in_paragraph`（段落内偏移）
+> **语义与绝对 offset 不同，不再兜底为 offset**——只传 `offset_in_paragraph` 时报告位置列会显示「位置未知」。
 
 **注意**：两层**并行运行**——先获取本批文本，然后调用 `proofreadBasic` 的同时你分析文本做 AI 校对，最后合并结果。
 
@@ -128,15 +126,15 @@ deduped.sort((a, b) => a.offset - b.offset)
 
 # ⚠️ 铁律（违反 = 本次校对作废）
 
-## 铁律 1：findReplace 和 replaceRange 严禁用于校对修复
+## 铁律 1：findReplace 严禁用于校对修复，replaceRange 已彻底移除
 
 **`findReplace` 不支持修订模式跟踪。** 一旦使用，所有替换都不会产生修订标记，用户无法撤销单处修改。
 
-**`replaceRange` 完全禁用。** 偏移量在含不可见字符（`\f` 分页符、`\a` 制表符、`\u0007` BEL 等）的文档中不可靠。测试表明偏移量偏差可达 20+ 字符，导致替换到错误位置、段落复制、文档段数膨胀等严重损坏。
+**`replaceRange` 已彻底移除**（不再存在于网关/COM/MCP 注册）。偏移量在含不可见字符（`\f` 分页符、`\a` 制表符、`\u0007` BEL 等）的文档中不可靠，测试表明偏移量偏差可达 20+ 字符，导致替换到错误位置、段落复制、文档段数膨胀等严重损坏。
 
 **唯一允许的修复工具：✅ `replaceInParagraph`** — 通过段落索引 + 文本匹配替换，不受域代码/分页符等偏移量干扰。
 
-违规后果：使用 `replaceRange` → 文档损坏 → 段数膨胀 → 校对结果不可追溯。
+历史违规后果（曾使用 `replaceRange` 时）：文档损坏 → 段数膨胀 → 校对结果不可追溯。
 
 ## 铁律 2：禁止跳过段落
 
@@ -441,8 +439,8 @@ wps_office_execute({
 输出严格 JSON 数组（如无问题则输出空数组 []）：
 [
   {
-    "paragraph_index": 1,
-    "offset_in_paragraph": 0,
+    "paragraphIndex": 1,
+    "offset": 0,
     "original": "有问题文本",
     "suggestion": "修正文本",
     "type": "句式杂糅",
@@ -553,7 +551,7 @@ const toReport = deduped.filter(i => i.fix_action === 'report_only')
 
 **注意**：如果 AI 校对输出的 `original` 与正则发现同一问题，`key` 相同会被去重，优先保留 AI 输出的条目（含 `score` 维度信息）。
 
-**2e. 修复（禁用 findReplace 和 replaceRange，仅用 replaceInParagraph）：**
+**2e. 修复（findReplace 禁用，replaceRange 已移除，仅用 replaceInParagraph）：**
 
 **⚠️ 两层返回的都是 offset 偏移量，而 replaceInParagraph 需要段落索引 + 文本匹配。**
 需要将 issue.offset 映射为段落索引 + 查找文本。
@@ -680,9 +678,9 @@ await wps_office_execute({
 > 若个别 issue 缺 type，MCP 会按原文/建议文本自动兜底推断（T2，#55）；
 > 缺 source 时 MCP 也会兜底推断（TC-13：按 Layer 1 规则命中判定 mcp，F11–F15 等 AI 专属模式判定 ai），
 > 但人工标注的 type/source 更准确，建议每项都显式携带。
-> **每项 issue 建议携带位置**：`paragraphIndex`（段落索引，从 1 起）与 `offset`（文档绝对偏移）；
-> 若只传蛇形别名（`paragraph_index` / `offset_in_paragraph`），MCP 会自动归一化（见 Layer 2 字段兼容说明）；
+> **每项 issue 建议携带位置**：`paragraphIndex`（段落索引，从 1 起）与 `offset`（文档绝对偏移），
 > 两者都缺失时报告位置列显示「位置未知」——请尽量携带，便于用户定位问题。
+> 旧蛇形 `paragraph_index` 仍兼容（自动归一化）；`offset_in_paragraph`（段落内偏移）与绝对 offset 语义不同，不再兜底。
 
 ### Step 3: 生成五维校对报告
 
@@ -810,7 +808,7 @@ COM 超时已从 5s 增加到 30s（MCP v2.2+），200 段应对大多数文档�
 | P1 | 批次大小 ≤200 | `getDocumentParagraphs` | 请求 >200 段 |
 | P2 | 批次连续性 + 首次从第1段开始 | `getDocumentParagraphs` | 首次调用 start≠1，或跳跃（不从上一批+1开始） |
 | P3 | 必须先出分批计划 | `proofreadBasic` | 未先调 `getActiveDocument` + `getDocumentParagraphs` |
-| P4a | **replaceRange 完全禁用** | `replaceRange` | **任何分批校对流程中调用 replaceRange** |
+| P4a | ~~replaceRange 完全禁用~~ | ~~`replaceRange`~~ | **已彻底移除**（不再存在于网关/COM/MCP 注册，无需拦截） |
 | P4b | findReplace 禁用 | `findReplace` | 分批校对流程中调 findReplace |
 | P5 | startOffset 与段落 [start] 一致 | `proofreadBasic` | startOffset ≠ 本批第一段 [start] |
 | P6 | 文本不能为空或过短 | `proofreadBasic` | text.length < 20 字符 |
@@ -819,7 +817,7 @@ COM 超时已从 5s 增加到 30s（MCP v2.2+），200 段应对大多数文档�
 | P8 | 先校对再修复 | `replaceInParagraph` | 同一批未先调 `proofreadBasic` |
 | P9 | replaceInParagraph 须在校对批次内 | `replaceInParagraph` | paragraphIndex 超出本批段落范围 |
 | **P10** | **必须先确认 AI 校对** | `replaceInParagraph` | **未先调 `confirmBatchAiProofread`** |
-| **P11** | **必须先开修订模式** | `replaceRange` / `replaceInParagraph` / `findReplace` | 未先调 `enableTrackChanges(true)` |
+| **P11** | **必须先开修订模式** | `replaceInParagraph` / `findReplace` | 未先调 `enableTrackChanges(true)` |
 | **P12** | **当前批校对周期完成后才能获取下一批** | `getDocumentParagraphs` | (1) 本批未调 `proofreadBasic`; (2) 已调但未调 `confirmBatchAiProofread`; (3) 有校对问题但未调 `replaceInParagraph` |
 | **P13** | **getDocumentTextByRange 限本批范围** | `getDocumentTextByRange` | `length` > 本批预期范围 × 2 |
 | **P14** | **confirmBatchAiProofread 前必须 proofreadBasic** | `confirmBatchAiProofread` | 本批未先调 `proofreadBasic` |
@@ -855,7 +853,7 @@ COM 超时已从 5s 增加到 30s（MCP v2.2+），200 段应对大多数文档�
   - 因为 WPS COM `Range.Text` 在含 `\f` `\a` 等控制字符时返回长度可能短于预期
   - proofreadBasic 内部会自动剥离控制字符、校正偏移量
 - 必须使用 `getDocumentTextByRange` 获取精确文本（或用 `file_path` 备选方案）
-- **`replaceRange` 彻底禁用**（偏移量在含不可见字符文档中不可靠，见测试日志）
+- **`replaceRange` 已彻底移除**（偏移量在含不可见字符文档中不可靠，见测试日志）
 
 ### 通用执行规则说明
 
