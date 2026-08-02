@@ -111,15 +111,18 @@ const allIssues = [
   ...aiProofreadIssues
 ]
 // 按 offset + original 去重（同一位置同一原文只修一次）
+// ⚠️ offset 缺失时退化的 `undefined|原文` 键会把不同位置 issue 误判重复，
+// 只对携带绝对 offset 的条目去重，缺失时保守保留全部
 const seen = new Set()
 const deduped = allIssues.filter(issue => {
+  if (issue.offset === undefined) return true
   const key = `${issue.offset}|${issue.original}`
   if (seen.has(key)) return false
   seen.add(key)
   return true
 })
-// 按 offset 排序
-deduped.sort((a, b) => a.offset - b.offset)
+// 按 offset 排序（offset 缺失时按 paragraphIndex 次级排序，避免 NaN 比较导致排序不稳定）
+deduped.sort((a, b) => (a.offset ?? Infinity) - (b.offset ?? Infinity) || (a.paragraphIndex ?? 0) - (b.paragraphIndex ?? 0))
 ```
 
 ---
@@ -527,8 +530,15 @@ const allIssues = [
 ]
 
 // 按 offset + original 去重（优先保留含 score 的条目）
+// ⚠️ offset 缺失时退化的 `undefined|原文` 键会把不同位置 issue 误判重复，
+// 只对携带绝对 offset 的条目去重，缺失时保守保留全部
 const seen = new Map()
+const noOffset = []  // offset 缺失的条目：不做键去重，全部保留
 for (const issue of allIssues) {
+  if (issue.offset === undefined) {
+    noOffset.push(issue)
+    continue
+  }
   const key = `${issue.offset}|${issue.original}`
   const existing = seen.get(key)
   // Layer 2 命中同一问题 → 保留 Layer 2 的（含 score 等元数据），但必须保留 Layer 1 的 type（如 句式杂糅）
@@ -540,7 +550,7 @@ for (const issue of allIssues) {
     seen.set(key, issue)
   }
 }
-const deduped = [...seen.values()].sort((a, b) => a.offset - b.offset)
+const deduped = [...noOffset, ...seen.values()].sort((a, b) => (a.offset ?? Infinity) - (b.offset ?? Infinity) || (a.paragraphIndex ?? 0) - (b.paragraphIndex ?? 0))
 
 // 按 fix_action 分流：需修复 vs 仅报告
 const toFix = deduped.filter(i => i.fix_action !== 'report_only')

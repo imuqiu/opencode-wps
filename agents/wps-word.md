@@ -8,7 +8,6 @@ tools:
   wps_get_active_document: true
   wps_word_enable_track_changes: true
   wps_word_get_track_changes_status: true
-  wps_word_replace_range: true
   wps_word_proofread_basic: true
 ---
 

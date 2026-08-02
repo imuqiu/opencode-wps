@@ -156,6 +156,41 @@ describe('proofreadAccumulateHandler', () => {
     expect(session.issues.length).toBe(1); // deduplicated
   });
 
+  it('offset 缺失时不去重（评审 warning：退化 undefined|原文 键会误判重复丢弃）', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 'test-session-3b',
+      issues: [
+        { length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+      ],
+      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+    });
+
+    // 同原文但无 offset：无法确认同一位置，保守保留（不再误并）
+    await proofreadAccumulateHandler({
+      session_id: 'test-session-3b',
+      issues: [
+        { length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+      ],
+    });
+
+    const session = sessionIssues.get('test-session-3b')!;
+    expect(session.issues.length).toBe(2); // 不去重，两条都保留
+  });
+
+  it('offset 相同才去重：不同 offset 同原文不误并', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 'test-session-3c',
+      issues: [
+        { offset: 10, length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+        { offset: 25, length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+      ],
+      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+    });
+
+    const session = sessionIssues.get('test-session-3c')!;
+    expect(session.issues.length).toBe(2); // 不同位置同原文，不误并
+  });
+
   it('should update total_revisions when provided', async () => {
     await proofreadAccumulateHandler({
       session_id: 'test-session-4',

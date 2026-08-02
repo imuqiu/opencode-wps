@@ -516,7 +516,6 @@ export const proofreadAccumulateDefinition: ToolDefinition = {
           type: 'object',
           properties: {
             offset: { type: 'number', description: '文档绝对偏移位置（Layer 2 输出驼峰字段，缺失时报告位置列显示「位置未知」）' },
-            offset_in_paragraph: { type: 'number', description: '（废弃别名，仅记录）段落内偏移，语义与绝对 offset 不同，不再作为 offset 兜底；Layer 2 请直接输出绝对 offset' },
             length: { type: 'number', description: '问题文本长度' },
             original: { type: 'string', description: '原文' },
             suggestion: { type: 'string', description: '建议修改' },
@@ -622,14 +621,23 @@ export const proofreadAccumulateHandler: ToolHandler = async (
   const beforeCount = session.issues.length;
   session.issues.push(...normalizedIssues);
 
-  // 去重（按 offset + original）
+  // 去重（按 offset + original；评审 warning：offset 可选后，缺失时退化的
+  // `${undefined}|原文` 键会把不同位置的 issue 误判重复丢弃）——
+  // offset 缺失时无法确认是否为同一位置，保守不去重（保留全部），
+  // 仅对携带绝对 offset 的条目做同位置同原文合并。
   const seen = new Set<string>();
-  session.issues = session.issues.filter((entry) => {
+  const deduped: ProofreadIssueEntry[] = [];
+  for (const entry of session.issues) {
+    if (entry.offset === undefined) {
+      deduped.push(entry);
+      continue;
+    }
     const key = `${entry.offset}|${entry.original}`;
-    if (seen.has(key)) return false;
+    if (seen.has(key)) continue;
     seen.add(key);
-    return true;
-  });
+    deduped.push(entry);
+  }
+  session.issues = deduped;
 
   const dedupedCount = beforeCount + issues.length - session.issues.length;
 

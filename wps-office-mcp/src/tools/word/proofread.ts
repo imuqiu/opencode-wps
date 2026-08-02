@@ -8,7 +8,6 @@
  * 包含：
  * - wps_word_enable_track_changes: 开启/关闭修订模式
  * - wps_word_get_track_changes_status: 获取修订模式状态
- * - wps_word_replace_range: 按字符范围替换文本（修订模式下跟踪）
  * - wps_word_replace_in_paragraph: 按段落+文本匹配替换（修订模式下跟踪，推荐用于校对）
  * - wps_word_proofread_basic: 基础文本校对（正则检测错别字/语病）
  *   - 返回结构化 issues 字段（{ issues: [{type, offset, length, original, suggestion, context, metric?}] }），
