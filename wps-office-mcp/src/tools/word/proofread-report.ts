@@ -23,6 +23,12 @@
  * - completeness（完整度）: 无占位文本、内容完整
  *
  * 评分量表：Layer 1 原始 [1, 5] → normalizeToTwoPointScale → [0, 2]
+ *
+ * T2（#55）：
+ * - proofreadAccumulate 对缺 type 的 issue 做兜底推断（inferIssueType），
+ *   报告五维评分不再因 type=undefined/`'ai'` 全部落入"未分类"而失真
+ * - 报告对"未分类"降级处理并提示（不计入五维评分）
+ * - TC-12 口径：报告明确"问题数 = 修订记录数 ÷ 2"（每次替换=删除+插入 2 条修订）
  */
 
 import * as fs from 'fs';
@@ -132,6 +138,23 @@ const TYPE_METRIC_MAP: Record<string, ProofreadMetric> = {
   '口语化': 'fluency',
   '量词搭配': 'fluency',
   '少字': 'fluency',          // ✅ 缺字 → 成分残缺 → 通顺度（架构评审修正）
+  // ── 流畅度（AI Layer 2 常用类型，T2/T3：#55 F11–F15）──
+  '动宾不当': 'fluency',      // F12 加强重视安全问题
+  '语义重复': 'fluency',      // F13 显著的进步提高
+  '修饰不当': 'fluency',      // F14 很多丰富的内容
+  '搭配冗余': 'fluency',      // F15 具有着深远的意义
+  '冗余+搭配': 'fluency',     // F11 存在着很多不足之处
+  '冗余搭配': 'fluency',
+  '语序不当': 'fluency',
+  '成分残缺': 'fluency',
+  '句式混乱': 'fluency',
+  '关联词失配': 'fluency',
+  '指代不明': 'fluency',
+  '逻辑矛盾': 'fluency',
+  '语病': 'fluency',
+  '搭配不当': 'fluency',
+  '成分赘余': 'conciseness',  // 语义重复/赘余 → 简洁度
+  '重复表达': 'conciseness',
 
   // ── 简洁度 (conciseness) ──
   '冗余词': 'conciseness',     // 新增：PR #37 Layer 1 规则（简洁）
@@ -155,6 +178,54 @@ const TYPE_METRIC_MAP: Record<string, ProofreadMetric> = {
   // ── 完整度 (completeness) ──
   '占位文本': 'completeness',
 };
+
+// ==================== type 兜底推断（T2，#55） ====================
+
+/**
+ * 对缺 type / type 异常的 issue 做兜底推断，保证五维评分有真实统计来源。
+ *
+ * 背景（#55 P0-2）：AI 层累加时若未携带 type（或旧代码把 AI issue 的
+ * type 覆盖为 'ai'），TYPE_METRIC_MAP 查不到 → 全部落入"未分类"兜底，
+ * 导致报告五维全 10.0/10、问题类型全 undefined、统计"正则 0 处 + AI 0 处"。
+ *
+ * 推断优先级：
+ * 1. type 已有且非 'ai'/undefined → 直接返回
+ * 2. 按 suggestion/original 文本规则映射（与 proofread.ts 规则同源）
+ * 3. 仍无法推断 → 返回 '未分类'（报告降级提示，不计入五维评分）
+ */
+export function inferIssueType(issue: { type?: string; original?: string; suggestion?: string }): string {
+  const rawType = issue.type;
+  // 有效 type 直接使用（排除 'ai' 占位值与空值）
+  if (rawType && rawType !== 'ai' && rawType !== '未分类') return rawType;
+
+  const original = (issue.original || '').trim();
+  const suggestion = (issue.suggestion || '').trim();
+  const text = `${original} ${suggestion}`;
+
+  // ── 冗余词（conciseness）──
+  if (/进行(了)?|作出(了)?|予以(了)?|加以(了)?|针对.*这一问题/.test(text)) {
+    return '冗余词';
+  }
+  // ── 句式杂糅（fluency）──
+  if (/通过.*?(使|让|令)/.test(original)) return '句式杂糅';
+  if (/根据.*?(显示|表明|证实)/.test(original)) return '句式杂糅';
+  if (/由于.*?的原因(导致|使|造成)/.test(original)) return '句式杂糅';
+  // ── F11–F15 典型模式（AI Layer 2，fluency）──
+  if (/存在着|具有着/.test(original)) return '搭配冗余';      // F11/F15
+  if (/加强重视/.test(original)) return '动宾不当';            // F12
+  if (/(进步|提升|提高)(提高|进步)/.test(original)) return '语义重复'; // F13
+  if (/(丰富|充分|大量)(的)?(内容|经验|知识)/.test(original) && /很多|许多|大量|丰富/.test(original)) {
+    return '修饰不当';                                         // F14
+  }
+  // ── 的得地 / 重复 / 标点（向后兼容旧规则）──
+  if (/(的的|的地|得的|变的|做的)/.test(original)) return '的得混淆';
+  if (/([\u4e00-\u9fff])\1{2,}/.test(original)) return '重复字符';
+  if (/([，。；：、！？]){2,}/.test(original)) return '重复标点';
+  // ── 占位文本（completeness）──
+  if (/xxx|xx公司|test|sample|placeholder|lorem ipsum/i.test(text)) return '占位文本';
+
+  return '未分类';
+}
 
 // ==================== 权重公式 ====================
 
@@ -340,9 +411,15 @@ export const proofreadAccumulateHandler: ToolHandler = async (
     session.totalRevisions = total_revisions;
   }
 
-  // 追加 issues
+  // 追加 issues（T2，#55：对缺 type 的 issue 做兜底推断，保证报告五维评分有真实统计来源）
+  const normalizedIssues = (issues as ProofreadIssueEntry[]).map((entry) => {
+    if (entry && typeof entry === 'object') {
+      return { ...entry, type: inferIssueType(entry) };
+    }
+    return entry;
+  });
   const beforeCount = session.issues.length;
-  session.issues.push(...issues);
+  session.issues.push(...normalizedIssues);
 
   // 去重（按 offset + original）
   const seen = new Set<string>();
@@ -370,6 +447,15 @@ export const proofreadAccumulateHandler: ToolHandler = async (
     ],
   };
 };
+
+// ==================== 报告辅助（T2/T3，#55） ====================
+
+/**
+ * 问题类型 → 五维评分维度（供报告分组使用，含兜底推断后的 type）
+ */
+function metricForIssue(issue: ProofreadIssueEntry): ProofreadMetric | null {
+  return TYPE_METRIC_MAP[issue.type] ?? null;
+}
 
 // ==================== 报告生成工具 ====================
 
@@ -483,7 +569,7 @@ export const generateProofreadReportHandler: ToolHandler = async (
   const unknownTypeIssues: ProofreadIssueEntry[] = [];
 
   for (const issue of issues) {
-    const metric = TYPE_METRIC_MAP[issue.type];
+    const metric = metricForIssue(issue);
     if (metric) {
       metricCounts[metric]++;
       metricIssues[metric].push(issue);
@@ -554,9 +640,12 @@ export const generateProofreadReportHandler: ToolHandler = async (
   report += `- **总段数**: ${docInfo.totalParagraphs}\n`;
   report += `- **总字数**: ${docInfo.totalWords}\n`;
   if (totalRevisions !== undefined) {
-    report += `- **修订总数**: ${totalRevisions}\n`;
+    report += `- **修订总数**: ${totalRevisions}（TC-12 口径：问题数 = 修订记录数 ÷ 2，每次替换产生删除+插入 2 条修订）\n`;
   }
   report += `- **发现问题**: ${issues.length} 处\n`;
+  if (unknownTypeIssues.length > 0) {
+    report += `- **⚠️ 未分类问题**: ${unknownTypeIssues.length} 处（未计入五维评分，见下方"未分类问题"节；请检查 AI 层是否输出 type 字段）\n`;
+  }
   report += `\n`;
 
   // 五维评分摘要
@@ -615,9 +704,12 @@ export const generateProofreadReportHandler: ToolHandler = async (
     report += `\n`;
   }
 
-  // 未知类型问题（兜底）
+  // 未知类型问题（兜底）— T2：降级提示，不重复计入五维（metricForIssue 返回 null 才入此列）
   if (unknownTypeIssues.length > 0) {
-    report += `### 未分类问题 — ${unknownTypeIssues.length} 处\n\n`;
+    report += `### ⚠️ 未分类问题（未计入五维评分） — ${unknownTypeIssues.length} 处\n\n`;
+    report += `> **提示**：以下问题未携带有效的 type 字段（或 type 不在 TYPE_METRIC_MAP 映射表中），` +
+      `无法归入五维评分。请检查 AI 层（Layer 2）输出是否携带正确的 type 字段，` +
+      `或补充 TYPE_METRIC_MAP 映射。\n\n`;
     report += `| # | 位置 | 原文 | 建议修改 | 类型 | 来源 |\n`;
     report += `|---|------|------|---------|------|------|\n`;
     unknownTypeIssues.forEach((issue, idx) => {
@@ -626,21 +718,28 @@ export const generateProofreadReportHandler: ToolHandler = async (
         : `偏移 ${issue.offset}`;
       const escapedOriginal = issue.original.replace(/\|/g, '\\|').replace(/\n/g, ' ');
       const escapedSuggestion = issue.suggestion.replace(/\|/g, '\\|').replace(/\n/g, ' ');
-      report += `| ${idx + 1} | ${location} | ${escapedOriginal} | ${escapedSuggestion} | ${issue.type} | ${issue.source === 'ai' ? 'AI' : 'MCP'} |\n`;
+      report += `| ${idx + 1} | ${location} | ${escapedOriginal} | ${escapedSuggestion} | ${issue.type || '（空）'} | ${issue.source === 'ai' ? 'AI' : 'MCP'} |\n`;
     });
     report += `\n`;
   }
 
-  // 统计摘要
+  // 统计摘要（T2，#55：source 缺失时单独列出，防止"正则 0 处 + AI 0 处"失真假象）
   report += `## 统计摘要\n\n`;
   const mcpCount = issues.filter((i) => i.source === 'mcp').length;
   const aiCount = issues.filter((i) => i.source === 'ai').length;
+  const unknownSourceCount = issues.filter((i) => i.source !== 'mcp' && i.source !== 'ai').length;
   report += `| 来源 | 数量 |\n`;
   report += `|------|------|\n`;
   report += `| 正则基础校对 (MCP) | ${mcpCount} 处 |\n`;
   report += `| AI 智能校对 | ${aiCount} 处 |\n`;
+  if (unknownSourceCount > 0) {
+    report += `| ⚠️ 未标注来源 | ${unknownSourceCount} 处 |\n`;
+  }
   report += `| **合计** | **${issues.length} 处** |\n`;
   report += `| 全部已修复 | ✅ |\n`;
+  if (totalRevisions !== undefined) {
+    report += `\n> **TC-12 口径说明**：问题数 ${issues.length} 处对应修订记录数 ${totalRevisions} 条（每次替换 = 删除 + 插入各 1 条修订，即问题数 = 修订记录数 ÷ 2）。如不等，请检查是否有未跟踪修订的替换或人工修改。\n`;
+  }
 
   // 写入文件（如果指定）——仅当写入成功（或未指定 output_file）后才回收会话；
   // 写失败时保留会话，AI 可修正 output_file 后重试生成（评审建议）

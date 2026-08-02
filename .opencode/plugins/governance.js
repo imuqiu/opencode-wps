@@ -217,6 +217,38 @@ function getOutputText(output) {
   return '';
 }
 
+/**
+ * T1（#55）：从返回文本中提取可 JSON.parse 的结构化对象。
+ *
+ * proofreadBasic 返回格式 = 文本展示 + 末尾 JSON 行（{ "issues": [...] }）。
+ * governance 需要提取最后一行 JSON（整个 JSON.stringify 单行输出）来解析 issues。
+ * 兼容旧格式（整段文本即 JSON）与文本内嵌 JSON 两种场景。
+ */
+function extractJsonFromOutput(outputText) {
+  if (!outputText) return null;
+  const trimmed = outputText.trim();
+  // 场景 1：整段文本就是 JSON（旧格式/直接返回 JSON 的场景）
+  if (trimmed.startsWith('{')) {
+    try {
+      return JSON.parse(trimmed);
+    } catch (_e) { /* fallthrough */ }
+  }
+  // 场景 2：文本展示 + 末尾 JSON 行（proofreadBasic T1 新格式）
+  // 从后往前找以 { 开头的行，取其后缀整块尝试 parse
+  const lines = outputText.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const candidate = lines.slice(i).join('\n').trim();
+    if (candidate.startsWith('{')) {
+      try {
+        return JSON.parse(candidate);
+      } catch (_e) {
+        // 继续往前找
+      }
+    }
+  }
+  return null;
+}
+
 function getAppType(toolName) {
   if (toolName.startsWith('getActivePresentation') || toolName.startsWith('wps_ppt_') || toolName.startsWith('wpp_')) return 'ppt';
   if (toolName.startsWith('getActiveWorkbook') || toolName.startsWith('wps_excel_') || toolName.startsWith('et_')) return 'excel';
@@ -386,15 +418,15 @@ export const WpsGovernancePlugin = async () => {
           st.replaceCalledThisBatch = false;
           st.proofreadHadIssues = false;
           st.proofreadIssueOriginals = [];
-          try {
-            const parsed = JSON.parse(outText);
-            if (parsed && Array.isArray(parsed.issues)) {
-              st.proofreadHadIssues = parsed.issues.length > 0;
-              st.proofreadIssueOriginals = parsed.issues
-                .map(i => i.original)
-                .filter(Boolean);
-            }
-          } catch (_e) {}
+          // T1（#55）：proofreadBasic 返回 = 文本展示 + 末尾 JSON 行（{ issues: [...] }），
+          // 从返回文本中提取 JSON 解析，P15/P16 才能拿到真实 issue 列表
+          const parsed = extractJsonFromOutput(outText);
+          if (parsed && Array.isArray(parsed.issues)) {
+            st.proofreadHadIssues = parsed.issues.length > 0;
+            st.proofreadIssueOriginals = parsed.issues
+              .map(i => i.original)
+              .filter(Boolean);
+          }
           return;
         }
 
