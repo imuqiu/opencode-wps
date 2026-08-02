@@ -98,6 +98,8 @@ const NON_TOOL_NAMES = new Set([
   'original',
   'toFix',
   'toReport',
+  'report_only',
+  'replace_all',
   'batchStarted',
   'lastBatchParaIndex',
   'sessionIssues',

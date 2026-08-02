@@ -100,9 +100,10 @@ description: "WPS 文档校对专家，专注于文档的错别字检测、语�
 ### 结果合并去重逻辑
 
 ```javascript
-// 合并各层结果
+// 合并各层结果（⚠️ proofreadBasic 返回 = 文本展示 + 末尾 JSON 行，提取末行 JSON.parse 取 .issues）
+const responseProofreadBasic = JSON.parse(toolResultProofreadBasic.split('\n').filter(Boolean).pop())
 const allIssues = [
-  ...proofreadBasicResult.issues,
+  ...(responseProofreadBasic.issues || []),
   ...aiProofreadIssues
 ]
 // 按 offset + original 去重（同一位置同一原文只修一次）
@@ -508,6 +509,8 @@ wps_office_execute({
 **2d. 结果合并去重 + metric 分类**
 
 ```javascript
+// ⚠️ proofreadBasic 返回 = 文本展示 + 末尾 JSON 行，提取末行 JSON.parse 取 .issues（#55 T1 结构化输出）
+const responseProofreadBasic = JSON.parse(toolResultProofreadBasic.split('\n').filter(Boolean).pop())
 // 合并两层结果
 const layer1 = responseProofreadBasic.issues || []      // { original, offset, length, suggestion, type, metric?, context }
 const layer2 = aiProofreadIssues || []                  // { original, offset, suggestion, reason, metric, type, score?, fix_action }

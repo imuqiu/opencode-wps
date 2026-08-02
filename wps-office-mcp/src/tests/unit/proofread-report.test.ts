@@ -707,6 +707,24 @@ describe('normalizeIssueType（#55 T2）', () => {
     const normalized = normalizeIssueType(issue);
     expect(normalized.type).toBe('未分类');
   });
+
+  it('F11–F15 不合理搭配缺 type 时兜底为细粒度类型（#55 T3 凭据同步）', () => {
+    expect(
+      normalizeIssueType({ offset: 0, length: 8, original: '这个方案存在着很多不足之处', suggestion: '这个方案存在很多不足之处', source: 'ai' } as any).type
+    ).toBe('搭配冗余');
+    expect(
+      normalizeIssueType({ offset: 0, length: 6, original: '我们需要加强重视安全问题', suggestion: '我们需要重视安全问题', source: 'ai' } as any).type
+    ).toBe('动宾不当');
+    expect(
+      normalizeIssueType({ offset: 0, length: 6, original: '他取得了显著的进步提高', suggestion: '他取得了显著的进步', source: 'ai' } as any).type
+    ).toBe('语义重复');
+    expect(
+      normalizeIssueType({ offset: 0, length: 10, original: '会议讨论了很多丰富的内容', suggestion: '会议讨论了很多内容', source: 'ai' } as any).type
+    ).toBe('修饰不当');
+    expect(
+      normalizeIssueType({ offset: 0, length: 8, original: '这一发现具有着深远的意义', suggestion: '这一发现具有深远的意义', source: 'ai' } as any).type
+    ).toBe('搭配冗余');
+  });
 });
 
 describe('proofreadAccumulate — 缺 type 自动兜底（#55 T2）', () => {
