@@ -446,6 +446,15 @@ export function normalizeIssueLocation(issue: ProofreadIssueEntry): ProofreadIss
 }
 
 /**
+ * 去重键（四评审 info：`offset|original` 用 `|` 分隔，原文含 `|` 时可能碰撞误判）
+ * 改为 JSON 序列化数组，彻底消除分隔符歧义。
+ * 仅对携带绝对 offset 的条目调用（offset 为 number）。
+ */
+function dedupKey(offset: number, original: string): string {
+  return JSON.stringify([offset, original]);
+}
+
+/**
  * 规整 issue.source：缺 source / 非法值 → 兜底推断（TC-13，验收遗留）
  *
  * 背景：第三轮会话 proofreadAccumulate 的 issues 未携带 source，报告统计摘要
@@ -517,7 +526,7 @@ export const proofreadAccumulateDefinition: ToolDefinition = {
         items: {
           type: 'object',
           properties: {
-            offset: { type: 'number', description: '文档绝对偏移位置（Layer 2 输出驼峰字段，缺失时报告位置列显示「位置未知」）' },
+            offset: { type: 'number', description: '文档绝对偏移位置（Layer 2 输出驼峰字段，缺失时报告位置列显示「位置未知」；兼容字符串数字如 "3"，自动归一化为数值）' },
             length: { type: 'number', description: '问题文本长度' },
             original: { type: 'string', description: '原文' },
             suggestion: { type: 'string', description: '建议修改' },
@@ -525,7 +534,7 @@ export const proofreadAccumulateDefinition: ToolDefinition = {
             context: { type: 'string', description: '上下文' },
             source: { type: 'string', description: '检测来源: mcp（Layer 1）或 ai（Layer 2）' },
             paragraphIndex: { type: 'number', description: '段落索引（可选，从 1 开始）' },
-            paragraph_index: { type: 'number', description: '段落索引蛇形旧别名（兼容存量 AI 输出，自动归一化到 paragraphIndex）' },
+            paragraph_index: { type: 'number', description: '段落索引蛇形旧别名（兼容存量 AI 输出，自动归一化到 paragraphIndex；兼容字符串数字）' },
             reason: { type: 'string', description: 'AI 检测理由（仅 source=ai 时有效）' },
           },
         },
@@ -628,7 +637,7 @@ export const proofreadAccumulateHandler: ToolHandler = async (
 
   // 去重（评审 warning：offset 可选后，退化键会把不同位置 issue 误判重复丢弃；
   // 三评审：去重键需与 SKILL 合并口径一致）——
-  // 策略：仅对携带绝对 offset 的条目按 `offset|original` 去重，同键时 **source=ai 优先覆盖 mcp**
+  // 策略：仅对携带绝对 offset 的条目按 dedupKey(offset, original) 去重，同键时 **source=ai 优先覆盖 mcp**
   // （SKILL 合并逻辑：同位置同原文只修一次，且优先保留含 reason/更准确的 AI 条目）；
   // offset 缺失时无法确认是否为同一位置，保守不去重（保留全部）。
   const seen = new Map<string, number>(); // key → deduped 数组下标（用于 ai 覆盖 mcp）
@@ -638,7 +647,7 @@ export const proofreadAccumulateHandler: ToolHandler = async (
       deduped.push(entry);
       continue;
     }
-    const key = `${entry.offset}|${entry.original}`;
+    const key = dedupKey(entry.offset, entry.original);
     const existingIdx = seen.get(key);
     if (existingIdx === undefined) {
       seen.set(key, deduped.length);
@@ -646,7 +655,26 @@ export const proofreadAccumulateHandler: ToolHandler = async (
     } else if (entry.source === 'ai' && deduped[existingIdx].source !== 'ai') {
       // 同位置同原文：AI 条目优先（SKILL 合并口径：优先保留含 reason/更准确的 AI 条目），
       // 用 AI 条目覆盖 MCP 条目
-      deduped[existingIdx] = entry;
+      // 四评审 warning（与 SKILL 2d `issue.type = existing.type` 保护对齐）：AI 条目 type
+      // 兜底失败为「未分类」而 MCP 条目（Layer 1 正则命中）有具体 type 时，保留 MCP 的
+      // type——否则覆盖后报告 TYPE_METRIC_MAP 查表把该问题漏入五维评分（type 失真）。
+      const existing = deduped[existingIdx];
+      const merged =
+        entry.type === '未分类' && existing.type && existing.type !== '未分类'
+          ? { ...entry, type: existing.type }
+          : entry;
+      deduped[existingIdx] = merged;
+    } else if (
+      entry.source === 'mcp' &&
+      deduped[existingIdx].source === 'ai' &&
+      deduped[existingIdx].type === '未分类' &&
+      entry.type &&
+      entry.type !== '未分类'
+    ) {
+      // 跨批边缘：AI 未分类条目先入（该批 Layer 1 未命中），后续批次 MCP 带具体 type 后到。
+      // AI 优先语义不变（保留 AI 条目主体），但用 MCP 的具体 type 提升 AI 条目的「未分类」，
+      // 避免报告五维评分漏计该问题（与批内 SKILL 合并结果对齐）。
+      deduped[existingIdx] = { ...deduped[existingIdx], type: entry.type };
     }
     // 其余情况（同 source 重复 / mcp 撞 ai）保留先到者
   }
@@ -662,7 +690,7 @@ export const proofreadAccumulateHandler: ToolHandler = async (
   let batchDeduped = 0;
   for (const entry of normalizedIssues) {
     if (entry.offset === undefined) continue;
-    const key = `${entry.offset}|${entry.original}`;
+    const key = dedupKey(entry.offset, entry.original);
     if (batchSeen.has(key)) batchDeduped++;
     else batchSeen.add(key);
   }
@@ -701,12 +729,14 @@ function metricForIssue(issue: ProofreadIssueEntry): ProofreadMetric | null {
  *
  * 「偏移 undefined」瑕疵修复后抽取的公共函数：
  * 指标维度列表与未分类列表两处位置列逻辑相同，统一收口避免重复（评审 info）。
- * - 段落索引优先（段落  N）
+ * - 段落索引优先（段落  N；四轮评审 info：约定从 1 起，0/负数视为非法值不展示）
  * - 否则有数值 offset → 偏移 N（含 offset=0 合法值，用 typeof 判断而非 falsy）
  * - 否则「位置未知」——优雅降级，不再输出字面量「偏移 undefined」
  */
 function formatIssueLocation(issue: ProofreadIssueEntry): string {
-  if (typeof issue.paragraphIndex === 'number') {
+  // 四评审 info：paragraphIndex 约定从 1 起，非法值（0/负数）不展示「段落 N」
+  // （0 不是合法段落号，AI 层误传时降级到 offset 或「位置未知」）
+  if (typeof issue.paragraphIndex === 'number' && issue.paragraphIndex > 0) {
     return `段落 ${issue.paragraphIndex}`;
   }
   if (typeof issue.offset === 'number') {

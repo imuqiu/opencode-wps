@@ -112,7 +112,8 @@ const allIssues = [
 ]
 // 按 offset + original 去重（同一位置同一原文只修一次）
 // ⚠️ 只对携带绝对 offset 的条目去重，缺失时保守保留全部（退化 `undefined|原文` 键会误判重复）
-// ⚠️ 同键时优先保留 AI 条目（含 reason/更准确），用 AI 覆盖 MCP（与累加器合并口径一致）
+// ⚠️ 同键时 AI 条目无条件优先（含 reason/更准确），用 AI 覆盖 MCP；但 AI type 为「未分类」
+//    而 MCP（Layer 1 正则命中）有具体 type 时，保留 MCP 的 type（与累加器口径一致，见 2d）
 const seen = new Map()
 const deduped = []
 for (const issue of allIssues) {
@@ -123,6 +124,10 @@ for (const issue of allIssues) {
     seen.set(key, deduped.length)
     deduped.push(issue)
   } else if (issue.source === 'ai' && deduped[idx].source !== 'ai') {
+    const existing = deduped[idx]
+    if (existing.type && existing.type !== '未分类' && (!issue.type || issue.type === '未分类')) {
+      issue.type = existing.type // 保留 Layer 1 的 type，避免报告五维评分失真
+    }
     deduped[idx] = issue // AI 覆盖 MCP
   }
 }
@@ -536,9 +541,10 @@ const allIssues = [
   ...layer2.map(i => ({ ...i, source: 'ai' })),
 ]
 
-// 按 offset + original 去重（优先保留含 score 的条目）
+// 按 offset + original 去重（同一位置同一原文只修一次）
 // ⚠️ offset 缺失时退化的 `undefined|原文` 键会把不同位置 issue 误判重复，
 // 只对携带绝对 offset 的条目去重，缺失时保守保留全部
+// ⚠️ 同键时 AI 条目无条件优先（与累加器/结果合并口径一致），但必须保留 Layer 1 的 type
 const seen = new Map()
 const noOffset = []  // offset 缺失的条目：不做键去重，全部保留
 for (const issue of allIssues) {
@@ -547,12 +553,14 @@ for (const issue of allIssues) {
     continue
   }
   const key = `${issue.offset}|${issue.original}`
-  const existing = seen.get(key)
-  // Layer 2 命中同一问题 → 保留 Layer 2 的（含 score 等元数据），但必须保留 Layer 1 的 type（如 句式杂糅）
-  if (!existing || (issue.source === 'ai' && issue.score)) {
-    if (issue.source === 'ai' && existing && existing.type && (!issue.type || issue.type === 'ai')) {
-      // 保留 Layer 1 已推断的 type，避免丢失
-      issue.type = existing.type
+  const idx = seen.get(key)
+  if (idx === undefined) {
+    seen.set(key, issue)
+  } else if (issue.source === 'ai' && seen.get(key).source !== 'ai') {
+    // Layer 2 命中同一问题 → 保留 Layer 2 的（含 score 等元数据），但必须保留 Layer 1 的 type（如 句式杂糅）
+    const existing = seen.get(key)
+    if (existing.type && existing.type !== '未分类' && (!issue.type || issue.type === '未分类')) {
+      issue.type = existing.type // 保留 Layer 1 已推断的 type，避免丢失
     }
     seen.set(key, issue)
   }
@@ -566,7 +574,7 @@ const toReport = deduped.filter(i => i.fix_action === 'report_only')
 // Layer 2（AI）的 issue 按评分卡/最小化测试结果决定 fix_action
 ```
 
-**注意**：如果 AI 校对输出的 `original` 与正则发现同一问题，`key` 相同会被去重，优先保留 AI 输出的条目（含 `score` 维度信息）。
+**注意**：如果 AI 校对输出的 `original` 与正则发现同一问题，`key` 相同会被去重，**无条件优先保留 AI 输出的条目**（含 `score` 维度信息、`reason` 等元数据），但保留 Layer 1 已推断的 type（当 AI 未输出真实 type 时）。
 
 **2e. 修复（findReplace 禁用，replaceRange 已移除，仅用 replaceInParagraph）：**
 
