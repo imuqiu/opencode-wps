@@ -30,6 +30,9 @@ import {
   proofreadAccumulateHandler,
   generateProofreadReportHandler,
   sessionIssues,
+  inferIssueType,
+  inferTypeFromContent,
+  normalizeIssueType,
 } from '../../tools/word/proofread-report';
 import * as fs from 'fs';
 
@@ -450,7 +453,146 @@ describe('Session isolation', () => {
   });
 });
 
-// ==================== releaseSession 时序（评审 warning #1/#2） ====================
+// ==================== inferIssueType 兜底推断（T2，#55） ====================
+
+describe('inferIssueType — type 兜底推断（#55 P0-2）', () => {
+  it('有效 type 直接返回（不推断）', () => {
+    expect(inferIssueType({ type: '的得混淆', original: '跑的很快' })).toBe('的得混淆');
+    expect(inferIssueType({ type: '重复字符', original: '了了' })).toBe('重复字符');
+  });
+
+  it('type 缺失（undefined）时按文本推断', () => {
+    expect(inferIssueType({ original: '进行了研究', suggestion: '研究' })).toBe('冗余词');
+    expect(inferIssueType({ original: '通过加强监督使', suggestion: '加强监督使' })).toBe('句式杂糅');
+    expect(inferIssueType({ original: '根据调查结果显示', suggestion: '调查结果' })).toBe('句式杂糅');
+    expect(inferIssueType({ original: '由于天气的原因导致', suggestion: '由于天气导致' })).toBe('句式杂糅');
+  });
+
+  it('type 为占位值 ai（旧代码覆盖 bug）时兜底推断', () => {
+    // 旧 SKILL 合并代码把 Layer 2 的 type 覆盖为 'ai' → 需兜底
+    expect(inferIssueType({ type: 'ai', original: '加强重视安全问题', suggestion: '重视安全问题' })).toBe('动宾不当');
+    expect(inferIssueType({ type: 'ai', original: '他取得了显著的进步提高', suggestion: '他取得了显著的进步' })).toBe('语义重复');
+    expect(inferIssueType({ type: 'ai', original: '会议讨论了很多丰富的内容', suggestion: '会议讨论了很多内容' })).toBe('修饰不当');
+    expect(inferIssueType({ type: 'ai', original: '这一发现具有着深远的意义', suggestion: '这一发现具有深远的意义' })).toBe('搭配冗余');
+    expect(inferIssueType({ type: 'ai', original: '这个方案存在着很多不足之处', suggestion: '这个方案有很多不足之处' })).toBe('搭配冗余');
+  });
+
+  it('F11–F15 语料推断为 fluency 类型', () => {
+    const f11 = inferIssueType({ original: '这个方案存在着很多不足之处', suggestion: '这个方案有很多不足之处' });
+    expect(['搭配冗余', '冗余+搭配', '冗余搭配']).toContain(f11);
+    expect(inferIssueType({ original: '我们需要加强重视安全问题', suggestion: '我们需要重视安全问题' })).toBe('动宾不当');
+    expect(inferIssueType({ original: '他取得了显著的进步提高', suggestion: '他取得了显著的进步' })).toBe('语义重复');
+    expect(inferIssueType({ original: '会议讨论了很多丰富的内容', suggestion: '会议讨论了很多内容' })).toBe('修饰不当');
+    expect(inferIssueType({ original: '这一发现具有着深远的意义', suggestion: '这一发现具有深远的意义' })).toBe('搭配冗余');
+  });
+
+  it('完全无法推断时返回未分类', () => {
+    expect(inferIssueType({ original: '未知内容abc', suggestion: 'def' })).toBe('未分类');
+  });
+
+  it('占位文本推断为占位文本（completeness）', () => {
+    expect(inferIssueType({ original: 'xxx有限公司', suggestion: '[名称]有限公司' })).toBe('占位文本');
+  });
+});
+
+// ==================== proofreadAccumulate type 兜底（T2，#55） ====================
+
+describe('proofreadAccumulateHandler — type 兜底累加（#55 P0-2）', () => {
+  it('缺 type 的 issue 累加时自动补齐 type', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 't2-infer-1',
+      issues: [
+        {
+          offset: 0, length: 5, original: '加强重视安全问题', suggestion: '重视安全问题',
+          context: '...', source: 'ai', reason: '动宾不当',
+          // 无 type 字段
+        } as any,
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+
+    const session = sessionIssues.get('t2-infer-1')!;
+    expect(session.issues.length).toBe(1);
+    expect(session.issues[0].type).toBe('动宾不当');
+  });
+
+  it('type 为 ai 占位值（旧 SKILL 合并 bug）时兜底推断', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 't2-infer-2',
+      issues: [
+        {
+          offset: 0, length: 6, original: '进行了研究', suggestion: '研究',
+          context: '...', source: 'ai', type: 'ai',
+        } as any,
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+
+    const session = sessionIssues.get('t2-infer-2')!;
+    expect(session.issues[0].type).toBe('冗余词');
+  });
+
+  it('报告五维评分不再全 10 分（AI 层无 type 也能归入 fluency）', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 't2-report',
+      issues: [
+        {
+          offset: 0, length: 8, original: '加强重视安全问题', suggestion: '重视安全问题',
+          context: '...', source: 'ai', reason: '动宾不当',
+        } as any,
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+
+    const result = await generateProofreadReportHandler({ session_id: 't2-report' });
+    const text = result.content[0].text!;
+    // fluency 问题数为 1，原始分 = 5 - 1*0.2 = 4.8 → 归一化 (4.8-1)/2 = 1.9 → 9.5/10
+    expect(text).toContain('流畅度');
+    expect(text).toContain('| 1 |');
+    // 不再是全 10.0/10（至少 fluency 因 1 个问题降分）
+    expect(text).toContain('9.5/10');
+    // 统计摘要：AI 1 处，合计 1 处
+    expect(text).toContain('| AI 智能校对 | 1 处 |');
+    expect(text).toContain('| **合计** | **1 处** |');
+  });
+
+  it('完全无法推断的 issue 进未分类并降级提示', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 't2-unclassified',
+      issues: [
+        { offset: 0, length: 4, original: 'zzzz', suggestion: 'yyyy', context: '...', source: 'ai', reason: 'x' } as any,
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+
+    const result = await generateProofreadReportHandler({ session_id: 't2-unclassified' });
+    const text = result.content[0].text!;
+    expect(text).toContain('未分类问题');
+    expect(text).toContain('未计入五维评分');
+  });
+});
+
+// ==================== TC-12 修订数口径（T3，#55） ====================
+
+describe('TC-12 修订数口径（#55 P1-3）', () => {
+  it('报告展示修订总数与口径说明', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 't3-tc12',
+      issues: [
+        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/d.docx', totalParagraphs: 1, totalWords: 10 },
+      total_revisions: 2,
+    });
+
+    const result = await generateProofreadReportHandler({ session_id: 't3-tc12' });
+    const text = result.content[0].text!;
+    expect(text).toContain('修订总数');
+    expect(text).toContain('2');
+    expect(text).toContain('问题数 = 修订记录数 ÷ 2');
+  });
+});
+
 
 describe('releaseSession 时序：文件写入失败时保留会话', () => {
   const sessId = 'retry-session';
@@ -506,5 +648,140 @@ describe('releaseSession 时序：文件写入失败时保留会话', () => {
     });
     expect(result.success).toBe(true);
     expect(sessionIssues.has(sessId)).toBe(true);
+  });
+});
+
+// ==================== #55 T2：type/metric 兜底推断 ====================
+
+describe('inferTypeFromContent（#55 T2 兜底推断）', () => {
+  it('原文含"通过…使" → 句式杂糅', () => {
+    expect(inferTypeFromContent('通过这次学习使我受益匪浅', '这次学习使我受益匪浅')).toBe('句式杂糅');
+  });
+
+  it('原文含"根据…显示" → 句式杂糅', () => {
+    expect(inferTypeFromContent('根据调查结果显示', '调查结果')).toBe('句式杂糅');
+  });
+
+  it('原文含"进行…研究" → 冗余词', () => {
+    expect(inferTypeFromContent('进行了研究', '研究')).toBe('冗余词');
+  });
+
+  it('原文含"由于…的原因导致" → 句式杂糅', () => {
+    expect(inferTypeFromContent('由于天气的原因导致了航班延误', '由于天气导致了航班延误')).toBe('句式杂糅');
+  });
+
+  it('原文含"并（非|不）是" → 多字', () => {
+    expect(inferTypeFromContent('并不是', '并不')).toBe('多字');
+  });
+
+  it('原文含"占位文本" → 占位文本', () => {
+    expect(inferTypeFromContent('check test sample', '[需补充正式内容]')).toBe('占位文本');
+  });
+
+  it('无法推断 → undefined', () => {
+    expect(inferTypeFromContent('完全陌生的内容xyz', '也陌生')).toBeUndefined();
+  });
+});
+
+describe('normalizeIssueType（#55 T2）', () => {
+  it('缺 type 的 issue 被兜底推断', () => {
+    const issue: any = { offset: 0, length: 4, original: '进行了研究', suggestion: '研究', source: 'mcp' };
+    const normalized = normalizeIssueType(issue);
+    expect(normalized.type).toBe('冗余词');
+  });
+
+  it('type="ai"（SKILL 合并 bug 产物）被兜底推断', () => {
+    const issue: any = { offset: 0, length: 4, original: '通过管理使效率提升', suggestion: '管理使效率提升', type: 'ai', source: 'ai' };
+    const normalized = normalizeIssueType(issue);
+    expect(normalized.type).toBe('句式杂糅');
+  });
+
+  it('type 正常时保持不变', () => {
+    const issue: any = { offset: 0, length: 4, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' };
+    const normalized = normalizeIssueType(issue);
+    expect(normalized.type).toBe('重复字符');
+  });
+
+  it('无法推断 → 未分类', () => {
+    const issue: any = { offset: 0, length: 4, original: '完全陌生的内容xyz', suggestion: '也陌生', source: 'ai' };
+    const normalized = normalizeIssueType(issue);
+    expect(normalized.type).toBe('未分类');
+  });
+
+  it('F11–F15 不合理搭配缺 type 时兜底为细粒度类型（#55 T3 凭据同步）', () => {
+    expect(
+      normalizeIssueType({ offset: 0, length: 8, original: '这个方案存在着很多不足之处', suggestion: '这个方案存在很多不足之处', source: 'ai' } as any).type
+    ).toBe('搭配冗余');
+    expect(
+      normalizeIssueType({ offset: 0, length: 6, original: '我们需要加强重视安全问题', suggestion: '我们需要重视安全问题', source: 'ai' } as any).type
+    ).toBe('动宾不当');
+    expect(
+      normalizeIssueType({ offset: 0, length: 6, original: '他取得了显著的进步提高', suggestion: '他取得了显著的进步', source: 'ai' } as any).type
+    ).toBe('语义重复');
+    expect(
+      normalizeIssueType({ offset: 0, length: 10, original: '会议讨论了很多丰富的内容', suggestion: '会议讨论了很多内容', source: 'ai' } as any).type
+    ).toBe('修饰不当');
+    expect(
+      normalizeIssueType({ offset: 0, length: 8, original: '这一发现具有着深远的意义', suggestion: '这一发现具有深远的意义', source: 'ai' } as any).type
+    ).toBe('搭配冗余');
+  });
+});
+
+describe('proofreadAccumulate — 缺 type 自动兜底（#55 T2）', () => {
+  it('累加时缺 type 的 issue 自动推断为冗余词，报告不再全 undefined/全 10 分', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 't2-session-1',
+      issues: [
+        { offset: 0, length: 4, original: '进行了研究', suggestion: '研究', source: 'mcp' as const },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+
+    const session = sessionIssues.get('t2-session-1')!;
+    expect(session.issues[0].type).toBe('冗余词'); // 兜底成功
+
+    const result = await generateProofreadReportHandler({ session_id: 't2-session-1' });
+    const text = result.content[0].text!;
+    // 简洁度行应有 1 个问题，且不再全 10 分
+    expect(text).toContain('简洁度');
+    // 冗余词 → conciseness：raw = 5 - 1*0.3 = 4.7 → norm = (4.7-1)/2 = 1.85 → 9.3/10
+    expect(text).toContain('9.3/10');
+    // 不应有未分类问题
+    expect(text).not.toContain('未分类问题');
+  });
+
+  it('type="ai" 的 issue 累加时被兜底为真实类型', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 't2-session-2',
+      issues: [
+        { offset: 0, length: 8, original: '通过管理使效率提升', suggestion: '管理使效率提升', type: 'ai', source: 'ai' as const },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+    const session = sessionIssues.get('t2-session-2')!;
+    expect(session.issues[0].type).toBe('句式杂糅');
+  });
+});
+
+// ==================== #55 T3：TC-12 修订数口径 ====================
+
+describe('generateProofreadReport — TC-12 修订数口径（#55 T3）', () => {
+  it('报告标注修订数换算口径：问题数 = 修订记录数 ÷ 2', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 't3-session-1',
+      issues: [
+        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
+        { offset: 10, length: 2, original: '在去', suggestion: '再去', type: '在再混淆', source: 'mcp' as const },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+      total_revisions: 60, // 30 处问题 × 2 条修订记录
+    });
+
+    const result = await generateProofreadReportHandler({ session_id: 't3-session-1' });
+    const text = result.content[0].text!;
+    expect(text).toContain('修订总数');
+    expect(text).toContain('60');
+    expect(text).toContain('修订记录数 ÷ 2');
+    expect(text).toContain('30'); // 60 ÷ 2 = 30
   });
 });
