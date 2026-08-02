@@ -18,7 +18,7 @@ description: "WPS 文档校对专家，专注于文档的错别字检测、语�
 | 5 | `replaceInParagraph` | `wps_office_execute({ tool_name: "replaceInParagraph", arguments: { paragraphIndex, findText, replaceText, replaceAll? } })` | **唯一允许的修复工具**，按段落+文本匹配替换 |
 | 6 | ~~`replaceRange`~~ | **禁止使用** | ~~按字符范围替换（偏移量在含不可见字符的文档中不可靠，已禁用）~~ |
 | 7 | `proofreadAccumulate` | `wps_office_execute({ tool_name: "proofreadAccumulate", arguments: {...} })` | 累加本批校对问题到会话 Map（走网关） |
-| 8 | `generateProofreadReport` | `wps_office_execute({ tool_name: "generateProofreadReport", arguments: {...} })` | 生成五维评分校对报告（走网关） |
+| 8 | `generateProofreadReport` | `wps_office_execute({ tool_name: "generateProofreadReport", arguments: {...} })` | 生成五维评分校对报告（走网关）。传 `output_file` 时写盘；写盘失败返回 `success=false`，必须重试 |
 
 > **⚠️ 校对流程中强制走网关**：以下 8 个工具在 `batchStarted=true` 后**禁止直接调用 MCP 原接口**，必须通过 `wps_office_execute({ tool_name: "...", ... })` 调用：
 > - `getActiveDocument` / `insertText` / `getActiveWorkbook` / `getCellValue` / `setCellValue` / `getActivePresentation`
@@ -681,29 +681,53 @@ await wps_office_execute({
 **统一走 `wps_office_execute` 网关**（网关自动路由到 `generateProofreadReport` handler）：
 
 ```javascript
-// 1. 生成报告（仅返回文本）
+// 方案 A（推荐）：直接传 output_file 让报告写入文件
+// ⚠️ 若写入失败（路径非法/无权限/磁盘满等），返回 success=false 并携带失败原因，
+//    会话保留供重试——落盘失败不视为报告已生成，必须修复后重试
+const report = await wps_office_execute({
+  tool_name: "generateProofreadReport",
+  arguments: {
+    session_id: sessionId,
+    output_file: "C:\\Users\\...\\文档.校对报告.md"
+  }
+})
+if (report.success !== true) {
+  // 落盘失败：本次校对未完成，修正路径后重新调用，禁止进入 Step 4 收尾
+  throw new Error("报告落盘失败：" + (report.error || JSON.stringify(report)))
+}
+const reportText = report.content[0].text
+```
+
+```javascript
+// 方案 B：先获取报告文本，再用 writeFile 写盘
 const report = await wps_office_execute({
   tool_name: "generateProofreadReport",
   arguments: { session_id: sessionId }
 })
 // report.content[0].text 包含完整的 Markdown 格式五维报告
 
-// 2. 获取文档路径
+// 获取文档路径：getActiveDocument 返回文本，从中解析出路径（如 "C:\\Users\\...\\文档.docx"）
 const docInfo = await wps_office_execute({
   tool_name: "getActiveDocument",
   arguments: {}
 })
-// 解析出文档路径，如 "C:\\Users\\...\\文档.docx"
-// 报告文件路径: "C:\\Users\\...\\文档.校对报告.md"
+// 解析 docInfo.content[0].text 中的 "路径: ..." 行得到文档路径
+const docText = docInfo.content[0].text
+const docPath = /路径:\s*(.+)/.exec(docText)?.[1]
+if (!docPath) throw new Error("未能从 getActiveDocument 返回中解析出文档路径")
+const reportPath = docPath.replace(/\.docx$/i, '.校对报告.md')
 
-// 3. 写入报告文件
-await wps_office_execute({
+// 写入报告文件，并确认 writeFile 返回 success=true
+const writeRes = await wps_office_execute({
   tool_name: "writeFile",
   arguments: {
-    filePath: docFilePath.replace('.docx', '.校对报告.md'),
+    filePath: reportPath,
     content: report.content[0].text
   }
 })
+if (writeRes.success !== true) {
+  throw new Error("报告落盘失败：" + (writeRes.error || JSON.stringify(writeRes)))
+}
 ```
 
 **报告包含的内容**（由 MCP Server 自动生成）：
@@ -713,31 +737,14 @@ await wps_office_execute({
 - **按维度分类的问题详情**：位置、原文、建议修改、类型、来源
 - **统计摘要**：MCP/AI 检测数量合计
 
-> **⚠️ 替代方案**：也可传 `output_file` 参数让报告直接写入文件：
-> ```javascript
-> await wps_office_execute({
->   tool_name: "generateProofreadReport",
->   arguments: {
->     session_id: sessionId,
->     output_file: "C:\\Users\\...\\文档.校对报告.md"
->   }
-> })
-> ```
->
 > **✅ 落盘强制自检（验收遗留：第四轮报告只生成未写文件）**：
-> 无论用上面哪种方式，**最终必须保证报告文件实际存在于磁盘**。请在生成报告后执行以下确认：
-> ```javascript
-> // 用 writeFile 写盘后，确认文件存在（用 MCP 工具或 PowerShell 检查）
-> const check = await wps_office_execute({
->   tool_name: "writeFile",
->   arguments: {
->     filePath: "C:\\Users\\...\\文档.校对报告.md",
->     content: report.content[0].text
->   }
-> })
-> // 或直接确认 generateProofreadReport 传了 output_file 且返回成功
-> ```
-> **如果报告没有写入任何文件，本次校对视为未完成**——必须补齐落盘后再进入 Step 4 收尾。
+> 无论用上面哪种方式，**最终必须保证报告文件实际存在于磁盘**。判定标准：
+>
+> - **方案 A**：`generateProofreadReport` 返回 `success === true`（写失败时本工具会返回 `success=false` + 失败原因，AI 必须重试）；
+> - **方案 B**：`writeFile` 返回 `success === true`（返回文本含文件大小，如 `大小: 1234 字节`，可作为已落盘的旁证）；
+> - 若对落盘仍有疑虑，可用 PowerShell 校验文件存在与大小：`Get-Item "报告路径" | Select-Object Length`（非零即已落盘）。
+>
+> **如果报告没有写入任何文件（或写入失败未重试），本次校对视为未完成**——必须补齐落盘后再进入 Step 4 收尾。
 
 ### Step 4: 收尾
 

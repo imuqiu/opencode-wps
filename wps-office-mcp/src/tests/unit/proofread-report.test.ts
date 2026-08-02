@@ -623,7 +623,7 @@ describe('releaseSession 时序：文件写入失败时保留会话', () => {
     expect(sessionIssues.has(sessId)).toBe(false);
   });
 
-  it('output_file 写入失败时：会话保留（可重试生成）', async () => {
+  it('output_file 写入失败时：返回 success=false + 失败原因，会话保留（可重试）', async () => {
     // mock fs.writeFileSync 必抛错，保证写入失败确定性（评审 Critical：原 /tmp/not-a-file-dir 会被
     // writeFileSync 自动创建文件导致 flaky）；用 mock 而非真实路径，跨平台（Linux/Windows）均稳定
     setupSession([{ offset: 0, length: 2, original: 'xx', suggestion: 'yy', type: '的得混淆', context: '...', source: 'mcp' }]);
@@ -634,11 +634,36 @@ describe('releaseSession 时序：文件写入失败时保留会话', () => {
       session_id: sessId,
       output_file: '/path/unwritable-report.md',
     });
-    expect(result.success).toBe(true); // 文本返回不受影响
+    // 评审建议：落盘失败必须向上游暴露明确信号，禁止静默吞错（用户多次遇到"落盘失败但提示已生成"）
+    expect(result.success).toBe(false); // 不再伪装成功
+    expect(result.error).toContain('写入文件失败');
+    expect(result.content[0].text).toContain('写入文件失败');
+    expect(result.content[0].text).toContain('未完成落盘');
     expect(sessionIssues.has(sessId)).toBe(true); // 会话保留，可重试
   });
 
-  it('空报告（0 问题）+ output_file 写入失败：会话同样保留', async () => {
+  it('output_file 写入失败后：修正路径重试可成功，且会话回收', async () => {
+    setupSession([{ offset: 0, length: 2, original: 'xx', suggestion: 'yy', type: '的得混淆', context: '...', source: 'mcp' }]);
+    // 第一次写入失败
+    (fs.writeFileSync as jest.Mock).mockImplementationOnce(() => {
+      throw new Error('EACCES: permission denied');
+    });
+    const failed = await generateProofreadReportHandler({
+      session_id: sessId,
+      output_file: '/path/unwritable-report.md',
+    });
+    expect(failed.success).toBe(false);
+    expect(sessionIssues.has(sessId)).toBe(true); // 会话保留
+    // 第二次（不 mock → 真实写入）重试成功
+    const retry = await generateProofreadReportHandler({
+      session_id: sessId,
+      output_file: `/tmp/proofread-report-retry-${Date.now()}.md`,
+    });
+    expect(retry.success).toBe(true);
+    expect(sessionIssues.has(sessId)).toBe(false); // 成功后回收
+  });
+
+  it('空报告（0 问题）+ output_file 写入失败：返回 success=false，会话保留', async () => {
     setupSession([]);
     (fs.writeFileSync as jest.Mock).mockImplementationOnce(() => {
       throw new Error('EACCES: permission denied');
@@ -647,7 +672,8 @@ describe('releaseSession 时序：文件写入失败时保留会话', () => {
       session_id: sessId,
       output_file: '/path/unwritable-report.md',
     });
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('写入文件失败');
     expect(sessionIssues.has(sessId)).toBe(true);
   });
 });
@@ -699,6 +725,14 @@ describe('normalizeIssueType（#55 T2）', () => {
 
   it('type 正常时保持不变', () => {
     const issue: any = { offset: 0, length: 4, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' };
+    const normalized = normalizeIssueType(issue);
+    expect(normalized.type).toBe('重复字符');
+  });
+
+  it('评审建议：type 带前后空格时 trim 归一化，TYPE_METRIC_MAP 查表不再落入未分类', () => {
+    // 与 normalizeIssueSource 对称：有效 type 返回 trim 后归一化值，
+    // 避免 ' 的得混淆 ' 在报告 metricForIssue 严格 === 查表时落入"未分类"（TC-13 同源）
+    const issue: any = { offset: 0, length: 4, original: '的的', suggestion: '的', type: ' 重复字符 ', source: 'mcp' };
     const normalized = normalizeIssueType(issue);
     expect(normalized.type).toBe('重复字符');
   });

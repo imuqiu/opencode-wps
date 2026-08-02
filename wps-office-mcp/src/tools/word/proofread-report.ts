@@ -340,11 +340,16 @@ export function inferTypeFromContent(original: string, suggestion: string): stri
 /**
  * 规整 issue.type：缺 type / 空 type / type='ai'（SKILL 合并 bug 产物）→ 兜底推断；
  * 仍无法推断 → '未分类'（报告降级处理，不计入五维评分）
+ *
+ * 评审建议（与 normalizeIssueSource 对称）：有效 type 一律 trim 后返回归一化值，
+ * 避免带前后空格的 type（如 ' 的得混淆 '）在 TYPE_METRIC_MAP 严格查表时落入
+ * "未分类"（metricForIssue 用 === 查表，不做 trim），与 TC-13 来源失真同源。
  */
 export function normalizeIssueType(issue: ProofreadIssueEntry): ProofreadIssueEntry {
   const rawType = typeof issue.type === 'string' ? issue.type.trim() : '';
   if (rawType && rawType !== 'ai' && rawType !== '未分类') {
-    return issue;
+    // 返回 trim 后的归一化 type（原引用可能带前后空格，报告 TYPE_METRIC_MAP 查表会漏）
+    return { ...issue, type: rawType };
   }
   const inferred = inferTypeFromContent(issue.original || '', issue.suggestion || '');
   return { ...issue, type: inferred || '未分类' };
@@ -578,7 +583,9 @@ export const generateProofreadReportDefinition: ToolDefinition = {
       output_file: {
         type: 'string',
         description:
-          '报告输出文件路径（可选）。如提供，报告将写入此 .md 文件；如不提供，仅返回报告文本。',
+          '报告输出文件路径（可选）。如提供，报告将写入此 .md 文件；如不提供，仅返回报告文本。\n' +
+          '注意：若写入失败（路径非法/无权限/磁盘满等），本工具返回 success=false 并携带失败原因，' +
+          '会话保留供重试——**落盘失败不视为报告已生成**，AI 必须修复后重试或改用 writeFile 落盘。',
       },
     },
     required: ['session_id'],
@@ -622,18 +629,40 @@ export const generateProofreadReportHandler: ToolHandler = async (
   if (issues.length === 0) {
     const emptyReport = buildEmptyReport(docInfo, createdAt);
     let wroteFile = false;
+    let writeError: string | undefined;
     if (output_file) {
       try {
         const safePath = validateFilePath(output_file, ALLOWED_WRITE_ROOTS);
         fs.writeFileSync(safePath, emptyReport, 'utf-8');
         wroteFile = true;
       } catch (err) {
-        // 文件写入失败不影响文本返回（但保留会话，便于 AI 重试生成）
+        // 评审建议：落盘失败必须向上游（AI 层）暴露明确信号，禁止静默吞错——
+        // 否则 AI 误判"报告已生成"（用户多次遇到：落盘失败但提示已生成校对报告）。
+        // 保留会话便于 AI 修正 output_file 后重试。
+        writeError = err instanceof Error ? err.message : String(err);
       }
     }
     // 空报告同样回收会话——仅当写入成功（或未指定 output_file）时释放；写失败保留供重试
     if (!output_file || wroteFile) {
       releaseSession(session_id);
+    }
+    if (writeError) {
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [
+          {
+            type: 'text',
+            text:
+              `⚠️ 校对报告已生成但**写入文件失败**，本次校对未完成落盘！\n\n` +
+              `目标路径: ${output_file ?? '(未指定)'}\n` +
+              `失败原因: ${writeError}\n\n` +
+              `请修正路径后重新生成报告（或改用 SKILL Step 3 的 writeFile 方案落盘）。` +
+              `报告内容预览：\n\n${emptyReport}`,
+          },
+        ],
+        error: `报告写入文件失败: ${writeError}`,
+      };
     }
     return {
       id: uuidv4(),
@@ -859,8 +888,10 @@ export const generateProofreadReportHandler: ToolHandler = async (
   }
 
   // 写入文件（如果指定）——仅当写入成功（或未指定 output_file）后才回收会话；
-  // 写失败时保留会话，AI 可修正 output_file 后重试生成（评审建议）
+  // 写失败时保留会话，AI 可修正 output_file 后重试生成（评审建议：落盘失败必须向上游暴露信号，
+  // 禁止静默吞错——否则 AI 误判"报告已生成"，用户多次遇到"落盘失败但提示已生成校对报告"）
   let wroteFile = false;
+  let writeError: string | undefined;
   if (output_file) {
     try {
       const safePath = validateFilePath(output_file, ALLOWED_WRITE_ROOTS);
@@ -871,13 +902,34 @@ export const generateProofreadReportHandler: ToolHandler = async (
       fs.writeFileSync(safePath, report, 'utf-8');
       wroteFile = true;
     } catch (err) {
-      // 文件写入失败不影响文本返回（但保留会话，便于重试）
+      writeError = err instanceof Error ? err.message : String(err);
     }
   }
 
   // 报告生成后回收会话，释放内存（报告文本已固化，会话数据不再需要）
   if (!output_file || wroteFile) {
     releaseSession(session_id);
+  }
+
+  if (writeError) {
+    // 落盘失败：明确返回失败（success=false + error），AI 必须重试落盘才能进入 Step 4 收尾；
+    // 会话已保留（未回收），可直接修正 output_file 后重新生成。
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [
+        {
+          type: 'text',
+          text:
+            `⚠️ 校对报告已生成但**写入文件失败**，本次校对未完成落盘！\n\n` +
+            `目标路径: ${output_file}\n` +
+            `失败原因: ${writeError}\n\n` +
+            `会话 ${session_id} 已保留，请修正路径后重新调用 generateProofreadReport（传 output_file）重试；` +
+            `或改用 SKILL Step 3 的 writeFile 方案落盘。报告内容预览：\n\n${report}`,
+        },
+      ],
+      error: `报告写入文件失败: ${writeError}`,
+    };
   }
 
   return {
