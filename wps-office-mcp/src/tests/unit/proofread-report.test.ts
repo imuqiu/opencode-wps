@@ -34,6 +34,7 @@ import {
   inferTypeFromContent,
   normalizeIssueType,
   normalizeIssueSource,
+  AI_ONLY_PATTERN,
 } from '../../tools/word/proofread-report';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -639,14 +640,16 @@ describe('releaseSession 时序：文件写入失败时保留会话', () => {
 
   it('output_file 写入失败时：返回 success=false + 失败原因，会话保留（可重试）', async () => {
     // mock fs.writeFileSync 必抛错，保证写入失败确定性（评审 Critical：原 /tmp/not-a-file-dir 会被
-    // writeFileSync 自动创建文件导致 flaky）；用 mock 而非真实路径，跨平台（Linux/Windows）均稳定
+    // writeFileSync 自动创建文件导致 flaky；评审建议：不用硬编码 /path 根目录路径——
+    // 主分支 mkdirSync(recursive) 会在根目录真实创建 /path 目录，与 PR 自己修复
+    // /tmp 残留的方向矛盾）；用 mock 而非真实路径，跨平台（Linux/Windows）均稳定
     setupSession([{ offset: 0, length: 2, original: 'xx', suggestion: 'yy', type: '的得混淆', context: '...', source: 'mcp' }]);
     (fs.writeFileSync as jest.Mock).mockImplementationOnce(() => {
       throw new Error('EACCES: permission denied');
     });
     const result = await generateProofreadReportHandler({
       session_id: sessId,
-      output_file: '/path/unwritable-report.md',
+      output_file: path.join(tmpDir, 'unwritable-report.md'),
     });
     // 评审建议：落盘失败必须向上游暴露明确信号，禁止静默吞错（用户多次遇到"落盘失败但提示已生成"）
     expect(result.success).toBe(false); // 不再伪装成功
@@ -664,7 +667,7 @@ describe('releaseSession 时序：文件写入失败时保留会话', () => {
     });
     const failed = await generateProofreadReportHandler({
       session_id: sessId,
-      output_file: '/path/unwritable-report.md',
+      output_file: path.join(tmpDir, 'unwritable-report.md'),
     });
     expect(failed.success).toBe(false);
     expect(sessionIssues.has(sessId)).toBe(true); // 会话保留
@@ -684,11 +687,47 @@ describe('releaseSession 时序：文件写入失败时保留会话', () => {
     });
     const result = await generateProofreadReportHandler({
       session_id: sessId,
-      output_file: '/path/unwritable-report.md',
+      output_file: path.join(tmpDir, 'unwritable-report.md'),
     });
     expect(result.success).toBe(false);
     expect(result.error).toContain('写入文件失败');
     expect(sessionIssues.has(sessId)).toBe(true);
+  });
+
+  it('评审建议：空报告（0 问题）+ output_file 父目录不存在 → 自动创建父目录并写盘成功', async () => {
+    // 与主分支（L936-937）行为一致：同一 output_file 因问题数不同不应出现建目录/不建目录的差异
+    setupSession([]);
+    const nestedDir = path.join(tmpDir, 'nested-empty', 'sub');
+    const outFile = path.join(nestedDir, 'empty-report.md');
+    const result = await generateProofreadReportHandler({
+      session_id: sessId,
+      output_file: outFile,
+    });
+    expect(result.success).toBe(true);
+    expect(fs.existsSync(outFile)).toBe(true); // 父目录被自动创建并成功落盘
+    expect(sessionIssues.has(sessId)).toBe(false); // 写盘成功 → 回收会话
+  });
+});
+
+// ==================== AI_ONLY_PATTERN 模块级常量（评审建议 #70） ====================
+
+describe('AI_ONLY_PATTERN（评审建议：不再每条重建 RegExp）', () => {
+  it('F11–F15 AI 专属模式全部命中', () => {
+    expect(AI_ONLY_PATTERN.test('这个方案存在着很多不足之处')).toBe(true); // F11 搭配冗余
+    expect(AI_ONLY_PATTERN.test('这一发现具有着深远的意义')).toBe(true); // F15 搭配冗余
+    expect(AI_ONLY_PATTERN.test('我们需要加强重视安全问题')).toBe(true); // F12 动宾不当
+    expect(AI_ONLY_PATTERN.test('他取得了显著的进步提高')).toBe(true); // F13 语义重复
+    expect(AI_ONLY_PATTERN.test('会议讨论了很多丰富的内容')).toBe(true); // F14 修饰不当
+  });
+
+  it('F14 修正：正常表达“丰富的经验”不命中（数量词+丰富/充分 需同时出现）', () => {
+    expect(AI_ONLY_PATTERN.test('他有着丰富的经验')).toBe(false);
+    expect(AI_ONLY_PATTERN.test('他经验丰富')).toBe(false);
+  });
+
+  it('普通表达不误命中', () => {
+    expect(AI_ONLY_PATTERN.test('会议讨论了丰富的内容')).toBe(false); // 无数词+充分/丰富 双修
+    expect(AI_ONLY_PATTERN.test('的的')).toBe(false);
   });
 });
 

@@ -24,7 +24,7 @@
  *
  * 评分量表：Layer 1 原始 [1, 5] → normalizeToTwoPointScale → [0, 2]
  * T2（#55）：
- * - proofreadAccumulate 对缺 type 的 issue 做兜底推断（inferIssueType），
+ * - proofreadAccumulate 对缺 type 的 issue 做兜底推断（normalizeIssueType → inferTypeFromContent），
  *   报告五维评分不再因 type=undefined/`'ai'` 全部落入"未分类"而失真
  * - 报告对"未分类"降级处理并提示（不计入五维评分）
  * - TC-12 口径：报告明确"问题数 = 修订记录数 ÷ 2"（每次替换=删除+插入 2 条修订）；
@@ -199,6 +199,18 @@ export const F14_MODIFIER_PATTERN = new RegExp(
   '(很多|许多|大量|丰富)(的)?(丰富|充分)(的)?(内容|经验|知识)'
 );
 
+/**
+ * AI 专属模式（F11–F15）判定正则，统一供 normalizeIssueSource 使用。
+ *
+ * 评审建议（#70 第 4 轮）：原先在 normalizeIssueSource 函数体内用
+ * `new RegExp(...)` 每条重建一次实例（issues.map() 遍历时反复分配），
+ * 与已提为模块级的 F14_MODIFIER_PATTERN 不对称。提取为模块级常量后
+ * 只构建一次，且与 F14_MODIFIER_PATTERN 保持引用关系，杜绝规则漂移。
+ */
+export const AI_ONLY_PATTERN = new RegExp(
+  `存在着|具有着|加强重视|(进步|提升|提高)(提高|进步)|${F14_MODIFIER_PATTERN.source}`
+);
+
 // ==================== type 兜底推断（T2，#55） ====================
 
 /**
@@ -212,6 +224,10 @@ export const F14_MODIFIER_PATTERN = new RegExp(
  * 1. type 已有且非 'ai'/undefined → 直接返回
  * 2. 按 suggestion/original 文本规则映射（与 proofread.ts 规则同源）
  * 3. 仍无法推断 → 返回 '未分类'（报告降级提示，不计入五维评分）
+ *
+ * ⚠️ 评审建议（#70 第 4 轮）：生产累加路径已改走 normalizeIssueType →
+ * inferTypeFromContent（#55 T2 重构），本函数在当前生产代码中已无调用点，
+ * 保留仅供测试与向后兼容（历史 SKILL 合并产物 type='ai' 的兜底口径相同）。
  */
 export function inferIssueType(issue: { type?: string; original?: string; suggestion?: string }): string {
   const rawType = issue.type;
@@ -406,10 +422,7 @@ export function normalizeIssueSource(issue: ProofreadIssueEntry): ProofreadIssue
   // 必须先于 Layer 1 判断：inferTypeFromContent 也能命中 F11–F15 模式（返回对应 type），
   // 若先走 Layer 1 会把 AI 专属问题误计为 mcp。
   const text = `${original} ${suggestion}`;
-  const aiOnlyPattern = new RegExp(
-    `存在着|具有着|加强重视|(进步|提升|提高)(提高|进步)|${F14_MODIFIER_PATTERN.source}`
-  );
-  if (aiOnlyPattern.test(text)) {
+  if (AI_ONLY_PATTERN.test(text)) {
     return { ...issue, source: 'ai' };
   }
   // 第 3 步：Layer 1 规则命中（inferTypeFromContent 返回具体类型）→ mcp
@@ -666,6 +679,13 @@ export const generateProofreadReportHandler: ToolHandler = async (
     if (output_file) {
       try {
         const safePath = validateFilePath(output_file, ALLOWED_WRITE_ROOTS);
+        // 评审建议（#70 第 4 轮）：空报告分支补上与主分支一致的 mkdirSync 自动建父目录——
+        // 同一 output_file 因问题数不同（0 vs >0）不应行为不一致：主分支会建目录，
+        // 空报告分支此前直接 writeFileSync，目标父目录不存在时会失败（与其他分支口径不同）。
+        const dir = path.dirname(safePath);
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
         fs.writeFileSync(safePath, emptyReport, 'utf-8');
         wroteFile = true;
       } catch (err) {
