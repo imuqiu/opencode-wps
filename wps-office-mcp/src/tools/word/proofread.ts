@@ -16,6 +16,10 @@
  * - fluency 句式杂糅：通过…使/让/令、根据…显示/表明/证实、由于…的原因导致/使/造成
  * - conciseness 冗余词：进行/作出/予以/加以(+修饰语)+动词、针对…这一问题
  * - 旧规则增强：大约+数量+左右/上下、并(非|不)是、在(次|来|去)→再（排除正/现前缀）
+ *
+ * #55 T1（结构化输出）：proofreadBasicHandler 的 text 块改为 JSON
+ * `{ issues: [{type, offset, length, original, suggestion, context, metric}] }`，
+ * 供 governance.js P15/P16 通过 JSON.parse 解析真实 issue 列表（SKILL 2d 亦按 issues 数组消费）。
  */
 
 import { v4 as uuidv4 } from 'uuid';
@@ -1137,20 +1141,20 @@ export const proofreadBasicHandler: ToolHandler = async (
         success: true,
         content: [
           {
+            // #55 T1：text 块直接输出 JSON（{issues: []}），P15 依赖 JSON.parse().issues.length=0 判定
             type: 'text',
-            text: '基础校对完成，未发现明显问题。',
+            text: JSON.stringify({ issues: [] }),
           },
         ],
       };
     }
 
-    const lines = issues.map(
-      (issue, i) =>
-        `${i + 1}. [${issue.type}] 位置 ${issue.offset}\n` +
-        `   原文: "${issue.original}"\n` +
-        `   建议: "${issue.suggestion}"\n` +
-        `   上下文: ${issue.context}`
-    );
+    // 结构化输出（#55 T1）：text 块直接输出 JSON（{issues: [...]}），
+    // 供 governance.js P15/P16 通过 JSON.parse 解析真实 issue 列表：
+    // P15：proofreadHadIssues = parsed.issues.length > 0；
+    // P16：proofreadIssueOriginals = parsed.issues[].original。
+    // SKILL.md Layer 1 输出约定即 `{ issues: [...] }`，AI 层按 issues 数组消费，兼容。
+    const structured = JSON.stringify({ issues });
 
     return {
       id: uuidv4(),
@@ -1158,7 +1162,7 @@ export const proofreadBasicHandler: ToolHandler = async (
       content: [
         {
           type: 'text',
-          text: `基础校对完成，发现 ${issues.length} 个问题：\n\n${lines.join('\n\n')}`,
+          text: structured,
         },
       ],
     };

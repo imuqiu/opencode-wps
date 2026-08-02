@@ -411,6 +411,22 @@ wps_office_execute({
 - 语病/逻辑矛盾
 - **编号连续性**：跨段落检查编号是否重复（如两个段落同为 "2.2.3"）、是否跳号、是否倒序
 
+## ⚠️ 不合理搭配强制逐句检查（F11–F15，Layer 2 凭据）
+
+以下 5 类"不合理搭配"是 Layer 1 正则**无法命中**的语义问题（验收语料 F11–F15），
+必须由 AI 层（Layer 2）逐句检出并输出**检出结论**——要么 `fix`（修复），要么 report_only（进优化建议），**不允许沉默漏检**：
+
+| ID | 模式 | 检出凭据（看到即检出） | 期望修复方向 | 建议 type |
+|----|------|----------------------|-------------|-----------|
+| F11 | `存在着` + 名词/数量 | "存在着"是"存在"的冗余叠加（`有`字句赘余） | 存在 → 删除"着" | 冗余词 / 多字 |
+| F12 | `加强重视` | 动宾不当："加强"不能带"重视"（应直接"重视"） | 加强重视 → 重视 | 冗余词 / 动宾不当 |
+| F13 | `进步提高` | 语义重复："进步"与"提高"同义叠加 | 进步提高 → 进步 / 提高 | 冗余词 |
+| F14 | `丰富的内容` 前接数量（"很多丰富"） | 修饰不当："很多"与"丰富"语义重复 | 很多丰富的内容 → 很多内容 | 冗余词 / 修饰不当 |
+| F15 | `具有着` | 搭配冗余："具有"不可加"着"（存现动词无进行体） | 具有着 → 具有 | 冗余词 / 多字 |
+
+**逐句输出要求**：对每个 F11–F15 模式命中，AI 层必须输出一条带 `type` 的 issue（`fix_action: "fix"`）；
+若该句同时存在其他问题导致不宜直接修复，则输出 `fix_action: "report_only"` 并写明原因，进报告"优化建议"。
+
 ## 输出格式
 
 输出严格 JSON 数组（如无问题则输出空数组 []）：
@@ -420,6 +436,7 @@ wps_office_execute({
     "offset_in_paragraph": 0,
     "original": "有问题文本",
     "suggestion": "修正文本",
+    "type": "句式杂糅",
     "reason": "语病说明",
     "metric": "fluency",
     "score": {
@@ -431,6 +448,9 @@ wps_office_execute({
 ]
 
 字段说明：
+- type（必填）：具体问题类型，与 Layer 1 正则规则类型对齐（如 句式杂糅/冗余词/的得混淆/重复字符/口语化/占位文本 等）。
+  **禁止省略或写成 'ai'**——报告五维评分按 type 查 TYPE_METRIC_MAP 分类，缺 type 会落入"未分类"不计分；
+  若确实无法归类，请根据 original/suggestion 内容推断（proofreadAccumulate 也会兜底推断，但尽量由 AI 层输出准确 type）。
 - metric（必填）："fluency" | "conciseness"（枚举约束，禁止编造其他值）
 - score.fluency：通顺问题时含五维评分（每个维度 0-2 分 + total）
 - score.conciseness_ratio：简洁问题时含冗余占比（如 0.25 = 25%）
@@ -491,8 +511,9 @@ const layer2 = aiProofreadIssues || []                  // { original, offset, s
 const allIssues = [
   // Layer 1: 基础校对（metric 来自 proofread.ts Rule 定义）
   ...layer1.map(i => ({ ...i, source: 'mcp', fix_action: 'fix' })),
-  // Layer 2: AI 校对（metric 来自 AI 输出）
-  ...layer2.map(i => ({ ...i, type: 'ai', source: 'ai' })),
+  // Layer 2: AI 校对（⚠️ 保留 AI 输出的 type 字段，禁止覆盖为 'ai'！
+  //   type 用于报告五维评分 TYPE_METRIC_MAP 分类；若缺 type，proofreadAccumulate 会兜底推断）
+  ...layer2.map(i => ({ ...i, source: 'ai', type: i.type || 'ai', fix_action: i.fix_action })),
 ]
 
 // 按 offset + original 去重（优先保留含 score 的条目）
@@ -598,6 +619,10 @@ wps_office_execute({
 // 输出应显示：修订模式: 已开启\n当前修订数量: XX
 // 确认 XX 相比本批开始时增加，且与本批修复条数一致
 ```
+
+> **⚠️ TC-12 口径（修订数一致性）**：WPS 修订模式下，每次 `replaceInParagraph` 替换 = 1 次删除 + 1 次插入，即产生 **2 条修订记录**。因此：
+> `问题数 = 修订记录数 ÷ 2`（整除）
+> 报告中的「发现问题」按 issue 条数计；当 `total_revisions`（`getTrackChangesStatus` 的修订数量）传入报告时，报告会自动换算并标注口径，避免"修订 60 条 vs 问题 30 处"的困惑。
 
 **2h. 累加本批问题到会话（proofreadAccumulate）：**
 

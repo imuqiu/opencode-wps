@@ -477,3 +477,49 @@ describe('proofread rule engine — fluency & conciseness rules', () => {
     });
   });
 });
+
+// ================================================================
+// #55 T1：proofreadBasicHandler 结构化输出（text 块为 JSON）
+// governance.js P15/P16 依赖 JSON.parse(outText).issues 解析真实 issue 列表
+// ================================================================
+describe('proofreadBasicHandler — 结构化输出（#55 T1）', () => {
+  const { proofreadBasicHandler } = require('../../tools/word/proofread');
+
+  test('发现问题时：text 块为可 JSON.parse 的 {issues: [...]}，字段齐全', async () => {
+    const result = await proofreadBasicHandler({
+      text: '通过加强监督使产品质量提升',
+      start_offset: 10,
+    });
+    expect(result.success).toBe(true);
+
+    const parsed = JSON.parse(result.content[0].text!);
+    expect(Array.isArray(parsed.issues)).toBe(true);
+    expect(parsed.issues.length).toBeGreaterThan(0);
+
+    const issue = parsed.issues[0];
+    // 字段齐全：P16 依赖 original，报告依赖 type/metric
+    expect(typeof issue.type).toBe('string');
+    expect(typeof issue.offset).toBe('number');
+    expect(typeof issue.length).toBe('number');
+    expect(typeof issue.original).toBe('string');
+    expect(typeof issue.suggestion).toBe('string');
+    expect(typeof issue.context).toBe('string');
+    // start_offset 正确传递到 offset
+    expect(issue.offset).toBeGreaterThanOrEqual(10);
+    // 通顺规则带 metric
+    expect(issue.metric).toBe('fluency');
+  });
+
+  test('无问题时：text 块为 {issues: []}（P15 依赖 issues.length=0 判定）', async () => {
+    const result = await proofreadBasicHandler({ text: '这是一段完全正常的文本内容。' });
+    expect(result.success).toBe(true);
+    const parsed = JSON.parse(result.content[0].text!);
+    expect(Array.isArray(parsed.issues)).toBe(true);
+    expect(parsed.issues.length).toBe(0);
+  });
+
+  test('空文本：返回错误', async () => {
+    const result = await proofreadBasicHandler({ text: '' });
+    expect(result.success).toBe(false);
+  });
+});

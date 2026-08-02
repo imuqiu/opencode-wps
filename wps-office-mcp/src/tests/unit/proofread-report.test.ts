@@ -30,6 +30,8 @@ import {
   proofreadAccumulateHandler,
   generateProofreadReportHandler,
   sessionIssues,
+  inferTypeFromContent,
+  normalizeIssueType,
 } from '../../tools/word/proofread-report';
 import * as fs from 'fs';
 
@@ -506,5 +508,122 @@ describe('releaseSession 时序：文件写入失败时保留会话', () => {
     });
     expect(result.success).toBe(true);
     expect(sessionIssues.has(sessId)).toBe(true);
+  });
+});
+
+// ==================== #55 T2：type/metric 兜底推断 ====================
+
+describe('inferTypeFromContent（#55 T2 兜底推断）', () => {
+  it('原文含"通过…使" → 句式杂糅', () => {
+    expect(inferTypeFromContent('通过这次学习使我受益匪浅', '这次学习使我受益匪浅')).toBe('句式杂糅');
+  });
+
+  it('原文含"根据…显示" → 句式杂糅', () => {
+    expect(inferTypeFromContent('根据调查结果显示', '调查结果')).toBe('句式杂糅');
+  });
+
+  it('原文含"进行…研究" → 冗余词', () => {
+    expect(inferTypeFromContent('进行了研究', '研究')).toBe('冗余词');
+  });
+
+  it('原文含"由于…的原因导致" → 句式杂糅', () => {
+    expect(inferTypeFromContent('由于天气的原因导致了航班延误', '由于天气导致了航班延误')).toBe('句式杂糅');
+  });
+
+  it('原文含"并（非|不）是" → 多字', () => {
+    expect(inferTypeFromContent('并不是', '并不')).toBe('多字');
+  });
+
+  it('原文含"占位文本" → 占位文本', () => {
+    expect(inferTypeFromContent('check test sample', '[需补充正式内容]')).toBe('占位文本');
+  });
+
+  it('无法推断 → undefined', () => {
+    expect(inferTypeFromContent('完全陌生的内容xyz', '也陌生')).toBeUndefined();
+  });
+});
+
+describe('normalizeIssueType（#55 T2）', () => {
+  it('缺 type 的 issue 被兜底推断', () => {
+    const issue: any = { offset: 0, length: 4, original: '进行了研究', suggestion: '研究', source: 'mcp' };
+    const normalized = normalizeIssueType(issue);
+    expect(normalized.type).toBe('冗余词');
+  });
+
+  it('type="ai"（SKILL 合并 bug 产物）被兜底推断', () => {
+    const issue: any = { offset: 0, length: 4, original: '通过管理使效率提升', suggestion: '管理使效率提升', type: 'ai', source: 'ai' };
+    const normalized = normalizeIssueType(issue);
+    expect(normalized.type).toBe('句式杂糅');
+  });
+
+  it('type 正常时保持不变', () => {
+    const issue: any = { offset: 0, length: 4, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' };
+    const normalized = normalizeIssueType(issue);
+    expect(normalized.type).toBe('重复字符');
+  });
+
+  it('无法推断 → 未分类', () => {
+    const issue: any = { offset: 0, length: 4, original: '完全陌生的内容xyz', suggestion: '也陌生', source: 'ai' };
+    const normalized = normalizeIssueType(issue);
+    expect(normalized.type).toBe('未分类');
+  });
+});
+
+describe('proofreadAccumulate — 缺 type 自动兜底（#55 T2）', () => {
+  it('累加时缺 type 的 issue 自动推断为冗余词，报告不再全 undefined/全 10 分', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 't2-session-1',
+      issues: [
+        { offset: 0, length: 4, original: '进行了研究', suggestion: '研究', source: 'mcp' as const },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+
+    const session = sessionIssues.get('t2-session-1')!;
+    expect(session.issues[0].type).toBe('冗余词'); // 兜底成功
+
+    const result = await generateProofreadReportHandler({ session_id: 't2-session-1' });
+    const text = result.content[0].text!;
+    // 简洁度行应有 1 个问题，且不再全 10 分
+    expect(text).toContain('简洁度');
+    // 冗余词 → conciseness：raw = 5 - 1*0.3 = 4.7 → norm = (4.7-1)/2 = 1.85 → 9.3/10
+    expect(text).toContain('9.3/10');
+    // 不应有未分类问题
+    expect(text).not.toContain('未分类问题');
+  });
+
+  it('type="ai" 的 issue 累加时被兜底为真实类型', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 't2-session-2',
+      issues: [
+        { offset: 0, length: 8, original: '通过管理使效率提升', suggestion: '管理使效率提升', type: 'ai', source: 'ai' as const },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+    const session = sessionIssues.get('t2-session-2')!;
+    expect(session.issues[0].type).toBe('句式杂糅');
+  });
+});
+
+// ==================== #55 T3：TC-12 修订数口径 ====================
+
+describe('generateProofreadReport — TC-12 修订数口径（#55 T3）', () => {
+  it('报告标注修订数换算口径：问题数 = 修订记录数 ÷ 2', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 't3-session-1',
+      issues: [
+        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
+        { offset: 10, length: 2, original: '在去', suggestion: '再去', type: '在再混淆', source: 'mcp' as const },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+      total_revisions: 60, // 30 处问题 × 2 条修订记录
+    });
+
+    const result = await generateProofreadReportHandler({ session_id: 't3-session-1' });
+    const text = result.content[0].text!;
+    expect(text).toContain('修订总数');
+    expect(text).toContain('60');
+    expect(text).toContain('修订记录数 ÷ 2');
+    expect(text).toContain('30'); // 60 ÷ 2 = 30
   });
 });

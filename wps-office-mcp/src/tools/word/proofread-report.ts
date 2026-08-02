@@ -23,6 +23,11 @@
  * - completeness（完整度）: 无占位文本、内容完整
  *
  * 评分量表：Layer 1 原始 [1, 5] → normalizeToTwoPointScale → [0, 2]
+ *
+ * #55 T2（type/metric 兜底）：proofreadAccumulate 对缺 type / type='ai' 的 issue
+ * 按 original/suggestion 内容兜底推断（inferTypeFromContent），报告五维评分有真实统计来源；
+ * 仍无法推断的落入"未分类"并在报告降级提示。
+ * #55 T3（TC-12 口径）：报告对 total_revisions 标注"问题数 = 修订记录数 ÷ 2"换算口径。
  */
 
 import * as fs from 'fs';
@@ -215,6 +220,66 @@ const sessionIssues = new Map<string, SessionData>();
 /** 导出供测试使用 */
 export { sessionIssues };
 
+// ==================== 兜底类型推断（#55 T2） ====================
+
+/**
+ * 从 original/suggestion 内容推断问题类型（用于缺 type 的 issue 兜底）
+ * 规则与 proofread.ts rules 的典型模式保持同步，按优先级匹配
+ */
+export function inferTypeFromContent(original: string, suggestion: string): string | undefined {
+  const patterns: Array<[RegExp, string]> = [
+    // ── 通顺（fluency） ──
+    [/通过.{0,20}(使|让|令)/, '句式杂糅'],
+    [/根据.{0,20}(显示|表明|证实)/, '句式杂糅'],
+    [/由于.{0,20}的原因(导致|使|造成)/, '句式杂糅'],
+    [/(即|既)(然|而)/, '即既混淆'],
+    [/(做|搞|弄|写|说|画|跑|跳|走|看|听|吃|喝)的(太|很|非常|比较|极为|十分|挺)/, '的得混淆'],
+    [/(狠|很|真|非|极|异|格)的(好|坏|快|慢|多|少|高|低|长|短|大|小)/, '的得混淆'],
+    [/在(次|来|去)/, '在再混淆'],
+    // ── 简洁（conciseness） ──
+    [/进行(了)?((深入|详细|认真|充分|全面|系统|细致|专门|彻底|有效)[的])?(研究|分析|讨论|处理|调查)/, '冗余词'],
+    [/作出(了)?(决定|部署|安排)/, '冗余词'],
+    [/予以(了)?(解决|处理|落实)/, '冗余词'],
+    [/加以(了)?(解决|完善|规范)/, '冗余词'],
+    [/针对.{0,20}这一问题/, '冗余词'],
+    [/大约.{0,8}(左右|上下)/, '句式冗余'],
+    [/的原因(是因为|是由于)/, '句式冗余'],
+    [/目的是为了|可以(说|看成|认为)是|被(广大|众多)所/, '句式冗余'],
+    [/必须要|全部都|进一步地|现如今|涉及到|付诸于|诉诸于/, '多字'],
+    [/并(非|不)是/, '多字'],
+    [/(的的|了了|，，|。。|！！|？？)/, '重复字符'],
+    // ── 其他 ──
+    [/签定(合同|协议|合约|约定)/, '法律术语'],
+    [/其它(人|事|物|方面|单位|情况|问题)/, '用词统一'],
+    [/(?:check|test|sample|todo|fixme|lorem ipsum)/i, '占位文本'],
+    [/xxx|xxx有限公司/, '占位文本'],
+  ];
+
+  for (const [re, type] of patterns) {
+    if (re.test(original)) return type;
+  }
+  // 原文无法匹配时，尝试从建议文本推断
+  if (suggestion) {
+    for (const [re, type] of patterns) {
+      if (re.test(suggestion)) return type;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * 规整 issue.type：缺 type / 空 type / type='ai'（SKILL 合并 bug 产物）→ 兜底推断；
+ * 仍无法推断 → '未分类'（报告降级处理，不计入五维评分）
+ */
+export function normalizeIssueType(issue: ProofreadIssueEntry): ProofreadIssueEntry {
+  const rawType = typeof issue.type === 'string' ? issue.type.trim() : '';
+  if (rawType && rawType !== 'ai' && rawType !== '未分类') {
+    return issue;
+  }
+  const inferred = inferTypeFromContent(issue.original || '', issue.suggestion || '');
+  return { ...issue, type: inferred || '未分类' };
+}
+
 // ==================== 累加器工具 ====================
 
 export const proofreadAccumulateDefinition: ToolDefinition = {
@@ -340,9 +405,10 @@ export const proofreadAccumulateHandler: ToolHandler = async (
     session.totalRevisions = total_revisions;
   }
 
-  // 追加 issues
+  // 追加 issues（#55 T2：入口统一规整 type，缺 type / type='ai' 时兜底推断）
+  const normalizedIssues = issues.map(normalizeIssueType);
   const beforeCount = session.issues.length;
-  session.issues.push(...issues);
+  session.issues.push(...normalizedIssues);
 
   // 去重（按 offset + original）
   const seen = new Set<string>();
@@ -554,9 +620,11 @@ export const generateProofreadReportHandler: ToolHandler = async (
   report += `- **总段数**: ${docInfo.totalParagraphs}\n`;
   report += `- **总字数**: ${docInfo.totalWords}\n`;
   if (totalRevisions !== undefined) {
-    report += `- **修订总数**: ${totalRevisions}\n`;
+    // TC-12 口径：WPS 修订模式下每次替换 = 1 次删除 + 1 次插入，即 2 条修订记录。
+    // 报告「发现问题」与「修订总数」的换算口径：问题数 = 修订记录数 ÷ 2
+    report += `- **修订总数**: ${totalRevisions}（修订记录数；问题数 = 修订记录数 ÷ 2 = ${Math.floor(totalRevisions / 2)}）\n`;
   }
-  report += `- **发现问题**: ${issues.length} 处\n`;
+  report += `- **发现问题**: ${issues.length} 处（问题数按 issue 条数计；若开启修订模式，等价于修订记录数 ÷ 2）\n`;
   report += `\n`;
 
   // 五维评分摘要
@@ -618,6 +686,8 @@ export const generateProofreadReportHandler: ToolHandler = async (
   // 未知类型问题（兜底）
   if (unknownTypeIssues.length > 0) {
     report += `### 未分类问题 — ${unknownTypeIssues.length} 处\n\n`;
+    // #55 T2：未分类问题不计入五维评分，提示补充 type 以便纳入统计
+    report += `> ⚠️ 以下问题缺少可识别的 type，未计入五维评分。建议在 AI 层输出时补充 type（如 fluency/conciseness 对应的具体问题类型），以便纳入对应维度统计。\n\n`;
     report += `| # | 位置 | 原文 | 建议修改 | 类型 | 来源 |\n`;
     report += `|---|------|------|---------|------|------|\n`;
     unknownTypeIssues.forEach((issue, idx) => {
