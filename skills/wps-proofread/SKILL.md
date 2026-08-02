@@ -715,7 +715,9 @@ const docInfo = await wps_office_execute({
 const docText = docInfo.content[0].text
 const docPath = /路径:\s*(.+)/.exec(docText)?.[1]
 if (!docPath) throw new Error("未能从 getActiveDocument 返回中解析出文档路径")
-const reportPath = docPath.replace(/\.docx$/i, '.校对报告.md')
+// 通用去扩展名（评审修正）：不再只替换 .docx，.doc/.wps/.rtf 或无扩展名均正确拼接，
+// 避免生成 "文档.doc.校对报告.md" 或在无扩展名时覆盖原路径
+const reportPath = docPath.replace(/\.[^./\\]+$/, '') + '.校对报告.md'
 
 // 写入报告文件，并确认 writeFile 返回 success=true
 const writeRes = await wps_office_execute({

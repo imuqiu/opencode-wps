@@ -36,6 +36,20 @@ import {
   normalizeIssueSource,
 } from '../../tools/word/proofread-report';
 import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+
+// 评审建议：重试用例真实写盘不再用 /tmp（Windows 上解析为盘符根，且残留垃圾文件），
+// 改用 os.tmpdir() 并每次生成唯一子目录，用例结束后清理。
+const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'proofread-report-test-'));
+
+afterAll(() => {
+  try {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  } catch {
+    // 清理失败不影响测试结果
+  }
+});
 
 // Reset sessionIssues before each test
 beforeEach(() => {
@@ -617,7 +631,7 @@ describe('releaseSession 时序：文件写入失败时保留会话', () => {
     setupSession([{ offset: 0, length: 2, original: 'xx', suggestion: 'yy', type: '的得混淆', context: '...', source: 'mcp' }]);
     const result = await generateProofreadReportHandler({
       session_id: sessId,
-      output_file: `/tmp/proofread-report-${Date.now()}.md`,
+      output_file: path.join(tmpDir, `proofread-report-${Date.now()}.md`),
     });
     expect(result.success).toBe(true);
     expect(sessionIssues.has(sessId)).toBe(false);
@@ -654,10 +668,10 @@ describe('releaseSession 时序：文件写入失败时保留会话', () => {
     });
     expect(failed.success).toBe(false);
     expect(sessionIssues.has(sessId)).toBe(true); // 会话保留
-    // 第二次（不 mock → 真实写入）重试成功
+    // 第二次（不 mock → 真实写入）重试成功：写入 os.tmpdir() 唯一目录，用例结束后统一清理
     const retry = await generateProofreadReportHandler({
       session_id: sessId,
-      output_file: `/tmp/proofread-report-retry-${Date.now()}.md`,
+      output_file: path.join(tmpDir, `proofread-report-retry-${Date.now()}.md`),
     });
     expect(retry.success).toBe(true);
     expect(sessionIssues.has(sessId)).toBe(false); // 成功后回收
@@ -703,6 +717,21 @@ describe('inferTypeFromContent（#55 T2 兜底推断）', () => {
 
   it('原文含"占位文本" → 占位文本', () => {
     expect(inferTypeFromContent('check test sample', '[需补充正式内容]')).toBe('占位文本');
+  });
+
+  it('评审建议：F14 不再误判正常表达——"丰富的经验"不被推断为修饰不当', () => {
+    // 原模式 `(很多|许多|大量|丰富).{0,6}(内容|经验|知识)` 会把"丰富的经验"（丰富→经验
+    // 间隔 0）命中为修饰不当；修正后 F14 需数量词+丰富/充分 同时出现（如"很多丰富的内容"）。
+    expect(inferTypeFromContent('他有着丰富的经验', '他经验丰富')).toBeUndefined();
+    // F14 真阳性：数量词+丰富/充分 修饰名词 → 修饰不当
+    expect(inferTypeFromContent('会议讨论了很多丰富的内容', '会议讨论了很多内容')).toBe('修饰不当');
+  });
+
+  it('评审建议：F14 修正同时影响 inferIssueType（F14_MODIFIER_PATTERN 复用）', () => {
+    // "丰富的经验"（正常搭配）不再推断为修饰不当，落入后续规则（占位/重复等不命中 → 未分类）
+    expect(inferIssueType({ original: '他有着丰富的经验', suggestion: '他经验丰富' })).toBe('未分类');
+    // 真阳性仍命中
+    expect(inferIssueType({ original: '会议讨论了很多丰富的内容', suggestion: '会议讨论了很多内容' })).toBe('修饰不当');
   });
 
   it('无法推断 → undefined', () => {
@@ -779,6 +808,33 @@ describe('normalizeIssueSource（验收遗留 TC-13）', () => {
     expect(normalizeIssueSource({ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符' } as any).source).toBe('mcp');
     expect(normalizeIssueSource({ offset: 0, length: 7, original: '通过加强监督使效率提升', suggestion: '加强监督使效率提升' } as any).source).toBe('mcp');
     expect(normalizeIssueSource({ offset: 0, length: 4, original: '进行了研究', suggestion: '研究' } as any).source).toBe('mcp');
+  });
+
+  it('评审建议：两层判断顺序——先 AI 专属后 Layer 1，F11–F15 不因 inferTypeFromContent 命中而误归 mcp', () => {
+    // inferTypeFromContent 也能命中 F11–F15 模式（加强重视→动宾不当/存在着→搭配冗余），
+    // 旧实现"非 AI 专属 → 全部 mcp"若先走 Layer 1 判断，会把这类 AI 专属问题误计为 MCP
+    // （TC-13 来源失真反向复现）。修复后必须先判 AI 专属模式再判 Layer 1。
+    expect(
+      normalizeIssueSource({ offset: 0, length: 6, original: '我们需要加强重视安全问题', suggestion: '我们需要重视安全问题' } as any).source
+    ).toBe('ai'); // F12 动宾不当（AI 专属）→ ai，而非 mcp
+    expect(
+      normalizeIssueSource({ offset: 0, length: 8, original: '这个方案存在着很多不足之处', suggestion: '这个方案存在很多不足之处' } as any).source
+    ).toBe('ai'); // F11 搭配冗余（AI 专属）→ ai
+  });
+
+  it('评审建议：无法识别的未知内容（Layer 1 不命中、非 F11–F15）保守兜底为 mcp', () => {
+    // 口语化/语序不当等 Layer 1 规则与 F11–F15 正则均不检出的语义类问题，
+    // 按注释第 4 步保守兜底为 mcp（Layer 1 规则引擎命中优先，AI 补充场景由 SKILL 约束）。
+    expect(normalizeIssueSource({ offset: 0, length: 4, original: '语气很口语化呢', suggestion: '语气较为书面' } as any).source).toBe('mcp');
+  });
+
+  it('评审建议：F14 不再误判正常表达——"丰富的经验"（丰富直接修饰经验）不归为 ai', () => {
+    // 原 aiOnlyPattern `(很多|许多|大量|丰富).{0,6}(内容|经验|知识)` 会把正常搭配
+    // "丰富的经验" 命中（丰富→经验 间隔 0）→ 误判 ai。修正后 F14 需数量词+丰富/充分
+    // 同时出现（如"很多丰富的内容"），"丰富的经验"正常表达不再被 AI 专属模式捕获。
+    expect(normalizeIssueSource({ offset: 0, length: 5, original: '他有着丰富的经验', suggestion: '他经验丰富' } as any).source).toBe('mcp');
+    // F14 真阳性：数量词+丰富/充分 修饰名词 → ai
+    expect(normalizeIssueSource({ offset: 0, length: 10, original: '会议讨论了很多丰富的内容', suggestion: '会议讨论了很多内容' } as any).source).toBe('ai');
   });
 
   it('缺 source 时，F11–F15 AI 专属模式（存在着/加强重视/进步提高等）兜底为 ai', () => {

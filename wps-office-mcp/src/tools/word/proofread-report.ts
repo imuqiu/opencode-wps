@@ -27,7 +27,10 @@
  * - proofreadAccumulate 对缺 type 的 issue 做兜底推断（inferIssueType），
  *   报告五维评分不再因 type=undefined/`'ai'` 全部落入"未分类"而失真
  * - 报告对"未分类"降级处理并提示（不计入五维评分）
- * - TC-12 口径：报告明确"问题数 = 修订记录数 ÷ 2"（每次替换=删除+插入 2 条修订）
+ * - TC-12 口径：报告明确"问题数 = 修订记录数 ÷ 2"（每次替换=删除+插入 2 条修订）；
+ *   奇数修订（删除类修复只产生 1 条）时提示"换算不整除、请人工核对"
+ * - 缺 source 的 issue 兜底推断（normalizeIssueSource，TC-13）：Layer 1 规则命中→mcp、
+ *   F11–F15 AI 专属模式→ai、无法判断→保守 mcp；报告"未标注来源"统计不再失真
  */
 
 import * as fs from 'fs';
@@ -178,6 +181,24 @@ const TYPE_METRIC_MAP: Record<string, ProofreadMetric> = {
   '占位文本': 'completeness',
 };
 
+// ==================== F14 修饰不当模式（评审修正 #70） ====================
+
+/**
+ * F14 修饰不当（AI Layer 2）的判定模式。
+ *
+ * ⚠️ 评审修正：原模式 `(很多|许多|大量|丰富).{0,6}(内容|经验|知识)` 会把
+ * "丰富的经验"（丰富直接修饰经验，正常搭配）误判为修饰不当（aiOnlyPattern
+ * 也会因此把正常表达兜底归为 ai，来源失真反向复现）。F14 的本质是**数量词
+ * 修饰"丰富/充分"**造成语义重复（如"很多丰富的内容"→"很多内容"），
+ * 故需数量词与 丰富/充分 同时出现才命中。
+ *
+ * 统一供 inferIssueType / inferTypeFromContent / normalizeIssueSource 三处复用，
+ * 避免规则漂移（评审建议 5）。
+ */
+export const F14_MODIFIER_PATTERN = new RegExp(
+  '(很多|许多|大量|丰富)(的)?(丰富|充分)(的)?(内容|经验|知识)'
+);
+
 // ==================== type 兜底推断（T2，#55） ====================
 
 /**
@@ -213,9 +234,8 @@ export function inferIssueType(issue: { type?: string; original?: string; sugges
   if (/存在着|具有着/.test(original)) return '搭配冗余';      // F11/F15
   if (/加强重视/.test(original)) return '动宾不当';            // F12
   if (/(进步|提升|提高)(提高|进步)/.test(original)) return '语义重复'; // F13
-  if (/(丰富|充分|大量)(的)?(内容|经验|知识)/.test(original) && /很多|许多|大量|丰富/.test(original)) {
-    return '修饰不当';                                         // F14
-  }
+  // F14（评审修正：需数量词+丰富/充分 同时出现，避免"丰富的经验"误判）
+  if (F14_MODIFIER_PATTERN.test(original)) return '修饰不当';
   // ── 的得地 / 重复 / 标点（向后兼容旧规则）──
   if (/(的的|的地|得的|变的|做的)/.test(original)) return '的得混淆';
   if (/([\u4e00-\u9fff])\1{2,}/.test(original)) return '重复字符';
@@ -317,7 +337,8 @@ export function inferTypeFromContent(original: string, suggestion: string): stri
     [/存在着|具有着/, '搭配冗余'],      // F11/F15
     [/加强重视/, '动宾不当'],            // F12
     [/(进步|提升|提高)(提高|进步)/, '语义重复'], // F13
-    [/(很多|许多|大量|丰富).{0,6}(内容|经验|知识)/, '修饰不当'], // F14
+    // F14（评审修正：数量词+丰富/充分，避免"丰富的经验"误判）
+    [F14_MODIFIER_PATTERN, '修饰不当'],
     // ── 其他 ──
     [/签定(合同|协议|合约|约定)/, '法律术语'],
     [/其它(人|事|物|方面|单位|情况|问题)/, '用词统一'],
@@ -362,11 +383,13 @@ export function normalizeIssueType(issue: ProofreadIssueEntry): ProofreadIssueEn
  * 出现"⚠️ 未标注来源 30 处"（TC-13 来源统计失真）。SKILL 已要求 AI 层输出
  * source（mcp/ai），但代码侧缺少兜底，AI 漏传时报告仍失真。
  *
- * 兜底策略（保守、可追溯）：
- * 1. source 已是 'mcp' / 'ai' → 直接返回
- * 2. 能按原文/建议文本命中 Layer 1 规则（inferTypeFromContent 命中非 F11–F15 模式）→ 'mcp'
- * 3. 其余（含 F11–F15 搭配冗余等 AI 专属模式）→ 'ai'
- * 4. 仍无法判断 → 'mcp'（Layer 1 规则引擎命中优先，AI 补充场景由 SKILL 约束）
+ * 兜底策略（保守、可追溯，评审建议：严格按注释实现两层判断，
+ * 避免"非 AI 专属模式 → 全部 mcp"导致 AI 漏传 source 的非 F11–F15 问题
+ * （如口语化/语序不当）被误计为 MCP，TC-13 来源失真在反方向复现）：
+ * 1. source 已是 'mcp' / 'ai' → 直接返回（大小写归一化为小写）
+ * 2. 命中 F11–F15 AI 专属模式（搭配冗余/动宾不当/语义重复/修饰不当）→ 'ai'
+ * 3. 命中 Layer 1 规则（inferTypeFromContent 返回具体类型）→ 'mcp'
+ * 4. 仍无法判断 → 保守 'mcp'（Layer 1 规则引擎命中优先，AI 补充场景由 SKILL 约束）
  */
 export function normalizeIssueSource(issue: ProofreadIssueEntry): ProofreadIssueEntry {
   const rawSource = typeof issue.source === 'string' ? issue.source.trim().toLowerCase() : '';
@@ -376,15 +399,25 @@ export function normalizeIssueSource(issue: ProofreadIssueEntry): ProofreadIssue
     // 统一归一化为小写后再返回，彻底堵住漏网场景。
     return { ...issue, source: rawSource };
   }
-  // 依据原文推断来源：F11–F15 的 AI 专属搭配模式（搭配冗余/动宾不当/语义重复/修饰不当）
-  // 这些模式 Layer 1 不检出（#25 语料标注 Layer 2 专属），兜底归为 ai
-  const text = `${issue.original || ''} ${issue.suggestion || ''}`;
-  const aiOnlyPattern =
-    /存在着|具有着|加强重视|(进步|提升|提高)(提高|进步)|(很多|许多|大量|丰富).{0,6}(内容|经验|知识)/;
+  const original = issue.original || '';
+  const suggestion = issue.suggestion || '';
+  // 第 2 步：F11–F15 的 AI 专属搭配模式（搭配冗余/动宾不当/语义重复/修饰不当）
+  // 这些模式 Layer 1 不检出（#25 语料标注 Layer 2 专属），兜底归为 ai。
+  // 必须先于 Layer 1 判断：inferTypeFromContent 也能命中 F11–F15 模式（返回对应 type），
+  // 若先走 Layer 1 会把 AI 专属问题误计为 mcp。
+  const text = `${original} ${suggestion}`;
+  const aiOnlyPattern = new RegExp(
+    `存在着|具有着|加强重视|(进步|提升|提高)(提高|进步)|${F14_MODIFIER_PATTERN.source}`
+  );
   if (aiOnlyPattern.test(text)) {
     return { ...issue, source: 'ai' };
   }
-  // 其余情况统一兜底为 'mcp'（Layer 1 规则引擎命中优先，AI 补充场景由 SKILL 约束）
+  // 第 3 步：Layer 1 规则命中（inferTypeFromContent 返回具体类型）→ mcp
+  const inferred = inferTypeFromContent(original, suggestion);
+  if (inferred) {
+    return { ...issue, source: 'mcp' };
+  }
+  // 第 4 步：仍无法判断 → 保守 'mcp'（Layer 1 规则引擎命中优先，AI 补充场景由 SKILL 约束）
   return { ...issue, source: 'mcp' };
 }
 
@@ -647,6 +680,9 @@ export const generateProofreadReportHandler: ToolHandler = async (
       releaseSession(session_id);
     }
     if (writeError) {
+      // 评审建议：失败返回不内嵌完整报告全文（长文档时消耗大量 token），
+      // 改为截断预览（前 1500 字）+ 报告总长度提示，AI 可修正路径后重试重新生成完整报告。
+      const preview = emptyReport.length > 1500 ? emptyReport.slice(0, 1500) + '\n…(预览截断)' : emptyReport;
       return {
         id: uuidv4(),
         success: false,
@@ -657,8 +693,9 @@ export const generateProofreadReportHandler: ToolHandler = async (
               `⚠️ 校对报告已生成但**写入文件失败**，本次校对未完成落盘！\n\n` +
               `目标路径: ${output_file ?? '(未指定)'}\n` +
               `失败原因: ${writeError}\n\n` +
-              `请修正路径后重新生成报告（或改用 SKILL Step 3 的 writeFile 方案落盘）。` +
-              `报告内容预览：\n\n${emptyReport}`,
+              `会话 ${session_id} 已保留，请修正路径后重新调用 generateProofreadReport（传 output_file）重试，` +
+              `或改用 SKILL Step 3 的 writeFile 方案落盘。` +
+              `报告全文 ${emptyReport.length} 字，本次仅返回预览：\n\n${preview}`,
           },
         ],
         error: `报告写入文件失败: ${writeError}`,
@@ -914,6 +951,8 @@ export const generateProofreadReportHandler: ToolHandler = async (
   if (writeError) {
     // 落盘失败：明确返回失败（success=false + error），AI 必须重试落盘才能进入 Step 4 收尾；
     // 会话已保留（未回收），可直接修正 output_file 后重新生成。
+    // 评审建议：失败返回不内嵌完整报告全文（长文档时消耗大量 token），改为截断预览。
+    const preview = report.length > 1500 ? report.slice(0, 1500) + '\n…(预览截断)' : report;
     return {
       id: uuidv4(),
       success: false,
@@ -925,7 +964,8 @@ export const generateProofreadReportHandler: ToolHandler = async (
             `目标路径: ${output_file}\n` +
             `失败原因: ${writeError}\n\n` +
             `会话 ${session_id} 已保留，请修正路径后重新调用 generateProofreadReport（传 output_file）重试；` +
-            `或改用 SKILL Step 3 的 writeFile 方案落盘。报告内容预览：\n\n${report}`,
+            `或改用 SKILL Step 3 的 writeFile 方案落盘。` +
+            `报告全文 ${report.length} 字，本次仅返回预览：\n\n${preview}`,
         },
       ],
       error: `报告写入文件失败: ${writeError}`,
