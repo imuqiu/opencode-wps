@@ -60,7 +60,8 @@ interface DocInfo {
 
 /** 校对问题条目 */
 interface ProofreadIssueEntry {
-  offset: number;
+  /** 文档绝对偏移（可选：AI 层漏传时展示层降级为「位置未知」，不应用 offset_in_paragraph 冒充） */
+  offset?: number;
   length: number;
   original: string;
   suggestion: string;
@@ -393,6 +394,67 @@ export function normalizeIssueType(issue: ProofreadIssueEntry): ProofreadIssueEn
 }
 
 /**
+ * 规整 issue 的定位字段（位置展示「偏移 undefined」瑕疵修复，PR #71 评审 + 架构复盘收敛版）：
+ *
+ * ## 坐标系收敛背景
+ * 架构复盘结论：全链路只保留**一套坐标系**——驼峰 `paragraphIndex`（段落索引，从 1 起）
+ * + `offset`（文档**绝对**偏移）。
+ * - SKILL.md Layer 2 已改为**直接输出驼峰 + 绝对 offset**，不再要求蛇形 `paragraph_index` /
+ *   `offset_in_paragraph`，从源头消灭双坐标系。
+ * - `offset_in_paragraph`（段落内偏移）≠ `offset`（文档绝对偏移），语义不同，**绝不互相兜底**
+ *   （评审 warning：段落内偏移冒充绝对偏移会引入「偏移值语义错误」的隐性风险）。
+ *
+ * ## 本函数职责（纯防御，不再承担语义换算）
+ * 1. `paragraph_index`（蛇形旧别名）→ `paragraphIndex`（驼峰），兼容存量 AI 输出
+ * 2. `offset` 仅接受数值（兼容字符串数字如 `"3"`，评审 warning：AI 层可能输出字符串）
+ * 3. `offset_in_paragraph` **忽略不计**（不兜底为 offset）——该字段语义为段落内偏移，
+ *    与绝对偏移不可混用；缺失 offset 时展示层降级为「位置未知」
+ * 4. 不再用 `as number` 类型断言（评审 info：断言掩盖 undefined 可能性，类型不诚实），
+ *    直接返回 `offset?: number`
+ */
+
+/**
+ * 将可能是字符串数字的输入安全转为数值（评审 warning：AI 层可能输出 "3" 而非 3）
+ * 非数值 / undefined / 空字符串 → undefined（不强行转换）
+ */
+function toFiniteNumber(value: unknown): number | undefined {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
+}
+
+export function normalizeIssueLocation(issue: ProofreadIssueEntry): ProofreadIssueEntry {
+  // 仅声明本函数真正消费的字段（评审 info：类型声明即承诺，不声明被有意忽略的
+  // offset_in_paragraph——它语义是段落内偏移，与绝对 offset 不可混用，统一由
+  // SKILL 约束 AI 层不输出该字段）
+  const raw = issue as ProofreadIssueEntry & {
+    paragraphIndex?: number | string;
+    paragraph_index?: number | string;
+    offset?: number | string;
+  };
+  // paragraphIndex 优先驼峰，其次蛇形旧别名（两种都可能带字符串数字）
+  const paragraphIndex =
+    toFiniteNumber(raw.paragraphIndex) ??
+    toFiniteNumber(raw.paragraph_index) ??
+    undefined;
+  // offset 仅接受绝对偏移数值（含字符串数字）；offset_in_paragraph 语义不同，绝不兜底
+  const offset = toFiniteNumber(raw.offset);
+  return { ...issue, paragraphIndex, offset };
+}
+
+/**
+ * 去重键（四评审 info：`offset|original` 用 `|` 分隔，原文含 `|` 时可能碰撞误判）
+ * 改为 JSON 序列化数组，彻底消除分隔符歧义。
+ * 仅对携带绝对 offset 的条目调用（offset 为 number）。
+ */
+function dedupKey(offset: number, original: string): string {
+  return JSON.stringify([offset, original]);
+}
+
+/**
  * 规整 issue.source：缺 source / 非法值 → 兜底推断（TC-13，验收遗留）
  *
  * 背景：第三轮会话 proofreadAccumulate 的 issues 未携带 source，报告统计摘要
@@ -464,7 +526,7 @@ export const proofreadAccumulateDefinition: ToolDefinition = {
         items: {
           type: 'object',
           properties: {
-            offset: { type: 'number', description: '文档绝对偏移位置' },
+            offset: { type: 'number', description: '文档绝对偏移位置（Layer 2 输出驼峰字段，缺失时报告位置列显示「位置未知」；兼容字符串数字如 "3"，自动归一化为数值）' },
             length: { type: 'number', description: '问题文本长度' },
             original: { type: 'string', description: '原文' },
             suggestion: { type: 'string', description: '建议修改' },
@@ -472,6 +534,7 @@ export const proofreadAccumulateDefinition: ToolDefinition = {
             context: { type: 'string', description: '上下文' },
             source: { type: 'string', description: '检测来源: mcp（Layer 1）或 ai（Layer 2）' },
             paragraphIndex: { type: 'number', description: '段落索引（可选，从 1 开始）' },
+            paragraph_index: { type: 'number', description: '段落索引蛇形旧别名（兼容存量 AI 输出，自动归一化到 paragraphIndex；兼容字符串数字）' },
             reason: { type: 'string', description: 'AI 检测理由（仅 source=ai 时有效）' },
           },
         },
@@ -561,20 +624,77 @@ export const proofreadAccumulateHandler: ToolHandler = async (
 
   // 追加 issues（#55 T2：入口统一规整 type，缺 type / type='ai' 时兜底推断；
   // 验收遗留：缺 source 时同样兜底推断，避免报告"未标注来源"失真 TC-13）
-  const normalizedIssues = issues.map((i) => normalizeIssueSource(normalizeIssueType(i)));
-  const beforeCount = session.issues.length;
+  // 「偏移 undefined」瑕疵：先归一化位置字段（蛇形 paragraph_index → 驼峰 paragraphIndex；
+  // offset 仅接受绝对偏移数值，offset_in_paragraph 语义不同不兜底，缺失时报告降级「位置未知」）
+  const normalizedIssues = issues.map((i) =>
+    normalizeIssueLocation(normalizeIssueSource(normalizeIssueType(i)))
+  );
+  // 本批中 offset 缺失的条数（评审 warning：返回文本需暴露这一可观测信号，
+  // 报告侧「位置未知」需能区分是漏传还是计算失败）
+  const missingOffsetCount = normalizedIssues.filter((i) => i.offset === undefined).length;
+  // 先把本批追加进会话，再做全量去重（保留历史累计语义，便于报告侧统计）
   session.issues.push(...normalizedIssues);
 
-  // 去重（按 offset + original）
-  const seen = new Set<string>();
-  session.issues = session.issues.filter((entry) => {
-    const key = `${entry.offset}|${entry.original}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  // 去重（评审 warning：offset 可选后，退化键会把不同位置 issue 误判重复丢弃；
+  // 三评审：去重键需与 SKILL 合并口径一致）——
+  // 策略：仅对携带绝对 offset 的条目按 dedupKey(offset, original) 去重，同键时 **source=ai 优先覆盖 mcp**
+  // （SKILL 合并逻辑：同位置同原文只修一次，且优先保留含 reason/更准确的 AI 条目）；
+  // offset 缺失时无法确认是否为同一位置，保守不去重（保留全部）。
+  const seen = new Map<string, number>(); // key → deduped 数组下标（用于 ai 覆盖 mcp）
+  const deduped: ProofreadIssueEntry[] = [];
+  for (const entry of session.issues) {
+    if (entry.offset === undefined) {
+      deduped.push(entry);
+      continue;
+    }
+    const key = dedupKey(entry.offset, entry.original);
+    const existingIdx = seen.get(key);
+    if (existingIdx === undefined) {
+      seen.set(key, deduped.length);
+      deduped.push(entry);
+    } else if (entry.source === 'ai' && deduped[existingIdx].source !== 'ai') {
+      // 同位置同原文：AI 条目优先（SKILL 合并口径：优先保留含 reason/更准确的 AI 条目），
+      // 用 AI 条目覆盖 MCP 条目
+      // 四评审 warning（与 SKILL 2d `issue.type = existing.type` 保护对齐）：AI 条目 type
+      // 兜底失败为「未分类」而 MCP 条目（Layer 1 正则命中）有具体 type 时，保留 MCP 的
+      // type——否则覆盖后报告 TYPE_METRIC_MAP 查表把该问题漏入五维评分（type 失真）。
+      const existing = deduped[existingIdx];
+      const merged =
+        entry.type === '未分类' && existing.type && existing.type !== '未分类'
+          ? { ...entry, type: existing.type }
+          : entry;
+      deduped[existingIdx] = merged;
+    } else if (
+      entry.source === 'mcp' &&
+      deduped[existingIdx].source === 'ai' &&
+      deduped[existingIdx].type === '未分类' &&
+      entry.type &&
+      entry.type !== '未分类'
+    ) {
+      // 跨批边缘：AI 未分类条目先入（该批 Layer 1 未命中），后续批次 MCP 带具体 type 后到。
+      // AI 优先语义不变（保留 AI 条目主体），但用 MCP 的具体 type 提升 AI 条目的「未分类」，
+      // 避免报告五维评分漏计该问题（与批内 SKILL 合并结果对齐）。
+      deduped[existingIdx] = { ...deduped[existingIdx], type: entry.type };
+    }
+    // 其余情况（同 source 重复 / mcp 撞 ai）保留先到者
+  }
+  session.issues = deduped;
 
-  const dedupedCount = beforeCount + issues.length - session.issues.length;
+  // 本批实际生效的去重数（评审 info：旧公式 beforeCount + issues.length -
+  // session.issues.length 会把「跨批重复」也计为去重——第 1 批去重 1 条、
+  // 第 2 批又重复 1 条会两次各报「去重 1 条」，误导口径）——
+  // 按评审建议「只统计本批新增导致的去重」：对本批条目单独跑一遍同款去重逻辑
+  // （不含历史），本批内部重复（同 offset 同 original 多次出现）才计入去重数；
+  // 与历史重复的条目不计（那只是重复提交已有问题，不是本批新增的去重）。
+  const batchSeen = new Set<string>();
+  let batchDeduped = 0;
+  for (const entry of normalizedIssues) {
+    if (entry.offset === undefined) continue;
+    const key = dedupKey(entry.offset, entry.original);
+    if (batchSeen.has(key)) batchDeduped++;
+    else batchSeen.add(key);
+  }
+  const dedupedCount = batchDeduped;
 
   return {
     id: uuidv4(),
@@ -585,7 +705,10 @@ export const proofreadAccumulateHandler: ToolHandler = async (
         text:
           `已累加 ${issues.length} 条问题到会话 ${session_id}。\n` +
           `当前会话累计: ${session.issues.length} 条问题` +
-          (dedupedCount > 0 ? `（去重 ${dedupedCount} 条）` : '') +
+          (dedupedCount > 0 ? `（本批去重 ${dedupedCount} 条）` : '') +
+          (missingOffsetCount > 0
+            ? `；其中 ${missingOffsetCount} 条未携带绝对 offset，未参与去重（报告位置列显示「位置未知」）`
+            : '') +
           '。',
       },
     ],
@@ -599,6 +722,27 @@ export const proofreadAccumulateHandler: ToolHandler = async (
  */
 function metricForIssue(issue: ProofreadIssueEntry): ProofreadMetric | null {
   return TYPE_METRIC_MAP[issue.type] ?? null;
+}
+
+/**
+ * 报告位置列展示（三阶兜底：段落 → 偏移 → 位置未知）
+ *
+ * 「偏移 undefined」瑕疵修复后抽取的公共函数：
+ * 指标维度列表与未分类列表两处位置列逻辑相同，统一收口避免重复（评审 info）。
+ * - 段落索引优先（段落  N；四轮评审 info：约定从 1 起，0/负数视为非法值不展示）
+ * - 否则有数值 offset → 偏移 N（含 offset=0 合法值，用 typeof 判断而非 falsy）
+ * - 否则「位置未知」——优雅降级，不再输出字面量「偏移 undefined」
+ */
+function formatIssueLocation(issue: ProofreadIssueEntry): string {
+  // 四评审 info：paragraphIndex 约定从 1 起，非法值（0/负数）不展示「段落 N」
+  // （0 不是合法段落号，AI 层误传时降级到 offset 或「位置未知」）
+  if (typeof issue.paragraphIndex === 'number' && issue.paragraphIndex > 0) {
+    return `段落 ${issue.paragraphIndex}`;
+  }
+  if (typeof issue.offset === 'number') {
+    return `偏移 ${issue.offset}`;
+  }
+  return '位置未知';
 }
 
 // ==================== 报告生成工具 ====================
@@ -888,9 +1032,7 @@ export const generateProofreadReportHandler: ToolHandler = async (
     report += `|---|------|------|---------|------|------|\n`;
 
     metricIssuesList.forEach((issue, idx) => {
-      const location = issue.paragraphIndex
-        ? `段落 ${issue.paragraphIndex}`
-        : `偏移 ${issue.offset}`;
+      const location = formatIssueLocation(issue);
       const escapedOriginal = issue.original.replace(/\|/g, '\\|').replace(/\n/g, ' ');
       const escapedSuggestion = issue.suggestion.replace(/\|/g, '\\|').replace(/\n/g, ' ');
       report += `| ${idx + 1} | ${location} | ${escapedOriginal} | ${escapedSuggestion} | ${issue.type} | ${issue.source === 'ai' ? 'AI' : 'MCP'} |\n`;
@@ -909,9 +1051,7 @@ export const generateProofreadReportHandler: ToolHandler = async (
     report += `| # | 位置 | 原文 | 建议修改 | 类型 | 来源 |\n`;
     report += `|---|------|------|---------|------|------|\n`;
     unknownTypeIssues.forEach((issue, idx) => {
-      const location = issue.paragraphIndex
-        ? `段落 ${issue.paragraphIndex}`
-        : `偏移 ${issue.offset}`;
+      const location = formatIssueLocation(issue);
       const escapedOriginal = issue.original.replace(/\|/g, '\\|').replace(/\n/g, ' ');
       const escapedSuggestion = issue.suggestion.replace(/\|/g, '\\|').replace(/\n/g, ' ');
       report += `| ${idx + 1} | ${location} | ${escapedOriginal} | ${escapedSuggestion} | ${issue.type || '（空）'} | ${issue.source === 'ai' ? 'AI' : 'MCP'} |\n`;

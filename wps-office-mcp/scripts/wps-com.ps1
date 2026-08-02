@@ -2703,23 +2703,6 @@ switch ($Action) {
         Output-Json @{ success = $true; data = @{ trackChanges = [bool]$doc.TrackRevisions; revisionCount = $revisionCount } }
     }
 
-    "replaceRange" {
-        $word = Get-WpsWord
-        if ($null -eq $word) { Output-Json @{ success = $false; error = "WPS Word not running" }; exit }
-        $doc = $word.ActiveDocument
-        if ($null -eq $doc) { Output-Json @{ success = $false; error = "No active document" }; exit }
-        if ($null -eq $p.startPos -or $null -eq $p.endPos) { Output-Json @{ success = $false; error = "startPos and endPos required" }; exit }
-        if ($null -eq $p.text) { Output-Json @{ success = $false; error = "text required" }; exit }
-        try {
-            $range = $doc.Range([int]$p.startPos, [int]$p.endPos)
-            $originalText = $range.Text
-            $range.Text = $p.text
-            Output-Json @{ success = $true; data = @{ startPos = [int]$p.startPos; endPos = [int]$p.startPos + $p.text.Length; originalText = $originalText.TrimEnd(); newText = $p.text } }
-        } catch {
-            Output-Json @{ success = $false; error = "Failed to replace range: $($_.Exception.Message)" }
-        }
-    }
-
     "replaceInParagraph" {
         $word = Get-WpsWord
         if ($null -eq $word) { Output-Json @{ success = $false; error = "WPS Word not running" }; exit }

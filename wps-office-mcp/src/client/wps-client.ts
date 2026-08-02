@@ -150,7 +150,6 @@ const COM_TIMEOUTS: Record<string, number> = {
   getDocumentTextByRange: 15000,
   proofreadBasic: 15000,
   replaceInParagraph: 10000,
-  replaceRange: 10000,
   findReplace: 10000,
   enableTrackChanges: 5000,
   getTrackChangesStatus: 5000,

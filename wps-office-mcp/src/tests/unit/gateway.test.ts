@@ -35,8 +35,8 @@ afterEach(() => {
 });
 
 describe('TOOLS_INDEX 完整性验证', () => {
-    it('索引数量应为 258 个', () => {
-      expect(TOOLS_INDEX.length).toBe(258);
+    it('索引数量应为 257 个', () => {
+      expect(TOOLS_INDEX.length).toBe(257);
     });
 
   it('索引名称应该唯一（无重复）', () => {

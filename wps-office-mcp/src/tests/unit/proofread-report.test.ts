@@ -34,6 +34,7 @@ import {
   inferTypeFromContent,
   normalizeIssueType,
   normalizeIssueSource,
+  normalizeIssueLocation,
   AI_ONLY_PATTERN,
 } from '../../tools/word/proofread-report';
 import * as fs from 'fs';
@@ -153,6 +154,186 @@ describe('proofreadAccumulateHandler', () => {
 
     const session = sessionIssues.get('test-session-3')!;
     expect(session.issues.length).toBe(1); // deduplicated
+  });
+
+  it('offset 缺失时不去重（评审 warning：退化 undefined|原文 键会误判重复丢弃）', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 'test-session-3b',
+      issues: [
+        { length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+      ],
+      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+    });
+
+    // 同原文但无 offset：无法确认同一位置，保守保留（不再误并）
+    await proofreadAccumulateHandler({
+      session_id: 'test-session-3b',
+      issues: [
+        { length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+      ],
+    });
+
+    const session = sessionIssues.get('test-session-3b')!;
+    expect(session.issues.length).toBe(2); // 不去重，两条都保留
+  });
+
+  it('offset 相同才去重：不同 offset 同原文不误并', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 'test-session-3c',
+      issues: [
+        { offset: 10, length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+        { offset: 25, length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+      ],
+      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+    });
+
+    const session = sessionIssues.get('test-session-3c')!;
+    expect(session.issues.length).toBe(2); // 不同位置同原文，不误并
+  });
+
+  it('同 offset 同 original 不同 source 合并为 1 条，且 AI 优先覆盖 MCP（三轮评审 warning）', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 'test-session-3d',
+      issues: [
+        { offset: 10, length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+        { offset: 10, length: 2, original: '的的', suggestion: '的的', type: '重复字符', context: '...', source: 'ai' as const, reason: '重复字符' },
+      ],
+      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+    });
+
+    const session = sessionIssues.get('test-session-3d')!;
+    expect(session.issues.length).toBe(1); // 同位置同原文合并为 1 条
+    expect(session.issues[0].source).toBe('ai'); // AI 条目优先
+    expect(session.issues[0].reason).toBe('重复字符');
+  });
+
+  it('AI 覆盖 MCP 时保留 Layer 1 的具体 type（四轮评审 warning：type 失真）', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 'test-session-3d2',
+      issues: [
+        // MCP：Layer 1 手工指定具体 type（假设规则命中）
+        { offset: 10, length: 6, original: '完全陌生词XYZ', suggestion: '陌生词', type: '重复字符', context: '...', source: 'mcp' },
+        // AI：type 无法由规则推断 → 兜底为「未分类」→ 应保留 MCP 的「重复字符」
+        { offset: 10, length: 6, original: '完全陌生词XYZ', suggestion: '陌生词', type: '未分类', context: '...', source: 'ai' as const, reason: 'AI 判定' },
+      ],
+      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+    });
+
+    const session = sessionIssues.get('test-session-3d2')!;
+    expect(session.issues.length).toBe(1);
+    expect(session.issues[0].source).toBe('ai'); // AI 条目仍优先
+    expect(session.issues[0].type).toBe('重复字符'); // 但 type 保留 Layer 1 的
+  });
+
+  it('AI 条目自身有具体 type 时不被 MCP 的 type 覆盖', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 'test-session-3d3',
+      issues: [
+        { offset: 10, length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+        { offset: 10, length: 2, original: '的的', suggestion: '的', type: '口语化', context: '...', source: 'ai' as const, reason: 'AI 认为口语化' },
+      ],
+      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+    });
+
+    const session = sessionIssues.get('test-session-3d3')!;
+    expect(session.issues.length).toBe(1);
+    expect(session.issues[0].source).toBe('ai');
+    expect(session.issues[0].type).toBe('口语化'); // AI 自己的 type 保留
+  });
+
+  it('跨批：AI 未分类先入 + MCP 后到具体 type，AI 优先保留且 type 被 MCP 提升（四轮评审 edge 修复）', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 'edge-session-1',
+      issues: [
+        { offset: 10, length: 6, original: '完全陌生词XYZ', suggestion: '陌生词', type: '未分类', context: '...', source: 'ai' as const, reason: 'AI 判定' },
+      ],
+      doc_info: { fileName: 't.docx', filePath: '/p/t.docx', totalParagraphs: 5, totalWords: 100 },
+    });
+    await proofreadAccumulateHandler({
+      session_id: 'edge-session-1',
+      issues: [
+        { offset: 10, length: 6, original: '完全陌生词XYZ', suggestion: '陌生词', type: '重复字符', context: '...', source: 'mcp' },
+      ],
+    });
+    const session = sessionIssues.get('edge-session-1')!;
+    expect(session.issues.length).toBe(1); // 同键合并为 1 条
+    expect(session.issues[0].source).toBe('ai'); // AI 条目优先（先入者）
+    expect(session.issues[0].type).toBe('重复字符'); // MCP 具体 type 提升 AI 的「未分类」
+  });
+
+  it('跨批：MCP 先入具体 type + AI 后到未分类，AI 覆盖时保留 MCP 的 type（四轮评审 warning 修复验证）', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 'edge-session-2',
+      issues: [
+        { offset: 20, length: 6, original: '完全陌生词XYZ', suggestion: '陌生词', type: '重复字符', context: '...', source: 'mcp' },
+      ],
+      doc_info: { fileName: 't.docx', filePath: '/p/t.docx', totalParagraphs: 5, totalWords: 100 },
+    });
+    await proofreadAccumulateHandler({
+      session_id: 'edge-session-2',
+      issues: [
+        { offset: 20, length: 6, original: '完全陌生词XYZ', suggestion: '陌生词', type: '未分类', context: '...', source: 'ai' as const, reason: 'AI 判定' },
+      ],
+    });
+    const session = sessionIssues.get('edge-session-2')!;
+    expect(session.issues.length).toBe(1);
+    expect(session.issues[0].source).toBe('ai'); // AI 覆盖 MCP
+    expect(session.issues[0].type).toBe('重复字符'); // 保留 MCP 的具体 type
+  });
+
+  it('同 offset 同 original（含 | 字符）仍正确合并为 1 条（四轮评审 info：去重键鲁棒性）', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 'test-session-3d4',
+      issues: [
+        { offset: 10, length: 3, original: 'A|B', suggestion: 'AB', type: '用词统一', context: '...', source: 'mcp' },
+        { offset: 10, length: 3, original: 'A|B', suggestion: 'A、B', type: '用词统一', context: '...', source: 'mcp' },
+      ],
+      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+    });
+
+    const session = sessionIssues.get('test-session-3d4')!;
+    expect(session.issues.length).toBe(1); // 同位置同原文合并为 1 条
+    expect(session.issues[0].original).toBe('A|B');
+  });
+
+  it('累加返回文本暴露 offset 缺失计数（三轮评审 warning：可观测性）', async () => {
+    const result = await proofreadAccumulateHandler({
+      session_id: 'test-session-3e',
+      issues: [
+        { length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+        { offset: 10, length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+      ],
+      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+    });
+
+    const text = result.content[0].text!;
+    expect(text).toContain('1 条未携带绝对 offset，未参与去重');
+  });
+
+  it('dedupedCount 只统计本批新增导致的去重（三轮评审 info：不把历史累计重复计入）', async () => {
+    // 第一批：1 条（无重复）
+    await proofreadAccumulateHandler({
+      session_id: 'test-session-3f',
+      issues: [
+        { offset: 10, length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+      ],
+      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+    });
+    // 第二批：与第一批重复 1 条（跨批重复） + 本批内重复 1 条 → 本批去重数应只计 1（本批内重复）
+    const result = await proofreadAccumulateHandler({
+      session_id: 'test-session-3f',
+      issues: [
+        { offset: 10, length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+        { offset: 20, length: 2, original: '的了', suggestion: '得了', type: '的得混淆', context: '...', source: 'mcp' },
+        { offset: 20, length: 2, original: '的了', suggestion: '得了', type: '的得混淆', context: '...', source: 'mcp' },
+      ],
+    });
+
+    const session = sessionIssues.get('test-session-3f')!;
+    // 第1批 1 条 + 第2批（重复的 offset=10 被丢弃、offset=20 去重剩 1） = 2 条
+    expect(session.issues.length).toBe(2);
+    const text = result.content[0].text!;
+    expect(text).toContain('本批去重 1 条'); // 只计本批内重复，不计跨批重复
   });
 
   it('should update total_revisions when provided', async () => {
@@ -885,6 +1066,239 @@ describe('normalizeIssueSource（验收遗留 TC-13）', () => {
 
   it('缺 source 且无法按内容推断时，保守兜底为 mcp', () => {
     expect(normalizeIssueSource({ offset: 0, length: 2, original: '完全陌生的内容xyz', suggestion: '也陌生' } as any).source).toBe('mcp');
+  });
+});
+
+// ==================== 「偏移 undefined」展示瑕疵（PR #43 评审遗留 + 架构复盘收敛） ====================
+
+describe('normalizeIssueLocation — 位置字段归一化（偏移 undefined 展示瑕疵）', () => {
+  it('paragraph_index（蛇形旧别名）→ paragraphIndex（驼峰）', () => {
+    const issue: any = {
+      paragraph_index: 3,
+      original: '的的',
+      suggestion: '的',
+      type: '重复字符',
+      source: 'mcp',
+    };
+    const normalized = normalizeIssueLocation(issue);
+    expect(normalized.paragraphIndex).toBe(3);
+  });
+
+  it('已有驼峰 paragraphIndex 时优先保留，不被蛇形覆盖', () => {
+    const issue: any = {
+      paragraphIndex: 5,
+      paragraph_index: 9, // 冲突时优先驼峰
+      offset: 100,
+      original: '的的',
+      suggestion: '的',
+      type: '重复字符',
+      source: 'mcp',
+    };
+    const normalized = normalizeIssueLocation(issue);
+    expect(normalized.paragraphIndex).toBe(5);
+    expect(normalized.offset).toBe(100);
+  });
+
+  it('仅提供 offset_in_paragraph（无 offset）时，offset 不再兜底（段落内偏移 ≠ 绝对偏移）', () => {
+    const issue: any = {
+      original: '加强重视安全问题',
+      suggestion: '重视安全问题',
+      type: '动宾不当',
+      source: 'ai',
+      offset_in_paragraph: 7,
+    };
+    const normalized = normalizeIssueLocation(issue);
+    // 评审 warning：offset_in_paragraph 语义与绝对 offset 不同，绝不互相兜底
+    expect(normalized.offset).toBeUndefined();
+  });
+
+  it('offset 与 paragraph_index 均缺失时，offset 为 undefined（展示层兜底「位置未知」）', () => {
+    const issue: any = {
+      original: '的的',
+      suggestion: '的',
+      type: '重复字符',
+      source: 'mcp',
+    };
+    const normalized = normalizeIssueLocation(issue);
+    expect(normalized.offset).toBeUndefined();
+    expect(normalized.paragraphIndex).toBeUndefined();
+  });
+
+  it('offset 为 0（合法值）时保留，不因 falsy 被覆盖', () => {
+    const issue: any = {
+      offset: 0,
+      offset_in_paragraph: 5,
+      original: '的的',
+      suggestion: '的',
+      type: '重复字符',
+      source: 'mcp',
+    };
+    const normalized = normalizeIssueLocation(issue);
+    expect(normalized.offset).toBe(0);
+  });
+
+  it('字符串数字兼容：offset="3" / paragraph_index="4" 归一化为数值（评审 warning：AI 层可能输出字符串）', () => {
+    const issue: any = {
+      paragraph_index: '4',
+      offset: '3',
+      original: '的的',
+      suggestion: '的',
+      type: '重复字符',
+      source: 'ai',
+    };
+    const normalized = normalizeIssueLocation(issue);
+    expect(normalized.paragraphIndex).toBe(4);
+    expect(normalized.offset).toBe(3);
+  });
+
+  it('非法字符串（非数字）不采纳，offset/paragraphIndex 保持 undefined', () => {
+    const issue: any = {
+      paragraph_index: 'abc',
+      offset: 'xyz',
+      original: '的的',
+      suggestion: '的',
+      type: '重复字符',
+      source: 'ai',
+    };
+    const normalized = normalizeIssueLocation(issue);
+    expect(normalized.paragraphIndex).toBeUndefined();
+    expect(normalized.offset).toBeUndefined();
+  });
+});
+
+describe('proofreadAccumulate — 位置字段归一化链路（偏移 undefined 展示瑕疵）', () => {
+  it('累加驼峰字段（paragraphIndex/offset）后，报告位置列正确展示「段落 N」', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 'loc-session-1',
+      issues: [
+        {
+          paragraphIndex: 2,
+          offset: 106,
+          original: '加强重视安全问题',
+          suggestion: '重视安全问题',
+          type: '动宾不当',
+          source: 'ai' as const,
+        },
+        {
+          paragraphIndex: 1,
+          offset: 0,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+        },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 3, totalWords: 30 },
+    });
+
+    const session = sessionIssues.get('loc-session-1')!;
+    expect(session.issues[0].paragraphIndex).toBe(2);
+    expect(session.issues[0].offset).toBe(106);
+    expect(session.issues[1].paragraphIndex).toBe(1);
+    expect(session.issues[1].offset).toBe(0);
+
+    const result = await generateProofreadReportHandler({ session_id: 'loc-session-1' });
+    const text = result.content[0].text!;
+    // 展示层：段落索引优先 → 不再出现「偏移 undefined」字面量
+    expect(text).toContain('段落 2');
+    expect(text).toContain('段落 1');
+    expect(text).not.toContain('偏移 undefined');
+  });
+
+  it('仅传蛇形 paragraph_index（无 offset）时段落索引仍归一化，offset 缺失 → 报告显示「偏移 undefined」不再出现', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 'loc-session-3',
+      issues: [
+        {
+          paragraph_index: 2,
+          original: '加强重视安全问题',
+          suggestion: '重视安全问题',
+          type: '动宾不当',
+          source: 'ai' as const,
+        },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 3, totalWords: 30 },
+    });
+
+    const session = sessionIssues.get('loc-session-3')!;
+    expect(session.issues[0].paragraphIndex).toBe(2);
+    expect(session.issues[0].offset).toBeUndefined();
+
+    const result = await generateProofreadReportHandler({ session_id: 'loc-session-3' });
+    const text = result.content[0].text!;
+    // 段落索引优先展示，不落入 offset 分支 → 无「偏移 undefined」
+    expect(text).toContain('段落 2');
+    expect(text).not.toContain('偏移 undefined');
+  });
+
+  it('offset 与 paragraphIndex 均缺失时，报告展示「位置未知」而非「偏移 undefined」', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 'loc-session-2',
+      issues: [
+        {
+          original: '完全陌生的内容xyz',
+          suggestion: '也陌生',
+          type: '未分类',
+          source: 'ai' as const,
+        },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+
+    const result = await generateProofreadReportHandler({ session_id: 'loc-session-2' });
+    const text = result.content[0].text!;
+    expect(text).toContain('位置未知');
+    expect(text).not.toContain('偏移 undefined');
+  });
+
+  it('只传 offset_in_paragraph（无 offset）时不再兜底为 offset，报告位置列显示「位置未知」', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 'loc-session-4',
+      issues: [
+        {
+          offset_in_paragraph: 7,
+          original: '加强重视安全问题',
+          suggestion: '重视安全问题',
+          type: '动宾不当',
+          source: 'ai' as const,
+        },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 3, totalWords: 30 },
+    });
+
+    const session = sessionIssues.get('loc-session-4')!;
+    expect(session.issues[0].offset).toBeUndefined();
+
+    const result = await generateProofreadReportHandler({ session_id: 'loc-session-4' });
+    const text = result.content[0].text!;
+    expect(text).toContain('位置未知');
+    expect(text).not.toContain('偏移 undefined');
+  });
+
+  it('paragraphIndex=0（非法值）时不展示「段落 0」，降级为偏移展示（四轮评审 info）', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 'loc-session-5',
+      issues: [
+        {
+          paragraphIndex: 0, // 非法：段落索引从 1 起
+          offset: 88,
+          original: '加强重视安全问题',
+          suggestion: '重视安全问题',
+          type: '动宾不当',
+          source: 'ai' as const,
+        },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 3, totalWords: 30 },
+    });
+
+    const session = sessionIssues.get('loc-session-5')!;
+    expect(session.issues[0].paragraphIndex).toBe(0); // 归一化保留原值，由展示层降级
+
+    const result = await generateProofreadReportHandler({ session_id: 'loc-session-5' });
+    const text = result.content[0].text!;
+    expect(text).not.toContain('段落 0');
+    expect(text).toContain('偏移 88'); // 降级为偏移展示
+    expect(text).not.toContain('偏移 undefined');
   });
 });
 

@@ -49,7 +49,7 @@ const WRITE_TOOLS = new Set([
   "insertText", "insertTable", "insertImage", "insertExcelImage",
   "insertPptImage", "insertRows", "insertColumns", "deleteRows", "deleteColumns",
   "clearRange", "mergeCells", "unmergeCells",
-  "replaceInParagraph", "replaceRange", "findReplace", "replaceInSheet",
+  "replaceInParagraph", "findReplace", "replaceInSheet",
   "setCellFormat", "setCellStyle", "setBorder", "setNumberFormat",
   "setColumnWidth", "setRowHeight",
   "setFont", "setParagraph", "applyStyle",
@@ -721,17 +721,11 @@ export const WpsGovernancePlugin = async () => {
       }
 
       // ── 规则 P4 + P6 + P10 + P11：替换操作 ──
-      if (toolName === "replaceRange" || toolName === "replaceInParagraph" || toolName === "findReplace") {
+      if (toolName === "replaceInParagraph" || toolName === "findReplace") {
         if (!st.trackChangesOn) {
           throw new Error(
             `【执行治理】请先调用 enableTrackChanges(true) 开启修订模式，` +
             `再执行替换操作。`
-          );
-        }
-        if (toolName === "replaceRange") {
-          throw new Error(
-            `【执行治理】分批校对流程中严禁使用 replaceRange。` +
-            `请统一改用 replaceInParagraph。`
           );
         }
         if (toolName === "findReplace") {

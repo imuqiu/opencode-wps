@@ -8,7 +8,6 @@
  * 包含：
  * - wps_word_enable_track_changes: 开启/关闭修订模式
  * - wps_word_get_track_changes_status: 获取修订模式状态
- * - wps_word_replace_range: 按字符范围替换文本（修订模式下跟踪）
  * - wps_word_replace_in_paragraph: 按段落+文本匹配替换（修订模式下跟踪，推荐用于校对）
  * - wps_word_proofread_basic: 基础文本校对（正则检测错别字/语病）
  *   - 返回结构化 issues 字段（{ issues: [{type, offset, length, original, suggestion, context, metric?}] }），
@@ -172,148 +171,16 @@ export const getTrackChangesStatusHandler: ToolHandler = async (
   }
 };
 
-/**
- * 按字符范围替换文本（修订模式下跟踪）
- * 在校对时用于精确替换指定范围的内容
- */
-export const replaceRangeDefinition: ToolDefinition = {
-  name: 'wps_word_replace_range',
-  description: `按字符范围精确替换Word文档中的文本。
-在修订模式下，此操作会自动产生修订标记。
-
-使用场景：
-- 校对时替换指定位置的错别字
-- 精确替换某一段落中的文本
-- 在已知字符起止位置时替换内容
-
-注意：请先调用 wps_word_enable_track_changes 开启修订模式。`,
-  category: ToolCategory.DOCUMENT,
-  inputSchema: {
-    type: 'object',
-    properties: {
-      start_pos: {
-        type: 'number',
-        description: '起始字符位置（从0开始）',
-      },
-      end_pos: {
-        type: 'number',
-        description: '结束字符位置',
-      },
-      text: {
-        type: 'string',
-        description: '替换后的文本内容',
-      },
-    },
-    required: ['start_pos', 'end_pos', 'text'],
-  },
-};
-
-export const replaceRangeHandler: ToolHandler = async (
-  args: Record<string, unknown>
-): Promise<ToolCallResult> => {
-  const { start_pos, end_pos, text } = args as {
-    start_pos: number;
-    end_pos: number;
-    text: string;
-  };
-
-  if (start_pos === undefined || end_pos === undefined) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '必须指定起始和结束位置！' }],
-      error: '缺少位置参数',
-    };
-  }
-
-  if (typeof start_pos !== 'number' || typeof end_pos !== 'number' || !Number.isInteger(start_pos) || !Number.isInteger(end_pos)) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '起始和结束位置必须是整数！' }],
-      error: '位置参数类型错误',
-    };
-  }
-
-  if (start_pos < 0 || end_pos < 0) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '位置参数不能为负数！' }],
-      error: '位置参数为负数',
-    };
-  }
-
-  if (start_pos >= end_pos) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '起始位置必须小于结束位置！' }],
-      error: '位置范围无效',
-    };
-  }
-
-  if (text == null) {
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: '替换文本不能为空（允许空字符串表示删除）！' }],
-      error: '替换文本为 null/undefined',
-    };
-  }
-
-  try {
-    const response = await wpsClient.executeMethod<{
-      success: boolean;
-      startPos: number;
-      endPos: number;
-      originalText: string;
-      newText: string;
-    }>(
-      'replaceRange',
-      { startPos: start_pos, endPos: end_pos, text },
-      WpsAppType.WRITER
-    );
-
-    if (response.success && response.data) {
-      const d = response.data;
-      return {
-        id: uuidv4(),
-        success: true,
-        content: [
-          {
-            type: 'text',
-            text: `替换成功！\n原文: "${d.originalText}"\n修改为: "${d.newText}"\n位置: ${d.startPos}-${d.endPos}`,
-          },
-        ],
-      };
-    }
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `替换失败: ${response.error}` }],
-      error: response.error,
-    };
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return {
-      id: uuidv4(),
-      success: false,
-      content: [{ type: 'text', text: `替换出错: ${errMsg}` }],
-      error: errMsg,
-    };
-  }
-};
 
 /**
  * 按段落+文本匹配替换（修订模式下跟踪）
  * 通过指定段落索引和查找文本进行精确替换，避免偏移量不准确导致文档损坏
  * 使用 paragraph.Range.Find.Execute 进行文本匹配，支持修订跟踪
  *
- * 与 replaceRange 的区别：
- * - replaceRange 依赖字符偏移量，容易因域代码、分页符等偏移
+ * 与已废弃的 replaceRange（按字符偏移替换）相比：
+ * - replaceRange 依赖字符偏移量，容易因域代码、分页符等偏移（已彻底移除）
  * - replaceInParagraph 通过段落索引+文本匹配，不受偏移量影响
- * - 两者都支持修订模式跟踪
+ * - 修订模式跟踪
  */
 export const replaceInParagraphDefinition: ToolDefinition = {
   name: 'wps_word_replace_in_paragraph',
@@ -324,7 +191,6 @@ export const replaceInParagraphDefinition: ToolDefinition = {
 使用场景：
 - 校对时替换指定段落中的错别字
 - 在已知段落索引时替换文本
-- 替代 replaceRange 的更稳妥方案
 
 注意：
 - 段落索引可以通过 wps_word_get_paragraphs 获取
@@ -1242,7 +1108,6 @@ export const confirmBatchAiProofreadHandler: ToolHandler = async (
 export const proofreadTools: RegisteredTool[] = [
   { definition: enableTrackChangesDefinition, handler: enableTrackChangesHandler },
   { definition: getTrackChangesStatusDefinition, handler: getTrackChangesStatusHandler },
-  { definition: replaceRangeDefinition, handler: replaceRangeHandler },
   { definition: replaceInParagraphDefinition, handler: replaceInParagraphHandler },
   { definition: proofreadBasicDefinition, handler: proofreadBasicHandler },
   { definition: confirmBatchAiProofreadDefinition, handler: confirmBatchAiProofreadHandler },
