@@ -24,10 +24,13 @@
  *
  * 评分量表：Layer 1 原始 [1, 5] → normalizeToTwoPointScale → [0, 2]
  * T2（#55）：
- * - proofreadAccumulate 对缺 type 的 issue 做兜底推断（inferIssueType），
+ * - proofreadAccumulate 对缺 type 的 issue 做兜底推断（normalizeIssueType → inferTypeFromContent），
  *   报告五维评分不再因 type=undefined/`'ai'` 全部落入"未分类"而失真
  * - 报告对"未分类"降级处理并提示（不计入五维评分）
- * - TC-12 口径：报告明确"问题数 = 修订记录数 ÷ 2"（每次替换=删除+插入 2 条修订）
+ * - TC-12 口径：报告明确"问题数 = 修订记录数 ÷ 2"（每次替换=删除+插入 2 条修订）；
+ *   奇数修订（删除类修复只产生 1 条）时提示"换算不整除、请人工核对"
+ * - 缺 source 的 issue 兜底推断（normalizeIssueSource，TC-13）：Layer 1 规则命中→mcp、
+ *   F11–F15 AI 专属模式→ai、无法判断→保守 mcp；报告"未标注来源"统计不再失真
  */
 
 import * as fs from 'fs';
@@ -178,6 +181,36 @@ const TYPE_METRIC_MAP: Record<string, ProofreadMetric> = {
   '占位文本': 'completeness',
 };
 
+// ==================== F14 修饰不当模式（评审修正 #70） ====================
+
+/**
+ * F14 修饰不当（AI Layer 2）的判定模式。
+ *
+ * ⚠️ 评审修正：原模式 `(很多|许多|大量|丰富).{0,6}(内容|经验|知识)` 会把
+ * "丰富的经验"（丰富直接修饰经验，正常搭配）误判为修饰不当（aiOnlyPattern
+ * 也会因此把正常表达兜底归为 ai，来源失真反向复现）。F14 的本质是**数量词
+ * 修饰"丰富/充分"**造成语义重复（如"很多丰富的内容"→"很多内容"），
+ * 故需数量词与 丰富/充分 同时出现才命中。
+ *
+ * 统一供 inferIssueType / inferTypeFromContent / normalizeIssueSource 三处复用，
+ * 避免规则漂移（评审建议 5）。
+ */
+export const F14_MODIFIER_PATTERN = new RegExp(
+  '(很多|许多|大量|丰富)(的)?(丰富|充分)(的)?(内容|经验|知识)'
+);
+
+/**
+ * AI 专属模式（F11–F15）判定正则，统一供 normalizeIssueSource 使用。
+ *
+ * 评审建议（#70 第 4 轮）：原先在 normalizeIssueSource 函数体内用
+ * `new RegExp(...)` 每条重建一次实例（issues.map() 遍历时反复分配），
+ * 与已提为模块级的 F14_MODIFIER_PATTERN 不对称。提取为模块级常量后
+ * 只构建一次，且与 F14_MODIFIER_PATTERN 保持引用关系，杜绝规则漂移。
+ */
+export const AI_ONLY_PATTERN = new RegExp(
+  `存在着|具有着|加强重视|(进步|提升|提高)(提高|进步)|${F14_MODIFIER_PATTERN.source}`
+);
+
 // ==================== type 兜底推断（T2，#55） ====================
 
 /**
@@ -191,6 +224,10 @@ const TYPE_METRIC_MAP: Record<string, ProofreadMetric> = {
  * 1. type 已有且非 'ai'/undefined → 直接返回
  * 2. 按 suggestion/original 文本规则映射（与 proofread.ts 规则同源）
  * 3. 仍无法推断 → 返回 '未分类'（报告降级提示，不计入五维评分）
+ *
+ * ⚠️ 评审建议（#70 第 4 轮）：生产累加路径已改走 normalizeIssueType →
+ * inferTypeFromContent（#55 T2 重构），本函数在当前生产代码中已无调用点，
+ * 保留仅供测试与向后兼容（历史 SKILL 合并产物 type='ai' 的兜底口径相同）。
  */
 export function inferIssueType(issue: { type?: string; original?: string; suggestion?: string }): string {
   const rawType = issue.type;
@@ -213,9 +250,8 @@ export function inferIssueType(issue: { type?: string; original?: string; sugges
   if (/存在着|具有着/.test(original)) return '搭配冗余';      // F11/F15
   if (/加强重视/.test(original)) return '动宾不当';            // F12
   if (/(进步|提升|提高)(提高|进步)/.test(original)) return '语义重复'; // F13
-  if (/(丰富|充分|大量)(的)?(内容|经验|知识)/.test(original) && /很多|许多|大量|丰富/.test(original)) {
-    return '修饰不当';                                         // F14
-  }
+  // F14（评审修正：需数量词+丰富/充分 同时出现，避免"丰富的经验"误判）
+  if (F14_MODIFIER_PATTERN.test(original)) return '修饰不当';
   // ── 的得地 / 重复 / 标点（向后兼容旧规则）──
   if (/(的的|的地|得的|变的|做的)/.test(original)) return '的得混淆';
   if (/([\u4e00-\u9fff])\1{2,}/.test(original)) return '重复字符';
@@ -317,7 +353,8 @@ export function inferTypeFromContent(original: string, suggestion: string): stri
     [/存在着|具有着/, '搭配冗余'],      // F11/F15
     [/加强重视/, '动宾不当'],            // F12
     [/(进步|提升|提高)(提高|进步)/, '语义重复'], // F13
-    [/(很多|许多|大量|丰富).{0,6}(内容|经验|知识)/, '修饰不当'], // F14
+    // F14（评审修正：数量词+丰富/充分，避免"丰富的经验"误判）
+    [F14_MODIFIER_PATTERN, '修饰不当'],
     // ── 其他 ──
     [/签定(合同|协议|合约|约定)/, '法律术语'],
     [/其它(人|事|物|方面|单位|情况|问题)/, '用词统一'],
@@ -340,14 +377,61 @@ export function inferTypeFromContent(original: string, suggestion: string): stri
 /**
  * 规整 issue.type：缺 type / 空 type / type='ai'（SKILL 合并 bug 产物）→ 兜底推断；
  * 仍无法推断 → '未分类'（报告降级处理，不计入五维评分）
+ *
+ * 评审建议（与 normalizeIssueSource 对称）：有效 type 一律 trim 后返回归一化值，
+ * 避免带前后空格的 type（如 ' 的得混淆 '）在 TYPE_METRIC_MAP 严格查表时落入
+ * "未分类"（metricForIssue 用 === 查表，不做 trim），与 TC-13 来源失真同源。
  */
 export function normalizeIssueType(issue: ProofreadIssueEntry): ProofreadIssueEntry {
   const rawType = typeof issue.type === 'string' ? issue.type.trim() : '';
   if (rawType && rawType !== 'ai' && rawType !== '未分类') {
-    return issue;
+    // 返回 trim 后的归一化 type（原引用可能带前后空格，报告 TYPE_METRIC_MAP 查表会漏）
+    return { ...issue, type: rawType };
   }
   const inferred = inferTypeFromContent(issue.original || '', issue.suggestion || '');
   return { ...issue, type: inferred || '未分类' };
+}
+
+/**
+ * 规整 issue.source：缺 source / 非法值 → 兜底推断（TC-13，验收遗留）
+ *
+ * 背景：第三轮会话 proofreadAccumulate 的 issues 未携带 source，报告统计摘要
+ * 出现"⚠️ 未标注来源 30 处"（TC-13 来源统计失真）。SKILL 已要求 AI 层输出
+ * source（mcp/ai），但代码侧缺少兜底，AI 漏传时报告仍失真。
+ *
+ * 兜底策略（保守、可追溯，评审建议：严格按注释实现两层判断，
+ * 避免"非 AI 专属模式 → 全部 mcp"导致 AI 漏传 source 的非 F11–F15 问题
+ * （如口语化/语序不当）被误计为 MCP，TC-13 来源失真在反方向复现）：
+ * 1. source 已是 'mcp' / 'ai' → 直接返回（大小写归一化为小写）
+ * 2. 命中 F11–F15 AI 专属模式（搭配冗余/动宾不当/语义重复/修饰不当）→ 'ai'
+ * 3. 命中 Layer 1 规则（inferTypeFromContent 返回具体类型）→ 'mcp'
+ * 4. 仍无法判断 → 保守 'mcp'（Layer 1 规则引擎命中优先，AI 补充场景由 SKILL 约束）
+ */
+export function normalizeIssueSource(issue: ProofreadIssueEntry): ProofreadIssueEntry {
+  const rawSource = typeof issue.source === 'string' ? issue.source.trim().toLowerCase() : '';
+  if (rawSource === 'mcp' || rawSource === 'ai') {
+    // 评审建议：大小写变体（如 'MCP'/'AI'）虽宽容通过校验，但报告统计用严格 === 判断，
+    // 直接返回原引用会导致大小写不一致时仍落入"未标注来源"（TC-13 失真复现）。
+    // 统一归一化为小写后再返回，彻底堵住漏网场景。
+    return { ...issue, source: rawSource };
+  }
+  const original = issue.original || '';
+  const suggestion = issue.suggestion || '';
+  // 第 2 步：F11–F15 的 AI 专属搭配模式（搭配冗余/动宾不当/语义重复/修饰不当）
+  // 这些模式 Layer 1 不检出（#25 语料标注 Layer 2 专属），兜底归为 ai。
+  // 必须先于 Layer 1 判断：inferTypeFromContent 也能命中 F11–F15 模式（返回对应 type），
+  // 若先走 Layer 1 会把 AI 专属问题误计为 mcp。
+  const text = `${original} ${suggestion}`;
+  if (AI_ONLY_PATTERN.test(text)) {
+    return { ...issue, source: 'ai' };
+  }
+  // 第 3 步：Layer 1 规则命中（inferTypeFromContent 返回具体类型）→ mcp
+  const inferred = inferTypeFromContent(original, suggestion);
+  if (inferred) {
+    return { ...issue, source: 'mcp' };
+  }
+  // 第 4 步：仍无法判断 → 保守 'mcp'（Layer 1 规则引擎命中优先，AI 补充场景由 SKILL 约束）
+  return { ...issue, source: 'mcp' };
 }
 
 // ==================== 累加器工具 ====================
@@ -475,8 +559,9 @@ export const proofreadAccumulateHandler: ToolHandler = async (
     session.totalRevisions = total_revisions;
   }
 
-  // 追加 issues（#55 T2：入口统一规整 type，缺 type / type='ai' 时兜底推断）
-  const normalizedIssues = issues.map(normalizeIssueType);
+  // 追加 issues（#55 T2：入口统一规整 type，缺 type / type='ai' 时兜底推断；
+  // 验收遗留：缺 source 时同样兜底推断，避免报告"未标注来源"失真 TC-13）
+  const normalizedIssues = issues.map((i) => normalizeIssueSource(normalizeIssueType(i)));
   const beforeCount = session.issues.length;
   session.issues.push(...normalizedIssues);
 
@@ -544,7 +629,9 @@ export const generateProofreadReportDefinition: ToolDefinition = {
       output_file: {
         type: 'string',
         description:
-          '报告输出文件路径（可选）。如提供，报告将写入此 .md 文件；如不提供，仅返回报告文本。',
+          '报告输出文件路径（可选）。如提供，报告将写入此 .md 文件；如不提供，仅返回报告文本。\n' +
+          '注意：若写入失败（路径非法/无权限/磁盘满等），本工具返回 success=false 并携带失败原因，' +
+          '会话保留供重试——**落盘失败不视为报告已生成**，AI 必须修复后重试或改用 writeFile 落盘。',
       },
     },
     required: ['session_id'],
@@ -588,18 +675,51 @@ export const generateProofreadReportHandler: ToolHandler = async (
   if (issues.length === 0) {
     const emptyReport = buildEmptyReport(docInfo, createdAt);
     let wroteFile = false;
+    let writeError: string | undefined;
     if (output_file) {
       try {
         const safePath = validateFilePath(output_file, ALLOWED_WRITE_ROOTS);
+        // 评审建议（#70 第 4 轮）：空报告分支补上与主分支一致的 mkdirSync 自动建父目录——
+        // 同一 output_file 因问题数不同（0 vs >0）不应行为不一致：主分支会建目录，
+        // 空报告分支此前直接 writeFileSync，目标父目录不存在时会失败（与其他分支口径不同）。
+        const dir = path.dirname(safePath);
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
         fs.writeFileSync(safePath, emptyReport, 'utf-8');
         wroteFile = true;
       } catch (err) {
-        // 文件写入失败不影响文本返回（但保留会话，便于 AI 重试生成）
+        // 评审建议：落盘失败必须向上游（AI 层）暴露明确信号，禁止静默吞错——
+        // 否则 AI 误判"报告已生成"（用户多次遇到：落盘失败但提示已生成校对报告）。
+        // 保留会话便于 AI 修正 output_file 后重试。
+        writeError = err instanceof Error ? err.message : String(err);
       }
     }
     // 空报告同样回收会话——仅当写入成功（或未指定 output_file）时释放；写失败保留供重试
     if (!output_file || wroteFile) {
       releaseSession(session_id);
+    }
+    if (writeError) {
+      // 评审建议：失败返回不内嵌完整报告全文（长文档时消耗大量 token），
+      // 改为截断预览（前 1500 字）+ 报告总长度提示，AI 可修正路径后重试重新生成完整报告。
+      const preview = emptyReport.length > 1500 ? emptyReport.slice(0, 1500) + '\n…(预览截断)' : emptyReport;
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [
+          {
+            type: 'text',
+            text:
+              `⚠️ 校对报告已生成但**写入文件失败**，本次校对未完成落盘！\n\n` +
+              `目标路径: ${output_file ?? '(未指定)'}\n` +
+              `失败原因: ${writeError}\n\n` +
+              `会话 ${session_id} 已保留，请修正路径后重新调用 generateProofreadReport（传 output_file）重试，` +
+              `或改用 SKILL Step 3 的 writeFile 方案落盘。` +
+              `报告全文 ${emptyReport.length} 字，本次仅返回预览：\n\n${preview}`,
+          },
+        ],
+        error: `报告写入文件失败: ${writeError}`,
+      };
     }
     return {
       id: uuidv4(),
@@ -701,9 +821,23 @@ export const generateProofreadReportHandler: ToolHandler = async (
   if (totalRevisions !== undefined) {
     // TC-12 口径：WPS 修订模式下每次替换 = 1 次删除 + 1 次插入，即 2 条修订记录。
     // 报告「发现问题」与「修订总数」的换算口径：问题数 = 修订记录数 ÷ 2
-    report += `- **修订总数**: ${totalRevisions}（TC-12 口径：问题数 = 修订记录数 ÷ 2 = ${Math.floor(totalRevisions / 2)}，每次替换产生删除+插入 2 条修订）\n`;
+    // ⚠️ 验收遗留：删除类修复（如“存在着→空”）只产生 1 条修订，修订数可能为奇数。
+    // 此时 ÷2 换算不整除，需明示差异并提示人工核对，避免口径误判。
+    const half = totalRevisions / 2;
+    const isInteger = Number.isInteger(half);
+    // 评审建议：奇数修订时显示 ≈31.5 而非向下取整的 31，避免与"不整除"提示并存造成误导
+    const halfDisplay = isInteger ? String(half) : `≈${half.toFixed(1)}`;
+    report += `- **修订总数**: ${totalRevisions}（TC-12 口径：问题数 = 修订记录数 ÷ 2 = ${halfDisplay}`;
+    report += isInteger
+      ? `，每次替换产生删除+插入 2 条修订）\n`
+      : `；⚠️ 修订数为奇数（删除类修复只产生 1 条修订），换算不整除，请人工核对修订记录与问题清单是否一一对应）\n`;
+    report += `- **发现问题**: ${issues.length} 处（问题数按 issue 条数计；` +
+      (isInteger
+        ? `若开启修订模式，等价于修订记录数 ÷ 2）\n`
+        : `⚠️ 修订数为奇数时不等价于 ÷2，请人工核对）\n`);
+  } else {
+    report += `- **发现问题**: ${issues.length} 处（问题数按 issue 条数计）\n`;
   }
-  report += `- **发现问题**: ${issues.length} 处（问题数按 issue 条数计；若开启修订模式，等价于修订记录数 ÷ 2）\n`;
   if (unknownTypeIssues.length > 0) {
     report += `- **⚠️ 未分类问题**: ${unknownTypeIssues.length} 处（未计入五维评分，见下方"未分类问题"节；请检查 AI 层是否输出 type 字段）\n`;
   }
@@ -800,12 +934,21 @@ export const generateProofreadReportHandler: ToolHandler = async (
   report += `| **合计** | **${issues.length} 处** |\n`;
   report += `| 全部已修复 | ✅ |\n`;
   if (totalRevisions !== undefined) {
-    report += `\n> **TC-12 口径说明**：问题数 ${issues.length} 处对应修订记录数 ${totalRevisions} 条（每次替换 = 删除 + 插入各 1 条修订，即问题数 = 修订记录数 ÷ 2）。如不等，请检查是否有未跟踪修订的替换或人工修改。\n`;
+    const half = totalRevisions / 2;
+    const isInteger = Number.isInteger(half);
+    // 评审建议：奇数修订时显示 ≈31.5（与正文口径一致），不再向下取整
+    const halfDisplay = isInteger ? String(half) : `≈${half.toFixed(1)}`;
+    report += `\n> **TC-12 口径说明**：问题数 ${issues.length} 处对应修订记录数 ${totalRevisions} 条（每次替换 = 删除 + 插入各 1 条修订，即问题数 = 修订记录数 ÷ 2 = ${halfDisplay}）`;
+    report += isInteger
+      ? `。如不等，请检查是否有未跟踪修订的替换或人工修改。\n`
+      : `。⚠️ 当前修订数为奇数（删除类修复只产生 1 条修订，如“存在着→空”），换算不整除，请人工核对修订记录与问题清单是否一一对应。\n`;
   }
 
   // 写入文件（如果指定）——仅当写入成功（或未指定 output_file）后才回收会话；
-  // 写失败时保留会话，AI 可修正 output_file 后重试生成（评审建议）
+  // 写失败时保留会话，AI 可修正 output_file 后重试生成（评审建议：落盘失败必须向上游暴露信号，
+  // 禁止静默吞错——否则 AI 误判"报告已生成"，用户多次遇到"落盘失败但提示已生成校对报告"）
   let wroteFile = false;
+  let writeError: string | undefined;
   if (output_file) {
     try {
       const safePath = validateFilePath(output_file, ALLOWED_WRITE_ROOTS);
@@ -816,13 +959,37 @@ export const generateProofreadReportHandler: ToolHandler = async (
       fs.writeFileSync(safePath, report, 'utf-8');
       wroteFile = true;
     } catch (err) {
-      // 文件写入失败不影响文本返回（但保留会话，便于重试）
+      writeError = err instanceof Error ? err.message : String(err);
     }
   }
 
   // 报告生成后回收会话，释放内存（报告文本已固化，会话数据不再需要）
   if (!output_file || wroteFile) {
     releaseSession(session_id);
+  }
+
+  if (writeError) {
+    // 落盘失败：明确返回失败（success=false + error），AI 必须重试落盘才能进入 Step 4 收尾；
+    // 会话已保留（未回收），可直接修正 output_file 后重新生成。
+    // 评审建议：失败返回不内嵌完整报告全文（长文档时消耗大量 token），改为截断预览。
+    const preview = report.length > 1500 ? report.slice(0, 1500) + '\n…(预览截断)' : report;
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [
+        {
+          type: 'text',
+          text:
+            `⚠️ 校对报告已生成但**写入文件失败**，本次校对未完成落盘！\n\n` +
+            `目标路径: ${output_file}\n` +
+            `失败原因: ${writeError}\n\n` +
+            `会话 ${session_id} 已保留，请修正路径后重新调用 generateProofreadReport（传 output_file）重试；` +
+            `或改用 SKILL Step 3 的 writeFile 方案落盘。` +
+            `报告全文 ${report.length} 字，本次仅返回预览：\n\n${preview}`,
+        },
+      ],
+      error: `报告写入文件失败: ${writeError}`,
+    };
   }
 
   return {

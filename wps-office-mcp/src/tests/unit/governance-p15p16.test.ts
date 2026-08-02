@@ -82,4 +82,12 @@ describe('governance P15/P16 — extractJsonFromOutput（T1，#55）', () => {
     expect(extractJsonFromOutput('')).toBeNull();
     expect(extractJsonFromOutput(null as unknown as string)).toBeNull();
   });
+
+  it('验收遗留：AI 走网关时可能传 snake_case find_text，P16 参数名需兼容（findText/find/find_text）', () => {
+    // 验证 governance.js 源码中 P16 的 findText 读取已兼容三种参数名
+    expect(governanceSrc).toContain("innerArgs.find_text");
+    expect(governanceSrc).toContain("innerArgs.findText || innerArgs.find || innerArgs.find_text");
+    // 模板字段标签检测（findReplace / replaceInParagraph 的 T10 检查）同样兼容
+    expect(governanceSrc).toContain("findTextFR = innerArgs.findText || innerArgs.find || innerArgs.find_text");
+  });
 });

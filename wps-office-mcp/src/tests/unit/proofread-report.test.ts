@@ -33,8 +33,24 @@ import {
   inferIssueType,
   inferTypeFromContent,
   normalizeIssueType,
+  normalizeIssueSource,
+  AI_ONLY_PATTERN,
 } from '../../tools/word/proofread-report';
 import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+
+// 评审建议：重试用例真实写盘不再用 /tmp（Windows 上解析为盘符根，且残留垃圾文件），
+// 改用 os.tmpdir() 并每次生成唯一子目录，用例结束后清理。
+const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'proofread-report-test-'));
+
+afterAll(() => {
+  try {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  } catch {
+    // 清理失败不影响测试结果
+  }
+});
 
 // Reset sessionIssues before each test
 beforeEach(() => {
@@ -616,38 +632,102 @@ describe('releaseSession 时序：文件写入失败时保留会话', () => {
     setupSession([{ offset: 0, length: 2, original: 'xx', suggestion: 'yy', type: '的得混淆', context: '...', source: 'mcp' }]);
     const result = await generateProofreadReportHandler({
       session_id: sessId,
-      output_file: `/tmp/proofread-report-${Date.now()}.md`,
+      output_file: path.join(tmpDir, `proofread-report-${Date.now()}.md`),
     });
     expect(result.success).toBe(true);
     expect(sessionIssues.has(sessId)).toBe(false);
   });
 
-  it('output_file 写入失败时：会话保留（可重试生成）', async () => {
+  it('output_file 写入失败时：返回 success=false + 失败原因，会话保留（可重试）', async () => {
     // mock fs.writeFileSync 必抛错，保证写入失败确定性（评审 Critical：原 /tmp/not-a-file-dir 会被
-    // writeFileSync 自动创建文件导致 flaky）；用 mock 而非真实路径，跨平台（Linux/Windows）均稳定
+    // writeFileSync 自动创建文件导致 flaky；评审建议：不用硬编码 /path 根目录路径——
+    // 主分支 mkdirSync(recursive) 会在根目录真实创建 /path 目录，与 PR 自己修复
+    // /tmp 残留的方向矛盾）；用 mock 而非真实路径，跨平台（Linux/Windows）均稳定
     setupSession([{ offset: 0, length: 2, original: 'xx', suggestion: 'yy', type: '的得混淆', context: '...', source: 'mcp' }]);
     (fs.writeFileSync as jest.Mock).mockImplementationOnce(() => {
       throw new Error('EACCES: permission denied');
     });
     const result = await generateProofreadReportHandler({
       session_id: sessId,
-      output_file: '/path/unwritable-report.md',
+      output_file: path.join(tmpDir, 'unwritable-report.md'),
     });
-    expect(result.success).toBe(true); // 文本返回不受影响
+    // 评审建议：落盘失败必须向上游暴露明确信号，禁止静默吞错（用户多次遇到"落盘失败但提示已生成"）
+    expect(result.success).toBe(false); // 不再伪装成功
+    expect(result.error).toContain('写入文件失败');
+    expect(result.content[0].text).toContain('写入文件失败');
+    expect(result.content[0].text).toContain('未完成落盘');
     expect(sessionIssues.has(sessId)).toBe(true); // 会话保留，可重试
   });
 
-  it('空报告（0 问题）+ output_file 写入失败：会话同样保留', async () => {
+  it('output_file 写入失败后：修正路径重试可成功，且会话回收', async () => {
+    setupSession([{ offset: 0, length: 2, original: 'xx', suggestion: 'yy', type: '的得混淆', context: '...', source: 'mcp' }]);
+    // 第一次写入失败
+    (fs.writeFileSync as jest.Mock).mockImplementationOnce(() => {
+      throw new Error('EACCES: permission denied');
+    });
+    const failed = await generateProofreadReportHandler({
+      session_id: sessId,
+      output_file: path.join(tmpDir, 'unwritable-report.md'),
+    });
+    expect(failed.success).toBe(false);
+    expect(sessionIssues.has(sessId)).toBe(true); // 会话保留
+    // 第二次（不 mock → 真实写入）重试成功：写入 os.tmpdir() 唯一目录，用例结束后统一清理
+    const retry = await generateProofreadReportHandler({
+      session_id: sessId,
+      output_file: path.join(tmpDir, `proofread-report-retry-${Date.now()}.md`),
+    });
+    expect(retry.success).toBe(true);
+    expect(sessionIssues.has(sessId)).toBe(false); // 成功后回收
+  });
+
+  it('空报告（0 问题）+ output_file 写入失败：返回 success=false，会话保留', async () => {
     setupSession([]);
     (fs.writeFileSync as jest.Mock).mockImplementationOnce(() => {
       throw new Error('EACCES: permission denied');
     });
     const result = await generateProofreadReportHandler({
       session_id: sessId,
-      output_file: '/path/unwritable-report.md',
+      output_file: path.join(tmpDir, 'unwritable-report.md'),
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('写入文件失败');
+    expect(sessionIssues.has(sessId)).toBe(true);
+  });
+
+  it('评审建议：空报告（0 问题）+ output_file 父目录不存在 → 自动创建父目录并写盘成功', async () => {
+    // 与主分支（L936-937）行为一致：同一 output_file 因问题数不同不应出现建目录/不建目录的差异
+    setupSession([]);
+    const nestedDir = path.join(tmpDir, 'nested-empty', 'sub');
+    const outFile = path.join(nestedDir, 'empty-report.md');
+    const result = await generateProofreadReportHandler({
+      session_id: sessId,
+      output_file: outFile,
     });
     expect(result.success).toBe(true);
-    expect(sessionIssues.has(sessId)).toBe(true);
+    expect(fs.existsSync(outFile)).toBe(true); // 父目录被自动创建并成功落盘
+    expect(sessionIssues.has(sessId)).toBe(false); // 写盘成功 → 回收会话
+  });
+});
+
+// ==================== AI_ONLY_PATTERN 模块级常量（评审建议 #70） ====================
+
+describe('AI_ONLY_PATTERN（评审建议：不再每条重建 RegExp）', () => {
+  it('F11–F15 AI 专属模式全部命中', () => {
+    expect(AI_ONLY_PATTERN.test('这个方案存在着很多不足之处')).toBe(true); // F11 搭配冗余
+    expect(AI_ONLY_PATTERN.test('这一发现具有着深远的意义')).toBe(true); // F15 搭配冗余
+    expect(AI_ONLY_PATTERN.test('我们需要加强重视安全问题')).toBe(true); // F12 动宾不当
+    expect(AI_ONLY_PATTERN.test('他取得了显著的进步提高')).toBe(true); // F13 语义重复
+    expect(AI_ONLY_PATTERN.test('会议讨论了很多丰富的内容')).toBe(true); // F14 修饰不当
+  });
+
+  it('F14 修正：正常表达“丰富的经验”不命中（数量词+丰富/充分 需同时出现）', () => {
+    expect(AI_ONLY_PATTERN.test('他有着丰富的经验')).toBe(false);
+    expect(AI_ONLY_PATTERN.test('他经验丰富')).toBe(false);
+  });
+
+  it('普通表达不误命中', () => {
+    expect(AI_ONLY_PATTERN.test('会议讨论了丰富的内容')).toBe(false); // 无数词+充分/丰富 双修
+    expect(AI_ONLY_PATTERN.test('的的')).toBe(false);
   });
 });
 
@@ -678,6 +758,21 @@ describe('inferTypeFromContent（#55 T2 兜底推断）', () => {
     expect(inferTypeFromContent('check test sample', '[需补充正式内容]')).toBe('占位文本');
   });
 
+  it('评审建议：F14 不再误判正常表达——"丰富的经验"不被推断为修饰不当', () => {
+    // 原模式 `(很多|许多|大量|丰富).{0,6}(内容|经验|知识)` 会把"丰富的经验"（丰富→经验
+    // 间隔 0）命中为修饰不当；修正后 F14 需数量词+丰富/充分 同时出现（如"很多丰富的内容"）。
+    expect(inferTypeFromContent('他有着丰富的经验', '他经验丰富')).toBeUndefined();
+    // F14 真阳性：数量词+丰富/充分 修饰名词 → 修饰不当
+    expect(inferTypeFromContent('会议讨论了很多丰富的内容', '会议讨论了很多内容')).toBe('修饰不当');
+  });
+
+  it('评审建议：F14 修正同时影响 inferIssueType（F14_MODIFIER_PATTERN 复用）', () => {
+    // "丰富的经验"（正常搭配）不再推断为修饰不当，落入后续规则（占位/重复等不命中 → 未分类）
+    expect(inferIssueType({ original: '他有着丰富的经验', suggestion: '他经验丰富' })).toBe('未分类');
+    // 真阳性仍命中
+    expect(inferIssueType({ original: '会议讨论了很多丰富的内容', suggestion: '会议讨论了很多内容' })).toBe('修饰不当');
+  });
+
   it('无法推断 → undefined', () => {
     expect(inferTypeFromContent('完全陌生的内容xyz', '也陌生')).toBeUndefined();
   });
@@ -698,6 +793,14 @@ describe('normalizeIssueType（#55 T2）', () => {
 
   it('type 正常时保持不变', () => {
     const issue: any = { offset: 0, length: 4, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' };
+    const normalized = normalizeIssueType(issue);
+    expect(normalized.type).toBe('重复字符');
+  });
+
+  it('评审建议：type 带前后空格时 trim 归一化，TYPE_METRIC_MAP 查表不再落入未分类', () => {
+    // 与 normalizeIssueSource 对称：有效 type 返回 trim 后归一化值，
+    // 避免 ' 的得混淆 ' 在报告 metricForIssue 严格 === 查表时落入"未分类"（TC-13 同源）
+    const issue: any = { offset: 0, length: 4, original: '的的', suggestion: '的', type: ' 重复字符 ', source: 'mcp' };
     const normalized = normalizeIssueType(issue);
     expect(normalized.type).toBe('重复字符');
   });
@@ -724,6 +827,64 @@ describe('normalizeIssueType（#55 T2）', () => {
     expect(
       normalizeIssueType({ offset: 0, length: 8, original: '这一发现具有着深远的意义', suggestion: '这一发现具有深远的意义', source: 'ai' } as any).type
     ).toBe('搭配冗余');
+  });
+});
+
+describe('normalizeIssueSource（验收遗留 TC-13）', () => {
+  it('source 已为 mcp / ai 时保持不变', () => {
+    expect(normalizeIssueSource({ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' } as any).source).toBe('mcp');
+    expect(normalizeIssueSource({ offset: 0, length: 2, original: '存在着', suggestion: '', type: '搭配冗余', source: 'ai' } as any).source).toBe('ai');
+  });
+
+  it('评审建议：大小写变体（MCP/AI）归一化为小写，报告统计 === 不再失真', () => {
+    expect(normalizeIssueSource({ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'MCP' } as any).source).toBe('mcp');
+    expect(normalizeIssueSource({ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'Mcp' } as any).source).toBe('mcp');
+    expect(normalizeIssueSource({ offset: 0, length: 2, original: '存在着', suggestion: '', type: '搭配冗余', source: 'AI' } as any).source).toBe('ai');
+    expect(normalizeIssueSource({ offset: 0, length: 2, original: '存在着', suggestion: '', type: '搭配冗余', source: 'Ai' } as any).source).toBe('ai');
+  });
+
+  it('缺 source 时，Layer 1 规则命中（如 的的/句式杂糅）兜底为 mcp', () => {
+    expect(normalizeIssueSource({ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符' } as any).source).toBe('mcp');
+    expect(normalizeIssueSource({ offset: 0, length: 7, original: '通过加强监督使效率提升', suggestion: '加强监督使效率提升' } as any).source).toBe('mcp');
+    expect(normalizeIssueSource({ offset: 0, length: 4, original: '进行了研究', suggestion: '研究' } as any).source).toBe('mcp');
+  });
+
+  it('评审建议：两层判断顺序——先 AI 专属后 Layer 1，F11–F15 不因 inferTypeFromContent 命中而误归 mcp', () => {
+    // inferTypeFromContent 也能命中 F11–F15 模式（加强重视→动宾不当/存在着→搭配冗余），
+    // 旧实现"非 AI 专属 → 全部 mcp"若先走 Layer 1 判断，会把这类 AI 专属问题误计为 MCP
+    // （TC-13 来源失真反向复现）。修复后必须先判 AI 专属模式再判 Layer 1。
+    expect(
+      normalizeIssueSource({ offset: 0, length: 6, original: '我们需要加强重视安全问题', suggestion: '我们需要重视安全问题' } as any).source
+    ).toBe('ai'); // F12 动宾不当（AI 专属）→ ai，而非 mcp
+    expect(
+      normalizeIssueSource({ offset: 0, length: 8, original: '这个方案存在着很多不足之处', suggestion: '这个方案存在很多不足之处' } as any).source
+    ).toBe('ai'); // F11 搭配冗余（AI 专属）→ ai
+  });
+
+  it('评审建议：无法识别的未知内容（Layer 1 不命中、非 F11–F15）保守兜底为 mcp', () => {
+    // 口语化/语序不当等 Layer 1 规则与 F11–F15 正则均不检出的语义类问题，
+    // 按注释第 4 步保守兜底为 mcp（Layer 1 规则引擎命中优先，AI 补充场景由 SKILL 约束）。
+    expect(normalizeIssueSource({ offset: 0, length: 4, original: '语气很口语化呢', suggestion: '语气较为书面' } as any).source).toBe('mcp');
+  });
+
+  it('评审建议：F14 不再误判正常表达——"丰富的经验"（丰富直接修饰经验）不归为 ai', () => {
+    // 原 aiOnlyPattern `(很多|许多|大量|丰富).{0,6}(内容|经验|知识)` 会把正常搭配
+    // "丰富的经验" 命中（丰富→经验 间隔 0）→ 误判 ai。修正后 F14 需数量词+丰富/充分
+    // 同时出现（如"很多丰富的内容"），"丰富的经验"正常表达不再被 AI 专属模式捕获。
+    expect(normalizeIssueSource({ offset: 0, length: 5, original: '他有着丰富的经验', suggestion: '他经验丰富' } as any).source).toBe('mcp');
+    // F14 真阳性：数量词+丰富/充分 修饰名词 → ai
+    expect(normalizeIssueSource({ offset: 0, length: 10, original: '会议讨论了很多丰富的内容', suggestion: '会议讨论了很多内容' } as any).source).toBe('ai');
+  });
+
+  it('缺 source 时，F11–F15 AI 专属模式（存在着/加强重视/进步提高等）兜底为 ai', () => {
+    expect(normalizeIssueSource({ offset: 0, length: 8, original: '这个方案存在着很多不足之处', suggestion: '这个方案存在很多不足之处' } as any).source).toBe('ai');
+    expect(normalizeIssueSource({ offset: 0, length: 6, original: '我们需要加强重视安全问题', suggestion: '我们需要重视安全问题' } as any).source).toBe('ai');
+    expect(normalizeIssueSource({ offset: 0, length: 6, original: '他取得了显著的进步提高', suggestion: '他取得了显著的进步' } as any).source).toBe('ai');
+    expect(normalizeIssueSource({ offset: 0, length: 10, original: '会议讨论了很多丰富的内容', suggestion: '会议讨论了很多内容' } as any).source).toBe('ai');
+  });
+
+  it('缺 source 且无法按内容推断时，保守兜底为 mcp', () => {
+    expect(normalizeIssueSource({ offset: 0, length: 2, original: '完全陌生的内容xyz', suggestion: '也陌生' } as any).source).toBe('mcp');
   });
 });
 
@@ -783,5 +944,44 @@ describe('generateProofreadReport — TC-12 修订数口径（#55 T3）', () => 
     expect(text).toContain('60');
     expect(text).toContain('修订记录数 ÷ 2');
     expect(text).toContain('30'); // 60 ÷ 2 = 30
+  });
+
+  it('验收遗留：奇数修订数（删除类修复只产生 1 条修订）时明确提示不整除、不再硬算整除', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 't3-session-odd',
+      issues: [
+        { offset: 0, length: 8, original: '这个方案存在着很多不足之处', suggestion: '这个方案存在很多不足之处', type: '搭配冗余', source: 'ai' as const },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+      total_revisions: 63, // 验收现场：63 条修订（含删除类“存在着→空”等奇数修订）
+    });
+
+    const result = await generateProofreadReportHandler({ session_id: 't3-session-odd' });
+    const text = result.content[0].text!;
+    expect(text).toContain('修订总数');
+    expect(text).toContain('63');
+    // 评审建议：奇数修订显示 ≈31.5（63 ÷ 2），不再向下取整为 31
+    expect(text).toContain('≈31.5');
+    expect(text).toContain('修订数为奇数');
+    expect(text).toContain('换算不整除');
+    expect(text).toContain('人工核对');
+    // 不再出现误导性的"等价于修订记录数 ÷ 2"表述
+    expect(text).not.toContain('等价于修订记录数 ÷ 2');
+  });
+
+  it('偶数修订数时无奇数提示（回归：正常成对替换）', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 't3-session-even',
+      issues: [
+        { offset: 0, length: 2, original: '在去', suggestion: '再去', type: '在再混淆', source: 'mcp' as const },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+      total_revisions: 2,
+    });
+
+    const result = await generateProofreadReportHandler({ session_id: 't3-session-even' });
+    const text = result.content[0].text!;
+    expect(text).toContain('修订总数');
+    expect(text).not.toContain('修订数为奇数');
   });
 });
