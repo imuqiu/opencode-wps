@@ -734,6 +734,13 @@ describe('normalizeIssueSource（验收遗留 TC-13）', () => {
     expect(normalizeIssueSource({ offset: 0, length: 2, original: '存在着', suggestion: '', type: '搭配冗余', source: 'ai' } as any).source).toBe('ai');
   });
 
+  it('评审建议：大小写变体（MCP/AI）归一化为小写，报告统计 === 不再失真', () => {
+    expect(normalizeIssueSource({ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'MCP' } as any).source).toBe('mcp');
+    expect(normalizeIssueSource({ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'Mcp' } as any).source).toBe('mcp');
+    expect(normalizeIssueSource({ offset: 0, length: 2, original: '存在着', suggestion: '', type: '搭配冗余', source: 'AI' } as any).source).toBe('ai');
+    expect(normalizeIssueSource({ offset: 0, length: 2, original: '存在着', suggestion: '', type: '搭配冗余', source: 'Ai' } as any).source).toBe('ai');
+  });
+
   it('缺 source 时，Layer 1 规则命中（如 的的/句式杂糅）兜底为 mcp', () => {
     expect(normalizeIssueSource({ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符' } as any).source).toBe('mcp');
     expect(normalizeIssueSource({ offset: 0, length: 7, original: '通过加强监督使效率提升', suggestion: '加强监督使效率提升' } as any).source).toBe('mcp');
@@ -824,7 +831,8 @@ describe('generateProofreadReport — TC-12 修订数口径（#55 T3）', () => 
     const text = result.content[0].text!;
     expect(text).toContain('修订总数');
     expect(text).toContain('63');
-    // 偶数换算仍展示（63 ÷ 2 = 31），但必须带奇数提示
+    // 评审建议：奇数修订显示 ≈31.5（63 ÷ 2），不再向下取整为 31
+    expect(text).toContain('≈31.5');
     expect(text).toContain('修订数为奇数');
     expect(text).toContain('换算不整除');
     expect(text).toContain('人工核对');

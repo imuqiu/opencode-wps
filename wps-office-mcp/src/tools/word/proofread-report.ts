@@ -366,7 +366,10 @@ export function normalizeIssueType(issue: ProofreadIssueEntry): ProofreadIssueEn
 export function normalizeIssueSource(issue: ProofreadIssueEntry): ProofreadIssueEntry {
   const rawSource = typeof issue.source === 'string' ? issue.source.trim().toLowerCase() : '';
   if (rawSource === 'mcp' || rawSource === 'ai') {
-    return issue;
+    // 评审建议：大小写变体（如 'MCP'/'AI'）虽宽容通过校验，但报告统计用严格 === 判断，
+    // 直接返回原引用会导致大小写不一致时仍落入"未标注来源"（TC-13 失真复现）。
+    // 统一归一化为小写后再返回，彻底堵住漏网场景。
+    return { ...issue, source: rawSource };
   }
   // 依据原文推断来源：F11–F15 的 AI 专属搭配模式（搭配冗余/动宾不当/语义重复/修饰不当）
   // 这些模式 Layer 1 不检出（#25 语料标注 Layer 2 专属），兜底归为 ai
@@ -376,10 +379,7 @@ export function normalizeIssueSource(issue: ProofreadIssueEntry): ProofreadIssue
   if (aiOnlyPattern.test(text)) {
     return { ...issue, source: 'ai' };
   }
-  const inferred = inferTypeFromContent(issue.original || '', issue.suggestion || '');
-  if (inferred && inferred !== '未分类') {
-    return { ...issue, source: 'mcp' };
-  }
+  // 其余情况统一兜底为 'mcp'（Layer 1 规则引擎命中优先，AI 补充场景由 SKILL 约束）
   return { ...issue, source: 'mcp' };
 }
 
@@ -739,7 +739,9 @@ export const generateProofreadReportHandler: ToolHandler = async (
     // 此时 ÷2 换算不整除，需明示差异并提示人工核对，避免口径误判。
     const half = totalRevisions / 2;
     const isInteger = Number.isInteger(half);
-    report += `- **修订总数**: ${totalRevisions}（TC-12 口径：问题数 = 修订记录数 ÷ 2 = ${Math.floor(half)}`;
+    // 评审建议：奇数修订时显示 ≈31.5 而非向下取整的 31，避免与"不整除"提示并存造成误导
+    const halfDisplay = isInteger ? String(half) : `≈${half.toFixed(1)}`;
+    report += `- **修订总数**: ${totalRevisions}（TC-12 口径：问题数 = 修订记录数 ÷ 2 = ${halfDisplay}`;
     report += isInteger
       ? `，每次替换产生删除+插入 2 条修订）\n`
       : `；⚠️ 修订数为奇数（删除类修复只产生 1 条修订），换算不整除，请人工核对修订记录与问题清单是否一一对应）\n`;
@@ -848,7 +850,9 @@ export const generateProofreadReportHandler: ToolHandler = async (
   if (totalRevisions !== undefined) {
     const half = totalRevisions / 2;
     const isInteger = Number.isInteger(half);
-    report += `\n> **TC-12 口径说明**：问题数 ${issues.length} 处对应修订记录数 ${totalRevisions} 条（每次替换 = 删除 + 插入各 1 条修订，即问题数 = 修订记录数 ÷ 2 = ${Math.floor(half)}）`;
+    // 评审建议：奇数修订时显示 ≈31.5（与正文口径一致），不再向下取整
+    const halfDisplay = isInteger ? String(half) : `≈${half.toFixed(1)}`;
+    report += `\n> **TC-12 口径说明**：问题数 ${issues.length} 处对应修订记录数 ${totalRevisions} 条（每次替换 = 删除 + 插入各 1 条修订，即问题数 = 修订记录数 ÷ 2 = ${halfDisplay}）`;
     report += isInteger
       ? `。如不等，请检查是否有未跟踪修订的替换或人工修改。\n`
       : `。⚠️ 当前修订数为奇数（删除类修复只产生 1 条修订，如“存在着→空”），换算不整除，请人工核对修订记录与问题清单是否一一对应。\n`;
