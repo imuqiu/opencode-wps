@@ -52,37 +52,67 @@ function OnToggleClick() {
 }
 
 /**
- * 打开 Web：调用 launcher-mac 的 /dock 接口，
+ * 打开 Web：先探测 launcher 与 opencode 服务状态，再调用 launcher-mac 的 /dock 接口，
  * 在系统默认浏览器（优先 Chrome/Edge）中打开 OpenCode AI 对话界面。
  */
 function OnOpenWebClick() {
-    var cwd = '';
-    try {
-        if (window.Application && window.Application.PluginStorage) {
-            cwd = window.Application.PluginStorage.getItem('opencode_cwd') || '';
-        }
-    } catch (e) {}
+    console.log('[OpenCode] OpenWeb: ' + CONFIG.OPENCODE_URL);
 
-    console.log('[OpenCode] OpenWeb: ' + CONFIG.OPENCODE_URL + ' cwd=' + cwd);
+    // 发送前先确认 launcher 可达、opencode 服务已运行，避免浏览器打开连接失败页
+    var probe = new XMLHttpRequest();
+    probe.open('GET', CONFIG.LAUNCHER_URL + '/status', true);
+    probe.timeout = 3000;
+    probe.onload = function() {
+        var st = null;
+        try {
+            st = JSON.parse(probe.responseText || '{}');
+        } catch (e) {}
+        if (!st || st.running !== true) {
+            alert('打开Web失败：OpenCode 服务未启动，请先运行 node launcher-mac.js');
+            return;
+        }
+        dockOpen(st.cwd || '');
+    };
+    probe.onerror = function() {
+        alert('打开Web失败：launcher 不可达，请确认 launcher-mac 已启动');
+    };
+    probe.ontimeout = function() {
+        alert('打开Web失败：launcher 响应超时，请确认 launcher-mac 已启动');
+    };
+    try {
+        probe.send();
+    } catch (e) {
+        alert('打开Web失败：' + e.message);
+    }
+    return true;
+}
+
+function dockOpen(cwd) {
+    console.log('[OpenCode] Dock cwd=' + cwd);
     var xhr = new XMLHttpRequest();
     xhr.open('POST', CONFIG.LAUNCHER_URL + '/dock', true);
     xhr.setRequestHeader('Content-Type', 'application/json');
     xhr.timeout = 5000;
     xhr.onload = function() {
         console.log('[OpenCode] Dock response: ' + xhr.status + ' ' + xhr.responseText);
+        if (xhr.status !== 200) {
+            alert('打开Web失败：launcher 返回 ' + xhr.status + '，请确认 launcher-mac 已启动');
+        }
     };
     xhr.onerror = function() {
-        console.error('[OpenCode] Dock error: launcher 不可达，请确认 launcher-mac 已启动');
+        console.error('[OpenCode] Dock error: launcher 不可达');
+        alert('打开Web失败：launcher 不可达，请确认 launcher-mac 已启动');
     };
     xhr.ontimeout = function() {
         console.error('[OpenCode] Dock timeout');
+        alert('打开Web失败：launcher 响应超时，请重试');
     };
     try {
         xhr.send(JSON.stringify({ cwd: cwd }));
     } catch (e) {
         console.error('[OpenCode] Dock send error: ' + e.message);
+        alert('打开Web失败：' + e.message);
     }
-    return true;
 }
 
 function startPolling() {
