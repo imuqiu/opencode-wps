@@ -17,6 +17,7 @@ OpenCode WPS 将 OpenCode AI 的能力集成到 WPS Office 中，通过侧边栏
 - **多会话管理** — 创建、重命名、切换、删除对话会话
 - **MCP 工具集成** — 通过 WPS Office MCP 服务器，AI 可以直接操作文档（读/写/格式化），500+ 工具覆盖三大应用（内置 12 + 注册 ~240 + COM Actions ~257，数量以代码为准）
 - **WPS 专用 Agents** — 自定义 wps-expert/wps-word/wps-excel/wps-ppt agents，通过 Agent 选择实现功能聚焦
+- **NPC Team 总指挥（零积分）** — 无需新增自建 NPC：在 CNB 平台召唤官方免费 `@CodeBuddy` 并粘贴 [docs/NPC_TEAM.md](./docs/NPC_TEAM.md) 中的提示词，单会话化身 6 位专家（PM/产品/架构/开发/评审/测试），一条需求自动跑完拆解→开发→评审→测试→文档→复盘全流程，零平台 NPC 积分、Token 实测省 51%
 - **执行治理** — `.opencode/plugins/governance.js` 使用 7 条通用规则（G1-G7）+ 16 条校对规则（P1-P16）+ 11 条模板填写规则（T1-T11），运行时拦截所有 MCP 调用（强制逐批校对、禁止 AI 编造问题、交叉校验修复内容）
 - **Agent 选择** — 底部工具栏支持切换不同 agent，消息自动传递 agent 参数
 - **一键安装** — 运行 `node install-addons.js` 自动完成全部组件安装（8 步）
@@ -482,6 +483,7 @@ Mac 版为命令轮询桥架构（无内嵌侧边栏），对话在浏览器中�
 
 **使用方式**：
 1. 在消息中使用 `@wps-expert`、`@wps-word`、`@wps-excel`、`@wps-ppt` 调用子 agents 处理特定任务
+2. 在 CNB 平台对话中召唤官方免费 `@CodeBuddy` 并粘贴 [docs/NPC_TEAM.md](./docs/NPC_TEAM.md) 中的提示词，同样可化身 NPC Team，且不消耗平台 NPC 积分
 
 **自定义 Agents**：
 - Agents 定义位置：`~/.config/opencode/agents/`

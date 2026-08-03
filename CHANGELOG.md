@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **NPC Team 校验脚本强化**（PR #77 复评 3 条 info 整改）— ① `scripts/validate-npc-team-prompt.js` 改用真正的命名捕获组 `m.groups.prompt`（移除恒为 undefined 的 `m.group ?? m[1]`）；② 角色校验从"全文中任意命中"弱校验升级为**强校验**：在 `【角色卡片】` 段内逐张匹配「emoji 缩写：/全称：」卡片行，卡片被误删（即使流水线正文仍含「开发/评审/测试」等词）也会报错拦截；③ 提示词代码块增加锚点 `# NPC_TEAM_PROMPT_START`，正则只捕获带锚点的块并校验长度下限（≥500 字符），避免将来在提示词前新增其他 text 块时静默捕获错误内容；`docs/NPC_TEAM.md` 同步在提示词块首行加锚点；负向测试验证：删除 QA 卡片 / 删除锚点均能正确拦截
+
+### Added
+- **NPC Team 提示词 V2 优化 + 有效性测试**（Issue #76）— `docs/NPC_TEAM.md` 提示词从 ~2092 token 压缩到 ~1019 token（**-51%**，6 角色/10 阶段/零积分/安全红线全保留）：流水线改单行紧凑格式、合并身份声明与角色清单、切换卡示例压缩为单卡、去除与工作流程章节重复的流水线描述；新增 `scripts/validate-npc-team-prompt.js` 静态校验脚本（校验 6 角色齐全/10 阶段编号完整/零积分红线/安全红线/切换卡）并接入 `.cnb.yml` CI 的 Validate 阶段；文档新增「有效性测试（可复现）」章节（静态校验 + 2 分钟冒烟测试方法 + 实测结论）
+
 ### Fixed
 - **修复 offset 可选后的去重键 Bug**（PR #71 二轮评审 warning）— 累加器去重键 `offset|original` 在 offset 缺失时退化 `undefined|原文` 会误判重复丢弃：改为**仅对携带绝对 offset 的条目去重**，缺失时保守保留全部（不同位置同原文不误并）；SKILL.md 两处排序改为 `offset ?? Infinity` 次级 `paragraphIndex`，消除 NaN 比较排序不稳定；移除 accumulate schema 中无效的 `offset_in_paragraph` 字段声明、清理 agents/wps-word.md 与 proofread.ts 头部对已删除 `replace_range` 的残留引用
 - **对齐合并去重口径并补可观测性**（PR #71 三轮评审 3 warning + 3 info）— ① 去重键同键（同 offset 同 original）时 **source=ai 优先覆盖 mcp**（与 SKILL 合并口径一致，不再错留 2 条）；② 累加器返回文本补充 **offset 缺失计数**（「其中 N 条未携带绝对 offset，未参与去重」），报告侧可区分「位置未知」是漏传还是计算失败；③ `dedupedCount` 改为只统计**本批新增导致的去重**（不再把历史累计重复计入）；④ SKILL.md 公式移除已废弃的 `offset_in_paragraph` 字面量引用（改为「段内字符位置」）、「必须包含 offset」改为「强烈建议携带 paragraphIndex + offset」（与代码层可选语义对齐）；⑤ `normalizeIssueLocation` 删除被有意忽略的 `offset_in_paragraph` 类型声明（类型即文档）

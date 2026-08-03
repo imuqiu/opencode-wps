@@ -10,6 +10,7 @@
 |------|------|
 | [DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md) | 开发指南、代码规范、提交规范、FAQ |
 | [CODE_REVIEW_GUIDE.md](./CODE_REVIEW_GUIDE.md) | 代码审查规范与流程（分级标准/审查流程/场景策略/度量指标） |
+| [NPC_TEAM.md](./NPC_TEAM.md) | NPC Team 总指挥 — 一段提示词让官方免费 CodeBuddy 化身 6 专家跑完整研发流程（零平台积分） |
 <!-- 审查报告已归档 -->
 | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | 问题排查与避坑指南 |
 | [SECURITY.md](./SECURITY.md) | 安全模型与注意事项 |
@@ -42,6 +43,7 @@
 docs/
 ├── DEVELOPMENT_GUIDE.md    # 开发指南（贡献指南）
 ├── CODE_REVIEW_GUIDE.md    # 代码审查规范与流程
+├── NPC_TEAM.md             # NPC Team 总指挥（提示词驱动官方 CodeBuddy 化身，零积分全流程）
 <!-- ├── CODE_REVIEW_REPORT.md   # 全量代码审查报告（已归档） -->
 ├── TROUBLESHOOTING.md      # 问题排查与避坑指南
 ├── SECURITY.md            # 安全模型与注意事项
