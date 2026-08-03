@@ -142,7 +142,7 @@ MCP 使用 JSON-RPC 2.0 消息格式：
 - **12 个内置工具** — 启动时直接注册（`wps_check_connection`、`wps_get_cell_value` 等）
 - **2 个 Gateway 工具** — `wps_office_search` 搜索、`wps_office_execute` 执行
 - **~240 个注册工具** — 未注册到 MCP 但作为 TS handler 供 Gateway 优先调用（含参数校验、类型安全、详细错误信息）。数量以代码为准（`wps-office-mcp/src/tools/index.ts` 的 `allTools`），持续演进
-- **~256 个 COM Actions** — Gateway 索引，无 TS handler 时透传 PS1 脚本执行 COM API。数量以代码为准（`wps-office-mcp/src/tools/gateway/index.ts` 的 `COM_ACTIONS`）
+- **~257 个 COM Actions** — Gateway 索引，无 TS handler 时透传 PS1 脚本执行 COM API。数量以代码为准（`wps-office-mcp/src/tools/gateway/index.ts` 的 `COM_ACTIONS`）
 
 **执行路径（`wps_office_execute`）：**
 

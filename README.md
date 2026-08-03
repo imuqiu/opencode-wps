@@ -15,7 +15,7 @@ OpenCode WPS 将 OpenCode AI 的能力集成到 WPS Office 中，通过侧边栏
 
 - **WPS 内嵌 AI 对话** — 侧边栏 Chat UI，支持 SSE 流式输出、Markdown 渲染
 - **多会话管理** — 创建、重命名、切换、删除对话会话
-- **MCP 工具集成** — 通过 WPS Office MCP 服务器，AI 可以直接操作文档（读/写/格式化），500+ 工具覆盖三大应用（内置 12 + 注册 ~240 + COM Actions ~256，数量以代码为准）
+- **MCP 工具集成** — 通过 WPS Office MCP 服务器，AI 可以直接操作文档（读/写/格式化），500+ 工具覆盖三大应用（内置 12 + 注册 ~240 + COM Actions ~257，数量以代码为准）
 - **WPS 专用 Agents** — 自定义 wps-expert/wps-word/wps-excel/wps-ppt agents，通过 Agent 选择实现功能聚焦
 - **执行治理** — `.opencode/plugins/governance.js` 使用 7 条通用规则（G1-G7）+ 16 条校对规则（P1-P16）+ 11 条模板填写规则（T1-T11），运行时拦截所有 MCP 调用（强制逐批校对、禁止 AI 编造问题、交叉校验修复内容）
 - **Agent 选择** — 底部工具栏支持切换不同 agent，消息自动传递 agent 参数
@@ -23,7 +23,7 @@ OpenCode WPS 将 OpenCode AI 的能力集成到 WPS Office 中，通过侧边栏
 - **开机自启** — 通过 Launcher 进程自动管理 OpenCode 服务（监听 14097 端口），用户登录时自动启动
 - **完整技术文档** — `docs/` 目录包含开发指南、API 参考、问题排查等 14 份文档
 
-## 项目组成（4 层架构）
+## 项目组成（4 层组件视图）
 
 ```
 opencode-wps/
@@ -59,12 +59,12 @@ opencode-wps/
 │   ├── wpsjs.config.js        # wpsjs 开发配置
 │   ├── _sse_test.js           # SSE 测试脚本
 │   └── browsertest.html       # 浏览器测试页
-├── opencode-wps-assistant/    # 第 1 层（Mac）：WPS JS 插件（反向轮询客户端）
+├── opencode-wps-assistant/    # 第 1 层（Mac）：WPS JS 插件（命令轮询桥）
 │   ├── main.js                # 轮询循环 + 命令分发
 │   ├── handlers/              # Word/Excel/PPT 操作处理器（~300 个动作）
 │   ├── utils/                 # 工具函数
 │   │   └── response.js        # 响应格式化
-│   ├── index.html             # Chat 入口页
+│   ├── index.html             # 桥接入口页（轮询客户端，无 Chat 界面）
 │   ├── ribbon.xml             # 功能区按钮定义
 │   ├── manifest.xml           # 加载项清单
 │   ├── package.json           # 插件依赖
@@ -101,13 +101,13 @@ opencode-wps/
 ```
 
 **4 层说明（从上到下，使用流程）：**
-- **第 1 层 WPS JS 插件** — 用户可见的 Chat 窗口 + 服务进程管理。Windows 使用 COM 桥接（`opencode-wps/`），Mac 使用反向轮询（`opencode-wps-assistant/`）
+- **第 1 层 WPS JS 插件** — Win：前台 Chat 窗口 + 服务进程管理；Mac：命令轮询桥（无 Chat 界面）。Windows 使用 COM 桥接（`opencode-wps/`），Mac 使用反向轮询（`opencode-wps-assistant/`）
 - **第 2 层 Agents** — 角色定义，通过 Agent 选择实现功能聚焦（跨平台通用）
 - **第 3 层 Skills** — 领域技能，AI 调用的能力集（跨平台通用）
-- **第 4 层 MCP** — 跨平台路由：Win→PowerShell COM 桥接，Mac→HTTP 轮询（反向轮询插件）。~240 TypeScript handler + ~256 个 WPS API 动作
+- **第 4 层 MCP** — 跨平台路由：Win→PowerShell COM 桥接，Mac→HTTP 轮询（反向轮询插件）。~240 TypeScript handler + ~257 个 WPS API 动作
 
 **横向机制：**
-- **config.js 全局配置** — 所有配置的统一来源（OpenCode/Launcher 端口、网络超时、插件元数据），注入为全局 `CONFIG` 对象供各层读取
+- **config.js 全局配置** — 所有配置的统一来源（OpenCode/Launcher 端口、网络超时、插件元数据、回退模型），注入为全局 `CONFIG` 对象供各层读取
 - **governance.js 执行治理** — 通过 OpenCode Plugin Hooks（`tool.execute.before`/`after`）在所有 MCP 工具调用前后注入 34 条规则拦截（G1-G7 + P1-P16 + T1-T11），after 钩子更新状态 → before 钩子校验状态，形成防 AI 作弊闭环
 
 ### MCP 工具体系
@@ -118,7 +118,7 @@ MCP 服务器采用三层工具体系，AI 通过不同的方式发现和调用�
 |------|------|----------|----------|------|
 | **内置工具** | 12 | `wps_xxx` | 直接 MCP 调用 | 启动即注册，始终可用。含 10 个基础工具 + 2 个 Gateway 工具（`wps_office_search`/`wps_office_execute`） |
 | **注册工具** | ~240 | `wps_xxx_xxx`（Excel ~82 / Word ~37 / PPT ~112 / Common ~10） | → Gateway 路由 | 通过 `tools/index.ts` 注册，有完整的 TypeScript handler（参数校验+类型安全）。**不注册到 MCP**，而是由 Gateway 优先调用。数量以代码为准（见 `scripts/validate-tool-counts.js`） |
-| **COM_ACTIONS** | ~256 | 短名称（`getCellValue`, `setFont`, `addSlide`） | `wps_office_search` → `wps_office_execute` → PS1 兜底 | Gateway 索引，按需发现。**执行流程：有 TS handler → 走 handler（自动转换 camelCase→snake_case），无 handler → 透传 PS1 脚本** |
+| **COM_ACTIONS** | ~257 | 短名称（`getCellValue`, `setFont`, `addSlide`） | `wps_office_search` → `wps_office_execute` → PS1 兜底 | Gateway 索引，按需发现。**执行流程：有 TS handler → 走 handler（自动转换 camelCase→snake_case），无 handler → 透传 PS1 脚本** |
 
 **三层分工**：内置工具处理基础操作，注册工具提供类型安全的深度控制，COM_ACTIONS 覆盖 WPS API 作为兜底。各层数量随开发持续演进，**以代码为准**（内置工具见 `mcp-server.ts`，注册工具见 `tools/index.ts`，COM_ACTIONS 见 `gateway/index.ts`）。
 
@@ -129,7 +129,7 @@ MCP 服务器采用三层工具体系，AI 通过不同的方式发现和调用�
 | 组件 | 说明 | 平台 |
 |------|------|------|
 | **opencode-wps** | WPS JS 加载项（Windows 版），Ribbon + Chat UI + Launcher 进程 | Windows |
-| **opencode-wps-assistant** | WPS JS 加载项（Mac 版），反向轮询客户端，通过 handlers/ 操作文档 | macOS |
+| **opencode-wps-assistant** | WPS JS 加载项（Mac 版），命令轮询桥（无 Chat UI），轮询 :58891 拉取命令，通过 handlers/ 操作文档 | macOS |
 | **wps-office-mcp** | MCP 服务器，跨平台路由（Win→PowerShell COM 桥接，Mac→HTTP 轮询） | 跨平台 |
 | **skills** | OpenCode 技能定义，安装到 `~/.opencode/skills/` | 跨平台 |
 | **agents** | 自定义 WPS Agents，定义在 `~/.config/opencode/agents/` | 跨平台 |
@@ -162,6 +162,95 @@ MCP 服务器采用三层工具体系，AI 通过不同的方式发现和调用�
 3. **状态联动** — after 钩子追踪状态 → before 钩子校验状态，形成闭环
 4. **防 AI 作弊** — 禁止 AI 跳过基础校对、跳过确认、编造修复等风险行为
 5. **代码层强制执行** — 不依赖 AI 自觉，违反规则直接报错，AI 无法绕过
+
+## 软件架构（全链路十层视图）
+
+> 上文「4 层组件视图」按**仓库目录归属**划分层次；本节按**一次完整请求的调用链**划分十层，两种视角互为补充：组件第 1 层 ≈ 调用链 ②③④+⑪，第 2 层 ≈ ⑥（Agents）、第 3 层 ≈ ⑦（Skills），第 4 层 ≈ ⑧⑨⑩；⑤ 为公共调度层，⑪ 为旁路服务进程。
+>
+> 调用链共 10 层（①-⑩），⑪ Launcher 为**旁路服务管理进程**：它不参与请求流动，仅负责 `opencode serve`（⑤）的生命周期管理，故编号超出十层、单独列示。
+
+### 全链路架构图
+
+```
+┌─────────────────────────────────────▼────────────────────────────────────┐
+│             ① WPS 宿主应用（Win / Mac）                                  │
+│   Ribbon（打开面板 / 连接状态）+ WPS 文档对象模型                        │
+└─────────────────────────────────────┬────────────────────────────────────┘
+                                      │ ② 注入/加载
+┌─────────────────────────────────────▼────────────────────────────────────┐
+│        ② WPS JS 插件 — Win：前台 Chat UI / Mac：命令轮询桥               │
+│    Win: opencode-wps/（taskpane.html SSE+Markdown 直连 :14096）          │
+│    Mac: opencode-wps-assistant/（无 Chat UI，轮询 :58891 拉取命令）      │
+└─────────────────────────────────────┬────────────────────────────────────┘
+                                      │ ③ REST + SSE（仅 Win，运行时绕过 ④）
+┌─────────────────────────────────────▼────────────────────────────────────┐
+│   ⑤ OpenCode 中央调度平台（opencode serve :14096）                       │
+│   会话管理 / Agent 路由（wps-expert/word/excel/ppt）                     │
+│   ══ 治理横切：governance.js Hooks（before/after）══                     │
+└─────────────────────────────────────┬────────────────────────────────────┘
+                                      │ ⑤⑥ MCP 协议（stdio）
+┌─────────────────────────────────────▼────────────────────────────────────┐
+│       ⑥ Agents（跨平台）       ⑦ Skills（跨平台）                        │
+│       agents/*.md              skills/*（5 个技能）                      │
+└─────────────────────────────────────┬────────────────────────────────────┘
+                                      │ ⑦ 工具调用（MCP）
+┌─────────────────────────────────────▼────────────────────────────────────┐
+│        ⑧ WPS Office MCP 服务器（三层工具体系）                           │
+│        12 内置 + ~240 handler + ~257 COM Actions                         │
+└─────────────────────────────────────┬────────────────────────────────────┘
+                                      │ ⑧⑨ 平台桥接（按平台路由）
+┌─────────────────────────────────────▼────────────────────────────────────┐
+│  ⑨ Win：PowerShell COM（wps-com.ps1）  │  ⑨ Mac：HTTP 轮询（:58891）     │
+│     → ⑩ WPS COM API 操作文档            │  mac-poll-server.ts 500ms 拉取 │
+│                                        │     → ⑩ WPS JS API（handlers）  │
+└─────────────────────────────────────┬────────────────────────────────────┘
+                                      │ ⑩ 操作结果 → 沿原路返回
+
+┌─────────────────────────────────────┬────────────────────────────────────┐
+│  ④ 自建通讯层 — CORS 代理（:14098）— 备用，不在运行时调用链              │
+│  opencode-proxy.js 剥离 CSP 头；当前 launcher 已用 --cors file:// 放行   │
+└─────────────────────────────────────┬────────────────────────────────────┘
+
+┌─────────────────────────────────────┬────────────────────────────────────┐
+│  ⑪ Launcher 服务管理（:14097）— 旁路进程，不参与调用链                   │
+│  管理 opencode serve 生命周期：/status /start /stop（按端口精确停止）    │
+│  Win: schtasks / Mac: LaunchAgent                                        │
+└─────────────────────────────────────┬────────────────────────────────────┘
+```
+
+### 十层职责与平台差异
+
+| 层 | 职责 | 平台差异 |
+|----|------|----------|
+| ① WPS 宿主 | 承载插件运行环境，提供文档对象模型 | Win/Mac 均相同，但 COM 与 JS API 两套对象模型 |
+| ② WPS JS 插件 | Win：前台 Chat UI（UI/会话/Agent 选择）；Mac：命令轮询桥（无 Chat 界面） | Win：taskpane.html（SSE 直连 :14096）；Mac：index.html（轮询 :58891 拉取命令） |
+| ③ 通讯协议 | 浏览器与 OpenCode 服务之间的 REST + SSE（仅 Win）；Mac 为插件↔MCP 的 HTTP 轮询 | 仅 Win：REST + SSE 直连 :14096（launcher 以 `--cors file://` 放行）；Mac：插件↔MCP :58891 HTTP 轮询，不直连 OpenCode |
+| ④ 自建通讯层 | opencode-proxy.js（:14098）剥离 CSP 头，解决 WPS 内置 Chromium 103 不兼容现代 Web（官方 web 版需 Chrome 130+）的根因 | 备用方案：当前 launcher 已用 `--cors file://` 放行，运行时调用链不再经过它；Mac 无需 CORS 代理 |
+| ⑤ OpenCode 调度 | 会话管理、Agent 路由、模型调度（config.js 支持 Ollama 回退模型） | 跨平台一致 |
+| ⑥ Agents | 角色定义（wps-expert/word/excel/ppt），Agent 选择实现功能聚焦 | 跨平台一致 |
+| ⑦ Skills | 领域技能（wps-word/excel/ppt/office/proofread），AI 调用的能力集 | 跨平台一致 |
+| ⑧ MCP 服务器 | 三层工具体系：12 内置 + ~240 注册 handler + ~257 COM Actions | 跨平台一致，数量以代码为准 |
+| ⑨ 平台桥接 | 将 MCP 命令转换为平台原生调用 | Win：PowerShell COM（wps-com.ps1）；Mac：HTTP 轮询（:58891，500ms 间隔） |
+| ⑩ WPS 操作 | 最终执行文档读写/格式化/校对/填值 | Win：COM API；Mac：WPS JS API（handlers/*.js） |
+| ⑪ Launcher（旁路） | 管理 opencode serve 生命周期（:14097），实现开机自启；不参与请求调用链 | Win：计划任务（schtasks）；Mac：LaunchAgent plist |
+
+### 一次完整请求的调用链（以 Windows 为例）
+
+```
+用户在 Chat 输入 → ② taskpane.html → ③ SSE POST /session/{id}/message
+→ ⑤ opencode serve :14096（Win 直连，launcher 以 `--cors file://` 放行）→ ⑥ Agent 路由 + ⑦ Skill 选择
+→ ⑧ MCP 工具调用 → ⑨ wps-com.ps1（PowerShell COM）→ ⑩ WPS 文档操作
+→ 结果沿原路返回 → SSE 流式渲染到 Chat 窗口
+```
+
+> 注：④ CORS 代理（:14098）为备用方案，不在上述实际调用链中；Mac 端无 Chat UI，由 `opencode-wps-assistant/` 轮询 :58891 拉取 MCP 命令并返回结果。
+
+**关键设计决策**（源自实践中的踩坑）：
+
+1. **自建 Chat UI 而非官方 Web 版** — WPS 内置 Chromium 停留在 2022 年的 103 版本，官方 opencode web 版需 Chrome 130+，只能基于 REST + SSE 自建通讯层
+2. **Launcher 进程而非 VBS/bat** — 经历 `OAAssist.ShellExecute`（触发安全警告）、VBS 脚本、手动命令等方案后，最终采用 Launcher 进程 + 计划任务/LaunchAgent 自动启动
+3. **双平台差异化桥接** — Win 走 PowerShell COM（同步、强类型），Mac 走 HTTP 反向轮询（500ms 拉取、异步），两者共用同一 MCP 层和工具集
+4. **治理横切进调用链** — governance.js 的 34 条规则（G1-G7 + P1-P16 + T1-T11）不改变调用链结构，而是通过 Plugin Hooks 在⑤层拦截所有工具调用，before/after 形成状态闭环
 
 ## 特色功能
 
@@ -426,7 +515,7 @@ OpenCode 服务通过 Launcher 进程管理（监听 `127.0.0.1:14097`），无�
                 │  wps-office-mcp       │
                 │  ├─ 12 内置工具       │
                 │  ├─ ~240 注册工具      │
-                │  └─ ~256 COM Actions  │
+                │  └─ ~257 COM Actions  │
                 └───────────┬───────────┘
                             │ PowerShell COM
                 ┌───────────▼───────────┐
