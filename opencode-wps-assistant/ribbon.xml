@@ -17,6 +17,14 @@
                   imageMso="Pause"
                   supertip="暂停或恢复轮询"/>
         </group>
+        <group id="opencodeWeb" label="对话">
+          <button id="btnOpenWeb"
+                  label="打开Web"
+                  size="large"
+                  onAction="OnOpenWebClick"
+                  imageMso="HyperlinkInsert"
+                  supertip="在浏览器中打开 OpenCode AI 对话界面 (http://127.0.0.1:14096)"/>
+        </group>
       </tab>
     </tabs>
   </ribbon>
