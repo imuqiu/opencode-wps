@@ -165,7 +165,9 @@ MCP 服务器采用三层工具体系，AI 通过不同的方式发现和调用�
 
 ## 软件架构（全链路十层视图）
 
-> 上文「4 层组件视图」按**仓库目录归属**划分层次；本节按**一次完整请求的调用链**划分十层，两种视角互为补充：组件第 1 层 ≈ 调用链 ①②③④+⑩，第 2/3 层 ≈ ⑤⑥，第 4 层 ≈ ⑦+①。
+> 上文「4 层组件视图」按**仓库目录归属**划分层次；本节按**一次完整请求的调用链**划分十层，两种视角互为补充：组件第 1 层 ≈ 调用链 ②③④+⑪，第 2/3 层 ≈ ⑤⑥，第 4 层 ≈ ⑧⑨⑩。
+>
+> 调用链共 10 层（①-⑩），⑪ Launcher 为**旁路服务管理进程**：它不参与请求流动，仅负责 `opencode serve`（⑤）的生命周期管理，故编号超出十层、单独列示。
 
 ### 全链路架构图
 
@@ -210,8 +212,9 @@ MCP 服务器采用三层工具体系，AI 通过不同的方式发现和调用�
                                       │ ⑩ 操作结果 → 沿原路返回
 
 ┌─────────────────────────────────────┬────────────────────────────────────┐
-│  ⑪ Launcher 服务管理（:14097）— Win: schtasks / Mac: LaunchAgent         │
+│  ⑪ Launcher 服务管理（:14097）— 旁路进程，不参与调用链                    │
 │  管理 opencode serve 生命周期：/status /start /stop（按端口精确停止）    │
+│  Win: schtasks / Mac: LaunchAgent                                        │
 └─────────────────────────────────────┬────────────────────────────────────┘
 ```
 
@@ -222,14 +225,14 @@ MCP 服务器采用三层工具体系，AI 通过不同的方式发现和调用�
 | ① WPS 宿主 | 承载插件运行环境，提供文档对象模型 | Win/Mac 均相同，但 COM 与 JS API 两套对象模型 |
 | ② WPS JS 插件 | 用户可见的 Chat 窗口（UI/会话/Agent 选择） | Win：taskpane.html（SSE 直连）；Mac：index.html（反向轮询客户端） |
 | ③ 通讯协议 | 浏览器与 OpenCode 服务之间的 REST + SSE | Win 需经 CORS 代理（Chromium 103）；Mac 内置 WebKit 较新，可直连 |
-| ④ 自建通讯层 | opencode-proxy.js（:14098）剥离 CSP 头，解决 WPS 内置 Chromium 103 不兼容现代 Web（官方 web 版需 Chrome 130+）的根因 | 仅 Windows 需要 |
+| ④ 自建通讯层 | opencode-proxy.js（:14098）剥离 CSP 头，解决 WPS 内置 Chromium 103 不兼容现代 Web（官方 web 版需 Chrome 130+）的根因 | 仅 Windows 需要；Mac 无需 CORS 代理，直连 :14096 |
 | ⑤ OpenCode 调度 | 会话管理、Agent 路由、模型调度（config.js 支持 Ollama 回退模型） | 跨平台一致 |
 | ⑥ Agents | 角色定义（wps-expert/word/excel/ppt），Agent 选择实现功能聚焦 | 跨平台一致 |
 | ⑦ Skills | 领域技能（wps-word/excel/ppt/office/proofread），AI 调用的能力集 | 跨平台一致 |
 | ⑧ MCP 服务器 | 三层工具体系：12 内置 + ~240 注册 handler + ~257 COM Actions | 跨平台一致，数量以代码为准 |
 | ⑨ 平台桥接 | 将 MCP 命令转换为平台原生调用 | Win：PowerShell COM（wps-com.ps1）；Mac：HTTP 轮询（:58891，500ms 间隔） |
 | ⑩ WPS 操作 | 最终执行文档读写/格式化/校对/填值 | Win：COM API；Mac：WPS JS API（handlers/*.js） |
-| ⑪ Launcher | 管理 opencode serve 生命周期（:14097），实现开机自启 | Win：计划任务（schtasks）；Mac：LaunchAgent plist |
+| ⑪ Launcher（旁路） | 管理 opencode serve 生命周期（:14097），实现开机自启；不参与请求调用链 | Win：计划任务（schtasks）；Mac：LaunchAgent plist |
 
 ### 一次完整请求的调用链（以 Windows 为例）
 
