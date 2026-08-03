@@ -9,6 +9,8 @@
 
 var CONFIG = {
     SERVER_URL: 'http://127.0.0.1:58891',
+    LAUNCHER_URL: 'http://127.0.0.1:14097',
+    OPENCODE_URL: 'http://127.0.0.1:14096',
     POLL_INTERVAL: 500,
     POLL_TIMEOUT: 5000
 };
@@ -46,6 +48,40 @@ function OnToggleClick() {
         alert('轮询已恢复');
     }
     try { _ribbonUI.Invalidate(); } catch (e) {}
+    return true;
+}
+
+/**
+ * 打开 Web：调用 launcher-mac 的 /dock 接口，
+ * 在系统默认浏览器（优先 Chrome/Edge）中打开 OpenCode AI 对话界面。
+ */
+function OnOpenWebClick() {
+    var cwd = '';
+    try {
+        if (window.Application && window.Application.PluginStorage) {
+            cwd = window.Application.PluginStorage.getItem('opencode_cwd') || '';
+        }
+    } catch (e) {}
+
+    console.log('[OpenCode] OpenWeb: ' + CONFIG.OPENCODE_URL + ' cwd=' + cwd);
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', CONFIG.LAUNCHER_URL + '/dock', true);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.timeout = 5000;
+    xhr.onload = function() {
+        console.log('[OpenCode] Dock response: ' + xhr.status + ' ' + xhr.responseText);
+    };
+    xhr.onerror = function() {
+        console.error('[OpenCode] Dock error: launcher 不可达，请确认 launcher-mac 已启动');
+    };
+    xhr.ontimeout = function() {
+        console.error('[OpenCode] Dock timeout');
+    };
+    try {
+        xhr.send(JSON.stringify({ cwd: cwd }));
+    } catch (e) {
+        console.error('[OpenCode] Dock send error: ' + e.message);
+    }
     return true;
 }
 

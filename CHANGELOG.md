@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - launcher.js `stateLock` 并发请求保护（同时仅允许一个 `/start`）
 - main.js PluginStorage JSON 命令 `{ cmd, ts }` 时间戳去重
 - CORS 代理 `opencode-proxy.js`（端口 14098，剥离 CSP 头）
+- **Mac 版「打开Web」按钮**（Issue #74）— `opencode-wps-assistant/ribbon.xml` 新增「对话」分组及「打开Web」按钮，`main.js` 新增 `OnOpenWebClick` 回调，点击后经 launcher `/dock` 自动在系统默认浏览器（优先 Chrome/Edge）打开 `http://127.0.0.1:14096`，消除 Mac 端「WPS 内操作、浏览器里手动输地址对话」的割裂感
 
 ### Changed
 - 安装脚本输出更详细的状态信息
