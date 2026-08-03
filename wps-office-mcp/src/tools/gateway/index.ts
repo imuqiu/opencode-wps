@@ -1,6 +1,6 @@
 /**
  * WPS Office COM Actions 索引
- * 共 ~256 个 COM Actions（数量随开发持续演进，以 COM_ACTIONS 数组长度为准）
+ * 共 ~257 个 COM Actions（数量随开发持续演进，以 COM_ACTIONS 数组长度为准）
  *
  * 工具名称映射说明：
  * - Gateway 使用短名称（如 setFont、addSlide）进行索引和搜索

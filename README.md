@@ -59,12 +59,12 @@ opencode-wps/
 │   ├── wpsjs.config.js        # wpsjs 开发配置
 │   ├── _sse_test.js           # SSE 测试脚本
 │   └── browsertest.html       # 浏览器测试页
-├── opencode-wps-assistant/    # 第 1 层（Mac）：WPS JS 插件（反向轮询客户端）
+├── opencode-wps-assistant/    # 第 1 层（Mac）：WPS JS 插件（命令轮询桥）
 │   ├── main.js                # 轮询循环 + 命令分发
 │   ├── handlers/              # Word/Excel/PPT 操作处理器（~300 个动作）
 │   ├── utils/                 # 工具函数
 │   │   └── response.js        # 响应格式化
-│   ├── index.html             # Chat 入口页
+│   ├── index.html             # 桥接入口页（轮询客户端，无 Chat 界面）
 │   ├── ribbon.xml             # 功能区按钮定义
 │   ├── manifest.xml           # 加载项清单
 │   ├── package.json           # 插件依赖
@@ -101,7 +101,7 @@ opencode-wps/
 ```
 
 **4 层说明（从上到下，使用流程）：**
-- **第 1 层 WPS JS 插件** — 用户可见的 Chat 窗口 + 服务进程管理。Windows 使用 COM 桥接（`opencode-wps/`），Mac 使用反向轮询（`opencode-wps-assistant/`）
+- **第 1 层 WPS JS 插件** — Win：前台 Chat 窗口 + 服务进程管理；Mac：命令轮询桥（无 Chat 界面）。Windows 使用 COM 桥接（`opencode-wps/`），Mac 使用反向轮询（`opencode-wps-assistant/`）
 - **第 2 层 Agents** — 角色定义，通过 Agent 选择实现功能聚焦（跨平台通用）
 - **第 3 层 Skills** — 领域技能，AI 调用的能力集（跨平台通用）
 - **第 4 层 MCP** — 跨平台路由：Win→PowerShell COM 桥接，Mac→HTTP 轮询（反向轮询插件）。~240 TypeScript handler + ~257 个 WPS API 动作
@@ -129,7 +129,7 @@ MCP 服务器采用三层工具体系，AI 通过不同的方式发现和调用�
 | 组件 | 说明 | 平台 |
 |------|------|------|
 | **opencode-wps** | WPS JS 加载项（Windows 版），Ribbon + Chat UI + Launcher 进程 | Windows |
-| **opencode-wps-assistant** | WPS JS 加载项（Mac 版），反向轮询客户端，通过 handlers/ 操作文档 | macOS |
+| **opencode-wps-assistant** | WPS JS 加载项（Mac 版），命令轮询桥（无 Chat UI），轮询 :58891 拉取命令，通过 handlers/ 操作文档 | macOS |
 | **wps-office-mcp** | MCP 服务器，跨平台路由（Win→PowerShell COM 桥接，Mac→HTTP 轮询） | 跨平台 |
 | **skills** | OpenCode 技能定义，安装到 `~/.opencode/skills/` | 跨平台 |
 | **agents** | 自定义 WPS Agents，定义在 `~/.config/opencode/agents/` | 跨平台 |
@@ -178,14 +178,14 @@ MCP 服务器采用三层工具体系，AI 通过不同的方式发现和调用�
 └─────────────────────────────────────┬────────────────────────────────────┘
                                       │ ② 注入/加载
 ┌─────────────────────────────────────▼────────────────────────────────────┐
-│        ② WPS JS 插件 — 前台 Chat UI（Win/Mac）                           │
-│    Win: opencode-wps/（taskpane.html SSE+Markdown）                      │
-│    Mac: opencode-wps-assistant/（反向轮询客户端）                        │
+│        ② WPS JS 插件 — Win：前台 Chat UI / Mac：命令轮询桥               │
+│    Win: opencode-wps/（taskpane.html SSE+Markdown 直连 :14096）          │
+│    Mac: opencode-wps-assistant/（无 Chat UI，轮询 :58891 拉取命令）      │
 └─────────────────────────────────────┬────────────────────────────────────┘
                                       │ ③ REST + SSE（HTTP）
 ┌─────────────────────────────────────▼────────────────────────────────────┐
-│           ④ 自建通讯层 — CORS 代理（:14098）                             │
-│    opencode-proxy.js 剥离 CSP 头 → 兼容 Chromium 103                     │
+│       ④ 自建通讯层 — CORS 代理（:14098）— 备用，不在运行时调用链         │
+│    opencode-proxy.js 剥离 CSP 头；当前 launcher 已用 --cors file:// 放行 │
 └─────────────────────────────────────┬────────────────────────────────────┘
                                       │ ④ HTTP（REST + SSE 流式）
 ┌─────────────────────────────────────▼────────────────────────────────────┐
@@ -212,7 +212,7 @@ MCP 服务器采用三层工具体系，AI 通过不同的方式发现和调用�
                                       │ ⑩ 操作结果 → 沿原路返回
 
 ┌─────────────────────────────────────┬────────────────────────────────────┐
-│  ⑪ Launcher 服务管理（:14097）— 旁路进程，不参与调用链                    │
+│  ⑪ Launcher 服务管理（:14097）— 旁路进程，不参与调用链                   │
 │  管理 opencode serve 生命周期：/status /start /stop（按端口精确停止）    │
 │  Win: schtasks / Mac: LaunchAgent                                        │
 └─────────────────────────────────────┬────────────────────────────────────┘
@@ -223,9 +223,9 @@ MCP 服务器采用三层工具体系，AI 通过不同的方式发现和调用�
 | 层 | 职责 | 平台差异 |
 |----|------|----------|
 | ① WPS 宿主 | 承载插件运行环境，提供文档对象模型 | Win/Mac 均相同，但 COM 与 JS API 两套对象模型 |
-| ② WPS JS 插件 | 用户可见的 Chat 窗口（UI/会话/Agent 选择） | Win：taskpane.html（SSE 直连）；Mac：index.html（反向轮询客户端） |
-| ③ 通讯协议 | 浏览器与 OpenCode 服务之间的 REST + SSE | Win 需经 CORS 代理（Chromium 103）；Mac 内置 WebKit 较新，可直连 |
-| ④ 自建通讯层 | opencode-proxy.js（:14098）剥离 CSP 头，解决 WPS 内置 Chromium 103 不兼容现代 Web（官方 web 版需 Chrome 130+）的根因 | 仅 Windows 需要；Mac 无需 CORS 代理，直连 :14096 |
+| ② WPS JS 插件 | Win：前台 Chat UI（UI/会话/Agent 选择）；Mac：命令轮询桥（无 Chat 界面） | Win：taskpane.html（SSE 直连 :14096）；Mac：index.html（轮询 :58891 拉取命令） |
+| ③ 通讯协议 | 浏览器与 OpenCode 服务之间的 REST + SSE | Win 直连（launcher 以 `--cors file://` 放行）；Mac 内置 WebKit 较新，可直连 |
+| ④ 自建通讯层 | opencode-proxy.js（:14098）剥离 CSP 头，解决 WPS 内置 Chromium 103 不兼容现代 Web（官方 web 版需 Chrome 130+）的根因 | 备用方案：当前 launcher 已用 `--cors file://` 放行，运行时调用链不再经过它；Mac 无需 CORS 代理 |
 | ⑤ OpenCode 调度 | 会话管理、Agent 路由、模型调度（config.js 支持 Ollama 回退模型） | 跨平台一致 |
 | ⑥ Agents | 角色定义（wps-expert/word/excel/ppt），Agent 选择实现功能聚焦 | 跨平台一致 |
 | ⑦ Skills | 领域技能（wps-word/excel/ppt/office/proofread），AI 调用的能力集 | 跨平台一致 |
@@ -238,10 +238,12 @@ MCP 服务器采用三层工具体系，AI 通过不同的方式发现和调用�
 
 ```
 用户在 Chat 输入 → ② taskpane.html → ③ SSE POST /session/{id}/message
-→ ④ CORS 代理 :14098 → ⑤ opencode serve :14096 → ⑥ Agent 路由 + ⑦ Skill 选择
+→ ⑤ opencode serve :14096（Win 直连，launcher 以 `--cors file://` 放行）→ ⑥ Agent 路由 + ⑦ Skill 选择
 → ⑧ MCP 工具调用 → ⑨ wps-com.ps1（PowerShell COM）→ ⑩ WPS 文档操作
 → 结果沿原路返回 → SSE 流式渲染到 Chat 窗口
 ```
+
+> 注：④ CORS 代理（:14098）为备用方案，不在上述实际调用链中；Mac 端无 Chat UI，由 `opencode-wps-assistant/` 轮询 :58891 拉取 MCP 命令并返回结果。
 
 **关键设计决策**（源自实践中的踩坑）：
 
