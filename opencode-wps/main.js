@@ -297,8 +297,94 @@ function connectOpenCode() {
 function OnAddinLoad(ribbonUI) {
     if (typeof window.Application.ribbonUI !== "object") window.Application.ribbonUI = ribbonUI
     if (typeof window.Application.Enum !== "object") window.Application.Enum = WPS_Enum
+    // 注册 WPS 窗口激活事件：新建/切换标签页后强制重绘任务窗格，
+    // 修复 TaskPane WebView 首次渲染布局 bug（头部被遮挡/空白）——
+    // 用户实测「新建标签页后再切回原标签头部即恢复」，说明切换窗口会触发重绘，
+    // 这里在宿主侧主动复现该行为，无需用户手动操作。
+    registerWindowActivateReflow()
     connectOpenCode()
     return true
+}
+
+// 强制重绘任务窗格：Visible false→true（仅当当前可见时），
+// 触发 WPS 宿主对 WebView 的重新布局/重绘，修复头部被挤出可视区的首次渲染 bug。
+// 窗格不存在或不可见时不执行——避免把用户主动关闭的窗格重新弹出来。
+// 隐藏→显示拆成两步（中间 setTimeout 让出宿主事件循环）：
+// 同一同步代码块内连续置位可能被 WPS 宿主合并处理，重绘实际不生效。
+// 重绘进行中标志：WindowActivate 可能连续触发，一次重绘未完成时跳过后续触发（防抖）
+var taskPaneRedrawPending = false
+// 用户最近一次主动操作任务窗格的时间戳（OnAction toggle 分支记录）：
+// forceTaskPaneRedraw 异步恢复前比对，若重绘期间用户手动关闭过窗格则放弃恢复，
+// 避免把用户刚关闭的窗格重新弹出来（尊重用户意图）
+var lastUserTaskPaneAction = 0
+function forceTaskPaneRedraw() {
+    var tsId = ""
+    // 重绘开始时间戳提前到函数开头：确保读取窗格期间及之后任何用户操作都被捕获
+    var redrawStartTime = Date.now()
+    try {
+        // getItem 与 OnAction 路径同源同概率抛异常（插件初始化未完成）：
+        // 单独 try/catch 留痕后继续用内存兜底，避免整个函数被拖入失败分支
+        tsId = window.Application.PluginStorage.getItem("taskpane_id") || taskpaneIdCache || ""
+    } catch (e) {
+        console.error('[WPS] 读取 taskpane_id 失败: ' + errMsg(e))
+        tsId = taskpaneIdCache || ""
+    }
+    if (!tsId) return
+    // 上一次重绘的 setTimeout 未完成时跳过（WindowActivate 连续触发防抖）
+    if (taskPaneRedrawPending) return
+    try {
+        var tp = window.Application.GetTaskPane(tsId)
+        if (!tp || !tp.Visible) return
+        // 停靠位置重新校正（防漂移）
+        setTaskPaneDockPosition(tp)
+        // 先隐藏再显示，强制 WebView 重新布局；两步间让出宿主事件循环，
+        // 确保 WPS 宿主真的执行隐藏→重排→显示流程（而非合并两次属性写入）。
+        // 恢复延迟 150ms：慢速环境宿主完成隐藏→重排耗时不定，80ms 可能过早
+        // 导致重绘不完整；页面侧 visibilitychange/resize 自愈会兜底最终布局
+        taskPaneRedrawPending = true
+        tp.Visible = false
+        setTimeout(function() {
+            taskPaneRedrawPending = false
+            try {
+                // 重绘期间用户手动操作过窗格（如点按钮关闭）→ 尊重用户意图，放弃恢复；
+                // 用 >= 覆盖同毫秒边界（用户操作与重绘开始同毫秒时也不能误恢复）。
+                // 已知限制：WPS TaskPane 原生右上角 X 关闭不经过 OnAction，lastUserTaskPaneAction
+                // 不会更新——若原生关闭为「销毁」语义（GetTaskPane 返回 null）则下方 !cur 已覆盖；
+                // 若个别版本为「隐藏」语义（Visible=false 保留对象）则可能被本恢复误弹，见文档注意事项 16
+                if (lastUserTaskPaneAction >= redrawStartTime) return
+                var cur = window.Application.GetTaskPane(tsId)
+                if (!cur) return          // 窗格已销毁：放弃恢复
+                if (cur.Visible) return   // 已被外部恢复（用户重新打开等）：不重复置位
+                cur.Visible = true
+                console.log('[WPS] 任务窗格已强制重绘（WindowActivate 触发布局修复）')
+            } catch (e) {
+                console.error('[WPS] 恢复任务窗格可见失败: ' + errMsg(e))
+            }
+        }, 150)
+    } catch (e) {
+        taskPaneRedrawPending = false
+        console.error('[WPS] 强制重绘任务窗格失败: ' + errMsg(e))
+    }
+}
+
+// 注册 WPS 窗口激活事件（官方 SDK：AddApiEventListener('WindowActivate')）；
+// 个别版本不支持/抛异常时静默降级（不影响既有功能）
+// 已注册标志：OnAddinLoad 可能被多次调用（插件重载/异常恢复），防重复叠加监听
+var windowActivateListenerRegistered = false
+function registerWindowActivateReflow() {
+    try {
+        if (windowActivateListenerRegistered) return
+        if (typeof window.Application.AddApiEventListener === 'function') {
+            window.Application.AddApiEventListener('WindowActivate', function() {
+                // 延迟执行：等 WPS 完成窗口切换布局后再重绘
+                setTimeout(function() { forceTaskPaneRedraw() }, 200)
+            })
+            windowActivateListenerRegistered = true
+            console.log('[WPS] 已注册 WindowActivate 重绘监听')
+        }
+    } catch (e) {
+        console.warn('[WPS] 注册 WindowActivate 监听失败（已降级，不影响使用）: ' + errMsg(e))
+    }
 }
 
 function getControlId(control) {
@@ -345,6 +431,9 @@ function OnAction(control) {
                 // 避免个别 WPS 版本对该属性抛异常时直接中断按钮回调（后续 break 分支不执行）
                 try {
                     tp.Visible = !tp.Visible
+                    // 记录用户主动操作时间戳：forceTaskPaneRedraw 异步恢复前比对，
+                    // 重绘期间用户手动关闭过窗格则放弃恢复（不把用户刚关闭的窗格弹回来）
+                    lastUserTaskPaneAction = Date.now()
                 } catch (e) {
                     console.error('[WPS] 切换任务窗格可见性失败: ' + errMsg(e))
                 }

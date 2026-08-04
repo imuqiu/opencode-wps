@@ -193,6 +193,13 @@ function setTaskPaneDockPosition(tskpane) {
 12. **`CreateTaskPane` 返回 null 也要判空**：`createTaskPane()` 已对 `CreateTaskPane` **抛异常**做了 try/catch，但个别版本可能**返回 `null`**（而非抛异常）——若直接访问 `tskpane.ID` 会抛误导性的 TypeError，外层 catch 虽能兜住，但「初始化任务窗格失败」文案会把排查方向带偏到创建/存 ID/校正/置位全流程。统一做法：拿到返回值后立即判空，`null` 时 `console.error('[WPS] 创建任务窗格失败: CreateTaskPane 返回空对象')` 明确留痕并 `return null`（已实现，`tests/taskpane-dock.test.js` 的「CreateTaskPane 返回 null 立即判空」用例覆盖）。
 13. **停靠校正失败不阻断创建流程**：`setTaskPaneDockPosition()` 返回 `boolean`（失败时内部已留痕），但停靠校正失败**不代表窗格不可用**——窗格已创建、ID 已兜底，此时应继续置可见并返回窗格对象，让下次点击经 `GetTaskPane` 找回后重新校正（自愈机会）；若在失败时中断或返回 `null`，会误判「创建失败」。统一做法：`createTaskPane()` 检查返回值，失败时补充 `console.error('[WPS] 任务窗格停靠校正失败（窗格仍可用，下次点击将重新校正）')` 留痕后继续（已实现，`tests/taskpane-dock.test.js` 的「停靠校正失败仍返回窗格对象」用例覆盖）。
 14. **`GetTaskPane` 找回路径的停靠校正也要检查返回值**：`btnShowTaskPane` 的「GetTaskPane 找回」分支每次打开也会调用 `setTaskPaneDockPosition(tp)` 重新校正防漂移——与 `createTaskPane()` 内保持一致，校正失败（内部已留痕）时同样补充「窗格仍可用，下次点击将重新校正」增强留痕，不中断可见性切换（下次点击仍会重新校正，有自愈机会）。两处行为统一，避免「创建路径有增强留痕、找回路径静默」的不一致（已实现，`tests/taskpane-dock.test.js` 的「GetTaskPane 找回路径停靠校正失败」用例覆盖）。
+15. **`DockPosition` 不是头部被遮挡的根因——WebView 首次渲染布局 bug 才是**（Issue #78 复诊结论）：用户实测 PR #79 的 DockPosition 修复后头部仍被遮挡，新建 WPS 标签页再切回即恢复。像素级截图对比显示：任务窗格刚打开时 topbar/session-header 所在区域为空白（flex 布局因 WebView 视口高度计算错误把头部挤出可视区），切换窗口触发宿主重绘后才恢复。三层防御：① `taskpane.html` 的 `html,body` 改用 `position:fixed + inset:0` 直接锚定视口四边（规避 `height:100%` 在部分版本失效）；② 页面内监听 `resize`/`visibilitychange` 并强制 reflow（`forceReflowFix`：隐藏→读 `offsetHeight`→恢复 `.app`）；③ 宿主侧 `main.js` 注册 `AddApiEventListener('WindowActivate')`，切回标签时强制任务窗格 `Visible false→true` 重绘（仅当窗格原本可见时执行，避免把用户关闭的窗格重新弹出来）。`AddApiEventListener` 为官方 SDK（`wps-jsapi` 包 `src/index.d.ts`）声明的标准事件，旧版本不支持时静默降级（已实现，`tests/taskpane-dock.test.js` 的「OnAddinLoad 注册 WindowActivate 重绘监听」等 5 个用例覆盖）。
+
+    **补 DEV 增量（2026-08-04）**：① `forceReflowFix` 在 `.app` 尚未挂载时改为 rAF 链式重试（不再直接 return 丢兜底）；② 新增 `raf` 兼容层，`requestAnimationFrame` 缺失时用 `setTimeout 16ms` 兜底（兼容旧 WebView 内核）；③ 首次渲染触发时机扩展为三路（rAF 首帧前 + `load` 事件 + 300ms/1000ms 定时器），覆盖 WebView 视口高度计算的不同时序；④ 测试新增「taskpane.html 自愈骨架」静态校验用例（`tests/taskpane-dock.test.js` 末尾），防止后续改动删掉任一关键防御结构。
+
+    **补 DEV 增量 2（2026-08-05，PR #83 第 5~8 轮评审）**：⑤ 强制重排前检查 `#input-box` 是否聚焦，聚焦时跳过重排（避免 `display:none` 移除再恢复输入框导致输入框失焦丢光标）；⑥ 重排**前**保存 `.messages` 滚动位置、重排后恢复（`display:none` 会重置 `scrollTop`，不保存会把用户消息列表滚回顶部）；⑦ 强制重排最小间隔 300ms（`lastForceReflowAt`），多个入口（rAF/load/定时器/resize/showChat）同一时间窗内只执行一次；⑧ chat 视图隐藏（`view-chat` 含 `hidden`）时跳过无效重排；⑨ 自愈注册晚于视图切换的时序倒挂补触发（IIFE 挂载后若 chat 已先行显示则补 `scheduleReflowFix()`）；⑩ `visibilitychange` 隐藏时复位 `reflowFixed`（切走标签 WebView 可能重建，回显必须重新检查）；⑪ 300ms/1000ms 定时器兜底统一走 `scheduleReflowFix`（最小间隔检查先于状态位重置，避免状态位与事实不符）。
+
+16. **`forceTaskPaneRedraw` 异步恢复的已知限制——原生关闭语义**：`forceTaskPaneRedraw` 用 `lastUserTaskPaneAction`（`OnAction` toggle 分支记录）+ `redrawStartTime` 比对，重绘期间用户操作过窗格则放弃恢复。但 **WPS TaskPane 原生右上角 X 关闭不经过 `OnAction`**，该时间戳不会更新——若原生关闭为「销毁」语义（`GetTaskPane` 返回 null）则异步回调的 `!cur` 判空已覆盖；若个别版本为「隐藏」语义（`Visible=false` 保留对象）则异步恢复可能把用户刚关闭的窗格误弹回来。实测 WPS 多为销毁语义，但维护时需知晓该限制（对应 `main.js` 内注释）。
 
 ---
 
@@ -408,6 +415,24 @@ install-addons.js 会自动完成：
 - authaddin.json 更新（关键：启用插件）
 - MCP 服务器编译
 - Skills/Agents 安装
+
+### 头部遮挡修复实机验收步骤（Issue #78）
+
+本环境无 Windows/WPS 实机，以下步骤需用户实机验证（对应验收标准 AC1-AC4）：
+
+```bash
+# 1. 同步最新代码到插件目录
+node install-addons.js
+# 2. 重启 WPS（确保新代码生效）
+```
+
+1. **AC1 头部可见**：打开 OpenCode 侧边栏，确认头部（顶部栏 + 会话栏）不再被遮挡/空白；
+2. **AC2 不影响顶栏**：打开侧边栏状态下，点击 WPS 顶栏「开始/插入」等标签，确认可正常切换；
+3. **AC3 切标签稳定**：新建 WPS 标签页 → 切回原标签页，确认头部依然完整（修复不依赖手动切换触发）；
+4. **AC4 开关可重复**：侧边栏打开→关闭→再打开，反复 3 次，确认头部始终完整；
+5. **回归确认**：手动关闭侧边栏后，确认它不会自动弹出（`forceTaskPaneRedraw` 仅在窗格原本可见时执行）。
+
+如仍有问题，请记录：WPS 版本号、插件版本、复现步骤、截图（含 DevTools 控制台报错），反馈到 Issue #78。
 
 ---
 

@@ -66,6 +66,9 @@ function assertEqual(actual, expected, msg) {
 function loadMainJs(appMock) {
   var src = fs.readFileSync(MAIN_JS, 'utf-8');
   var errorLogs = [];
+  // 记录 setTimeout 回调：生产代码用 setTimeout 做异步两步（隐藏→显示），
+  // 测试环境不自动执行（避免时序依赖），由用例手动 flush（__flushTimeouts）
+  var timeoutQueue = [];
   var sandbox = {
     window: {
       Application: appMock,
@@ -79,13 +82,23 @@ function loadMainJs(appMock) {
     alert: function () {},
     setInterval: function () { return 0; },
     clearInterval: function () {},
-    setTimeout: function () {},
+    setTimeout: function (cb) { timeoutQueue.push(cb); return timeoutQueue.length; },
     XMLHttpRequest: function () {
       this.open = function () {};
       this.send = function () {};
       this.setRequestHeader = function () {};
     },
-    __errorLogs: errorLogs
+    __errorLogs: errorLogs,
+    // 手动执行已排队的 setTimeout 回调（按 FIFO），返回执行次数
+    __flushTimeouts: function () {
+      var n = 0;
+      while (timeoutQueue.length) {
+        var cb = timeoutQueue.shift();
+        cb();
+        n++;
+      }
+      return n;
+    }
   };
   vm.createContext(sandbox);
   vm.runInContext(src, sandbox, { filename: MAIN_JS });
@@ -475,6 +488,269 @@ test('停靠校正失败但窗格可用：留痕说明窗格仍可用，仍返�
   assertTrue(hasDockError, '应输出停靠设置失败留痕（setTaskPaneDockPosition 内部），实际错误日志: ' + JSON.stringify(sandbox.__errorLogs));
   var hasUsable = sandbox.__errorLogs.some(function (l) { return l.indexOf('任务窗格停靠校正失败（窗格仍可用') >= 0; });
   assertTrue(hasUsable, '应输出「窗格仍可用」增强留痕，实际错误日志: ' + JSON.stringify(sandbox.__errorLogs));
+});
+
+// ==================== 头部遮挡自愈（Issue #78 复诊）====================
+// 用户实测：PR #79 的 DockPosition 修复后头部仍被遮挡；新建 WPS 标签页再切回即恢复。
+// 像素分析结论：任务窗格 WebView 首次渲染时 topbar/session-header 区域为空白（flex 布局
+// 因视口高度计算错误把头部挤出可视区），切换窗口触发宿主重绘后才恢复。
+// 修复：宿主侧注册 WindowActivate 事件，切回时强制任务窗格 false→true 重绘；
+// 仅当窗格原本可见时执行，避免把用户关闭的窗格重新弹出来。
+
+test('OnAddinLoad 注册 WindowActivate 重绘监听（Issue #78 复诊加固）', function () {
+  var events = {};
+  var appMock = {
+    AddApiEventListener: function (name, cb) { events[name] = cb; },
+    PluginStorage: { getItem: function () { return ''; }, setItem: function () {} }
+  };
+  var sandbox = loadMainJs(appMock);
+  sandbox.OnAddinLoad({});
+  assertTrue(typeof events.WindowActivate === 'function', '应注册 WindowActivate 监听，实际: ' + JSON.stringify(Object.keys(events)));
+});
+
+test('OnAddinLoad 重复调用不应重复注册 WindowActivate 监听（防叠加）', function () {
+  var regCount = 0;
+  var appMock = {
+    AddApiEventListener: function (name, cb) { regCount++; },
+    PluginStorage: { getItem: function () { return ''; }, setItem: function () {} }
+  };
+  var sandbox = loadMainJs(appMock);
+  // OnAddinLoad 被多次调用（插件重载/异常恢复场景）
+  sandbox.OnAddinLoad({});
+  sandbox.OnAddinLoad({});
+  sandbox.OnAddinLoad({});
+  assertEqual(regCount, 1, 'WindowActivate 监听应只注册 1 次，实际注册 ' + regCount + ' 次');
+});
+
+test('OnAddinLoad 注册 WindowActivate 时旧版本无 AddApiEventListener 应静默降级', function () {
+  var appMock = {
+    PluginStorage: { getItem: function () { return ''; }, setItem: function () {} }
+  };
+  var sandbox = loadMainJs(appMock);
+  // 不应抛异常
+  sandbox.OnAddinLoad({});
+  var hasWarn = sandbox.__errorLogs.some(function (l) { return l.indexOf('注册 WindowActivate 监听失败') >= 0; });
+  // 无 AddApiEventListener 时不走 catch，也不应有失败留痕（静默降级）
+  assertTrue(!hasWarn, '无 AddApiEventListener 时不应报注册失败，实际: ' + JSON.stringify(sandbox.__errorLogs));
+});
+
+test('forceTaskPaneRedraw：窗格可见时异步两步 false→true 重绘并重新校正停靠', function () {
+  var pane = { ID: 'tp-redraw', DockPosition: 0, _visible: true };
+  var visibleLog = [];
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return pane._visible; },
+    set: function (v) { pane._visible = v; visibleLog.push(v); }
+  });
+  var appMock = {
+    CreateTaskPane: function () { throw new Error('不应调用 CreateTaskPane'); },
+    GetTaskPane: function () { return pane; },
+    PluginStorage: {
+      getItem: function () { return 'tp-redraw'; },
+      setItem: function () {}
+    }
+  };
+  var sandbox = loadMainJs(appMock);
+  sandbox.forceTaskPaneRedraw();
+  // 第一步同步：先隐藏（false 置位立即生效）
+  assertEqual(visibleLog.length, 1, '同步阶段应先隐藏一次，实际: ' + JSON.stringify(visibleLog));
+  assertEqual(visibleLog[0], false, '第一次应先隐藏');
+  assertEqual(pane.DockPosition, 2, '重绘时应重新校正 DockPosition 为 Right(2)');
+  // 第二步异步（setTimeout 80ms）：恢复可见，隐藏→显示间让出宿主事件循环
+  var flushed = sandbox.__flushTimeouts();
+  assertTrue(flushed >= 1, '应存在待执行的 setTimeout 回调，实际 flush ' + flushed + ' 个');
+  assertEqual(visibleLog.length, 2, 'flush 后应恢复显示，实际: ' + JSON.stringify(visibleLog));
+  assertEqual(visibleLog[1], true, '第二次再显示');
+});
+
+test('forceTaskPaneRedraw：重绘进行中时 WindowActivate 连续触发应跳过（防抖）', function () {
+  var pane = { ID: 'tp-redraw', DockPosition: 0, _visible: true };
+  var visibleLog = [];
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return pane._visible; },
+    set: function (v) { pane._visible = v; visibleLog.push(v); }
+  });
+  var appMock = {
+    GetTaskPane: function () { return pane; },
+    PluginStorage: {
+      getItem: function () { return 'tp-redraw'; },
+      setItem: function () {}
+    }
+  };
+  var sandbox = loadMainJs(appMock);
+  // 第一次触发：同步隐藏，进入 pending 状态
+  sandbox.forceTaskPaneRedraw();
+  assertEqual(visibleLog.length, 1, '第一次应隐藏一次');
+  // 第二次触发（pending 未完成）：应直接跳过，不重复隐藏
+  sandbox.forceTaskPaneRedraw();
+  assertEqual(visibleLog.length, 1, 'pending 期间重复触发应被跳过，实际: ' + JSON.stringify(visibleLog));
+  // flush 后完成第一次重绘，恢复可见
+  sandbox.__flushTimeouts();
+  assertEqual(visibleLog.length, 2, 'flush 后应恢复显示，实际: ' + JSON.stringify(visibleLog));
+  assertEqual(visibleLog[1], true, '恢复为可见');
+  // 第三次触发（pending 已清除）：允许再次重绘
+  sandbox.forceTaskPaneRedraw();
+  assertEqual(visibleLog.length, 3, 'pending 清除后应允许再次隐藏');
+});
+
+test('forceTaskPaneRedraw：异步恢复前用户已重新打开/恢复可见时不应重复置位（不误弹）', function () {
+  var pane = { ID: 'tp-redraw', DockPosition: 0, _visible: true };
+  var visibleLog = [];
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return pane._visible; },
+    set: function (v) { pane._visible = v; visibleLog.push(v); }
+  });
+  var appMock = {
+    GetTaskPane: function () { return pane; },
+    PluginStorage: {
+      getItem: function () { return 'tp-redraw'; },
+      setItem: function () {}
+    }
+  };
+  var sandbox = loadMainJs(appMock);
+  sandbox.forceTaskPaneRedraw();
+  assertEqual(visibleLog.length, 1, '同步隐藏一次');
+  // 模拟用户/其他逻辑在重绘窗口内把窗格恢复为可见（如用户点击按钮重新打开）
+  pane._visible = true;
+  sandbox.__flushTimeouts();
+  // 异步回调检测 cur.Visible 已为 true → 跳过恢复置位，不重复写
+  assertEqual(visibleLog.length, 1, '外部已恢复可见时不应重复置位，实际: ' + JSON.stringify(visibleLog));
+});
+
+test('forceTaskPaneRedraw：重绘期间用户手动操作过窗格（OnAction toggle）则放弃恢复（尊重用户意图）', function () {
+  var pane = { ID: 'tp-redraw', DockPosition: 0, _visible: true };
+  var visibleLog = [];
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return pane._visible; },
+    set: function (v) { pane._visible = v; visibleLog.push(v); }
+  });
+  var appMock = {
+    GetTaskPane: function () { return pane; },
+    PluginStorage: {
+      getItem: function () { return 'tp-redraw'; },
+      setItem: function () {}
+    }
+  };
+  var sandbox = loadMainJs(appMock);
+  sandbox.forceTaskPaneRedraw();
+  assertEqual(visibleLog.length, 1, '同步隐藏一次');
+  // 模拟用户在 150ms 重绘窗口内通过 OnAction 点击按钮操作窗格（toggle 切换可见性）
+  // 注意：此时窗格已被重绘隐藏（_visible=false），用户点击 toggle 会重新打开（true）——
+  // 关键点不在于 toggle 方向，而在于「用户操作过」应阻止异步恢复再次置位
+  sandbox.OnAction({ Id: 'btnShowTaskPane' });
+  assertEqual(visibleLog.length, 2, '用户点击后应再次切换可见性');
+  sandbox.__flushTimeouts();
+  // 异步回调检测 lastUserTaskPaneAction > redrawStartTime → 放弃恢复
+  // 恢复置位不应发生：visibleLog 保持 2 次置位（重绘隐藏 + 用户操作）
+  assertEqual(visibleLog.length, 2, '重绘期间用户操作后不应恢复显示，实际: ' + JSON.stringify(visibleLog));
+});
+
+test('forceTaskPaneRedraw：异步恢复前窗格已销毁时应放弃恢复（不误弹）', function () {
+  var pane = { ID: 'tp-redraw', DockPosition: 0, _visible: true };
+  var visibleLog = [];
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return pane._visible; },
+    set: function (v) { pane._visible = v; visibleLog.push(v); }
+  });
+  var getCalls = 0;
+  var appMock = {
+    GetTaskPane: function () {
+      getCalls++;
+      // 第一次同步调用返回窗格；异步恢复前模拟窗格已销毁（返回 null）
+      return getCalls <= 1 ? pane : null;
+    },
+    PluginStorage: {
+      getItem: function () { return 'tp-redraw'; },
+      setItem: function () {}
+    }
+  };
+  var sandbox = loadMainJs(appMock);
+  sandbox.forceTaskPaneRedraw();
+  assertEqual(visibleLog.length, 1, '同步隐藏一次');
+  sandbox.__flushTimeouts();
+  // 异步回调 GetTaskPane 返回 null → 放弃恢复
+  assertEqual(visibleLog.length, 1, '窗格已销毁时不应恢复显示，实际: ' + JSON.stringify(visibleLog));
+});
+
+test('forceTaskPaneRedraw：窗格不存在/不可见时不误显示（不把用户关闭的窗格弹出）', function () {
+  var appMock = {
+    GetTaskPane: function () { return null; },
+    PluginStorage: {
+      getItem: function () { return 'tp-gone'; },
+      setItem: function () {}
+    }
+  };
+  var sandbox = loadMainJs(appMock);
+  // GetTaskPane 返回 null → 直接返回，不抛异常
+  sandbox.forceTaskPaneRedraw();
+  var hasError = sandbox.__errorLogs.some(function (l) { return l.indexOf('强制重绘任务窗格失败') >= 0; });
+  assertTrue(!hasError, '窗格不存在时应静默返回，实际: ' + JSON.stringify(sandbox.__errorLogs));
+});
+
+test('forceTaskPaneRedraw：GetTaskPane 抛异常时静默降级（不误弹窗、不中断）', function () {
+  var appMock = {
+    GetTaskPane: function () { throw new Error('无效 id'); },
+    PluginStorage: {
+      getItem: function () { return 'tp-bad'; },
+      setItem: function () {}
+    }
+  };
+  var sandbox = loadMainJs(appMock);
+  // forceTaskPaneRedraw 内部 try/catch 捕获异常并留痕，不中断
+  sandbox.forceTaskPaneRedraw();
+  var hasError = sandbox.__errorLogs.some(function (l) { return l.indexOf('强制重绘任务窗格失败') >= 0; });
+  assertTrue(hasError, 'GetTaskPane 抛异常应留痕，实际: ' + JSON.stringify(sandbox.__errorLogs));
+});
+
+test('taskpane.html 自愈骨架：position:fixed 锚定 + forceReflowFix 关键结构存在（Issue #78 复诊）', function () {
+  var html = fs.readFileSync(path.join(__dirname, '..', 'opencode-wps', 'taskpane.html'), 'utf-8');
+  // ① 布局锚定：html,body 必须 position:fixed + inset 四边
+  assertTrue(/html,body\s*\{[^}]*position\s*:\s*fixed[^}]*\}/.test(html), 'html,body 应使用 position:fixed 锚定视口');
+  assertTrue(/html,body\s*\{[^}]*top\s*:\s*0[^}]*left\s*:\s*0[^}]*right\s*:\s*0[^}]*bottom\s*:\s*0[^}]*\}/.test(html), 'html,body 应显式声明 top/left/right/bottom:0（兼容旧内核，不依赖 inset 简写）');
+  // ② 页面自愈：forceReflowFix 必须存在且含强制 reflow（offsetHeight）
+  assertTrue(/function\s+forceReflowFix\s*\(/.test(html), '应存在 forceReflowFix 函数');
+  assertTrue(/offsetHeight/.test(html), 'forceReflowFix 应读取 offsetHeight 强制同步 reflow');
+  // ③ 兼容降级：requestAnimationFrame 缺失时 setTimeout 兜底
+  assertTrue(/typeof\s+requestAnimationFrame\s*===\s*'function'/.test(html), '应检测 requestAnimationFrame 可用性');
+  // ④ 监听 resize / visibilitychange
+  assertTrue(/addEventListener\('resize'/.test(html), '应监听 resize 事件');
+  assertTrue(/addEventListener\('visibilitychange'/.test(html), '应监听 visibilitychange 事件');
+  // ⑤ 首次渲染多时机兜底（rAF + load + 定时器）
+  assertTrue(/rafOnce\s*\(\s*forceReflowFix\s*\)/.test(html), '应通过 rafOnce 在首帧前重排');
+  assertTrue(/addEventListener\('load'/.test(html), '应监听 load 事件兜底重排');
+  // 定时器兜底改走 scheduleReflowFix（内部含 300ms 最小间隔检查 + 状态位重置）
+  assertTrue(/setTimeout\s*\(\s*function\s*\(\s*\)\s*\{\s*scheduleReflowFix\s*\(\s*\)\s*;?\s*\}\s*,\s*300\s*\)/.test(html), '应保留 300ms 定时器兜底（走 scheduleReflowFix）');
+  assertTrue(/setTimeout\s*\(\s*function\s*\(\s*\)\s*\{\s*scheduleReflowFix\s*\(\s*\)\s*;?\s*\}\s*,\s*1000\s*\)/.test(html), '应保留 1000ms 定时器兜底（走 scheduleReflowFix）');
+  // ⑥ chat 视图隐藏时跳过无效重排（避免在 display:none 父级上重排）
+  assertTrue(/view-chat/.test(html) && /classList\.contains\('hidden'\)/.test(html), 'chat 视图隐藏时 forceReflowFix 应跳过');
+  // ⑦ 双头部检查（topbar + session-header）
+  assertTrue(/\.topbar,\s*\.session-header/.test(html), '预检应同时检查 topbar 与 session-header');
+  // ⑧ showChat 主动调度自愈（window.__scheduleReflowFix）
+  assertTrue(/window\.__scheduleReflowFix/.test(html), '应暴露 __scheduleReflowFix 供 showChat 调用');
+  assertTrue(/__scheduleReflowFix\(\)/.test(html), 'showChat 应主动调度自愈');
+  // ⑨ 用户在输入时跳过强制重排（避免 display:none 导致输入框失焦丢光标）
+  assertTrue(/activeElement\s*===\s*inputBox/.test(html), '输入框聚焦时 forceReflowFix 应跳过');
+  // ⑩ 滚动位置尊重：重排后恢复用户滚动位置（wasNearBottom 判断）
+  assertTrue(/wasNearBottom/.test(html), '应根据用户是否在消息列表底部决定滚动策略');
+  // ⑪ 自愈注册晚于视图切换的时序倒挂补触发（chat 已先行显示时补调度）
+  assertTrue(/if\s*\(vc\s*&&\s*!vc\.classList\.contains\('hidden'\)\)\s*scheduleReflowFix\(\)/.test(html), 'chat 已先行显示时应补触发自愈');
+  // ⑫ 强制重排最小间隔 300ms（提前到所有 DOM 访问之前，拦截时零 DOM 触碰）
+  assertTrue(/lastForceReflowAt/.test(html), '应有强制重排最小间隔状态');
+  assertTrue(/if\s*\(now\s*-\s*lastForceReflowAt\s*<\s*300\)\s*return/.test(html), '最小间隔检查应提前到 DOM 访问之前');
+  // ⑬ scrollToBottom 内部判空
+  assertTrue(/if\s*\(\$messages\)\s*\$messages\.scrollTop/.test(html), 'scrollToBottom 应判空防 TypeError');
+  // ⑭ .app 成功找到后重置连续失败计数
+  assertTrue(/reflowRetryCount\s*=\s*0/.test(html), '.app 找到后应重置重试计数');
+  // ⑮ heads 为空时复查视为未修复（持续可重试）
+  assertTrue(/reflowOk\s*=\s*heads\.length\s*>\s*0/.test(html), 'heads 为空时复查应视为未修复');
+  // ⑯ 重排前保存滚动位置、重排后恢复（防 display:none 重置 scrollTop 丢位置）
+  assertTrue(/savedScrollTop/.test(html), '应保存重排前滚动位置');
+  assertTrue(/messagesEl\.scrollTop\s*=\s*savedScrollTop/.test(html), '重排后应恢复用户滚动位置');
+  // ⑰ 定时器兜底走 scheduleReflowFix（300ms 最小间隔 + 状态位一致）
+  assertTrue(/Date\.now\(\)\s*-\s*lastForceReflowAt\s*<\s*300/.test(html), 'scheduleReflowFix 应含最小间隔检查');
+  // ⑱ visibilitychange 隐藏时复位 reflowFixed（切走标签 WebView 重建后必须重新检查）
+  assertTrue(/document\.hidden\s*\)\s*\{\s*reflowFixed\s*=\s*false/.test(html), 'visibilitychange 隐藏时应复位已修复状态');
+  // ⑲ showChat 无条件调用（typeof 检查移除，由 IIFE 补触发兜底时序倒挂）
+  assertTrue(/if\s*\(window\.__scheduleReflowFix\)\s*window\.__scheduleReflowFix\(\)/.test(html), 'showChat 应直接调用（IIFE 补触发兜底）');
 });
 
 // ==================== 测试结果汇总 ====================
