@@ -464,6 +464,20 @@ class MacPollServer {
     return new Promise((resolve, reject) => {
       const requestId = `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
+      // 单槽位保护：若已有未完成的命令（前一个命令超时/泄漏/并发），先拒绝旧命令并清理定时器，
+      // 避免旧命令静默丢失、新命令覆盖后旧命令永远等不到结果
+      if (this.pendingCommand) {
+        log.warn('[Poll] Superseding pending command', {
+          oldRequestId: this.pendingCommand.requestId,
+          newRequestId: requestId,
+          oldAction: this.pendingCommand.action,
+          newAction: action
+        });
+        if (this.pendingCommand.timeout) clearTimeout(this.pendingCommand.timeout);
+        this.pendingCommand.reject(new Error(`Command superseded by newer command: ${action}`));
+        this.pendingCommand = null;
+      }
+
       // 超时处理
       const timeoutHandle = setTimeout(() => {
         if (this.pendingCommand?.requestId === requestId) {

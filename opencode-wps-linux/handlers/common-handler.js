@@ -76,12 +76,13 @@ registerHandler('openFile', function(params) {
         var app = getWpsApp(appType);
         if (!app) return fail('无法获取 WPS 应用实例');
 
-        var docs = app.Workbooks || (appType === 'wps' ? app.Documents : app.Presentations);
-        if (docs) {
-            docs.Open(filePath);
-        } else {
-            return fail('当前应用不支持打开文件: ' + appType);
-        }
+        // 按 appType 明确选择集合，避免跨应用打开时取错（如文字模式下取 Presentations 打开 xlsx）
+        var docs = null;
+        if (appType === 'et') docs = app.Workbooks;
+        else if (appType === 'wps') docs = app.Documents;
+        else if (appType === 'wpp') docs = app.Presentations;
+        if (!docs) return fail('当前应用不支持打开文件: ' + appType);
+        docs.Open(filePath);
         return ok({ path: filePath });
     } catch (e) {
         return fail('打开文件失败: ' + e.message);

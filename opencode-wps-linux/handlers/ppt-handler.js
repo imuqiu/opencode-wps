@@ -253,17 +253,19 @@ registerHandler('setSlideSubtitle', function(params) {
         var pres = getPPT();
         if (!pres) return fail('没有打开的演示文稿');
         var slide = pres.Slides.Item(params.slideIndex);
+        // 按副标题占位符类型（ppPlaceholderSubtitle=15）定位，避免用 t.length<100 猜文本误覆盖标题/正文
         for (var j = 1; j <= slide.Shapes.Count; j++) {
             var s = slide.Shapes.Item(j);
-            if (s.HasTextFrame && s.TextFrame.HasText) {
-                var t = s.TextFrame.TextRange.Text;
-                if (t.length < 100) {
+            if (!s.HasTextFrame) continue;
+            try {
+                var pf = s.PlaceholderFormat;
+                if (pf && pf.Type === 15) {
                     s.TextFrame.TextRange.Text = params.subtitle;
                     return ok({});
                 }
-            }
+            } catch (e) {}
         }
-        return fail('未找到适合副标题的文本框');
+        return fail('未找到副标题占位符');
     } catch (e) {
         return fail('设置幻灯片副标题失败: ' + e.message);
     }

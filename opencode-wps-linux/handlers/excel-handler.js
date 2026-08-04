@@ -288,6 +288,9 @@ registerHandler('getRangeData', function(params) {
                     var srcRow = matrix[r];
                     if (srcRow && typeof srcRow === 'object' && srcRow.length !== undefined) {
                         for (var c = 0; c < srcRow.length; c++) row.push(srcRow[c]);
+                    } else if (srcRow === null || srcRow === undefined) {
+                        // 空行（Value2 中为 null/undefined）：展开为与列数一致的 null 数组，避免列结构错位
+                        for (var c = 0; c < range.Columns.Count; c++) row.push(null);
                     } else {
                         // 单行返回一维数组的情况
                         row.push(srcRow);
@@ -1369,8 +1372,13 @@ registerHandler('evaluateFormula', function(params) {
         var target = sheet.Range(cell);
         var origFormula = target.Formula;
         target.Formula = formula;
-        var value = target.Value;
-        target.Formula = origFormula;
+        var value;
+        try {
+            value = target.Value;
+        } finally {
+            // 无论求值成功还是抛错，都必须恢复原公式，避免污染用户文档
+            target.Formula = origFormula;
+        }
         return ok({ result: value });
     } catch (e) {
         return fail('公式计算失败: ' + e.message);
