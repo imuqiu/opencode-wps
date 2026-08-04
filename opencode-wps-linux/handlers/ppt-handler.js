@@ -239,9 +239,9 @@ registerHandler('setSlideTitle', function(params) {
         var pres = getPPT();
         if (!pres) return fail('没有打开的演示文稿');
         var slide = pres.Slides.Item(params.slideIndex);
-        if (slide.Shapes.HasTitle) {
-            slide.Shapes.Title.TextFrame.TextRange.Text = params.title;
-        }
+        // 无标题占位符时明确 fail（与 setSlideSubtitle 语义一致），避免 AI 误以为设置成功
+        if (!slide.Shapes.HasTitle) return fail('当前幻灯片无标题占位符（可能使用了空白布局）');
+        slide.Shapes.Title.TextFrame.TextRange.Text = params.title;
         return ok({});
     } catch (e) {
         return fail('设置幻灯片标题失败: ' + e.message);

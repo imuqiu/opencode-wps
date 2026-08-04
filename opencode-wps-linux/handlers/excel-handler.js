@@ -322,18 +322,21 @@ registerHandler('setRangeData', function(params) {
         var sheet = getExcelSheet(wb, params.sheet);
         var range = sheet.Range(params.range);
         var input = params.data || [];
+        // 将一行输入归一化为数组（兼容标量/null 行），供批量与逐格路径共用，避免降级时 input[r].length 抛 TypeError
+        function toRowArray(src, maxCols) {
+            var row = [];
+            if (src && typeof src === 'object' && src.length !== undefined) {
+                for (var c = 0; c < src.length && c < maxCols; c++) row.push(src[c]);
+            } else {
+                row.push(src);
+            }
+            return row;
+        }
         // 优先批量写入（range.Value2 = 二维数组，一次 COM 往返）；失败时降级逐格
         try {
             var matrix = [];
             for (var r = 0; r < input.length && r < range.Rows.Count; r++) {
-                var row = [];
-                var src = input[r];
-                if (src && typeof src === 'object' && src.length !== undefined) {
-                    for (var c = 0; c < src.length && c < range.Columns.Count; c++) row.push(src[c]);
-                } else {
-                    row.push(src);
-                }
-                matrix.push(row);
+                matrix.push(toRowArray(input[r], range.Columns.Count));
             }
             range.Value2 = matrix;
             return ok({});
@@ -341,8 +344,9 @@ registerHandler('setRangeData', function(params) {
             console.error('批量写入失败，降级逐格:', e);
         }
         for (var r = 0; r < input.length && r < range.Rows.Count; r++) {
-            for (var c = 0; c < input[r].length && c < range.Columns.Count; c++) {
-                range.Cells.Item(r + 1, c + 1).Value2 = input[r][c];
+            var srcRow = toRowArray(input[r], range.Columns.Count);
+            for (var c = 0; c < srcRow.length; c++) {
+                range.Cells.Item(r + 1, c + 1).Value2 = srcRow[c];
             }
         }
         return ok({});

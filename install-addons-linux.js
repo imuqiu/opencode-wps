@@ -189,6 +189,10 @@ try {
     }
 } catch (e) {
     handleError('write_register_files', e);
+    // 注册文件是 WPS 识别加载项的关键（jsplugins.xml/publish.xml），写入失败等于插件不可用，必须中止
+    // （与第 1 步失败 exit(1) 的语义一致，不能让用户看到「安装完成」却实际无法加载）
+    console.error('\n❌ 第 2 步失败：WPS 注册文件写入失败。插件将无法被 WPS 识别，请检查目录权限后重试。');
+    process.exit(1);
 }
 
 // ============================================================

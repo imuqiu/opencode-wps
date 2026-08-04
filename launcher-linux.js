@@ -234,14 +234,15 @@ function dockWindow(callback, data) {
     if (sessionId) url += (cwd ? '&' : '?') + 'session=' + encodeURIComponent(sessionId);
 
     // Linux: 使用 execFile + 参数数组打开系统默认浏览器，避免 URL 中的不可信字符（引号/分号等）被 shell 解释（命令注入）
-    // 依次尝试 xdg-open / google-chrome / firefox，前一个失败则尝试下一个
+    // 依次尝试 xdg-open / google-chrome / firefox，前一个失败则尝试下一个；全部失败必须报失败（不能让用户误以为已打开）
     function tryOpenBrowser(browsers, index) {
         if (index >= browsers.length) {
-            callback({ success: true, pid: 0 });
+            // 所有浏览器都尝试失败：明确返回失败，避免用户无感知（第 4 轮只修了单个失败重试，这里补上全部失败语义）
+            callback({ success: false, error: 'no usable browser (tried xdg-open/google-chrome/firefox)' });
             return;
         }
         var bin = browsers[index];
-        var child = require('child_process').execFile(bin, [url], { timeout: 5000 }, function(err) {
+        var child = require('child_process').execFile(bin, [url], { timeout: 8000 }, function(err) {
             if (err) {
                 // ENOENT(命令不存在) 或其它启动失败（无图形会话/无默认应用）都尝试下一个浏览器
                 tryOpenBrowser(browsers, index + 1);

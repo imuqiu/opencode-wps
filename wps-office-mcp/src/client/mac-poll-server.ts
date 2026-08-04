@@ -58,10 +58,7 @@ const COMMAND_APP_MAP: Record<string, string> = {
   findInSheet: 'excel',
   freezePanes: 'excel',
   getCellComments: 'excel',
-  getCellInfo: 'excel',
-  getConditionalFormats: 'excel',
   getContext: 'excel',
-  getDataValidations: 'excel',
   getFormula: 'excel',
   getNamedRanges: 'excel',
   getOpenWorkbooks: 'excel',
@@ -81,9 +78,6 @@ const COMMAND_APP_MAP: Record<string, string> = {
   pasteRange: 'excel',
   protectSheet: 'excel',
   protectWorkbook: 'excel',
-  refreshLinks: 'excel',
-  removeConditionalFormat: 'excel',
-  removeDataValidation: 'excel',
   renameSheet: 'excel',
   replaceInSheet: 'excel',
   setArrayFormula: 'excel',
@@ -147,16 +141,11 @@ const COMMAND_APP_MAP: Record<string, string> = {
   unifyFont: 'ppt',
   beautifySlide: 'ppt',
   addAnimation: 'ppt',
-  addAnimationPreset: 'ppt',
   addArrow: 'ppt',
   addConnector: 'ppt',
-  addEmphasisAnimation: 'ppt',
-  addMasterElement: 'ppt',
-  addPageIndicator: 'ppt',
   addPptHyperlink: 'ppt',
   addShape: 'ppt',
   addTextBox: 'ppt',
-  addTitleDecoration: 'ppt',
   alignShapes: 'ppt',
   applyColorScheme: 'ppt',
   applyTransitionToAll: 'ppt',
@@ -164,18 +153,7 @@ const COMMAND_APP_MAP: Record<string, string> = {
   autoLayout: 'ppt',
   beautifyAllSlides: 'ppt',
   closePresentation: 'ppt',
-  create3DText: 'ppt',
-  createDonutChart: 'ppt',
-  createFlowChart: 'ppt',
-  createGauge: 'ppt',
-  createGrid: 'ppt',
-  createKpiCards: 'ppt',
-  createMiniCharts: 'ppt',
-  createOrgChart: 'ppt',
   createPresentation: 'ppt',
-  createProgressBar: 'ppt',
-  createStyledTable: 'ppt',
-  createTimeline: 'ppt',
   deletePptImage: 'ppt',
   deleteShape: 'ppt',
   deleteSlide: 'ppt',
@@ -185,7 +163,6 @@ const COMMAND_APP_MAP: Record<string, string> = {
   duplicateSlide: 'ppt',
   endSlideShow: 'ppt',
   findPptText: 'ppt',
-  getAnimations: 'ppt',
   getOpenPresentations: 'ppt',
   getPptTableCell: 'ppt',
   getShapes: 'ppt',
@@ -196,7 +173,6 @@ const COMMAND_APP_MAP: Record<string, string> = {
   getSlideTitle: 'ppt',
   getTextBoxes: 'ppt',
   groupShapes: 'ppt',
-  insertPptChart: 'ppt',
   insertPptImage: 'ppt',
   insertPptTable: 'ppt',
   moveSlide: 'ppt',
@@ -205,23 +181,14 @@ const COMMAND_APP_MAP: Record<string, string> = {
   removePptHyperlink: 'ppt',
   removeSlideTransition: 'ppt',
   replacePptText: 'ppt',
-  set3DDepth: 'ppt',
-  set3DMaterial: 'ppt',
-  set3DRotation: 'ppt',
-  setAnimationOrder: 'ppt',
   setBackgroundColor: 'ppt',
   setBackgroundGradient: 'ppt',
   setBackgroundImage: 'ppt',
   setImageStyle: 'ppt',
   setMasterBackground: 'ppt',
-  setPptChartData: 'ppt',
-  setPptChartStyle: 'ppt',
   setPptDateTime: 'ppt',
   setPptFooter: 'ppt',
   setPptTableCell: 'ppt',
-  setPptTableCellStyle: 'ppt',
-  setPptTableRowStyle: 'ppt',
-  setPptTableStyle: 'ppt',
   setShapeBorder: 'ppt',
   setShapeFullStyle: 'ppt',
   setShapeGradient: 'ppt',
@@ -452,7 +419,7 @@ class MacPollServer {
    */
   async executeCommand(action: string, params: Record<string, unknown> = {}, timeout: number = 30000): Promise<unknown> {
     // 确定需要的应用类型
-    const requiredApp = this.getRequiredApp(action);
+    const requiredApp = this.getRequiredApp(action, params);
 
     // 如果需要切换应用
     if (requiredApp && requiredApp !== this.currentApp) {
@@ -501,8 +468,17 @@ class MacPollServer {
 
   /**
    * 根据命令获取需要的应用类型
+   * 通用动作（openFile/save 等）按参数内容动态推断，其余查映射表
    */
-  private getRequiredApp(action: string): string {
+  private getRequiredApp(action: string, params: Record<string, unknown> = {}): string {
+    // 通用动作：按文件路径扩展名推断目标应用（跨应用打开时轮询桥必须切换应用，否则单应用沙箱内必然失败）
+    if (action === 'openFile' || action === 'saveAs') {
+      const filePath = String(params.path || params.filePath || '').toLowerCase();
+      if (filePath.includes('.xls')) return 'excel';
+      if (filePath.includes('.doc')) return 'word';
+      if (filePath.includes('.ppt')) return 'ppt';
+    }
+    // save/getSelectedText/getAppInfo/ping/wireCheck/setSelectedText/convertToPDF 等通用动作：不切应用，跟随当前环境
     return COMMAND_APP_MAP[action] || '';
   }
 

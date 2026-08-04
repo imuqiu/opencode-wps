@@ -81,8 +81,9 @@ function startService(): Promise<void> {
 
     if (IS_LINUX) {
       // Linux 下按可用性拉起 WPS 家族（优先 wps，回退 et/wpp），避免只装 et/wpp 时 nohup wps 失败
+      // 注意：不能用 `cmd && nohup x & || ...` 链式写法（`&` 与 `||` 组合是非法 shell 语法，bash -n 直接报错）
       exec(
-        'command -v wps >/dev/null 2>&1 && nohup wps >/dev/null 2>&1 & || command -v et >/dev/null 2>&1 && nohup et >/dev/null 2>&1 & || command -v wpp >/dev/null 2>&1 && nohup wpp >/dev/null 2>&1 &',
+        'for c in wps et wpp; do command -v "$c" >/dev/null 2>&1 && { nohup "$c" >/dev/null 2>&1 & break; }; done',
         (error) => {
           if (error) {
             log.error('[Keepalive] Failed to start WPS service on Linux', error);
