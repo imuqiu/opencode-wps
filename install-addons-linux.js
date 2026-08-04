@@ -66,6 +66,34 @@ console.log('========================================');
 console.log('  OpenCode WPS - Linux 安装工具');
 console.log('========================================\n');
 
+// ===== 0. 前置检测：WPS Office 是否已安装 =====
+function detectWpsInstalled() {
+    try {
+        // 1) 命令路径（wps/et/wpp 任一）
+        const out = execSync('command -v wps || command -v et || command -v wpp || echo NONE', { encoding: 'utf8', timeout: 5000 }).trim();
+        if (out && out !== 'NONE') return { ok: true, via: 'command: ' + out };
+    } catch (e) {}
+    // 2) 常见安装目录（deb 装到 /opt/kingsoft/wps-office，rpm 装到 /usr/lib/kingsoft 等）
+    const commonDirs = [
+        '/opt/kingsoft/wps-office',
+        '/usr/lib/kingsoft/wps-office',
+        path.join(homeDir, '.local', 'share', 'Kingsoft', 'wps')
+    ];
+    for (let i = 0; i < commonDirs.length; i++) {
+        if (fs.existsSync(commonDirs[i])) return { ok: true, via: 'dir: ' + commonDirs[i] };
+    }
+    return { ok: false };
+}
+
+const wpsCheck = detectWpsInstalled();
+if (!wpsCheck.ok) {
+    console.error('\n❌ 未检测到 WPS Office（Linux 版）。');
+    console.error('   请先从 https://linux.wps.cn 下载并安装 WPS Office（deb/rpm）后重试。');
+    console.error('   检测依据：command -v wps/et/wpp 或常见安装目录。\n');
+    process.exit(1);
+}
+console.log('  ✓ 已检测到 WPS Office（' + wpsCheck.via + '）\n');
+
 // ============================================================
 // 第 1 步: 安装 WPS 加载项
 // ============================================================
@@ -89,6 +117,8 @@ try {
     console.log('  已复制 ' + count + ' 个文件');
 } catch (e) {
     handleError('install_wps_addon', e);
+    console.error('\n❌ 第 1 步失败：无法安装 WPS 加载项。后续步骤依赖加载项，终止安装。');
+    process.exit(1);
 }
 
 // ============================================================
@@ -120,14 +150,42 @@ try {
     fs.writeFileSync(jspluginsXmlPath, jspluginsContent, 'utf-8');
     console.log('  已写入 jsplugins.xml');
 
-    // authwebsite.xml - 授权站点（Linux 加载项需要）
+    // authwebsite.xml - 授权站点（Linux 加载项需要；必须显式列出本机 HTTP 站点，否则 WPS 沙箱拦截轮询/launcher 请求）
     const authwebsiteXmlPath = path.join(wpsJsaddonsDir, 'authwebsite.xml');
-    if (!fs.existsSync(authwebsiteXmlPath)) {
-        const authwebsiteContent = '<?xml version="1.0" encoding="UTF-8"?>\n<AuthWebsiteList>\n</AuthWebsiteList>\n';
-        fs.writeFileSync(authwebsiteXmlPath, authwebsiteContent, 'utf-8');
-        console.log('  已写入 authwebsite.xml');
+    const authSites = [
+        'http://127.0.0.1:58891',   // 轮询服务器（MCP 侧）
+        'http://127.0.0.1:14097',   // launcher
+        'http://127.0.0.1:14096'    // opencode 服务
+    ];
+    const authwebsiteContent = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<AuthWebsiteList>',
+        authSites.map(function(site) { return '    <Website url="' + site + '"/>'; }).join('\n'),
+        '</AuthWebsiteList>'
+    ].join('\n') + '\n';
+    if (fs.existsSync(authwebsiteXmlPath)) {
+        // 已有文件：追加缺失的站点（避免覆盖用户自定义授权）
+        let existing = '';
+        try { existing = fs.readFileSync(authwebsiteXmlPath, 'utf-8'); } catch (e) {}
+        const missing = authSites.filter(function(site) { return existing.indexOf(site) === -1; });
+        if (missing.length > 0) {
+            const lines = existing.trim().split(/\n/);
+            // 在 </AuthWebsiteList> 前插入缺失站点
+            const closeIdx = lines.lastIndexOf('</AuthWebsiteList>');
+            const inserts = missing.map(function(site) { return '    <Website url="' + site + '"/>'; });
+            if (closeIdx !== -1) {
+                lines.splice(closeIdx, 0, inserts.join('\n'));
+            } else {
+                lines.push(inserts.join('\n'));
+            }
+            fs.writeFileSync(authwebsiteXmlPath, lines.join('\n') + '\n', 'utf-8');
+            console.log('  已合并授权站点到 authwebsite.xml: ' + missing.join(', '));
+        } else {
+            console.log('  authwebsite.xml 已包含全部授权站点，跳过');
+        }
     } else {
-        console.log('  authwebsite.xml 已存在，跳过');
+        fs.writeFileSync(authwebsiteXmlPath, authwebsiteContent, 'utf-8');
+        console.log('  已写入 authwebsite.xml（授权 127.0.0.1:58891/14097/14096）');
     }
 } catch (e) {
     handleError('write_register_files', e);

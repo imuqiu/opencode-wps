@@ -365,5 +365,17 @@ describe('WpsClient', () => {
       expect(mockLinuxModule.linuxPollServer.executeCommand).toHaveBeenCalledWith('createDocument', {});
       expect(result).toBe(true);
     });
+
+    it('Linux模式下超时重试不触发 kill（isWin=false 走轮询快速失败）', async () => {
+      // 首次调用抛超时，第二次成功 -> 验证重试路径且不 spawn PowerShell
+      mockLinuxModule.linuxPollServer.executeCommand
+        .mockRejectedValueOnce(new Error('COM 调用超时（30000ms）'))
+        .mockResolvedValueOnce({ success: true, data: { value: 7 } });
+      const client = new WpsClient();
+      const result = await client.getCellValue('Sheet1', 1, 1);
+      expect(mockLinuxModule.linuxPollServer.executeCommand).toHaveBeenCalledTimes(2);
+      expect(mockedSpawn).not.toHaveBeenCalled();
+      expect(result).toBe(7);
+    });
   });
 });

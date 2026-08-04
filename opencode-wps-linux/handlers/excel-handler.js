@@ -881,9 +881,16 @@ registerHandler('setCellStyle', function(params) {
         if (params.fontName) range.Font.Name = params.fontName;
         if (params.fontSize) range.Font.Size = params.fontSize;
         if (params.bold !== undefined) range.Font.Bold = params.bold;
-        if (params.fontColor) range.Font.Color = params.fontColor;
-        if (params.backgroundColor) range.Interior.Color = params.backgroundColor;
-        if (params.horizontalAlignment) range.HorizontalAlignment = params.horizontalAlignment;
+        // 与 setCellFormat 对齐：颜色统一走 toExcelColor 转换（支持 #RRGGBB/RRGGBB/数字），避免字符串色值抛类型错误
+        if (params.fontColor !== undefined) {
+            var fc = toExcelColor(params.fontColor);
+            if (fc !== null) range.Font.Color = fc;
+        }
+        if (params.backgroundColor !== undefined) {
+            var bg = toExcelColor(params.backgroundColor);
+            if (bg !== null) range.Interior.Color = bg;
+        }
+        if (params.horizontalAlignment !== undefined) range.HorizontalAlignment = params.horizontalAlignment;
         return ok({});
     } catch (e) {
         return fail('设置单元格样式失败: ' + e.message);

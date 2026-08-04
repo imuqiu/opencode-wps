@@ -169,6 +169,8 @@ function poll() {
 }
 
 function scheduleNext() {
+    // 暂停（_isPolling=false）时不再排下一轮，避免 in-flight XHR 回调重建 timer 导致恢复按钮失效
+    if (!_isPolling) return;
     _pollTimer = setTimeout(poll, CONFIG.POLL_INTERVAL);
 }
 
