@@ -3,9 +3,9 @@
 [![CI](https://github.com/lnxsun/opencode-wps/actions/workflows/ci.yml/badge.svg)](https://github.com/lnxsun/opencode-wps/actions)
 [![Version](https://img.shields.io/github/v/release/lnxsun/opencode-wps)](https://github.com/lnxsun/opencode-wps/releases)
 [![License](https://img.shields.io/github/license/lnxsun/opencode-wps)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-blue)](https://github.com/lnxsun/opencode-wps)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)](https://github.com/lnxsun/opencode-wps)
 
-[OpenCode](https://github.com/anomalyco/opencode) AI 助手的 WPS Office 插件，让你在 WPS 文字、表格、演示中直接与 AI 对话，获取智能辅助。**支持 Windows 和 macOS 双平台。**
+[OpenCode](https://github.com/anomalyco/opencode) AI 助手的 WPS Office 插件，让你在 WPS 文字、表格、演示中直接与 AI 对话，获取智能辅助。**支持 Windows、macOS、Linux 三平台。**
 
 ## 项目简介
 
@@ -70,6 +70,15 @@ opencode-wps/
 │   ├── manifest.xml           # 加载项清单
 │   ├── package.json           # 插件依赖
 │   └── wps-auto.sh            # Mac 自动安装脚本
+├── opencode-wps-linux/        # 第 1 层（Linux）：WPS JS 插件（独立目录，命令轮询桥）
+│   ├── main.js                # 轮询循环 + 命令分发（500ms 轮询 :58891）
+│   ├── handlers/              # Word/Excel/PPT 操作处理器（platform 标记 linux）
+│   ├── utils/                 # 工具函数
+│   │   └── response.js        # 响应格式化
+│   ├── ribbon.xml             # 功能区按钮定义（状态/暂停/打开Web）
+│   ├── manifest.xml           # 加载项清单（id=opencode-wps-linux）
+│   ├── package.json           # 插件依赖
+│   └── wps-auto.sh            # Linux 应用切换脚本（wps/et/wpp + xdg-open）
 ├── tests/                     # 测试文件
 │   ├── e2e.test.js            # 端到端测试
 │   ├── launcher.test.js       # Launcher 测试
@@ -81,12 +90,13 @@ opencode-wps/
 ├── agents/                    # 第 2 层：Agents（跨平台通用）
 ├── skills/                    # 第 3 层：Skills（跨平台通用）
 ├── .opencode/                 # 项目级配置（跨平台通用）
-├── wps-office-mcp/            # 第 4 层：MCP 服务器（Win→COM 桥接 / Mac→HTTP 轮询）
+├── wps-office-mcp/            # 第 4 层：MCP 服务器（Win→COM 桥接 / Mac→HTTP 轮询 / Linux→HTTP 轮询）
 │   ├── src/
 │   │   ├── client/
-│   │   │   ├── wps-client.ts      # 跨平台路由：Win→PowerShell COM, Mac→HTTP poll
-│   │   │   ├── mac-poll-server.ts # Mac HTTP 轮询服务器（:58891）
-│   │   │   ├── wps-keepalive.ts   # 连接保活
+│   │   │   ├── wps-client.ts      # 跨平台路由：Win→PowerShell COM, Mac/Linux→HTTP poll
+│   │   │   ├── mac-poll-server.ts # Mac HTTP 轮询服务器（:58891，Linux 复用本类）
+│   │   │   ├── linux-poll-server.ts # Linux 轮询服务器（注入 Linux wps-auto.sh）
+│   │   │   ├── wps-keepalive.ts   # 连接保活（含 Linux 分支）
 │   │   │   └── README.md          # client 说明
 │   │   └── tools/                 # 11 个 darwin 守卫已移除，全部跨平台
 │   └── scripts/                   # Windows COM 脚本（仅 Windows 使用）
@@ -96,16 +106,20 @@ opencode-wps/
 ├── CONTRIBUTING.md            # 贡献指南
 ├── install-addons.js          # Windows 一键安装脚本
 ├── install-addons-mac.js      # macOS 安装脚本（launchd plist + 插件部署）
+├── install-addons-linux.js    # Linux 安装脚本（jsaddons + publish.xml + XDG autostart）
 ├── launcher-mac.js            # macOS Launcher 进程（lsof/kill/ps/open）
+├── launcher-linux.js          # Linux Launcher 进程（lsof/kill/ps + xdg-open）
 ├── package.json               # 项目依赖
 └── README.md
 ```
 
 **4 层说明（从上到下，使用流程）：**
-- **第 1 层 WPS JS 插件** — Win：前台 Chat 窗口 + 服务进程管理；Mac：命令轮询桥（无 Chat 界面）。Windows 使用 COM 桥接（`opencode-wps/`），Mac 使用反向轮询（`opencode-wps-assistant/`）
+- **第 1 层 WPS JS 插件** — Win：前台 Chat 窗口 + 服务进程管理；Mac/Linux：命令轮询桥（无 Chat 界面）。Windows 使用 COM 桥接（`opencode-wps/`），Mac 使用反向轮询（`opencode-wps-assistant/`），Linux 使用反向轮询（`opencode-wps-linux/`，独立目录）
 - **第 2 层 Agents** — 角色定义，通过 Agent 选择实现功能聚焦（跨平台通用）
 - **第 3 层 Skills** — 领域技能，AI 调用的能力集（跨平台通用）
-- **第 4 层 MCP** — 跨平台路由：Win→PowerShell COM 桥接，Mac→HTTP 轮询（反向轮询插件）。~240 TypeScript handler + ~257 个 WPS API 动作
+- **第 4 层 MCP** — 跨平台路由：Win→PowerShell COM 桥接，Mac/Linux→HTTP 轮询（反向轮询插件）。~240 TypeScript handler + ~257 个 WPS API 动作
+
+Linux 部署说明见 [docs/LINUX.md](./docs/LINUX.md)。
 
 **横向机制：**
 - **config.js 全局配置** — 所有配置的统一来源（OpenCode/Launcher 端口、网络超时、插件元数据、回退模型），注入为全局 `CONFIG` 对象供各层读取
