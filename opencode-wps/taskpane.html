@@ -1585,10 +1585,16 @@ function scrollToBottom() { setTimeout(function() { $messages.scrollTop = $messa
             }
             return;
         }
-        // 廉价预检：布局已正常（文档未超出视口）时标记已修复，不再强制重排闪屏
-        if (document.documentElement.scrollHeight <= window.innerHeight) {
-            reflowFixed = true;
-            return;
+        // 廉价预检：头部（topbar）在视口内可见 → 布局正常，跳过强制重排防闪屏。
+        // 注意：不能用 documentElement.scrollHeight（html,body 是 position:fixed，
+        // 不产生滚动、scrollHeight 恒等于视口，无法反映头部是否被挤出）
+        var topbar = document.querySelector('.topbar');
+        if (topbar) {
+            var r = topbar.getBoundingClientRect();
+            if (r.top >= 0 && r.bottom <= window.innerHeight && r.width > 0) {
+                reflowFixed = true;
+                return;
+            }
         }
         var oldDisplay = app.style.display;
         app.style.display = 'none';
@@ -1618,8 +1624,8 @@ function scrollToBottom() { setTimeout(function() { $messages.scrollTop = $messa
     } else {
         rafOnce(forceReflowFix);
     }
-    setTimeout(function() { forceReflowFix(); }, 300);
-    setTimeout(function() { forceReflowFix(); }, 1000);
+    setTimeout(function() { reflowFixed = false; forceReflowFix(); }, 300);
+    setTimeout(function() { reflowFixed = false; forceReflowFix(); }, 1000);
 })()
 </script>
 </body>

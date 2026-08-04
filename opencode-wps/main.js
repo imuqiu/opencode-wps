@@ -311,6 +311,8 @@ function OnAddinLoad(ribbonUI) {
 // 窗格不存在或不可见时不执行——避免把用户主动关闭的窗格重新弹出来。
 // 隐藏→显示拆成两步（中间 setTimeout 让出宿主事件循环）：
 // 同一同步代码块内连续置位可能被 WPS 宿主合并处理，重绘实际不生效。
+// 重绘进行中标志：WindowActivate 可能连续触发，一次重绘未完成时跳过后续触发（防抖）
+var taskPaneRedrawPending = false
 function forceTaskPaneRedraw() {
     var tsId = ""
     try {
@@ -322,6 +324,8 @@ function forceTaskPaneRedraw() {
         tsId = taskpaneIdCache || ""
     }
     if (!tsId) return
+    // 上一次重绘的 setTimeout 未完成时跳过（WindowActivate 连续触发防抖）
+    if (taskPaneRedrawPending) return
     try {
         var tp = window.Application.GetTaskPane(tsId)
         if (!tp || !tp.Visible) return
@@ -329,16 +333,22 @@ function forceTaskPaneRedraw() {
         setTaskPaneDockPosition(tp)
         // 先隐藏再显示，强制 WebView 重新布局；两步间让出宿主事件循环，
         // 确保 WPS 宿主真的执行隐藏→重排→显示流程（而非合并两次属性写入）
+        taskPaneRedrawPending = true
         tp.Visible = false
         setTimeout(function() {
+            taskPaneRedrawPending = false
             try {
-                if (window.Application.GetTaskPane(tsId)) tp.Visible = true
+                var cur = window.Application.GetTaskPane(tsId)
+                if (!cur) return          // 窗格已销毁：放弃恢复
+                if (cur.Visible) return   // 已被外部恢复（用户重新打开等）：不重复置位
+                cur.Visible = true
                 console.log('[WPS] 任务窗格已强制重绘（WindowActivate 触发布局修复）')
             } catch (e) {
                 console.error('[WPS] 恢复任务窗格可见失败: ' + errMsg(e))
             }
         }, 80)
     } catch (e) {
+        taskPaneRedrawPending = false
         console.error('[WPS] 强制重绘任务窗格失败: ' + errMsg(e))
     }
 }

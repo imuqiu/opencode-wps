@@ -521,11 +521,11 @@ test('OnAddinLoad 注册 WindowActivate 时旧版本无 AddApiEventListener 应�
 });
 
 test('forceTaskPaneRedraw：窗格可见时异步两步 false→true 重绘并重新校正停靠', function () {
-  var pane = { ID: 'tp-redraw', DockPosition: 0, Visible: true };
+  var pane = { ID: 'tp-redraw', DockPosition: 0, _visible: true };
   var visibleLog = [];
   Object.defineProperty(pane, 'Visible', {
-    get: function () { return true; },
-    set: function (v) { visibleLog.push(v); }
+    get: function () { return pane._visible; },
+    set: function (v) { pane._visible = v; visibleLog.push(v); }
   });
   var appMock = {
     CreateTaskPane: function () { throw new Error('不应调用 CreateTaskPane'); },
@@ -546,6 +546,87 @@ test('forceTaskPaneRedraw：窗格可见时异步两步 false→true 重绘并�
   assertTrue(flushed >= 1, '应存在待执行的 setTimeout 回调，实际 flush ' + flushed + ' 个');
   assertEqual(visibleLog.length, 2, 'flush 后应恢复显示，实际: ' + JSON.stringify(visibleLog));
   assertEqual(visibleLog[1], true, '第二次再显示');
+});
+
+test('forceTaskPaneRedraw：重绘进行中时 WindowActivate 连续触发应跳过（防抖）', function () {
+  var pane = { ID: 'tp-redraw', DockPosition: 0, _visible: true };
+  var visibleLog = [];
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return pane._visible; },
+    set: function (v) { pane._visible = v; visibleLog.push(v); }
+  });
+  var appMock = {
+    GetTaskPane: function () { return pane; },
+    PluginStorage: {
+      getItem: function () { return 'tp-redraw'; },
+      setItem: function () {}
+    }
+  };
+  var sandbox = loadMainJs(appMock);
+  // 第一次触发：同步隐藏，进入 pending 状态
+  sandbox.forceTaskPaneRedraw();
+  assertEqual(visibleLog.length, 1, '第一次应隐藏一次');
+  // 第二次触发（pending 未完成）：应直接跳过，不重复隐藏
+  sandbox.forceTaskPaneRedraw();
+  assertEqual(visibleLog.length, 1, 'pending 期间重复触发应被跳过，实际: ' + JSON.stringify(visibleLog));
+  // flush 后完成第一次重绘，恢复可见
+  sandbox.__flushTimeouts();
+  assertEqual(visibleLog.length, 2, 'flush 后应恢复显示，实际: ' + JSON.stringify(visibleLog));
+  assertEqual(visibleLog[1], true, '恢复为可见');
+  // 第三次触发（pending 已清除）：允许再次重绘
+  sandbox.forceTaskPaneRedraw();
+  assertEqual(visibleLog.length, 3, 'pending 清除后应允许再次隐藏');
+});
+
+test('forceTaskPaneRedraw：异步恢复前用户已重新打开/恢复可见时不应重复置位（不误弹）', function () {
+  var pane = { ID: 'tp-redraw', DockPosition: 0, _visible: true };
+  var visibleLog = [];
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return pane._visible; },
+    set: function (v) { pane._visible = v; visibleLog.push(v); }
+  });
+  var appMock = {
+    GetTaskPane: function () { return pane; },
+    PluginStorage: {
+      getItem: function () { return 'tp-redraw'; },
+      setItem: function () {}
+    }
+  };
+  var sandbox = loadMainJs(appMock);
+  sandbox.forceTaskPaneRedraw();
+  assertEqual(visibleLog.length, 1, '同步隐藏一次');
+  // 模拟用户/其他逻辑在 80ms 内把窗格恢复为可见（如用户点击按钮重新打开）
+  pane._visible = true;
+  sandbox.__flushTimeouts();
+  // 异步回调检测 cur.Visible 已为 true → 跳过恢复置位，不重复写
+  assertEqual(visibleLog.length, 1, '外部已恢复可见时不应重复置位，实际: ' + JSON.stringify(visibleLog));
+});
+
+test('forceTaskPaneRedraw：异步恢复前窗格已销毁时应放弃恢复（不误弹）', function () {
+  var pane = { ID: 'tp-redraw', DockPosition: 0, _visible: true };
+  var visibleLog = [];
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return pane._visible; },
+    set: function (v) { pane._visible = v; visibleLog.push(v); }
+  });
+  var getCalls = 0;
+  var appMock = {
+    GetTaskPane: function () {
+      getCalls++;
+      // 第一次同步调用返回窗格；异步恢复前模拟窗格已销毁（返回 null）
+      return getCalls <= 1 ? pane : null;
+    },
+    PluginStorage: {
+      getItem: function () { return 'tp-redraw'; },
+      setItem: function () {}
+    }
+  };
+  var sandbox = loadMainJs(appMock);
+  sandbox.forceTaskPaneRedraw();
+  assertEqual(visibleLog.length, 1, '同步隐藏一次');
+  sandbox.__flushTimeouts();
+  // 异步回调 GetTaskPane 返回 null → 放弃恢复
+  assertEqual(visibleLog.length, 1, '窗格已销毁时不应恢复显示，实际: ' + JSON.stringify(visibleLog));
 });
 
 test('forceTaskPaneRedraw：窗格不存在/不可见时不误显示（不把用户关闭的窗格弹出）', function () {
@@ -594,7 +675,8 @@ test('taskpane.html 自愈骨架：position:fixed 锚定 + forceReflowFix 关键
   // ⑤ 首次渲染多时机兜底（rAF + load + 定时器）
   assertTrue(/rafOnce\s*\(\s*forceReflowFix\s*\)/.test(html), '应通过 rafOnce 在首帧前重排');
   assertTrue(/addEventListener\('load'/.test(html), '应监听 load 事件兜底重排');
-  assertTrue(/setTimeout\s*\(\s*function\s*\(\s*\)\s*\{\s*forceReflowFix\s*\(\s*\)\s*;?\s*\}\s*,\s*300\s*\)/.test(html), '应保留 300ms 定时器兜底');
+  assertTrue(/setTimeout\s*\(\s*function\s*\(\s*\)\s*\{\s*reflowFixed\s*=\s*false\s*;\s*forceReflowFix\s*\(\s*\)\s*;?\s*\}\s*,\s*300\s*\)/.test(html), '应保留 300ms 定时器兜底（重置状态位后重排）');
+  assertTrue(/setTimeout\s*\(\s*function\s*\(\s*\)\s*\{\s*reflowFixed\s*=\s*false\s*;\s*forceReflowFix\s*\(\s*\)\s*;?\s*\}\s*,\s*1000\s*\)/.test(html), '应保留 1000ms 定时器兜底（重置状态位后重排）');
 });
 
 // ==================== 测试结果汇总 ====================
