@@ -18,6 +18,7 @@ main:
             node scripts/validate-versions.js
             node scripts/validate-tool-counts.js
             node scripts/validate-npc-team-prompt.js
+            node tests/taskpane-dock.test.js
             cd wps-office-mcp && npm ci && npm run test:unit
         - name: Docker build
           script: |

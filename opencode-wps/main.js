@@ -18,6 +18,101 @@ var WPS_Enum = {
     msoFileDialogOpen: 1
 }
 
+// 任务窗格停靠位置（右侧，避免遮挡 WPS 顶部标签页：开始/插入等）
+// 说明：停靠方向值直接取 WPS_Enum.msoCTPDockPositionRight（=2），
+// 不新增 Top/Bottom 枚举 —— 其值（1/3）会与已有 msoFileDialogOpen(1) 冲突埋雷
+var TASKPANE_DOCK_POSITION = WPS_Enum.msoCTPDockPositionRight
+
+// 内存 ID 兜底：PluginStorage.setItem 持久化失败（如插件初始化未完成）时，
+// 本次会话内仍能避免再次点击重复 CreateTaskPane 造成多窗格叠加；
+// WPS 重启后随插件内存清空，由 PluginStorage 持久化值接管（见文档注意事项第 10 条）
+var taskpaneIdCache = ''
+
+/**
+ * 统一提取异常信息：e 可能是 Error 对象（取 .message），也可能是字符串等任意值
+ * @param {*} e - try/catch 捕获的异常
+ * @returns {*} 可读的错误描述（Error 取 .message，非 Error 值原样返回）
+ */
+function errMsg(e) {
+    return (e && e.message ? e.message : e)
+}
+
+/**
+ * 校正任务窗格停靠位置（右侧），避免遮挡 WPS 顶部标签页（开始/插入等）
+ * CreateTaskPane 仅传 url 单参数（官方签名稳妥用法），创建后通过
+ * DockPosition 属性显式校正；每次打开/切换时也重新校正，防止位置漂移。
+ * @param {object} tskpane - 任务窗格对象
+ * @returns {boolean} true=设置成功；false=设置失败（已 console.error 留痕）
+ */
+function setTaskPaneDockPosition(tskpane) {
+    if (!tskpane) {
+        console.error('[WPS] setTaskPaneDockPosition: 无效的任务窗格对象')
+        return false
+    }
+    try {
+        tskpane.DockPosition = TASKPANE_DOCK_POSITION
+        return true
+    } catch (e) {
+        console.error('[WPS] 设置任务窗格停靠位置失败: ' + errMsg(e))
+        return false
+    }
+}
+
+/**
+ * 创建任务窗格并统一初始化：CreateTaskPane（单参数）→ 存 taskpane_id →
+ * 校正停靠位置（右侧）→ 置可见。首次创建与 GetTaskPane 判空回退重建共用。
+ * @returns {object} 创建并初始化好的任务窗格对象
+ */
+function createTaskPane() {
+    try {
+        var tskpane = window.Application.CreateTaskPane(GetUrlPath() + '/taskpane.html')
+        // CreateTaskPane 个别版本可能返回 null（而非抛异常）：立即判空并给出明确留痕，
+        // 避免后续 tskpane.ID 抛误导性的 TypeError（外层 catch 虽能兜住，但
+        // 「初始化任务窗格失败」文案会把排查方向带偏到创建/存 ID/校正/置位全流程）
+        if (!tskpane) {
+            console.error('[WPS] 创建任务窗格失败: CreateTaskPane 返回空对象')
+            return null
+        }
+        // 内存 ID 兜底：无论 setItem 成败，先记录本次会话内有效 ID，
+        // 避免持久化失败后再次点击重复 CreateTaskPane 造成多窗格叠加；
+        // ID 为空（个别版本未回填）时留痕但不覆盖既有缓存，避免内存兜底失效
+        if (tskpane.ID) {
+            taskpaneIdCache = tskpane.ID
+            // setItem 与 getItem 同源同概率抛异常（如插件初始化未完成），单独 try/catch 留痕后继续：
+            // 避免中断导致下方 DockPosition 校正与 Visible 置位被跳过（窗格创建了却永远不显示）；
+            // 仅 ID 有效时才持久化——ID 为空时跳过写入，避免 setItem 持久化 undefined 覆盖既有有效 ID
+            try {
+                window.Application.PluginStorage.setItem('taskpane_id', tskpane.ID)
+            } catch (e) {
+                console.error('[WPS] 保存 taskpane_id 失败: ' + errMsg(e))
+            }
+        } else {
+            console.error('[WPS] 任务窗格 ID 为空，内存兜底可能失效')
+        }
+        // 停靠校正失败（setTaskPaneDockPosition 内部已留痕）但窗格仍可用：
+        // 不中断、继续置可见并返回窗格对象——下次点击经 GetTaskPane 找回后重新校正，
+        // 有自愈机会；此处补充「窗格可用」留痕，使调用方可感知该状态（评审 ②）
+        if (!setTaskPaneDockPosition(tskpane)) {
+            console.error('[WPS] 任务窗格停靠校正失败（窗格仍可用，下次点击将重新校正）')
+        }
+        // Visible 置位单独 try/catch：窗格已创建、ID 已兜底，失败时留痕后仍返回窗格对象，
+        // 保留下次点击自愈机会（GetTaskPane 能找回 → 重新校正 + 切换可见性）；
+        // 若在此处 return null 会触发调用处误判「创建失败」，且无自愈路径
+        try {
+            tskpane.Visible = true
+        } catch (e) {
+            console.error('[WPS] 置任务窗格可见失败: ' + errMsg(e))
+        }
+        return tskpane
+    } catch (e) {
+        // 该 try 块涵盖 CreateTaskPane / 存 ID / DockPosition 校正 / Visible 置位全流程，
+        // 任一步失败都会走到这里，文案用「初始化」更准确（避免误以为只是创建步骤失败）。
+        // 注意：Visible 置位已内层 try/catch 兜底不会走到这里，此处实际仅兜 CreateTaskPane 本身失败
+        console.error('[WPS] 初始化任务窗格失败: ' + errMsg(e))
+        return null
+    }
+}
+
 // --- WPS 就绪检查 ---
 /**
  * 检查 WPS Application 是否就绪
@@ -31,7 +126,7 @@ function checkWpsReady() {
         }
         return true;
     } catch (e) {
-        console.error('[WPS] 检查失败: ' + e.message);
+        console.error('[WPS] 检查失败: ' + errMsg(e));
         return false;
     }
 }
@@ -56,7 +151,7 @@ function checkDocument() {
         }
         return doc;
     } catch (e) {
-        console.error('[WPS] 文档检查失败: ' + e.message);
+        console.error('[WPS] 文档检查失败: ' + errMsg(e));
         return null;
     }
 }
@@ -111,7 +206,7 @@ function sendDocInfo() {
         xhr.setRequestHeader('Content-Type', 'application/json');
         xhr.send(key);
     } catch(e) {
-        console.warn('[OpenCode] sendDocInfo failed: ' + e.message);
+        console.warn('[OpenCode] sendDocInfo failed: ' + errMsg(e));
     }
 }
 
@@ -152,7 +247,7 @@ function startOpenCodeServer(cwd) {
     }
     xhr.onerror = function() { console.log('[OpenCode] Cannot reach launcher'); isProcessingCommand = false; }
     xhr.ontimeout = function() { console.log('[OpenCode] Launcher timeout'); isProcessingCommand = false; }
-    try { xhr.send(data) } catch (e) { console.log('[OpenCode] Send error: ' + e.message); isProcessingCommand = false; }
+    try { xhr.send(data) } catch (e) { console.log('[OpenCode] Send error: ' + errMsg(e)); isProcessingCommand = false; }
 }
 
 /**
@@ -215,13 +310,44 @@ function OnAction(control) {
     var eleId = getControlId(control)
     switch (eleId) {
         case "btnShowTaskPane":
-            var tsId = window.Application.PluginStorage.getItem("taskpane_id")
-            if (!tsId) {
-                var tskpane = window.Application.CreateTaskPane(GetUrlPath() + "/taskpane.html")
-                window.Application.PluginStorage.setItem("taskpane_id", tskpane.ID)
-                tskpane.Visible = true
+            var tsId = ""
+            // PluginStorage 在插件初始化未完成等场景可能抛异常，与其他 getItem 调用保持 try/catch 防御一致
+            try { tsId = window.Application.PluginStorage.getItem("taskpane_id") || "" } catch (e) {
+                console.error('[WPS] 读取 taskpane_id 失败: ' + errMsg(e))
+            }
+            // 内存 ID 兜底：PluginStorage 持久化失败/读取失败时，用本次会话内存值避免重复创建多窗格
+            if (!tsId) { tsId = taskpaneIdCache || "" }
+            var tp = null
+            if (tsId) {
+                try {
+                    // 个别 WPS 版本对无效/过期 id 会抛异常而非返回 null，统一 try/catch 兜底
+                    tp = window.Application.GetTaskPane(tsId)
+                } catch (e) {
+                    console.error('[WPS] GetTaskPane 获取任务窗格失败: ' + errMsg(e))
+                    tp = null
+                }
+            }
+            // 首次创建，或 PluginStorage 读取失败 / GetTaskPane 返回 null/抛异常：统一回退重建（createTaskPane 内部自带 try/catch，失败返回 null）
+            if (!tp) {
+                tp = createTaskPane()
+                if (!tp) {
+                    // 创建也失败（如 taskpane.html 路径无效）：已留痕，直接返回，避免后续空指针
+                    return
+                }
             } else {
-                window.Application.GetTaskPane(tsId).Visible = !window.Application.GetTaskPane(tsId).Visible
+                // 每次打开时重新校正停靠位置（右侧），防止位置漂移再次遮挡顶栏；
+                // 与 createTaskPane 内保持一致：停靠校正失败（内部已留痕）但窗格仍可用，
+                // 补充「窗格仍可用」留痕后不中断可见性切换（下次点击将重新校正，有自愈机会）
+                if (!setTaskPaneDockPosition(tp)) {
+                    console.error('[WPS] 任务窗格停靠校正失败（窗格仍可用，下次点击将重新校正）')
+                }
+                // Visible 切换也包 try/catch：与 createTaskPane 内 Visible 置位保持统一兜底，
+                // 避免个别 WPS 版本对该属性抛异常时直接中断按钮回调（后续 break 分支不执行）
+                try {
+                    tp.Visible = !tp.Visible
+                } catch (e) {
+                    console.error('[WPS] 切换任务窗格可见性失败: ' + errMsg(e))
+                }
             }
             break
         case "btnDockWindow":
@@ -283,7 +409,7 @@ function checkStatus() {
             else if (window.Application.ActiveDocument) statusText += '文档: ' + window.Application.ActiveDocument.Name + ' (Word)\n'
             else if (window.Application.ActivePresentation) statusText += '文档: ' + window.Application.ActivePresentation.Name + ' (PPT)\n'
         }
-    } catch (e) { statusText += '\nWPS 信息获取失败: ' + e.message }
+    } catch (e) { statusText += '\nWPS 信息获取失败: ' + errMsg(e) }
     alert(statusText)
 }
 

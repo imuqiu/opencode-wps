@@ -153,6 +153,47 @@ var selection = app.Selection;
 var window = app.ActiveWindow;
 ```
 
+### 任务窗格 TaskPane API（PR #79 验证结论）
+
+> 结论来源：`opencode-wps/main.js` 的 `setTaskPaneDockPosition()` + `tests/taskpane-dock.test.js`（vm 加载生产源码实测）。
+
+```javascript
+// 1. 创建任务窗格：CreateTaskPane 只传 url 单参数（稳妥用法）
+var tskpane = window.Application.CreateTaskPane(GetUrlPath() + '/taskpane.html');
+
+// 2. 创建后通过 DockPosition 属性显式校正停靠方向（枚举值见 WPS_Enum）
+tskpane.DockPosition = WPS_Enum.msoCTPDockPositionRight; // 2 = 右侧停靠
+
+// 3. 每次打开/切换可见性时重新校正，防止位置漂移再次遮挡 WPS 顶栏标签
+function setTaskPaneDockPosition(tskpane) {
+    if (!tskpane) return false;
+    try {
+        tskpane.DockPosition = WPS_Enum.msoCTPDockPositionRight;
+        return true;
+    } catch (e) {
+        console.error('[WPS] 设置任务窗格停靠位置失败: ' + (e && e.message ? e.message : e));
+        return false;
+    }
+}
+```
+
+**注意事项（PR #79 评审结论）：**
+
+1. **`CreateTaskPane` 第二参数不传**：仓库内无 WPS JS API 文档佐证 `CreateTaskPane(url, DockPosition)` 第二参数被官方支持，若签名只接受一个参数，第二参数会被静默忽略导致修复不生效。统一改用创建后设置 `DockPosition` 属性（已实测有效）。
+2. **`DockPosition` 枚举值不能随意新增**：`WPS_Enum` 整体赋给 `window.Application.Enum`，新增枚举必须与已有值（`msoFileDialogOpen: 1`、`msoFileDialogFolderPicker: 4`）去重，否则按值比较会串台。当前停靠枚举仅定义 `msoCTPDockPositionLeft: 0` / `msoCTPDockPositionRight: 2`（其中实际使用 `Right`，`Left` 保留备用）。
+3. **设置失败必须留痕**：`DockPosition` 赋值用 try/catch 包裹且 catch 内 `console.error` 输出，禁止空 catch 吞异常（否则问题会静默复现却汇报「已修复」）。
+4. **`GetTaskPane` 必须判空 + try/catch**：`taskpane_id` 持久化在 `PluginStorage` 中，WPS 重启后旧 id 残留、`GetTaskPane(tsId)` 可能返回 `null`，个别版本对无效/过期 id 还会直接**抛异常**——无论哪种情况，直接访问 `tp.Visible` 都会中断导致窗格打不开。统一做法：拿到 `tp` 前先 try/catch 包裹 `GetTaskPane`（异常时 `console.error` 留痕），再对 `tp` 判空，`null` 时回退走「重新 `CreateTaskPane` + 重存 `taskpane_id`」路径（`OnAction` 的 `btnShowTaskPane` 分支已实现，`tests/taskpane-dock.test.js` 的「GetTaskPane 返回 null 回退重建」与「GetTaskPane 抛异常回退重建」用例覆盖）。
+5. **`PluginStorage` 读取必须 try/catch**：`PluginStorage.getItem` 在插件初始化未完成等场景可能抛异常，与仓库 `checkStatus`/`pollCommand`/`dockOpenCodeWindow` 中的既有防御模式保持一致——读取失败留痕并回退重建（`btnShowTaskPane` 分支已实现，`tests/taskpane-dock.test.js` 的「getItem 抛异常回退重建」用例覆盖）。
+6. **`CreateTaskPane` 必须 try/catch**：若 `CreateTaskPane` 本身抛异常（如 `taskpane.html` 路径无效、WPS 环境异常），`btnShowTaskPane` 的 `!tp` 分支会直接中断且无留痕。统一做法：`createTaskPane()` 内部包 try/catch，失败 `console.error` 留痕并返回 `null`，调用处 `if (!tp) return` 兜底（`tests/taskpane-dock.test.js` 的「CreateTaskPane 抛异常」用例覆盖）。
+7. **`PluginStorage.setItem` 必须 try/catch**：`setItem` 与 `getItem` 同源同概率抛异常（如插件初始化未完成），若在 `createTaskPane()` 的大 try 块内裸奔，一旦抛异常会中断后续 `DockPosition` 校正与 `Visible` 置位——窗格创建了却永远不显示，且 `createTaskPane()` 返回 `null` 导致调用处直接 return。统一做法：`setItem` 单独包 try/catch，失败 `console.error` 留痕后**继续执行**后续初始化（`createTaskPane()` 已实现，`tests/taskpane-dock.test.js` 的「setItem 抛异常留痕后继续」用例覆盖）。
+8. **可见性切换也要 try/catch**：`tp.Visible = !tp.Visible` 与 `createTaskPane()` 内的 `Visible` 置位同属属性赋值，个别 WPS 版本同样可能抛异常，若不包 try/catch 会中断 `OnAction` 按钮回调。统一做法：`btnShowTaskPane` 分支的可见性切换单独包 try/catch，失败 `console.error` 留痕后继续（已实现，`tests/taskpane-dock.test.js` 的「切换可见性失败留痕」用例覆盖）；同时 `createTaskPane()` 外层 catch 文案使用「初始化任务窗格失败」而非「创建任务窗格失败」——该 try 块涵盖创建/存 ID/校正/置位全流程，文案过窄会误导排查方向。
+9. **`createTaskPane()` 内 `Visible` 置位必须单独 try/catch**：若 `tskpane.Visible = true` 抛异常（个别版本只读属性），窗格已创建、ID 已存，此时绝不能 `return null`——那会让调用处误判「创建失败」，且下次点击无自愈机会。统一做法：内层 try/catch 留痕后**仍返回窗格对象**，保留下次点击自愈路径（`GetTaskPane` 找回 → 重新校正 + 切换可见性）（已实现，`tests/taskpane-dock.test.js` 的「Visible 置位失败仍返回窗格对象」用例覆盖）。
+10. **`setItem` 持久化失败要有内存 ID 兜底**：`createTaskPane()` 在 `PluginStorage.setItem` 失败（留痕后继续）时，ID 未持久化——若窗格已显示，再次点击会因 `getItem` 拿不到 ID 而重复 `CreateTaskPane`，造成多窗格叠加。统一做法：模块级 `taskpaneIdCache` 先于 `setItem` 记录本次会话有效 ID，`OnAction` 在 `getItem` 读取为空/异常时回退到内存值（已实现，`tests/taskpane-dock.test.js` 的「setItem 持久化失败内存 ID 兜底」用例覆盖）。内存值随插件进程清空，WPS 重启后由 `PluginStorage` 持久化值接管，两者天然互补。**注意：`taskpaneIdCache = tskpane.ID` 必须判空**——个别版本 `CreateTaskPane` 返回的窗格对象 `ID` 可能为 `undefined`，直接覆盖会令内存兜底失效回到多窗格叠加场景；统一做法：ID 为空时 `console.error` 留痕且**不覆盖既有缓存**，同时**跳过 `setItem` 持久化写入**——否则会把 `undefined` 写进 `PluginStorage` 覆盖既有**有效** ID（已实现，`tests/taskpane-dock.test.js` 的「窗格 ID 为空不覆盖缓存 + 不写 setItem」用例覆盖）。
+11. **异常信息提取统一用 `errMsg(e)`**：`e` 可能是 `Error` 对象（取 `.message`）也可能是字符串等任意值，`(e && e.message ? e.message : e)` 表达式此前在 `main.js` 中重复 6+ 次。统一做法：提取 `errMsg()` 公共函数，并将 `main.js` 中**全部** 10 处异常信息提取（含既有 `checkStatus`/`sendDocInfo`/`checkWpsReady` 等 5 处 `e.message` 裸访问）统一收敛（已实现，`tests/taskpane-dock.test.js` 的「errMsg 公共函数」用例覆盖）。
+12. **`CreateTaskPane` 返回 null 也要判空**：`createTaskPane()` 已对 `CreateTaskPane` **抛异常**做了 try/catch，但个别版本可能**返回 `null`**（而非抛异常）——若直接访问 `tskpane.ID` 会抛误导性的 TypeError，外层 catch 虽能兜住，但「初始化任务窗格失败」文案会把排查方向带偏到创建/存 ID/校正/置位全流程。统一做法：拿到返回值后立即判空，`null` 时 `console.error('[WPS] 创建任务窗格失败: CreateTaskPane 返回空对象')` 明确留痕并 `return null`（已实现，`tests/taskpane-dock.test.js` 的「CreateTaskPane 返回 null 立即判空」用例覆盖）。
+13. **停靠校正失败不阻断创建流程**：`setTaskPaneDockPosition()` 返回 `boolean`（失败时内部已留痕），但停靠校正失败**不代表窗格不可用**——窗格已创建、ID 已兜底，此时应继续置可见并返回窗格对象，让下次点击经 `GetTaskPane` 找回后重新校正（自愈机会）；若在失败时中断或返回 `null`，会误判「创建失败」。统一做法：`createTaskPane()` 检查返回值，失败时补充 `console.error('[WPS] 任务窗格停靠校正失败（窗格仍可用，下次点击将重新校正）')` 留痕后继续（已实现，`tests/taskpane-dock.test.js` 的「停靠校正失败仍返回窗格对象」用例覆盖）。
+14. **`GetTaskPane` 找回路径的停靠校正也要检查返回值**：`btnShowTaskPane` 的「GetTaskPane 找回」分支每次打开也会调用 `setTaskPaneDockPosition(tp)` 重新校正防漂移——与 `createTaskPane()` 内保持一致，校正失败（内部已留痕）时同样补充「窗格仍可用，下次点击将重新校正」增强留痕，不中断可见性切换（下次点击仍会重新校正，有自愈机会）。两处行为统一，避免「创建路径有增强留痕、找回路径静默」的不一致（已实现，`tests/taskpane-dock.test.js` 的「GetTaskPane 找回路径停靠校正失败」用例覆盖）。
+
 ---
 
 ## 五、部署模式

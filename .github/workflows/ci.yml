@@ -44,6 +44,7 @@ jobs:
           node tests/utils.test.js
           node tests/launcher.test.js
           node tests/setcellformat-mac.test.js
+          node tests/taskpane-dock.test.js
 
       # 全量 Jest 测试门禁：9 套件 / 208 个测试（含 unit + integration）
       # 集成测试通过 mock wpsClient 运行，无真实 WPS 环境（CI）也能全绿
