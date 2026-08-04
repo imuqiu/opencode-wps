@@ -195,6 +195,8 @@ function setTaskPaneDockPosition(tskpane) {
 14. **`GetTaskPane` 找回路径的停靠校正也要检查返回值**：`btnShowTaskPane` 的「GetTaskPane 找回」分支每次打开也会调用 `setTaskPaneDockPosition(tp)` 重新校正防漂移——与 `createTaskPane()` 内保持一致，校正失败（内部已留痕）时同样补充「窗格仍可用，下次点击将重新校正」增强留痕，不中断可见性切换（下次点击仍会重新校正，有自愈机会）。两处行为统一，避免「创建路径有增强留痕、找回路径静默」的不一致（已实现，`tests/taskpane-dock.test.js` 的「GetTaskPane 找回路径停靠校正失败」用例覆盖）。
 15. **`DockPosition` 不是头部被遮挡的根因——WebView 首次渲染布局 bug 才是**（Issue #78 复诊结论）：用户实测 PR #79 的 DockPosition 修复后头部仍被遮挡，新建 WPS 标签页再切回即恢复。像素级截图对比显示：任务窗格刚打开时 topbar/session-header 所在区域为空白（flex 布局因 WebView 视口高度计算错误把头部挤出可视区），切换窗口触发宿主重绘后才恢复。三层防御：① `taskpane.html` 的 `html,body` 改用 `position:fixed + inset:0` 直接锚定视口四边（规避 `height:100%` 在部分版本失效）；② 页面内监听 `resize`/`visibilitychange` 并强制 reflow（`forceReflowFix`：隐藏→读 `offsetHeight`→恢复 `.app`）；③ 宿主侧 `main.js` 注册 `AddApiEventListener('WindowActivate')`，切回标签时强制任务窗格 `Visible false→true` 重绘（仅当窗格原本可见时执行，避免把用户关闭的窗格重新弹出来）。`AddApiEventListener` 为官方 SDK（`wps-jsapi` 包 `src/index.d.ts`）声明的标准事件，旧版本不支持时静默降级（已实现，`tests/taskpane-dock.test.js` 的「OnAddinLoad 注册 WindowActivate 重绘监听」等 5 个用例覆盖）。
 
+    **补 DEV 增量（2026-08-04）**：① `forceReflowFix` 在 `.app` 尚未挂载时改为 rAF 链式重试（不再直接 return 丢兜底）；② 新增 `raf` 兼容层，`requestAnimationFrame` 缺失时用 `setTimeout 16ms` 兜底（兼容旧 WebView 内核）；③ 首次渲染触发时机扩展为三路（rAF 首帧前 + `load` 事件 + 300ms/1000ms 定时器），覆盖 WebView 视口高度计算的不同时序；④ 测试新增「taskpane.html 自愈骨架」静态校验用例（`tests/taskpane-dock.test.js` 末尾），防止后续改动删掉任一关键防御结构。
+
 ---
 
 ## 五、部署模式

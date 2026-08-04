@@ -1552,10 +1552,29 @@ function scrollToBottom() { setTimeout(function() { $messages.scrollTop = $messa
     // 现象：任务窗格刚打开时，topbar/session-header 所在区域为空白（flex 布局
     // 因视口高度计算错误把头部挤出可视区）；新建 WPS 标签页/切换窗口触发重排后恢复。
     // 对策：监听 resize / visibilitychange / 容器尺寸变化，强制触发 reflow 修复。
+    var reflowTimer = null;
+    var reflowRafQueued = false;
+    // 兼容旧 WebView 内核：requestAnimationFrame 缺失时用 setTimeout 兜底
+    var raf = (typeof requestAnimationFrame === 'function')
+        ? requestAnimationFrame
+        : function(cb) { setTimeout(cb, 16); };
+    function rafOnce(cb) {
+        raf(function() { cb(); });
+    }
     function forceReflowFix() {
         // 先隐藏再恢复 .app，强制浏览器重排（不闪屏：display 在同步帧内往返）
         var app = document.querySelector('.app');
-        if (!app) return;
+        if (!app) {
+            // .app 尚未挂载（首次渲染早期）：改为由 rAF 链式重试，避免丢兜底
+            if (!reflowRafQueued) {
+                reflowRafQueued = true;
+                rafOnce(function() {
+                    reflowRafQueued = false;
+                    forceReflowFix();
+                });
+            }
+            return;
+        }
         var oldDisplay = app.style.display;
         app.style.display = 'none';
         // 强制同步 reflow
@@ -1563,7 +1582,6 @@ function scrollToBottom() { setTimeout(function() { $messages.scrollTop = $messa
         app.style.display = oldDisplay || '';
         if (CONNECTED) scrollToBottom();
     }
-    var reflowTimer = null;
     function scheduleReflowFix() {
         // 节流：resize 事件高频触发时只重排最后一次
         if (reflowTimer) clearTimeout(reflowTimer);
@@ -1573,7 +1591,16 @@ function scrollToBottom() { setTimeout(function() { $messages.scrollTop = $messa
     document.addEventListener('visibilitychange', function() {
         if (!document.hidden) scheduleReflowFix();
     });
-    // 首次加载完成后延迟重排一次，兜底 WebView 初始视口高度错误
+    // 首次渲染兜底（多时机覆盖 WebView 视口高度计算时序）:
+    // 1) 下一帧（rAF）— 首个可绘制帧前重排；
+    // 2) load 事件 — 资源加载完成后重排；
+    // 3) 定时器 300ms/1000ms — 慢速渲染内核的最终兜底。
+    rafOnce(forceReflowFix);
+    if (document.readyState === 'loading') {
+        window.addEventListener('load', function() { rafOnce(forceReflowFix); });
+    } else {
+        rafOnce(forceReflowFix);
+    }
     setTimeout(function() { forceReflowFix(); }, 300);
     setTimeout(function() { forceReflowFix(); }, 1000);
 })()

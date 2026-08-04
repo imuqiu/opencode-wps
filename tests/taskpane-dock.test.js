@@ -560,6 +560,25 @@ test('forceTaskPaneRedraw：GetTaskPane 抛异常时静默降级（不误弹窗�
   assertTrue(hasError, 'GetTaskPane 抛异常应留痕，实际: ' + JSON.stringify(sandbox.__errorLogs));
 });
 
+test('taskpane.html 自愈骨架：position:fixed 锚定 + forceReflowFix 关键结构存在（Issue #78 复诊）', function () {
+  var html = fs.readFileSync(path.join(__dirname, '..', 'opencode-wps', 'taskpane.html'), 'utf-8');
+  // ① 布局锚定：html,body 必须 position:fixed + inset 四边
+  assertTrue(/html,body\s*\{[^}]*position\s*:\s*fixed[^}]*\}/.test(html), 'html,body 应使用 position:fixed 锚定视口');
+  assertTrue(/html,body\s*\{[^}]*top\s*:\s*0[^}]*left\s*:\s*0[^}]*right\s*:\s*0[^}]*bottom\s*:\s*0[^}]*\}/.test(html), 'html,body 应显式声明 top/left/right/bottom:0（兼容旧内核，不依赖 inset 简写）');
+  // ② 页面自愈：forceReflowFix 必须存在且含强制 reflow（offsetHeight）
+  assertTrue(/function\s+forceReflowFix\s*\(/.test(html), '应存在 forceReflowFix 函数');
+  assertTrue(/offsetHeight/.test(html), 'forceReflowFix 应读取 offsetHeight 强制同步 reflow');
+  // ③ 兼容降级：requestAnimationFrame 缺失时 setTimeout 兜底
+  assertTrue(/typeof\s+requestAnimationFrame\s*===\s*'function'/.test(html), '应检测 requestAnimationFrame 可用性');
+  // ④ 监听 resize / visibilitychange
+  assertTrue(/addEventListener\('resize'/.test(html), '应监听 resize 事件');
+  assertTrue(/addEventListener\('visibilitychange'/.test(html), '应监听 visibilitychange 事件');
+  // ⑤ 首次渲染多时机兜底（rAF + load + 定时器）
+  assertTrue(/rafOnce\s*\(\s*forceReflowFix\s*\)/.test(html), '应通过 rafOnce 在首帧前重排');
+  assertTrue(/addEventListener\('load'/.test(html), '应监听 load 事件兜底重排');
+  assertTrue(/setTimeout\s*\(\s*function\s*\(\s*\)\s*\{\s*forceReflowFix\s*\(\s*\)\s*;?\s*\}\s*,\s*300\s*\)/.test(html), '应保留 300ms 定时器兜底');
+});
+
 // ==================== 测试结果汇总 ====================
 
 console.log('\n========== 测试结果 ==========');
