@@ -13,6 +13,15 @@ jest.mock('../../client/mac-poll-server', () => ({
   },
 }));
 
+// Mock linux-poll-server（Linux 复用 MacPollServer 类，需一并 mock）
+jest.mock('../../client/linux-poll-server', () => ({
+  linuxPollServer: {
+    isRunning: false,
+    start: jest.fn().mockResolvedValue(undefined),
+    executeCommand: jest.fn(),
+  },
+}));
+
 jest.mock('os', () => ({
   platform: jest.fn(() => 'win32'),
 }));
@@ -73,6 +82,8 @@ import * as child_process from 'child_process';
 // 导入被 mock 的模块以操控它
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const mockMacModule = require('../../client/mac-poll-server');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const mockLinuxModule = require('../../client/linux-poll-server');
 
 // 获取 mock 函数 - 使用类型断言
 const mockedOs = os as jest.Mocked<typeof os>;
@@ -124,6 +135,8 @@ describe('WpsClient', () => {
     mockedOs.platform.mockReturnValue('win32');
     mockMacModule.macPollServer.isRunning = false;
     mockMacModule.macPollServer.executeCommand.mockReset();
+    mockLinuxModule.linuxPollServer.isRunning = false;
+    mockLinuxModule.linuxPollServer.executeCommand.mockReset();
   });
 
   describe('构造函数', () => {
@@ -320,6 +333,36 @@ describe('WpsClient', () => {
       const client = new WpsClient();
       const result = await client.createDocument();
       expect(mockMacModule.macPollServer.executeCommand).toHaveBeenCalledWith('createDocument', {});
+      expect(result).toBe(true);
+    });
+  });
+
+  describe('Linux模式', () => {
+    beforeEach(() => {
+      mockedOs.platform.mockReturnValue('linux');
+      mockLinuxModule.linuxPollServer.isRunning = true;
+    });
+
+    it('Linux模式应该使用轮询模式（复用Mac轮询协议）', async () => {
+      mockLinuxModule.linuxPollServer.executeCommand.mockResolvedValue({
+        success: true,
+        data: { value: 42 },
+      });
+      const client = new WpsClient();
+      const result = await client.getCellValue('Sheet1', 1, 1);
+      expect(mockLinuxModule.linuxPollServer.executeCommand).toHaveBeenCalledWith('getCellValue', {
+        sheet: 'Sheet1',
+        row: 1,
+        col: 1,
+      });
+      expect(result).toBe(42);
+    });
+
+    it('Linux模式createDocument应该调用轮询', async () => {
+      mockLinuxModule.linuxPollServer.executeCommand.mockResolvedValue({ success: true });
+      const client = new WpsClient();
+      const result = await client.createDocument();
+      expect(mockLinuxModule.linuxPollServer.executeCommand).toHaveBeenCalledWith('createDocument', {});
       expect(result).toBe(true);
     });
   });

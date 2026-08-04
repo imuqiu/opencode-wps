@@ -265,6 +265,9 @@ interface PendingCommand {
 /**
  * Mac轮询服务器类
  * 处理WPS加载项的轮询请求，实现命令的发送和结果接收
+ *
+ * 平台复用：Linux 版复用本类（通过构造函数传入 Linux 的 wps-auto.sh 路径），
+ * 轮询协议（/poll、/result）与命令分发表完全一致，仅应用切换脚本不同。
  */
 class MacPollServer {
   private server: http.Server | null = null;
@@ -272,6 +275,18 @@ class MacPollServer {
   private currentApp: string = '';
   private _isRunning: boolean = false;
   private port: number = 58891;
+  private switchScriptPath: string;
+
+  /**
+   * @param switchScriptPath 应用切换脚本路径（wps-auto.sh）。
+   *                         默认指向 Mac 版 opencode-wps-assistant/wps-auto.sh；
+   *                         Linux 版传入 opencode-wps-linux/wps-auto.sh。
+   */
+  constructor(switchScriptPath?: string) {
+    this.switchScriptPath =
+      switchScriptPath ||
+      path.join(__dirname, '../../../opencode-wps-assistant/wps-auto.sh');
+  }
 
   get isRunning(): boolean {
     return this._isRunning;
@@ -454,11 +469,11 @@ class MacPollServer {
    * 调用wps-auto.sh脚本自动关闭当前应用并启动目标应用
    */
   private async switchApp(app: string): Promise<void> {
-    // wps-auto.sh脚本路径 - 在opencode-wps-assistant目录下
-    const scriptPath = path.join(__dirname, '../../../opencode-wps-assistant/wps-auto.sh');
+    // wps-auto.sh脚本路径 - 构造时注入（Mac: opencode-wps-assistant；Linux: opencode-wps-linux）
+    const scriptPath = this.switchScriptPath;
 
     return new Promise((resolve, _reject) => {
-      log.info(`[Mac] Executing switch script: ${scriptPath} switch ${app}`);
+      log.info(`[Poll] Executing switch script: ${scriptPath} switch ${app}`);
 
       exec(`"${scriptPath}" switch ${app}`, { timeout: 60000 }, (error, stdout, stderr) => {
         if (error) {

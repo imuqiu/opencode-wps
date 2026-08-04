@@ -26,10 +26,17 @@ import {
 import { log, logRequest, logResponse } from '../utils/logger';
 import { errorUtils } from '../utils/error';
 import { macPollServer } from './mac-poll-server';
+import { linuxPollServer } from './linux-poll-server';
+
+// 平台通道类型：win32(PowerShell COM) / darwin(Mac 轮询桥) / linux(Linux 轮询桥)
+type WpsChannel = 'win32' | 'darwin' | 'linux';
 
 // 平台判断
-function isMacPlatform() {
-  return os.platform() === 'darwin';
+function getWpsChannel(): WpsChannel {
+  const p = os.platform();
+  if (p === 'darwin') return 'darwin';
+  if (p === 'linux') return 'linux';
+  return 'win32';
 }
 
 // PowerShell脚本路径 (Windows)
@@ -57,6 +64,29 @@ async function execMacPoll(action: string, params: Record<string, unknown> = {})
     return result;
   } catch (error) {
     log.error('Mac Poll call failed', { action, error });
+    throw error;
+  }
+}
+
+/**
+ * 执行Linux轮询调用（与Mac同架构，复用MacPollServer，仅注入Linux切换脚本）
+ * 通过轮询服务器发送命令，等待WPS加载项取走并返回结果
+ */
+async function execLinuxPoll(action: string, params: Record<string, unknown> = {}): Promise<unknown> {
+  log.debug('Executing Linux Poll', { action, params });
+
+  try {
+    // 确保轮询服务器已启动
+    if (!linuxPollServer.isRunning) {
+      log.info('[Linux] Starting poll server...');
+      await linuxPollServer.start(MAC_POLL_PORT);
+    }
+
+    // 通过轮询服务器执行命令
+    const result = await linuxPollServer.executeCommand(action, params);
+    return result;
+  } catch (error) {
+    log.error('Linux Poll call failed', { action, error });
     throw error;
   }
 }
@@ -132,12 +162,15 @@ async function execPowerShell(action: string, params: Record<string, unknown> = 
 
 /**
  * 统一执行接口 - 根据平台选择调用方式
- * Mac: 反向轮询模式（MCP Server是服务端，WPS加载项来取命令）
  * Windows: PowerShell调用COM接口
+ * Mac/Linux: 反向轮询模式（MCP Server是服务端，WPS加载项来取命令）
  */
 async function execWpsAction(action: string, params: Record<string, unknown> = {}): Promise<unknown> {
-  if (isMacPlatform()) {
+  const channel = getWpsChannel();
+  if (channel === 'darwin') {
     return execMacPoll(action, params);
+  } else if (channel === 'linux') {
+    return execLinuxPoll(action, params);
   } else {
     return execPowerShell(action, params);
   }
@@ -163,11 +196,11 @@ function getTimeout(action: string): number {
 /**
  * 带超时和重试的WPS调用
  * Windows: 超时时主动 kill PowerShell 进程并记录 PID
- * Mac: Promise.race 快速失败（无法取消 Mac 轮询）
+ * Mac/Linux: Promise.race 快速失败（无法取消轮询）
  */
 async function execWpsActionWithRetry(action: string, params: Record<string, unknown> = {}, maxRetries: number = 3): Promise<unknown> {
   let lastError: Error | null = null;
-  const isWin = !isMacPlatform();
+  const isWin = os.platform() === 'win32';
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
@@ -186,7 +219,7 @@ async function execWpsActionWithRetry(action: string, params: Record<string, unk
         });
         actionPromise = Promise.race([result, timeoutPromise]);
       } else {
-        // Mac: 使用已有 execMacPoll，Promise.race 快速失败
+        // Mac/Linux: 使用已有轮询调用，Promise.race 快速失败
         const timeout = getTimeout(action);
         const timeoutPromise = new Promise((_, reject) => {
           setTimeout(() => reject(new Error('COM 调用超时（' + timeout + 'ms）')), timeout);
@@ -224,7 +257,8 @@ export class WpsClient {
 
   constructor(_config?: Partial<WpsEndpointConfig>) {
     this.status = { connected: false };
-    const method = isMacPlatform() ? 'HTTP (Mac Addon)' : 'PowerShell COM';
+    const channel = getWpsChannel();
+    const method = channel === 'win32' ? 'PowerShell COM' : channel === 'darwin' ? 'HTTP (Mac Addon)' : 'HTTP (Linux Addon)';
     log.info('WPS Client initialized', { method, platform: os.platform() });
   }
 

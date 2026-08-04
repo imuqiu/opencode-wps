@@ -11,6 +11,7 @@ import { exec } from 'child_process';
 import { log } from '../utils/logger';
 
 const IS_MAC = process.platform === 'darwin';
+const IS_LINUX = process.platform === 'linux';
 
 const WPS_SERVICE_URL = 'http://127.0.0.1:58890';
 const CHECK_INTERVAL = 5000; // 5秒检查一次
@@ -48,6 +49,20 @@ function startService(): Promise<void> {
       exec(`open "${STARTUP_PROTOCOL}"`, (error) => {
         if (error) {
           log.error('[Keepalive] Failed to start WPS service on Mac', error);
+        }
+        setTimeout(() => {
+          isStarting = false;
+          resolve();
+        }, 3000);
+      });
+      return;
+    }
+
+    if (IS_LINUX) {
+      // Linux下通过 wps/et/wpp 命令拉起 WPS（启动后会自动加载加载项并连接轮询服务器）
+      exec('nohup wps >/dev/null 2>&1 &', (error) => {
+        if (error) {
+          log.error('[Keepalive] Failed to start WPS service on Linux', error);
         }
         setTimeout(() => {
           isStarting = false;
