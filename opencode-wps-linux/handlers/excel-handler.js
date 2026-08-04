@@ -8,6 +8,29 @@ function getExcelSheet(wb, sheet) {
     return wb.Sheets.Item(sheet);
 }
 
+// 将列号（1-based）转换为 Excel 列字母：1->A, 26->Z, 27->AA, 52->AZ, 703->AAA ...
+function colToLetter(n) {
+    n = parseInt(n, 10);
+    if (isNaN(n) || n < 1) return null;
+    var letters = '';
+    while (n > 0) {
+        var rem = (n - 1) % 26;
+        letters = String.fromCharCode(65 + rem) + letters;
+        n = Math.floor((n - 1) / 26);
+    }
+    return letters;
+}
+
+// 将列参数（数字列号或字母串）统一解析为列字母：1->A, 27->AA, 'AB'->AB；非法返回 null
+function resolveColumnLetter(col) {
+    if (typeof col === 'number') return colToLetter(col);
+    if (typeof col === 'string') {
+        var t = col.trim().toUpperCase();
+        if (/^[A-Z]{1,3}$/.test(t)) return t;
+    }
+    return null;
+}
+
 // 对齐常量（与 Windows wps-com.ps1 的 H_ALIGN_MAP / V_ALIGN_MAP 保持一致）
 var H_ALIGN_MAP = { left: -4131, center: -4108, right: -4152 };
 var V_ALIGN_MAP = { top: -4160, center: -4108, bottom: -4107 };
@@ -577,9 +600,10 @@ registerHandler('insertColumns', function(params) {
         var sheet = Application.ActiveSheet;
         var col = params.column || 1;
         var count = params.count || 1;
-        var colNum = typeof col === 'number' ? col : col.toUpperCase().charCodeAt(0) - 64;
-        var colLetter = typeof col === 'number' ? String.fromCharCode(64 + col) : col.toUpperCase();
-        var endLetter = String.fromCharCode(64 + colNum + count - 1);
+        var colLetter = resolveColumnLetter(col);
+        var colNum = colToNumber(col);
+        var endLetter = colToLetter(colNum + count - 1);
+        if (!colLetter || !endLetter) return fail('无效的列参数: ' + col);
         sheet.Columns(colLetter + ':' + endLetter).Insert();
         return ok({});
     } catch (e) {
@@ -592,9 +616,10 @@ registerHandler('deleteColumns', function(params) {
         var sheet = Application.ActiveSheet;
         var col = params.column || 1;
         var count = params.count || 1;
-        var colNum = typeof col === 'number' ? col : col.toUpperCase().charCodeAt(0) - 64;
-        var colLetter = typeof col === 'number' ? String.fromCharCode(64 + col) : col.toUpperCase();
-        var endLetter = String.fromCharCode(64 + colNum + count - 1);
+        var colLetter = resolveColumnLetter(col);
+        var colNum = colToNumber(col);
+        var endLetter = colToLetter(colNum + count - 1);
+        if (!colLetter || !endLetter) return fail('无效的列参数: ' + col);
         sheet.Columns(colLetter + ':' + endLetter).Delete();
         return ok({});
     } catch (e) {
@@ -615,7 +640,8 @@ registerHandler('hideRows', function(params) {
 registerHandler('hideColumns', function(params) {
     try {
         var sheet = Application.ActiveSheet;
-        var col = typeof params.column === 'number' ? String.fromCharCode(64 + params.column) : params.column;
+        var col = resolveColumnLetter(params.column);
+        if (!col) return fail('无效的列参数: ' + params.column);
         sheet.Columns(col).Hidden = true;
         return ok({});
     } catch (e) {
@@ -636,7 +662,8 @@ registerHandler('showRows', function(params) {
 registerHandler('showColumns', function(params) {
     try {
         var sheet = Application.ActiveSheet;
-        var col = typeof params.column === 'number' ? String.fromCharCode(64 + params.column) : params.column;
+        var col = resolveColumnLetter(params.column);
+        if (!col) return fail('无效的列参数: ' + params.column);
         sheet.Columns(col).Hidden = false;
         return ok({});
     } catch (e) {
@@ -1060,8 +1087,11 @@ registerHandler('groupRows', function(params) {
 registerHandler('groupColumns', function(params) {
     try {
         var sheet = Application.ActiveSheet;
-        var col = typeof params.column === 'number' ? String.fromCharCode(64 + params.column) : params.column;
-        var range = sheet.Range(col + ':' + String.fromCharCode(64 + params.column + (params.count || 1) - 1));
+        var col = resolveColumnLetter(params.column);
+        var colNum = colToNumber(params.column);
+        var endLetter = colToLetter(colNum + (params.count || 1) - 1);
+        if (!col || !endLetter) return fail('无效的列参数: ' + params.column);
+        var range = sheet.Range(col + ':' + endLetter);
         range.Group();
         return ok({});
     } catch (e) {

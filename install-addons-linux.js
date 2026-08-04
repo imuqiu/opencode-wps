@@ -194,24 +194,37 @@ if (fsEx.existsSync(mcpEntryPath)) {
         try {
             const raw = fs.readFileSync(opencodeConfigPath, 'utf-8');
             const existing = JSON.parse(raw.replace(/^\uFEFF/, ''));
+            // 深合并：以模板为源、用户已有配置为目标，保留用户对其它 mcp 条目的自定义配置
+            // （数组采用 concat 合并去重，避免覆盖用户已有配置）
             function deepMerge(target, source) {
                 for (var key in source) {
                     if (source.hasOwnProperty(key)) {
                         if (Array.isArray(source[key])) {
-                            target[key] = source[key].slice();
+                            if (!target[key] || !Array.isArray(target[key])) {
+                                target[key] = [];
+                            }
+                            source[key].forEach(function(item) {
+                                if (target[key].indexOf(item) === -1) {
+                                    target[key].push(item);
+                                }
+                            });
                         } else if (typeof source[key] === 'object' && source[key] !== null && !Array.isArray(source[key])) {
                             if (!target[key] || typeof target[key] !== 'object' || Array.isArray(target[key])) {
                                 target[key] = {};
                             }
                             deepMerge(target[key], source[key]);
                         } else {
-                            target[key] = source[key];
+                            // 用户已有值优先，模板值兜底
+                            if (target[key] === undefined) {
+                                target[key] = source[key];
+                            }
                         }
                     }
                 }
             }
-            deepMerge(config, existing);
-            console.log('  已合并已有配置');
+            deepMerge(existing, config);
+            config = existing;
+            console.log('  已合并已有配置（用户配置优先）');
         } catch (e) {
             console.log('  [警告] 无法合并已有配置: ' + e.message);
         }

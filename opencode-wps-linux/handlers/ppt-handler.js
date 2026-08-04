@@ -1032,7 +1032,13 @@ registerHandler('addArrow', function(params) {
         if (!pres) return fail('没有打开的演示文稿');
         var idx = params.slideIndex || 1;
         var slide = pres.Slides.Item(idx);
-        var shape = slide.Shapes.AddShape(13, params.startX || 100, params.startY || 100, params.endX || 200, params.endY || 100);
+        var startX = params.startX || 100;
+        var startY = params.startY || 100;
+        var endX = params.endX !== undefined ? params.endX : 200;
+        var endY = params.endY !== undefined ? params.endY : 100;
+        var width = Math.abs(endX - startX) || 100;
+        var height = Math.abs(endY - startY) || 20;
+        var shape = slide.Shapes.AddShape(33, Math.min(startX, endX), Math.min(startY, endY), width, height);
         return ok({ shapeName: shape.Name });
     } catch (e) {
         return fail('添加箭头失败: ' + e.message);
@@ -1396,8 +1402,15 @@ registerHandler('setShapeRoundness', function(params) {
         var slide = pres.Slides.Item(idx);
         var shapeName = params.shapeName || params.name;
         for (var j = 1; j <= slide.Shapes.Count; j++) {
-            if (slide.Shapes.Item(j).Name === shapeName) {
-                try { slide.Shapes.Item(j).Adjustments.Item(1, params.roundness || 0.2); } catch (adjE) {}
+            var s = slide.Shapes.Item(j);
+            if (s.Name === shapeName) {
+                // 仅圆角矩形（msoShapeRoundedRectangle=5）支持圆角调整，其它形状无 Adjustments 或类型不匹配
+                if (s.Type !== 5 && s.AutoShapeType !== 5) {
+                    return fail('仅支持对圆角矩形设置圆角，当前形状类型: ' + s.Type);
+                }
+                try { s.Adjustments.Item(1) = params.roundness || 0.2; } catch (adjE) {
+                    return fail('设置圆角失败: ' + adjE.message);
+                }
                 return ok({});
             }
         }

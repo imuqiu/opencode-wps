@@ -12,6 +12,15 @@ create_blank_file() {
     local file_type=$1
     local file_path="/tmp/opencode_auto_blank"
 
+    # 前置检查：需要 python3 生成 OOXML 文件；缺失时返回空（调用方回退无参启动）
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "[WPS-Auto] 警告: 未找到 python3，无法生成空白 Office 文件" >&2
+        return 1
+    fi
+
+    # 清理旧临时文件，避免 /tmp 累积
+    rm -f "${file_path}.xlsx" "${file_path}.docx" "${file_path}.pptx"
+
     case $file_type in
         "xlsx")
             python3 -c "
@@ -94,9 +103,19 @@ start_app() {
 
     # 优先使用 WPS 原生命令；不存在时回退 xdg-open
     if command -v "$app_cmd" >/dev/null 2>&1; then
-        nohup "$app_cmd" "$file_path" >/dev/null 2>&1 &
+        if [ -n "$file_path" ] && [ -f "$file_path" ]; then
+            nohup "$app_cmd" "$file_path" >/dev/null 2>&1 &
+        else
+            # 无 python3 或生成失败：直接以无参方式启动 WPS（新建空白文档）
+            nohup "$app_cmd" >/dev/null 2>&1 &
+        fi
     elif command -v xdg-open >/dev/null 2>&1; then
-        nohup xdg-open "$file_path" >/dev/null 2>&1 &
+        if [ -n "$file_path" ] && [ -f "$file_path" ]; then
+            nohup xdg-open "$file_path" >/dev/null 2>&1 &
+        else
+            echo "[WPS-Auto] 未生成空白文件且无 python3，无法用 xdg-open 启动: $app_cmd"
+            return 1
+        fi
     else
         echo "[WPS-Auto] 未找到启动命令: $app_cmd / xdg-open"
         return 1
