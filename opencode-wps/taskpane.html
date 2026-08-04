@@ -1554,6 +1554,13 @@ function scrollToBottom() { setTimeout(function() { $messages.scrollTop = $messa
     // 对策：监听 resize / visibilitychange / 容器尺寸变化，强制触发 reflow 修复。
     var reflowTimer = null;
     var reflowRafQueued = false;
+    // 重排修复状态位：布局已正常后不再重复强制重排（避免 300ms/1000ms 定时器对
+    // 正常布局反复闪屏）；仅当头部可能被挤出可视区时才执行修复。
+    var reflowFixed = false;
+    // rAF 链式重试上限：.app 缺失时最多重试 10 次（≈166ms）后放弃，
+    // 避免 HTML 结构异常时每帧空转无限占 CPU。
+    var reflowRetryMax = 10;
+    var reflowRetryCount = 0;
     // 兼容旧 WebView 内核：requestAnimationFrame 缺失时用 setTimeout 兜底
     var raf = (typeof requestAnimationFrame === 'function')
         ? requestAnimationFrame
@@ -1562,12 +1569,15 @@ function scrollToBottom() { setTimeout(function() { $messages.scrollTop = $messa
         raf(function() { cb(); });
     }
     function forceReflowFix() {
-        // 先隐藏再恢复 .app，强制浏览器重排（不闪屏：display 在同步帧内往返）
+        // 已确认布局正常（此前修复过且容器尺寸未再变化）→ 跳过，避免闪屏
+        if (reflowFixed) return;
         var app = document.querySelector('.app');
         if (!app) {
-            // .app 尚未挂载（首次渲染早期）：改为由 rAF 链式重试，避免丢兜底
-            if (!reflowRafQueued) {
+            // .app 尚未挂载（首次渲染早期）：由 rAF 链式重试，避免丢兜底；
+            // 超过重试上限后放弃（防止 HTML 结构异常时无限空转）
+            if (!reflowRafQueued && reflowRetryCount < reflowRetryMax) {
                 reflowRafQueued = true;
+                reflowRetryCount++;
                 rafOnce(function() {
                     reflowRafQueued = false;
                     forceReflowFix();
@@ -1575,17 +1585,24 @@ function scrollToBottom() { setTimeout(function() { $messages.scrollTop = $messa
             }
             return;
         }
+        // 廉价预检：布局已正常（文档未超出视口）时标记已修复，不再强制重排闪屏
+        if (document.documentElement.scrollHeight <= window.innerHeight) {
+            reflowFixed = true;
+            return;
+        }
         var oldDisplay = app.style.display;
         app.style.display = 'none';
         // 强制同步 reflow
         void app.offsetHeight;
         app.style.display = oldDisplay || '';
+        reflowFixed = true;
         if (CONNECTED) scrollToBottom();
     }
     function scheduleReflowFix() {
-        // 节流：resize 事件高频触发时只重排最后一次
+        // 节流：resize 事件高频触发时只重排最后一次；容器尺寸变化时
+        // 重置已修复状态，允许再次自愈（切窗口后视口可能变化）
         if (reflowTimer) clearTimeout(reflowTimer);
-        reflowTimer = setTimeout(function() { reflowTimer = null; forceReflowFix(); }, 100);
+        reflowTimer = setTimeout(function() { reflowTimer = null; reflowFixed = false; forceReflowFix(); }, 100);
     }
     window.addEventListener('resize', scheduleReflowFix);
     document.addEventListener('visibilitychange', function() {

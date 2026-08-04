@@ -309,18 +309,35 @@ function OnAddinLoad(ribbonUI) {
 // 强制重绘任务窗格：Visible false→true（仅当当前可见时），
 // 触发 WPS 宿主对 WebView 的重新布局/重绘，修复头部被挤出可视区的首次渲染 bug。
 // 窗格不存在或不可见时不执行——避免把用户主动关闭的窗格重新弹出来。
+// 隐藏→显示拆成两步（中间 setTimeout 让出宿主事件循环）：
+// 同一同步代码块内连续置位可能被 WPS 宿主合并处理，重绘实际不生效。
 function forceTaskPaneRedraw() {
+    var tsId = ""
     try {
-        var tsId = window.Application.PluginStorage.getItem("taskpane_id") || taskpaneIdCache || ""
-        if (!tsId) return
+        // getItem 与 OnAction 路径同源同概率抛异常（插件初始化未完成）：
+        // 单独 try/catch 留痕后继续用内存兜底，避免整个函数被拖入失败分支
+        tsId = window.Application.PluginStorage.getItem("taskpane_id") || taskpaneIdCache || ""
+    } catch (e) {
+        console.error('[WPS] 读取 taskpane_id 失败: ' + errMsg(e))
+        tsId = taskpaneIdCache || ""
+    }
+    if (!tsId) return
+    try {
         var tp = window.Application.GetTaskPane(tsId)
         if (!tp || !tp.Visible) return
         // 停靠位置重新校正（防漂移）
         setTaskPaneDockPosition(tp)
-        // 先隐藏再显示，强制 WebView 重新布局
+        // 先隐藏再显示，强制 WebView 重新布局；两步间让出宿主事件循环，
+        // 确保 WPS 宿主真的执行隐藏→重排→显示流程（而非合并两次属性写入）
         tp.Visible = false
-        tp.Visible = true
-        console.log('[WPS] 任务窗格已强制重绘（WindowActivate 触发布局修复）')
+        setTimeout(function() {
+            try {
+                if (window.Application.GetTaskPane(tsId)) tp.Visible = true
+                console.log('[WPS] 任务窗格已强制重绘（WindowActivate 触发布局修复）')
+            } catch (e) {
+                console.error('[WPS] 恢复任务窗格可见失败: ' + errMsg(e))
+            }
+        }, 80)
     } catch (e) {
         console.error('[WPS] 强制重绘任务窗格失败: ' + errMsg(e))
     }

@@ -66,6 +66,9 @@ function assertEqual(actual, expected, msg) {
 function loadMainJs(appMock) {
   var src = fs.readFileSync(MAIN_JS, 'utf-8');
   var errorLogs = [];
+  // 记录 setTimeout 回调：生产代码用 setTimeout 做异步两步（隐藏→显示），
+  // 测试环境不自动执行（避免时序依赖），由用例手动 flush（__flushTimeouts）
+  var timeoutQueue = [];
   var sandbox = {
     window: {
       Application: appMock,
@@ -79,13 +82,23 @@ function loadMainJs(appMock) {
     alert: function () {},
     setInterval: function () { return 0; },
     clearInterval: function () {},
-    setTimeout: function () {},
+    setTimeout: function (cb) { timeoutQueue.push(cb); return timeoutQueue.length; },
     XMLHttpRequest: function () {
       this.open = function () {};
       this.send = function () {};
       this.setRequestHeader = function () {};
     },
-    __errorLogs: errorLogs
+    __errorLogs: errorLogs,
+    // 手动执行已排队的 setTimeout 回调（按 FIFO），返回执行次数
+    __flushTimeouts: function () {
+      var n = 0;
+      while (timeoutQueue.length) {
+        var cb = timeoutQueue.shift();
+        cb();
+        n++;
+      }
+      return n;
+    }
   };
   vm.createContext(sandbox);
   vm.runInContext(src, sandbox, { filename: MAIN_JS });
@@ -507,7 +520,7 @@ test('OnAddinLoad 注册 WindowActivate 时旧版本无 AddApiEventListener 应�
   assertTrue(!hasWarn, '无 AddApiEventListener 时不应报注册失败，实际: ' + JSON.stringify(sandbox.__errorLogs));
 });
 
-test('forceTaskPaneRedraw：窗格可见时 false→true 重绘并重新校正停靠', function () {
+test('forceTaskPaneRedraw：窗格可见时异步两步 false→true 重绘并重新校正停靠', function () {
   var pane = { ID: 'tp-redraw', DockPosition: 0, Visible: true };
   var visibleLog = [];
   Object.defineProperty(pane, 'Visible', {
@@ -524,10 +537,15 @@ test('forceTaskPaneRedraw：窗格可见时 false→true 重绘并重新校正�
   };
   var sandbox = loadMainJs(appMock);
   sandbox.forceTaskPaneRedraw();
-  assertEqual(visibleLog.length, 2, '应执行 false→true 两次置位，实际: ' + JSON.stringify(visibleLog));
+  // 第一步同步：先隐藏（false 置位立即生效）
+  assertEqual(visibleLog.length, 1, '同步阶段应先隐藏一次，实际: ' + JSON.stringify(visibleLog));
   assertEqual(visibleLog[0], false, '第一次应先隐藏');
-  assertEqual(visibleLog[1], true, '第二次再显示');
   assertEqual(pane.DockPosition, 2, '重绘时应重新校正 DockPosition 为 Right(2)');
+  // 第二步异步（setTimeout 80ms）：恢复可见，隐藏→显示间让出宿主事件循环
+  var flushed = sandbox.__flushTimeouts();
+  assertTrue(flushed >= 1, '应存在待执行的 setTimeout 回调，实际 flush ' + flushed + ' 个');
+  assertEqual(visibleLog.length, 2, 'flush 后应恢复显示，实际: ' + JSON.stringify(visibleLog));
+  assertEqual(visibleLog[1], true, '第二次再显示');
 });
 
 test('forceTaskPaneRedraw：窗格不存在/不可见时不误显示（不把用户关闭的窗格弹出）', function () {
