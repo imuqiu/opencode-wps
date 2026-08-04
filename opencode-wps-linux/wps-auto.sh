@@ -130,7 +130,25 @@ switch_to() {
         echo "[WPS-Auto] 切换失败: 未知应用 $target" >&2
         return 1
     fi
-    sleep 3
+    # 就绪确认：轮询等待目标应用进程存活（最多 10s），避免固定 sleep 3 在慢速机器上
+    # WPS 加载项还没连接时 MCP 命令就已发出（导致 30s 超时）
+    # target 是 excel/word/ppt（或 et/wps/wpp），需映射到进程名
+    local proc_name="$target"
+    case "$target" in
+        "excel") proc_name="et" ;;
+        "word") proc_name="wps" ;;
+        "ppt") proc_name="wpp" ;;
+    esac
+    local waited=0
+    while [ $waited -lt 10 ]; do
+        if pgrep -x "$proc_name" >/dev/null 2>&1; then
+            break
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+    # 目标命令名与进程名可能不同（如 wps 命令→wpsoffice 进程），再兜底等 2s 让加载项初始化
+    sleep 2
 }
 
 case $1 in

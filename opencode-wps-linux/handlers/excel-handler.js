@@ -877,8 +877,16 @@ registerHandler('addConditionalFormat', function(params) {
     try {
         var sheet = Application.ActiveSheet;
         var range = sheet.Range(params.range);
+        // 前置校验：条件格式公式必填，避免 undefined 传参抛费解错误
+        if (!params.formula) return fail('缺少 formula（条件格式判断公式）');
+        // FormatConditions.Add(Type=1 xlExpression, Operator=2 xlBetween, Formula1=1?, Formula2=formula)
         var fc = range.FormatConditions.Add(1, 2, 1, params.formula);
-        fc.Interior.Color = params.color || 0xFF0000;
+        // 颜色统一走 toExcelColor 转换（支持 #RRGGBB/RRGGBB/数字），与 setBorder/setCellFormat/setCellStyle 一致
+        if (params.color !== undefined) {
+            var cc = toExcelColor(params.color);
+            if (cc === null) return fail('无效的条件格式颜色: ' + params.color + '，支持 #RRGGBB/RRGGBB/数字');
+            fc.Interior.Color = cc;
+        }
         return ok({});
     } catch (e) {
         return fail('添加条件格式失败: ' + e.message);
@@ -968,7 +976,11 @@ registerHandler('setCellStyle', function(params) {
             var bg = toExcelColor(params.backgroundColor);
             if (bg !== null) range.Interior.Color = bg;
         }
-        if (params.horizontalAlignment !== undefined) range.HorizontalAlignment = params.horizontalAlignment;
+        // 与 setCellFormat 对齐：对齐值统一走 resolveAlignment 转换（支持 "left"/"center"/"right" 字符串与数字常量）
+        if (params.horizontalAlignment !== undefined) {
+            var hv = resolveAlignment(params.horizontalAlignment, H_ALIGN_MAP);
+            if (hv !== null) range.HorizontalAlignment = hv;
+        }
         return ok({});
     } catch (e) {
         return fail('设置单元格样式失败: ' + e.message);

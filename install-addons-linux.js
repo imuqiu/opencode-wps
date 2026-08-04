@@ -315,10 +315,15 @@ if (fsEx.existsSync(mcpEntryPath)) {
     replacePlaceholders(config);
 
     if (!config.mcp) config.mcp = {};
-    config.mcp[mcpServer.name] = {
-        command: ['node', mcpEntryPath],
-        type: 'local'
-    };
+    // 仅当用户没有自定义 wps-office 条目时才写入，避免绕过 deepMerge 覆盖用户已有配置（自定义 command/env 等）
+    if (config.mcp[mcpServer.name]) {
+        console.log('  [跳过] 用户已有 ' + mcpServer.name + ' MCP 配置，保留用户自定义（如需覆盖请手动编辑 ' + opencodeConfigPath + '）');
+    } else {
+        config.mcp[mcpServer.name] = {
+            command: ['node', mcpEntryPath],
+            type: 'local'
+        };
+    }
 
     fs.writeFileSync(opencodeConfigPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
     console.log('  已配置 MCP 服务器: ' + mcpServer.name);
