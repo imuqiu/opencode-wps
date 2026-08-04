@@ -1613,6 +1613,10 @@ function scrollToBottom() { setTimeout(function() { $messages.scrollTop = $messa
                 return;
             }
         }
+        // 用户在输入时不做强制重排：display:none 会移除再恢复输入框，
+        // WPS Chromium（103）下导致输入框失焦、光标丢失，打断正在输入的内容
+        var inputBox = document.getElementById('input-box');
+        if (inputBox && document.activeElement === inputBox) return;
         var oldDisplay = app.style.display;
         app.style.display = 'none';
         // 强制同步 reflow
@@ -1629,7 +1633,12 @@ function scrollToBottom() { setTimeout(function() { $messages.scrollTop = $messa
             }
         }
         reflowFixed = reflowOk;
-        if (CONNECTED) scrollToBottom();
+        // 重排确实修复了头部且用户消息列表不在底部时才滚动：
+        // 尊重用户查看历史消息的位置，避免自愈强行把滚动条拉回底部打断阅读
+        if (CONNECTED && reflowOk && $messages) {
+            var nearBottom = ($messages.scrollTop + $messages.clientHeight >= $messages.scrollHeight - 50);
+            if (nearBottom) scrollToBottom();
+        }
     }
     function scheduleReflowFix() {
         // 节流：resize 事件高频触发时只重排最后一次；容器尺寸变化时

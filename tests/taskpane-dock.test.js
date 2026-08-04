@@ -712,6 +712,10 @@ test('taskpane.html 自愈骨架：position:fixed 锚定 + forceReflowFix 关键
   // ⑧ showChat 主动调度自愈（window.__scheduleReflowFix）
   assertTrue(/window\.__scheduleReflowFix/.test(html), '应暴露 __scheduleReflowFix 供 showChat 调用');
   assertTrue(/__scheduleReflowFix\(\)/.test(html), 'showChat 应主动调度自愈');
+  // ⑨ 用户在输入时跳过强制重排（避免 display:none 导致输入框失焦丢光标）
+  assertTrue(/activeElement\s*===\s*inputBox/.test(html), '输入框聚焦时 forceReflowFix 应跳过');
+  // ⑩ 滚动位置尊重：仅用户消息列表在底部时才滚动
+  assertTrue(/nearBottom/.test(html), '应检查用户是否在消息列表底部再决定是否滚动');
 });
 
 // ==================== 测试结果汇总 ====================

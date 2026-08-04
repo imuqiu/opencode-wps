@@ -319,6 +319,8 @@ var taskPaneRedrawPending = false
 var lastUserTaskPaneAction = 0
 function forceTaskPaneRedraw() {
     var tsId = ""
+    // 重绘开始时间戳提前到函数开头：确保读取窗格期间及之后任何用户操作都被捕获
+    var redrawStartTime = Date.now()
     try {
         // getItem 与 OnAction 路径同源同概率抛异常（插件初始化未完成）：
         // 单独 try/catch 留痕后继续用内存兜底，避免整个函数被拖入失败分支
@@ -339,14 +341,14 @@ function forceTaskPaneRedraw() {
         // 确保 WPS 宿主真的执行隐藏→重排→显示流程（而非合并两次属性写入）。
         // 恢复延迟 150ms：慢速环境宿主完成隐藏→重排耗时不定，80ms 可能过早
         // 导致重绘不完整；页面侧 visibilitychange/resize 自愈会兜底最终布局
-        var redrawStartTime = Date.now()
         taskPaneRedrawPending = true
         tp.Visible = false
         setTimeout(function() {
             taskPaneRedrawPending = false
             try {
-                // 重绘期间用户手动操作过窗格（如点按钮关闭）→ 尊重用户意图，放弃恢复
-                if (lastUserTaskPaneAction > redrawStartTime) return
+                // 重绘期间用户手动操作过窗格（如点按钮关闭）→ 尊重用户意图，放弃恢复；
+                // 用 >= 覆盖同毫秒边界（用户操作与重绘开始同毫秒时也不能误恢复）
+                if (lastUserTaskPaneAction >= redrawStartTime) return
                 var cur = window.Application.GetTaskPane(tsId)
                 if (!cur) return          // 窗格已销毁：放弃恢复
                 if (cur.Visible) return   // 已被外部恢复（用户重新打开等）：不重复置位
