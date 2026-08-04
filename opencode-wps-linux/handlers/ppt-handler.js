@@ -14,6 +14,20 @@ function getPPT() {
     return Application.ActivePresentation;
 }
 
+// 将颜色参数解析为整型 RGB：支持 #RRGGBB、RRGGBB、RGB 简写；数字直接返回；非法返回 null
+// （与 excel-handler 的 toExcelColor 语义对称，供 PPT COM 的 ForeColor.RGB 赋值使用）
+function toRgb(color) {
+    if (typeof color === 'number') return color;
+    if (typeof color !== 'string') return null;
+    var hex = color.trim();
+    if (hex.charAt(0) === '#') hex = hex.substring(1);
+    if (hex.length === 3) {
+        hex = hex.charAt(0) + hex.charAt(0) + hex.charAt(1) + hex.charAt(1) + hex.charAt(2) + hex.charAt(2);
+    }
+    if (!/^[0-9a-fA-F]{6}$/.test(hex)) return null;
+    return parseInt(hex, 16);
+}
+
 registerHandler('getActivePresentation', function(params) {
     try {
         var pres = getPPT();
@@ -263,13 +277,17 @@ registerHandler('setSlideContent', function(params) {
         var count = 0;
         for (var j = 1; j <= slide.Shapes.Count; j++) {
             var s = slide.Shapes.Item(j);
-            if (s.HasTextFrame) {
-                if (j === 1 && slide.Shapes.HasTitle) continue;
-                if (s.TextFrame.TextRange.Text) {
-                    s.TextFrame.TextRange.Text = params.content || '';
-                    count++;
-                    break;
-                }
+            if (!s.HasTextFrame) continue;
+            // 跳过标题占位符（ppPlaceholderTitle=13 / ppPlaceholderCenterTitle=14），
+            // 不能用 j===1 序号判断（标题形状不一定在索引 1）
+            try {
+                var pf = s.PlaceholderFormat;
+                if (pf && (pf.Type === 13 || pf.Type === 14)) continue;
+            } catch (e) {}
+            if (s.TextFrame.TextRange.Text) {
+                s.TextFrame.TextRange.Text = params.content || '';
+                count++;
+                break;
             }
         }
         return ok({ updated: count > 0 });
@@ -479,9 +497,17 @@ registerHandler('setShapeStyle', function(params) {
         for (var j = 1; j <= slide.Shapes.Count; j++) {
             var s = slide.Shapes.Item(j);
             if (s.Name === shapeName) {
-                if (params.fillColor) s.Fill.ForeColor.RGB = params.fillColor;
-                if (params.fillColor && !s.Fill.Visible) s.Fill.Visible = 1;
-                if (params.lineColor) s.Line.ForeColor.RGB = params.lineColor;
+                if (params.fillColor) {
+                    var fc = toRgb(params.fillColor);
+                    if (fc === null) return fail('无效的填充颜色: ' + params.fillColor);
+                    s.Fill.ForeColor.RGB = fc;
+                    if (!s.Fill.Visible) s.Fill.Visible = 1;
+                }
+                if (params.lineColor) {
+                    var lc = toRgb(params.lineColor);
+                    if (lc === null) return fail('无效的线条颜色: ' + params.lineColor);
+                    s.Line.ForeColor.RGB = lc;
+                }
                 return ok({});
             }
         }
@@ -502,7 +528,11 @@ registerHandler('setShapeBorder', function(params) {
             var s = slide.Shapes.Item(j);
             if (s.Name === shapeName) {
                 s.Line.Visible = 1;
-                if (params.color) s.Line.ForeColor.RGB = params.color;
+                if (params.color) {
+                    var lc = toRgb(params.color);
+                    if (lc === null) return fail('无效的边框颜色: ' + params.color);
+                    s.Line.ForeColor.RGB = lc;
+                }
                 if (params.weight) s.Line.Weight = params.weight;
                 return ok({});
             }
@@ -672,7 +702,9 @@ registerHandler('setSlideBackground', function(params) {
         var slide = pres.Slides.Item(idx);
         if (params.color !== undefined) {
             slide.FollowMasterBackground = 0;
-            slide.Background.Fill.ForeColor.RGB = params.color;
+            var bg = toRgb(params.color);
+            if (bg === null) return fail('无效的背景颜色: ' + params.color);
+            slide.Background.Fill.ForeColor.RGB = bg;
             slide.Background.Fill.Visible = 1;
         }
         if (params.imagePath || params.path) {
@@ -1043,6 +1075,8 @@ registerHandler('autoLayout', function(params) {
                 count++;
             }
         }
+        // 空白幻灯片（无有效形状）直接返回，避免 Shapes.Item(1) 越界
+        if (count === 0) return ok({ layouted: 0 });
         var spacing = (slide.Shapes.Item(1).Width - totalW) / (count + 1);
         if (spacing < 10) spacing = 10;
         var curX = spacing;
@@ -1279,7 +1313,9 @@ registerHandler('setMasterBackground', function(params) {
         if (!pres) return fail('没有打开的演示文稿');
         var master = pres.SlideMaster;
         if (params.color !== undefined) {
-            master.Background.Fill.ForeColor.RGB = params.color;
+            var bg = toRgb(params.color);
+            if (bg === null) return fail('无效的背景颜色: ' + params.color);
+            master.Background.Fill.ForeColor.RGB = bg;
             master.Background.Fill.Visible = 1;
         }
         return ok({});
@@ -1338,7 +1374,12 @@ registerHandler('setImageStyle', function(params) {
             if (s.Name === shapeName) {
                 if (params.width !== undefined) s.Width = params.width;
                 if (params.height !== undefined) s.Height = params.height;
-                if (params.borderColor) { s.Line.Visible = 1; s.Line.ForeColor.RGB = params.borderColor; }
+                if (params.borderColor) {
+                    var bc = toRgb(params.borderColor);
+                    if (bc === null) return fail('无效的边框颜色: ' + params.borderColor);
+                    s.Line.Visible = 1;
+                    s.Line.ForeColor.RGB = bc;
+                }
                 if (params.borderWidth) s.Line.Weight = params.borderWidth;
                 return ok({});
             }
@@ -1367,7 +1408,7 @@ registerHandler('setBackgroundColor', function(params) {
         var idx = params.slideIndex || 1;
         var slide = pres.Slides.Item(idx);
         slide.FollowMasterBackground = 0;
-        slide.Background.Fill.ForeColor.RGB = params.color !== undefined ? params.color : 0xFFFFFF;
+        slide.Background.Fill.ForeColor.RGB = params.color !== undefined ? toRgb(params.color) || 0xFFFFFF : 0xFFFFFF;
         slide.Background.Fill.Visible = 1;
         return ok({});
     } catch (e) {
@@ -1435,8 +1476,18 @@ registerHandler('setShapeFullStyle', function(params) {
         for (var j = 1; j <= slide.Shapes.Count; j++) {
             var s = slide.Shapes.Item(j);
             if (s.Name === shapeName) {
-                if (params.fillColor) { s.Fill.ForeColor.RGB = params.fillColor; s.Fill.Visible = 1; }
-                if (params.lineColor) { s.Line.ForeColor.RGB = params.lineColor; s.Line.Visible = 1; }
+                if (params.fillColor) {
+                    var fc = toRgb(params.fillColor);
+                    if (fc === null) return fail('无效的填充颜色: ' + params.fillColor);
+                    s.Fill.ForeColor.RGB = fc;
+                    s.Fill.Visible = 1;
+                }
+                if (params.lineColor) {
+                    var lc = toRgb(params.lineColor);
+                    if (lc === null) return fail('无效的线条颜色: ' + params.lineColor);
+                    s.Line.ForeColor.RGB = lc;
+                    s.Line.Visible = 1;
+                }
                 if (params.lineWeight) s.Line.Weight = params.lineWeight;
                 if (params.shadow) { s.Shadow.Visible = 1; }
                 return ok({});
@@ -1462,7 +1513,9 @@ registerHandler('setShapeRoundness', function(params) {
                 if (s.Type !== 5 && s.AutoShapeType !== 5) {
                     return fail('仅支持对圆角矩形设置圆角，当前形状类型: ' + s.Type);
                 }
-                try { s.Adjustments.Item(1) = params.roundness || 0.2; } catch (adjE) {
+                // WPS JSAPI 写法：Item(索引, 值) 传第二参数（与 Mac 版 opencode-wps-assistant 一致），
+                // 不能用 Item(1) = value 赋值（那是 VBA 语法，JS 运行时必报 Invalid left-hand side）
+                try { s.Adjustments.Item(1, params.roundness || 0.2); } catch (adjE) {
                     return fail('设置圆角失败: ' + adjE.message);
                 }
                 return ok({});
@@ -1474,10 +1527,6 @@ registerHandler('setShapeRoundness', function(params) {
     }
 });
 
-function toBgr(rgb) {
-    return ((rgb & 0xFF) << 16) | (rgb & 0xFF00) | ((rgb >> 16) & 0xFF);
-}
-
 registerHandler('setFontColor', function(params) {
     try {
         var pres = Application.ActivePresentation;
@@ -1487,7 +1536,9 @@ registerHandler('setFontColor', function(params) {
         var shape = findShape(slide, params.shapeIndex !== undefined ? params.shapeIndex : params.shapeName);
         if (!shape) return fail('未找到形状');
         var textRange = shape.TextFrame.TextRange;
-        var color = typeof params.color === 'number' ? params.color : toBgr(parseInt(('' + params.color).replace(/^#/, ''), 16));
+        // PPT ForeColor.RGB 需要 RGB 顺序（非 BGR），统一走 toRgb（数字直返/字符串解析/非法 fail）
+        var color = toRgb(params.color);
+        if (color === null) return fail('无效的颜色值: ' + params.color + '，支持 #RRGGBB/RRGGBB/数字');
         textRange.Font.Color.RGB = color;
         if (params.size) textRange.Font.Size = params.size;
         if (params.bold !== undefined) textRange.Font.Bold = params.bold;
@@ -1520,7 +1571,8 @@ registerHandler('setShapeFill', function(params) {
         var shape = findShape(slide, params.shapeIndex !== undefined ? params.shapeIndex : params.shapeName);
         if (!shape) return fail('未找到形状');
         if (params.fillColor !== undefined) {
-            var color = typeof params.fillColor === 'number' ? params.fillColor : toBgr(parseInt(('' + params.fillColor).replace(/^#/, ''), 16));
+            var color = toRgb(params.fillColor);
+            if (color === null) return fail('无效的填充颜色: ' + params.fillColor + '，支持 #RRGGBB/RRGGBB/数字');
             shape.Fill.ForeColor.RGB = color;
         }
         if (params.transparency !== undefined) shape.Fill.Transparency = params.transparency;
