@@ -193,8 +193,11 @@ registerHandler('insertTable', function(params) {
     try {
         var doc = Application.ActiveDocument;
         if (!doc) return fail('没有打开的文档');
-        var rows = params.rows || 3;
-        var cols = params.cols || 3;
+        // 显式整数校验：rows/cols 必须为正整数（与 excel/ppt 侧语义对齐），避免 rows:0/"0" 静默兜底为 3
+        var rows = parseInt(params.rows, 10);
+        if (isNaN(rows) || rows < 1) return fail('无效的行数: ' + params.rows + '（必须为正整数）');
+        var cols = parseInt(params.cols, 10);
+        if (isNaN(cols) || cols < 1) return fail('无效的列数: ' + params.cols + '（必须为正整数）');
         var table = doc.Tables.Add(Application.Selection.Range, rows, cols);
 
         if (params.data && Array.isArray(params.data)) {

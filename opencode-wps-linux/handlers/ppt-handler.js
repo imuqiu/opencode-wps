@@ -333,7 +333,8 @@ registerHandler('addTextBox', function(params) {
     try {
         var pres = getPPT();
         if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || Application.ActiveWindow.Selection.SlideRange.SlideIndex;
+        // 无选中/无活动窗口时安全兜底到第 1 张（与周边 handler 的 slideIndex || 1 语义一致），避免 Selection 抛错
+        var idx = params.slideIndex || 1;
         var slide = pres.Slides.Item(idx);
         var shape = slide.Shapes.AddTextbox(1, params.left || 100, params.top || 100, params.width || 400, params.height || 50);
         shape.TextFrame.TextRange.Text = params.text || '';
@@ -1035,7 +1036,7 @@ registerHandler('beautifySlide', function(params) {
     try {
         var pres = getPPT();
         if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || Application.ActiveWindow.Selection.SlideRange.SlideIndex;
+        var idx = params.slideIndex || 1;
         var slide = pres.Slides.Item(idx);
         var scheme = COLOR_SCHEMES[params.style] || COLOR_SCHEMES.business;
         var count = 0;
@@ -1090,7 +1091,7 @@ function beautifySlideImpl(params) {
     try {
         var pres = getPPT();
         if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || Application.ActiveWindow.Selection.SlideRange.SlideIndex;
+        var idx = params.slideIndex || 1;
         var slide = pres.Slides.Item(idx);
         var scheme = COLOR_SCHEMES[params.style] || COLOR_SCHEMES.business;
         var count = 0;

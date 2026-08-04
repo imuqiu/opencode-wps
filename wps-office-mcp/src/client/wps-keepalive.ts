@@ -34,7 +34,11 @@ function checkLinuxWpsRunning(): boolean {
   // （MCP 是单线程进程，execSync 最长阻塞 3s 会卡顿所有正在轮询的命令）
   try {
     const procs = require('fs').readdirSync('/proc');
-    const targets = new Set(['wps', 'et', 'wpp', 'wpsoffice', 'wpspdf']);
+    // 保活判定只针对主程序（wps/et/wpp/wpsoffice）：wpspdf 是 PDF 组件进程，
+    // 即使它存活也不能代表文字/表格/演示主程序在运行（轮询桥命令依赖主程序），
+    // 且拉起命令也只拉起主程序——若把 wpspdf 计入，会出现「wpspdf 存活即误判 WPS 在运行、
+    // 主程序未跑时轮询桥命令仍失败」的状态分裂（第 16 轮评审 info）
+    const targets = new Set(['wps', 'et', 'wpp', 'wpsoffice']);
     for (const p of procs) {
       const pid = parseInt(p, 10);
       if (!pid || isNaN(pid)) continue;

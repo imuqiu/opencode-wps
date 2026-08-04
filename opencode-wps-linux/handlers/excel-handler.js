@@ -682,7 +682,9 @@ registerHandler('insertColumns', function(params) {
     try {
         var sheet = Application.ActiveSheet;
         var col = params.column || 1;
-        var count = params.count || 1;
+        // count 校验：必须为正整数（与行侧 insertRows 语义对齐），避免 count=0/负数产生错误列范围（如 C:A）
+        var count = parseInt(params.count, 10) || 1;
+        if (count < 1) return fail('无效的插入列数: ' + params.count);
         var colLetter = resolveColumnLetter(col);
         var colNum = colToNumber(col);
         var endLetter = colToLetter(colNum + count - 1);
@@ -698,7 +700,8 @@ registerHandler('deleteColumns', function(params) {
     try {
         var sheet = Application.ActiveSheet;
         var col = params.column || 1;
-        var count = params.count || 1;
+        var count = parseInt(params.count, 10) || 1;
+        if (count < 1) return fail('无效的删除列数: ' + params.count);
         var colLetter = resolveColumnLetter(col);
         var colNum = colToNumber(col);
         var endLetter = colToLetter(colNum + count - 1);
@@ -950,6 +953,8 @@ registerHandler('replaceInSheet', function(params) {
         var wb = Application.ActiveWorkbook;
         if (!wb) return fail('没有打开的工作簿');
         var sheet = getExcelSheet(wb, params.sheet);
+        // findText 前置校验：避免 undefined 传给 Cells.Replace 抛费解错误（与 addConditionalFormat formula 校验对齐）
+        if (!params.findText) return fail('缺少 findText');
         sheet.Cells.Replace(params.findText, params.replaceText);
         return ok({});
     } catch (e) {
@@ -1076,7 +1081,9 @@ registerHandler('transpose', function(params) {
         var src = sheet.Range(params.range);
         src.Copy();
         var dst = sheet.Range(params.targetRange);
-        dst.PasteSpecial(-4104);
+        // xlPasteAll=-4104 是「粘贴全部」不是转置；转置需 PasteSpecial 第 4 参 Transpose=true（xlTranspose），
+        // 否则输出的是普通复制并覆盖目标区域，转置功能语义错误（第 16 轮评审 critical）
+        dst.PasteSpecial(-4104, false, false, true);
         Application.CutCopyMode = false;
         return ok({});
     } catch (e) {
@@ -1202,8 +1209,11 @@ registerHandler('groupColumns', function(params) {
     try {
         var sheet = Application.ActiveSheet;
         var col = resolveColumnLetter(params.column);
+        // count 校验：必须为正整数（与行侧 groupRows 语义对齐）
+        var count = parseInt(params.count, 10) || 1;
+        if (count < 1) return fail('无效的列数: ' + params.count);
         var colNum = colToNumber(params.column);
-        var endLetter = colToLetter(colNum + (params.count || 1) - 1);
+        var endLetter = colToLetter(colNum + count - 1);
         if (!col || !colNum || !endLetter) return fail('无效的列参数: ' + params.column);
         var range = sheet.Range(col + ':' + endLetter);
         range.Group();
