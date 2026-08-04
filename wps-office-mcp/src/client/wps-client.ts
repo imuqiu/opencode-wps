@@ -219,12 +219,10 @@ async function execWpsActionWithRetry(action: string, params: Record<string, unk
         });
         actionPromise = Promise.race([result, timeoutPromise]);
       } else {
-        // Mac/Linux: 使用已有轮询调用，Promise.race 快速失败
-        const timeout = getTimeout(action);
-        const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('COM 调用超时（' + timeout + 'ms）')), timeout);
-        });
-        actionPromise = Promise.race([execWpsAction(action, params), timeoutPromise]);
+        // Mac/Linux: 轮询桥超时由 executeCommand 内部管理（从命令入队后开始计时，不含切换耗时），
+        // 外层不再用 Promise.race 计时——否则首次跨应用切换（最坏 22s+2s）时短超时命令（5-15s）在切换完成前就被 reject，
+        // 且重试 3 次每次重新切换，必然失败（第 11 轮评审 critical）
+        actionPromise = execWpsAction(action, params);
       }
 
       return await actionPromise;

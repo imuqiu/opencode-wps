@@ -207,7 +207,8 @@ if (fsEx.existsSync(mcpServer.src)) {
     let depsInstalled = false;
     try {
         console.log('  正在安装依赖 (npm install)...');
-        execSync('npm install', { cwd: mcpServer.src, stdio: 'inherit' });
+        // 加 timeout（10 分钟），避免网络慢/依赖多时安装脚本无限卡死
+        execSync('npm install', { cwd: mcpServer.src, stdio: 'inherit', timeout: 600000 });
         console.log('  依赖安装完成');
         depsInstalled = true;
     } catch (e) {
@@ -218,7 +219,8 @@ if (fsEx.existsSync(mcpServer.src)) {
     if (depsInstalled) {
         try {
             console.log('  正在编译 (npm run build)...');
-            execSync('npm run build', { cwd: mcpServer.src, stdio: 'inherit' });
+            // 加 timeout（10 分钟）
+            execSync('npm run build', { cwd: mcpServer.src, stdio: 'inherit', timeout: 600000 });
             console.log('  编译完成');
         } catch (e) {
             console.log('  [警告] npm run build 失败（详见上方输出），请手动运行: cd ' + mcpServer.src + ' && npm run build');
@@ -429,7 +431,8 @@ try {
     console.log('  已生成 autostart: ' + desktopPath);
 
     try {
-        execSync('chmod +x ' + desktopPath, { stdio: 'pipe' });
+        // execFile 参数数组传递，避免路径含空格/特殊字符被 shell 解释（命令注入）
+        require('child_process').execFileSync('chmod', ['+x', desktopPath], { stdio: 'pipe', timeout: 10000 });
         console.log('  已设置可执行权限');
     } catch (e) {
         console.log('  [警告] chmod 失败: ' + e.message);

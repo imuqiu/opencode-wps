@@ -449,7 +449,8 @@ class MacPollServer {
       const timeoutHandle = setTimeout(() => {
         if (this.pendingCommand?.requestId === requestId) {
           this.pendingCommand = null;
-          reject(new Error(`Command timeout after ${timeout}ms: ${action}`));
+          // 含「超时」关键字（上层 execWpsActionWithRetry 用 errMsg.includes('超时') 分类重试日志）
+          reject(new Error(`命令超时 Command timeout after ${timeout}ms: ${action}`));
         }
       }, timeout);
 
