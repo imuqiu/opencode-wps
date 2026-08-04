@@ -716,6 +716,12 @@ test('taskpane.html 自愈骨架：position:fixed 锚定 + forceReflowFix 关键
   assertTrue(/activeElement\s*===\s*inputBox/.test(html), '输入框聚焦时 forceReflowFix 应跳过');
   // ⑩ 滚动位置尊重：仅用户消息列表在底部时才滚动
   assertTrue(/nearBottom/.test(html), '应检查用户是否在消息列表底部再决定是否滚动');
+  // ⑪ 自愈注册晚于视图切换的时序倒挂补触发（chat 已先行显示时补调度）
+  assertTrue(/if\s*\(vc\s*&&\s*!vc\.classList\.contains\('hidden'\)\)\s*scheduleReflowFix\(\)/.test(html), 'chat 已先行显示时应补触发自愈');
+  // ⑫ 强制重排最小间隔 300ms（防多入口密集触发昂贵布局）
+  assertTrue(/lastForceReflowAt/.test(html), '应有强制重排最小间隔状态');
+  // ⑬ scrollToBottom 内部判空
+  assertTrue(/if\s*\(\$messages\)\s*\$messages\.scrollTop/.test(html), 'scrollToBottom 应判空防 TypeError');
 });
 
 // ==================== 测试结果汇总 ====================

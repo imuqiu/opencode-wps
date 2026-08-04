@@ -1490,7 +1490,7 @@ function inlineFmt(s) {
     s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(m, text, url) { return '<a href="' + safeHref(url) + '" target="_blank">' + text + '</a>' })
     return s
 }
-function scrollToBottom() { setTimeout(function() { $messages.scrollTop = $messages.scrollHeight }, 50) }
+function scrollToBottom() { setTimeout(function() { if ($messages) $messages.scrollTop = $messages.scrollHeight }, 50) }
 
 // ============================================================
 // 启动流程：检查服务是否已在运行 → 是则直接进 chat；否则显示 setup
@@ -1557,6 +1557,9 @@ function scrollToBottom() { setTimeout(function() { $messages.scrollTop = $messa
     // 对策：监听 resize / visibilitychange / 容器尺寸变化，强制触发 reflow 修复。
     var reflowTimer = null;
     var reflowRafQueued = false;
+    // 上次真正执行强制重排的时间戳：多个入口（rAF/load/定时器/resize/showChat）
+    // 可能密集触发，最小间隔 300ms 内只执行一次强制重排，避免昂贵布局反复跑
+    var lastForceReflowAt = 0;
     // 重排修复状态位：布局已正常后不再重复强制重排（避免 300ms/1000ms 定时器对
     // 正常布局反复闪屏）；仅当头部可能被挤出可视区时才执行修复。
     var reflowFixed = false;
@@ -1618,6 +1621,11 @@ function scrollToBottom() { setTimeout(function() { $messages.scrollTop = $messa
         var inputBox = document.getElementById('input-box');
         if (inputBox && document.activeElement === inputBox) return;
         var oldDisplay = app.style.display;
+        // 强制重排最小间隔 300ms：防多个入口（rAF/load/定时器/resize/showChat）
+        // 在同一时间窗内排队多次强制重排（每次都是完整布局管线，成本高）
+        var now = Date.now();
+        if (now - lastForceReflowAt < 300) return;
+        lastForceReflowAt = now;
         app.style.display = 'none';
         // 强制同步 reflow
         void app.offsetHeight;
@@ -1649,6 +1657,10 @@ function scrollToBottom() { setTimeout(function() { $messages.scrollTop = $messa
     // 暴露给 showChat() 等视图切换函数：setup→chat 切换后主动调度自愈，
     // 不依赖旧 WebView 内核是否在 display:none→block 时派发 resize 事件
     window.__scheduleReflowFix = scheduleReflowFix;
+    // 若 chat 已先行显示（showChat 早于本 IIFE 执行，如 init 异步回调先切视图）：
+    // 补触发一次自愈，覆盖「自愈注册晚于视图切换」的时序倒挂场景
+    var vc = document.getElementById('view-chat');
+    if (vc && !vc.classList.contains('hidden')) scheduleReflowFix();
     window.addEventListener('resize', scheduleReflowFix);
     document.addEventListener('visibilitychange', function() {
         if (!document.hidden) scheduleReflowFix();
