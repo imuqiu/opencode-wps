@@ -10,7 +10,8 @@
 
 create_blank_file() {
     local file_type=$1
-    local file_path="/tmp/opencode_auto_blank"
+    # 用 $$（当前 shell PID）做临时文件后缀，避免并发 start_app（MCP 并发命令可同时触发）互相 rm/覆盖固定路径（第 18 轮评审 info）
+    local file_path="/tmp/opencode_auto_blank_$$"
 
     # 前置检查：需要 python3 生成 OOXML 文件；缺失时返回空（调用方回退无参启动）
     if ! command -v python3 >/dev/null 2>&1; then
@@ -18,7 +19,7 @@ create_blank_file() {
         return 1
     fi
 
-    # 清理旧临时文件，避免 /tmp 累积
+    # 清理本 PID 的旧临时文件（不再 rm 全局固定路径，避免影响并发实例）
     rm -f "${file_path}.xlsx" "${file_path}.docx" "${file_path}.pptx"
 
     case $file_type in

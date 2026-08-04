@@ -232,7 +232,8 @@ registerHandler('getSlideInfo', function(params) {
     try {
         var pres = getPPT();
         if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || params.index || 1;
+        var idx = resolveSlideIndex(pres, params.slideIndex || params.index || 1);
+        if (idx === null) return fail('无效的幻灯片索引: ' + (params.slideIndex || params.index) + '（合法范围 1~' + pres.Slides.Count + '）');
         var slide = pres.Slides.Item(idx);
         var shapes = [];
         for (var j = 1; j <= slide.Shapes.Count; j++) {
@@ -249,7 +250,8 @@ registerHandler('switchSlide', function(params) {
     try {
         var pres = getPPT();
         if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || params.index || 1;
+        var idx = resolveSlideIndex(pres, params.slideIndex || params.index || 1);
+        if (idx === null) return fail('无效的幻灯片索引: ' + (params.slideIndex || params.index) + '（合法范围 1~' + pres.Slides.Count + '）');
         pres.Slides.Item(idx).Select();
         return ok({ slideIndex: idx });
     } catch (e) {
@@ -261,7 +263,8 @@ registerHandler('getSlideTitle', function(params) {
     try {
         var pres = getPPT();
         if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
+        var idx = resolveSlideIndex(pres, params.slideIndex || 1);
+        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
         var slide = pres.Slides.Item(idx);
         var title = '';
         if (slide.Shapes.HasTitle) {
@@ -798,7 +801,8 @@ registerHandler('setSlideNumber', function(params) {
     try {
         var pres = getPPT();
         if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
+        var idx = resolveSlideIndex(pres, params.slideIndex || 1);
+        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
         var slide = pres.Slides.Item(idx);
         slide.HeadersFooters.SlideNumber.Visible = 1;
         return ok({});
@@ -811,12 +815,19 @@ registerHandler('setSlideTransition', function(params) {
     try {
         var pres = getPPT();
         if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
+        var idx = resolveSlideIndex(pres, params.slideIndex || 1);
+        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
         var slide = pres.Slides.Item(idx);
         var types = { fade: 1, push: 2, wipe: 3, split: 4, uncover: 5, cover: 6, zoom: 31 };
-        slide.SlideShowTransition.EntryEffect = types[params.type] || 1;
-        if (params.speed) {
-            slide.SlideShowTransition.Speed = params.speed === 'slow' ? 3 : (params.speed === 'fast' ? 1 : 2);
+        // 未知 type 显式 fail（与 setShapeRoundness 形状类型校验一致），避免静默兜底 fade 误导 AI
+        var entryEffect = types[params.type];
+        if (entryEffect === undefined) return fail('无效的切换类型: ' + params.type + '（支持 fade/push/wipe/split/uncover/cover/zoom）');
+        slide.SlideShowTransition.EntryEffect = entryEffect;
+        if (params.speed !== undefined) {
+            var speedMap = { slow: 3, medium: 2, fast: 1 };
+            var speed = speedMap[params.speed];
+            if (speed === undefined) return fail('无效的切换速度: ' + params.speed + '（支持 slow/medium/fast）');
+            slide.SlideShowTransition.Speed = speed;
         }
         return ok({});
     } catch (e) {
@@ -828,7 +839,8 @@ registerHandler('removeSlideTransition', function(params) {
     try {
         var pres = getPPT();
         if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
+        var idx = resolveSlideIndex(pres, params.slideIndex || 1);
+        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
         pres.Slides.Item(idx).SlideShowTransition.EntryEffect = 0;
         return ok({});
     } catch (e) {
@@ -1313,7 +1325,8 @@ registerHandler('getSlideNotes', function(params) {
     try {
         var pres = getPPT();
         if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
+        var idx = resolveSlideIndex(pres, params.slideIndex || 1);
+        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
         var slide = pres.Slides.Item(idx);
         var notes = '';
         try {
@@ -1330,7 +1343,8 @@ registerHandler('setSlideNotes', function(params) {
     try {
         var pres = getPPT();
         if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
+        var idx = resolveSlideIndex(pres, params.slideIndex || 1);
+        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
         var slide = pres.Slides.Item(idx);
         var shape = findNotesShape(slide.NotesPage.Shapes);
         if (!shape) return fail('未找到备注占位符，无法写入备注');
@@ -1345,12 +1359,23 @@ registerHandler('exportSlideAsImage', function(params) {
     try {
         var pres = getPPT();
         if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
+        var idx = resolveSlideIndex(pres, params.slideIndex || 1);
+        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
         var outputPath = params.outputPath || params.path;
         if (!outputPath) return invalidParam('缺少 outputPath');
+        // 宽高显式校验（与 setSlideSize 一致）：0/"0"/负数/字符串静默兜底问题
+        var width = params.width !== undefined ? parseInt(params.width, 10) : 1920;
+        if (isNaN(width) || width <= 0) return fail('无效的导出宽度: ' + params.width + '（必须为正数）');
+        var height = params.height !== undefined ? parseInt(params.height, 10) : 1080;
+        if (isNaN(height) || height <= 0) return fail('无效的导出高度: ' + params.height + '（必须为正数）');
+        // format 白名单校验（避免任意字符串传给 Export 抛类型错误）
+        var format = (params.format || 'PNG').toUpperCase();
+        var allowed = { PNG: 'PNG', JPG: 'JPG', JPEG: 'JPG', GIF: 'GIF', BMP: 'BMP' };
+        var filterName = allowed[format];
+        if (!filterName) return fail('无效的导出格式: ' + params.format + '（支持 PNG/JPG/JPEG/GIF/BMP）');
         var slide = pres.Slides.Item(idx);
-        slide.Export(outputPath, params.format || 'PNG', params.width || 1920, params.height || 1080);
-        return ok({ slideIndex: idx, outputPath: outputPath });
+        slide.Export(outputPath, filterName, width, height);
+        return ok({ slideIndex: idx, outputPath: outputPath, format: filterName });
     } catch (e) {
         return fail('导出幻灯片为图片失败: ' + e.message);
     }

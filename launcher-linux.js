@@ -252,8 +252,11 @@ function dockWindow(callback, data) {
     if (cwd) url += '?cwd=' + encodeURIComponent(cwd);
     if (sessionId) url += (cwd ? '&' : '?') + 'session=' + encodeURIComponent(sessionId);
 
-    // Linux: 使用 execFile + 参数数组打开系统默认浏览器，避免 URL 中的不可信字符（引号/分号等）被 shell 解释（命令注入）
+    // Linux: 使用 execFile/spawn + 参数数组打开系统默认浏览器，避免 URL 中的不可信字符（引号/分号等）被 shell 解释（命令注入）
     // 依次尝试 xdg-open / google-chrome / firefox，前一个失败则尝试下一个；全部失败必须报失败（不能让用户误以为已打开）
+    // 注意：不能用 execFile + timeout 等子进程退出——浏览器打开后进程常驻（xdg-open 等待默认应用、Chrome 常驻），
+    // timeout 会把已打开的浏览器误杀并重试下一个导致打开多个标签页（第 18 轮评审 warning）。
+    // 改用 spawn 不带 timeout：ENOENT/无 DISPLAY 会立即触发 error，2s 内未失败即认为成功。
     function tryOpenBrowser(browsers, index) {
         if (index >= browsers.length) {
             // 所有浏览器都尝试失败：明确返回失败，避免用户无感知（第 4 轮只修了单个失败重试，这里补上全部失败语义）
@@ -261,9 +264,31 @@ function dockWindow(callback, data) {
             return;
         }
         var bin = browsers[index];
-        var child = require('child_process').execFile(bin, [url], { timeout: 8000 }, function(err) {
-            if (err) {
-                // ENOENT(命令不存在) 或其它启动失败（无图形会话/无默认应用）都尝试下一个浏览器
+        var child = require('child_process').spawn(bin, [url], {
+            detached: true,
+            stdio: 'ignore'
+        });
+        var settled = false;
+        var successTimer = setTimeout(function() {
+            if (settled) return;
+            settled = true;
+            // 2s 内未立即失败（ENOENT/无 DISPLAY）视为成功发起，进程保持运行不干预
+            child.unref();
+            callback({ success: true, pid: child.pid });
+        }, 2000);
+        child.on('error', function(err) {
+            if (settled) return;
+            settled = true;
+            clearTimeout(successTimer);
+            // ENOENT(命令不存在) 或其它启动失败（无图形会话/无默认应用）都尝试下一个浏览器
+            tryOpenBrowser(browsers, index + 1);
+        });
+        child.on('exit', function(code) {
+            if (settled) return;
+            settled = true;
+            clearTimeout(successTimer);
+            if (code !== 0) {
+                // 立即以非零码退出：启动失败，尝试下一个
                 tryOpenBrowser(browsers, index + 1);
             } else {
                 callback({ success: true, pid: 0 });
@@ -313,10 +338,31 @@ var server = http.createServer(function(req, res) {
     }
 
     if (req.method === 'GET' && url === '/status') {
-        sendJSON(res, 200, {
-            running: opencodeProcess !== null,
-            cwd: opencodeCwd,
-            pid: opencodeProcess ? opencodeProcess.pid : null
+        // running 不能只看 opencodeProcess 引用——进程僵死/半死时引用仍在但服务不可用，
+        // 改为探测 14096 端口实际可服务（HTTP GET /，2s 超时），避免 OnOpenWebClick 打开失败页（第 18 轮评审 info）
+        var probePort = 14096;
+        function respondRunning(actualRunning) {
+            sendJSON(res, 200, {
+                running: actualRunning,
+                cwd: opencodeCwd,
+                pid: opencodeProcess ? opencodeProcess.pid : null
+            });
+        }
+        var probe = require('http').get(
+            { host: '127.0.0.1', port: probePort, path: '/', timeout: 2000 },
+            function() {
+                // 端口有响应：服务实际可用
+                probe.destroy();
+                respondRunning(true);
+            }
+        );
+        probe.on('error', function() {
+            // 端口无响应：回退到进程引用判断（进程在但服务未就绪/僵死时 running=false）
+            respondRunning(opencodeProcess !== null);
+        });
+        probe.on('timeout', function() {
+            probe.destroy();
+            respondRunning(opencodeProcess !== null);
         });
         return;
     }
