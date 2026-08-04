@@ -244,6 +244,8 @@ class MacPollServer {
   private lastSwitchError: string | null = null;
   private port: number = 58891;
   private switchScriptPath: string;
+  // 启动中的 Promise 缓存：并发 start() 共享同一启动流程，避免双 server 创建竞态（第 19 轮评审 critical）
+  private startingPromise: Promise<void> | null = null;
 
   /**
    * @param switchScriptPath 应用切换脚本路径（wps-auto.sh）。
@@ -279,10 +281,21 @@ class MacPollServer {
       log.debug('[Mac] Poll server already running');
       return;
     }
+    // 并发 start() 竞态：两个调用都看到 _isRunning=false 会创建双 server，
+    // 后创建者 EADDRINUSE 时 error handler 会置 this.server=null 清掉先创建者已 listen 成功的引用。
+    // 用 startingPromise 缓存：并发调用共享同一个启动 Promise（第 19 轮评审 critical）
+    if (this.startingPromise) {
+      return this.startingPromise;
+    }
 
     this.port = listenPort;
 
-    return new Promise((resolve, reject) => {
+    this.startingPromise = new Promise<void>((resolve, reject) => {
+      // 启动完成（成功/失败）后清理 startingPromise，允许后续重新启动
+      const settle = (fn: () => void) => {
+        this.startingPromise = null;
+        fn();
+      };
       this.server = http.createServer((req, res) => {
         // CORS头 - 必须加，不然WPS加载项的请求会被拦截
         res.setHeader('Access-Control-Allow-Origin', '*');
@@ -347,16 +360,18 @@ class MacPollServer {
               });
               res.on('end', () => {
                 if (tooBig) {
-                  reject(new Error(`Port ${this.port} already in use by oversized service`));
+                  settle(() => reject(new Error(`Port ${this.port} already in use by oversized service`)));
                   return;
                 }
                 try {
                   const st = JSON.parse(body);
                   if (st.status === 'running') {
                     // 残留的是同构轮询服务——不复用，明确提示清理（避免双实例 pendingCommand 分裂）
-                    reject(
-                      new Error(
-                        `Port ${this.port} 已被残留的 WPS 轮询服务占用，请清理残留进程后重试（launcher 会自动清理孤儿进程）`
+                    settle(() =>
+                      reject(
+                        new Error(
+                          `Port ${this.port} 已被残留的 WPS 轮询服务占用，请清理残留进程后重试（launcher 会自动清理孤儿进程）`
+                        )
                       )
                     );
                     return;
@@ -364,26 +379,26 @@ class MacPollServer {
                 } catch (e) {
                   // 非 JSON 响应，视为不可用
                 }
-                reject(new Error(`Port ${this.port} already in use by non-poll service`));
+                settle(() => reject(new Error(`Port ${this.port} already in use by non-poll service`)));
               });
             }
           );
           probe.on('error', () => {
-            reject(new Error(`Port ${this.port} already in use and unresponsive`));
+            settle(() => reject(new Error(`Port ${this.port} already in use and unresponsive`)));
           });
           probe.on('timeout', () => {
             probe.destroy();
-            reject(new Error(`Port ${this.port} already in use and timeout`));
+            settle(() => reject(new Error(`Port ${this.port} already in use and timeout`)));
           });
         } else {
-          reject(err);
+          settle(() => reject(err));
         }
       });
 
       this.server.listen(this.port, '127.0.0.1', () => {
         this._isRunning = true;
         log.info(`[Mac] Poll server started on port ${this.port}`);
-        resolve();
+        settle(() => resolve());
       });
     });
   }

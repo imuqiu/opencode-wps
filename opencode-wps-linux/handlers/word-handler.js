@@ -99,8 +99,11 @@ registerHandler('getDocumentText', function(params) {
         if (!doc) return fail('没有打开的文档');
         var text = doc.Content.Text;
         var length = text.length;
+        // maxLength 显式校验：非法字符串/负数显式 fail（NaN > 0 为 false 会静默不截断，NaN 传入 substring 产生乱码）
         var maxLength = params.maxLength !== undefined ? parseInt(params.maxLength, 10) : 10000;
+        if (isNaN(maxLength) || maxLength < 0) return fail('无效的 maxLength: ' + params.maxLength + '（必须为非负整数）');
         var truncated = false;
+        // maxLength=0 视为不截断（返回全部）
         if (maxLength > 0 && length > maxLength) {
             text = text.substring(0, maxLength) + '\n...(截断, 共 ' + length + ' 字符)';
             truncated = true;
@@ -116,7 +119,9 @@ registerHandler('insertText', function(params) {
     try {
         var doc = Application.ActiveDocument;
         if (!doc) return fail('没有打开的文档');
-        var text = params.text || '';
+        // 缺 text 显式 fail（与 saveAs 缺 path 语义一致），避免 AI 漏传参数静默成功
+        if (params.text === undefined || params.text === null) return invalidParam('缺少 text');
+        var text = params.text;
         var pos = params.position || 'cursor';
 
         switch (pos) {

@@ -895,6 +895,8 @@ registerHandler('getCellComments', function(params) {
         if (!wb) return fail('没有打开的工作簿');
         var sheet = getExcelSheet(wb, params.sheet);
         var comments = [];
+        // 无批注保护：部分 WPS 版本 Comments 为 null 或访问 .Count 抛错，显式返回空列表（第 19 轮评审 warning）
+        if (!sheet.Comments || !sheet.Comments.Count) return ok({ comments: [] });
         for (var i = 1; i <= sheet.Comments.Count; i++) {
             var c = sheet.Comments.Item(i);
             comments.push({ cell: c.Parent.Address(), text: c.Text, author: c.Author || '' });

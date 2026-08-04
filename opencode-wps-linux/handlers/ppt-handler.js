@@ -222,7 +222,8 @@ registerHandler('getSlideCount', function(params) {
     try {
         var pres = getPPT();
         if (!pres) return fail('没有打开的演示文稿');
-        return ok({ count: pres.Slides.Count });
+        // 返回 slideCount（与 getActivePresentation/getOpenPresentations 契约一致），兼容保留 count 字段
+        return ok({ slideCount: pres.Slides.Count, count: pres.Slides.Count });
     } catch (e) {
         return fail('获取幻灯片数量失败: ' + e.message);
     }
@@ -1051,7 +1052,13 @@ registerHandler('unifyFont', function(params) {
         if (!pres) return fail('没有打开的演示文稿');
         // Linux 默认字体：思源黑体（主流发行版预装）；调用方可显式传 fontName 覆盖
         var fontName = params.fontName || 'Noto Sans CJK SC';
+        // 全量遍历性能边界：大演示文稿（100+ 张×几十形状）数千次 COM 往返会超时被 MCP kill。
+        // 增加 maxShapes 上限（默认 500），达到上限返回 truncated 提示（第 19 轮评审 info）
+        var maxShapes = params.maxShapes !== undefined ? parseInt(params.maxShapes, 10) : 500;
+        if (isNaN(maxShapes) || maxShapes < 1) return fail('无效的 maxShapes: ' + params.maxShapes + '（必须为正整数）');
         var count = 0;
+        var truncated = false;
+        outer:
         for (var i = 1; i <= pres.Slides.Count; i++) {
             var slide = pres.Slides.Item(i);
             for (var j = 1; j <= slide.Shapes.Count; j++) {
@@ -1060,11 +1067,12 @@ registerHandler('unifyFont', function(params) {
                     if (s.HasTextFrame && s.TextFrame.HasText) {
                         s.TextFrame.TextRange.Font.Name = fontName;
                         count++;
+                        if (count >= maxShapes) { truncated = true; break outer; }
                     }
                 } catch (e) {}
             }
         }
-        return ok({ fontName: fontName, count: count });
+        return ok({ fontName: fontName, count: count, truncated: truncated, maxShapes: maxShapes });
     } catch (e) {
         return fail('统一字体失败: ' + e.message);
     }
