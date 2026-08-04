@@ -498,11 +498,13 @@ class MacPollServer {
           // 返回结果
           this.pendingCommand.resolve(result);
           this.pendingCommand = null;
+          res.end(JSON.stringify({ ok: true }));
         } else {
+          // 未知 requestId：可能是 WPS 侧重试（第 5 轮加的 3 次重试在响应丢失时重发），
+          // 此时命令可能已处理（pendingCommand 已消费）——响应 alreadyHandled 让 WPS 侧停止无谓重试（第 20 轮评审 info）
           log.warn('[Mac] Received result for unknown request', { requestId: data.requestId });
+          res.end(JSON.stringify({ ok: true, alreadyHandled: true }));
         }
-
-        res.end(JSON.stringify({ ok: true }));
       } catch (e) {
         log.error('[Mac] Failed to parse result', { error: e, body });
         if (!res.headersSent) {

@@ -454,7 +454,9 @@ registerHandler('getContext', function(params) {
 
 registerHandler('getSelection', function(params) {
     try {
-        var sel = Application.Selection;
+        // Selection 包 try/catch：无选中/无活动窗口时部分 WPS 抛错而非返回 null（第 20 轮评审 info）
+        var sel = null;
+        try { sel = Application.Selection; } catch (e) {}
         if (!sel) return fail('没有选中的区域');
         return ok({ address: sel.Address(), count: sel.Count, row: sel.Row, column: sel.Column });
     } catch (e) {
@@ -467,7 +469,9 @@ registerHandler('sortRange', function(params) {
         var sheet = Application.ActiveSheet;
         var range = sheet.Range(params.range);
         var key = params.keyColumn ? sheet.Range(params.keyColumn) : range.Columns.Item(1);
-        var order = params.order === 'desc' ? 2 : 1;
+        // order 大小写不敏感：'DESC'/'Desc' 都识别为降序，避免 AI 传大写静默变升序
+        var orderStr = String(params.order || '').toLowerCase();
+        var order = orderStr === 'desc' ? 2 : 1;
         range.Sort(key, order);
         return ok({});
     } catch (e) {
@@ -480,6 +484,8 @@ registerHandler('autoFilter', function(params) {
         var sheet = Application.ActiveSheet;
         var range = sheet.Range(params.range);
         if (params.criteria) {
+            // field 前置校验：criteria 存在但 field 缺失时 AutoFilter(undefined, ...) 抛费解错误
+            if (params.field === undefined || params.field === null) return fail('缺少 field（筛选条件列）');
             range.AutoFilter(params.field, params.criteria);
         } else {
             range.AutoFilter();
@@ -1129,7 +1135,10 @@ registerHandler('textToColumns', function(params) {
     try {
         var sheet = Application.ActiveSheet;
         var range = sheet.Range(params.range);
-        range.TextToColumns(range, 1, 1, true);
+        // TextToColumns(Destination, DataType, TextQualifier, ConsecutiveDelimiter, Tab, Semicolon, Comma, Space, Other, OtherChar)
+        // DataType=xlDelimited=1，TextQualifier=xlTextQualifierDoubleQuote=1，ConsecutiveDelimiter=false，Tab=true（第 20 轮评审 critical：
+        // 之前把 Range 对象当 DataType 传，会抛类型错误或行为未定义）
+        range.TextToColumns(range, 1, 1, false, true);
         return ok({});
     } catch (e) {
         return fail('分列失败: ' + e.message);
@@ -1151,7 +1160,12 @@ registerHandler('consolidate', function(params) {
     try {
         var sheet = Application.ActiveSheet;
         var range = sheet.Range(params.range);
-        range.Consolidate(params.sources || [], params.function || 4);
+        var sources = params.sources || [];
+        if (!Array.isArray(sources) || sources.length === 0) return fail('缺少 sources（待合并的区域列表）');
+        // function 显式校验（xlSum=4 默认），0/字符串非法显式 fail（避免 || 4 真值判断静默兜底）
+        var func = params.function !== undefined ? parseInt(params.function, 10) : 4;
+        if (isNaN(func) || func < 0) return fail('无效的合并函数: ' + params.function);
+        range.Consolidate(sources, func);
         return ok({});
     } catch (e) {
         return fail('合并计算失败: ' + e.message);

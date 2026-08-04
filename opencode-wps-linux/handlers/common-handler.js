@@ -18,7 +18,9 @@ registerHandler('getAppInfo', function(params) {
 
 registerHandler('getSelectedText', function(params) {
     try {
-        var sel = Application.Selection;
+        // Selection 包 try/catch：无选中/无活动窗口时部分 WPS 抛错而非返回 null（第 20 轮评审 info）
+        var sel = null;
+        try { sel = Application.Selection; } catch (e) {}
         if (!sel) return fail('没有选中内容');
         return ok({ text: sel.Text || '', length: (sel.Text || '').length });
     } catch (e) {
@@ -28,7 +30,8 @@ registerHandler('getSelectedText', function(params) {
 
 registerHandler('setSelectedText', function(params) {
     try {
-        var sel = Application.Selection;
+        var sel = null;
+        try { sel = Application.Selection; } catch (e) {}
         if (!sel) return fail('没有选中的文本范围');
         sel.Text = params.text || '';
         return ok({});

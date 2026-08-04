@@ -148,8 +148,11 @@ registerHandler('findReplace', function(params) {
         var find = doc.Content.Find;
         find.ClearFormatting();
         find.Replacement.ClearFormatting();
+        // findText 前置校验：避免 undefined 传给 Execute 抛费解错误（与 replaceInSheet 第 17 轮修复对齐，word 侧漏网）
+        if (!params.findText) return fail('缺少 findText');
         // 统一通过 Execute 位置参数传查找/替换文本，避免前置赋值 + 位置参数双写（WPS 对 Execute 位置参数敏感，双写行为未定义）
-        var replaceType = params.replaceAll ? 2 : 1;
+        // replaceAll 严格布尔判断（0/字符串等不再被当 true）
+        var replaceType = params.replaceAll === true ? 2 : 1;
         var result = find.Execute(
             params.findText, false, false, false, false, false,
             true, 1, false, params.replaceText || '', replaceType
