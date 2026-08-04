@@ -68,9 +68,10 @@ registerHandler('openFile', function(params) {
 
         var appType = null;
         var lower = filePath.toLowerCase();
-        if (lower.indexOf('.xls') !== -1) appType = 'et';
-        else if (lower.indexOf('.doc') !== -1) appType = 'wps';
-        else if (lower.indexOf('.ppt') !== -1) appType = 'wpp';
+        // 正则边界匹配（\.xlsx?$ 等），避免 indexOf('.xls') 误匹配 .xlss/.document 等非标准后缀（与 mac-poll-server 对齐）
+        if (/\.xlsx?$/.test(lower)) appType = 'et';
+        else if (/\.docx?$/.test(lower)) appType = 'wps';
+        else if (/\.pptx?$/.test(lower)) appType = 'wpp';
         else appType = getAppType();
 
         var app = getWpsApp(appType);

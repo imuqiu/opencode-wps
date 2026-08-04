@@ -74,6 +74,17 @@ function toExcelColor(color) {
     return ((rgb & 0xFF) << 16) | (rgb & 0xFF00) | ((rgb >> 16) & 0xFF);
 }
 
+// 单元格行/列参数校验：必须为正整数（1-based），非法返回 null
+// 供 getCellValue/setCellValue/setFormula/getFormula/addCellComment/deleteCellComment/setHyperlink 等
+// 单元格级 handler 统一使用（与 insertRows/insertColumns 的行列校验语义对齐）
+function resolveRowCol(row, col) {
+    var r = parseInt(row, 10);
+    if (isNaN(r) || r < 1) return null;
+    var c = parseInt(col, 10);
+    if (isNaN(c) || c < 1) return null;
+    return { row: r, col: c };
+}
+
 registerHandler('getActiveWorkbook', function(params) {
     try {
         var wb = Application.ActiveWorkbook;
@@ -253,7 +264,9 @@ registerHandler('getCellValue', function(params) {
         var wb = Application.ActiveWorkbook;
         if (!wb) return fail('没有打开的工作簿');
         var sheet = getExcelSheet(wb, params.sheet);
-        var cell = sheet.Cells.Item(params.row, params.col);
+        var rc = resolveRowCol(params.row, params.col);
+        if (!rc) return fail('无效的行/列参数: row=' + params.row + ' col=' + params.col + '（必须为正整数）');
+        var cell = sheet.Cells.Item(rc.row, rc.col);
         return ok({ value: cell.Value2, text: cell.Text, formula: cell.Formula });
     } catch (e) {
         return fail('读取单元格失败: ' + e.message);
@@ -265,7 +278,9 @@ registerHandler('setCellValue', function(params) {
         var wb = Application.ActiveWorkbook;
         if (!wb) return fail('没有打开的工作簿');
         var sheet = getExcelSheet(wb, params.sheet);
-        sheet.Cells.Item(params.row, params.col).Value2 = params.value;
+        var rc = resolveRowCol(params.row, params.col);
+        if (!rc) return fail('无效的行/列参数: row=' + params.row + ' col=' + params.col + '（必须为正整数）');
+        sheet.Cells.Item(rc.row, rc.col).Value2 = params.value;
         return ok({});
     } catch (e) {
         return fail('设置单元格失败: ' + e.message);
@@ -360,7 +375,9 @@ registerHandler('setFormula', function(params) {
         var wb = Application.ActiveWorkbook;
         if (!wb) return fail('没有打开的工作簿');
         var sheet = getExcelSheet(wb, params.sheet);
-        sheet.Cells.Item(params.row, params.col).Formula = params.formula;
+        var rc = resolveRowCol(params.row, params.col);
+        if (!rc) return fail('无效的行/列参数: row=' + params.row + ' col=' + params.col + '（必须为正整数）');
+        sheet.Cells.Item(rc.row, rc.col).Formula = params.formula;
         return ok({});
     } catch (e) {
         return fail('设置公式失败: ' + e.message);
@@ -372,7 +389,9 @@ registerHandler('getFormula', function(params) {
         var wb = Application.ActiveWorkbook;
         if (!wb) return fail('没有打开的工作簿');
         var sheet = getExcelSheet(wb, params.sheet);
-        var formula = sheet.Cells.Item(params.row, params.col).Formula;
+        var rc = resolveRowCol(params.row, params.col);
+        if (!rc) return fail('无效的行/列参数: row=' + params.row + ' col=' + params.col + '（必须为正整数）');
+        var formula = sheet.Cells.Item(rc.row, rc.col).Formula;
         return ok({ formula: formula });
     } catch (e) {
         return fail('获取公式失败: ' + e.message);
@@ -413,11 +432,18 @@ registerHandler('getContext', function(params) {
             sheets.push(wb.Sheets.Item(i).Name);
         }
 
+        // selectedCell 包 try/catch：部分 WPS 版本在无选中/无活动窗口时访问 Application.Selection 抛错（而非返回 null），
+        // 三元判断捕获不了异常会导致 getContext 整体 fail（第 17 轮评审 info）
+        var selectedCell = '';
+        try {
+            if (Application.Selection) selectedCell = Application.Selection.Address();
+        } catch (e) {}
+
         return ok({
             workbookName: wb.Name,
             currentSheet: sheet.Name,
             allSheets: sheets,
-            selectedCell: Application.Selection ? Application.Selection.Address() : '',
+            selectedCell: selectedCell,
             headers: headers,
             headerRow: headerRow
         });
@@ -853,7 +879,9 @@ registerHandler('addCellComment', function(params) {
         var wb = Application.ActiveWorkbook;
         if (!wb) return fail('没有打开的工作簿');
         var sheet = getExcelSheet(wb, params.sheet);
-        var cell = sheet.Cells.Item(params.row, params.col);
+        var rc = resolveRowCol(params.row, params.col);
+        if (!rc) return fail('无效的行/列参数: row=' + params.row + ' col=' + params.col + '（必须为正整数）');
+        var cell = sheet.Cells.Item(rc.row, rc.col);
         cell.AddComment(params.text || '');
         return ok({});
     } catch (e) {
@@ -882,7 +910,9 @@ registerHandler('deleteCellComment', function(params) {
         var wb = Application.ActiveWorkbook;
         if (!wb) return fail('没有打开的工作簿');
         var sheet = getExcelSheet(wb, params.sheet);
-        sheet.Cells.Item(params.row, params.col).ClearComments();
+        var rc = resolveRowCol(params.row, params.col);
+        if (!rc) return fail('无效的行/列参数: row=' + params.row + ' col=' + params.col + '（必须为正整数）');
+        sheet.Cells.Item(rc.row, rc.col).ClearComments();
         return ok({});
     } catch (e) {
         return fail('删除批注失败: ' + e.message);
@@ -967,7 +997,9 @@ registerHandler('setHyperlink', function(params) {
         var wb = Application.ActiveWorkbook;
         if (!wb) return fail('没有打开的工作簿');
         var sheet = getExcelSheet(wb, params.sheet);
-        var cell = sheet.Cells.Item(params.row, params.col);
+        var rc = resolveRowCol(params.row, params.col);
+        if (!rc) return fail('无效的行/列参数: row=' + params.row + ' col=' + params.col + '（必须为正整数）');
+        var cell = sheet.Cells.Item(rc.row, rc.col);
         sheet.Hyperlinks.Add(cell, params.url);
         if (params.text) cell.Value2 = params.text;
         return ok({});

@@ -148,11 +148,25 @@ registerHandler('addSlide', function(params) {
             return fail('无效的插入位置: ' + params.position + '（合法范围 1~' + (pres.Slides.Count + 1) + '）');
         }
         var slide = pres.Slides.Add(position, layoutType);
-        if (params.title && slide.Shapes.HasTitle) {
-            slide.Shapes.Title.TextFrame.TextRange.Text = params.title;
+        // 标题设置包 try/catch：Slides.Add 已插入幻灯片，若标题设置失败（如布局无标题占位符）不应整体 fail——
+        // 否则调用方以为失败、实际已插入一张幻灯片，重试会重复插入（非原子，第 17 轮评审 info）
+        var titleFailed = false;
+        if (params.title) {
+            try {
+                if (slide.Shapes.HasTitle) {
+                    slide.Shapes.Title.TextFrame.TextRange.Text = params.title;
+                } else {
+                    titleFailed = true;
+                }
+            } catch (e) {
+                titleFailed = true;
+            }
         }
         // 返回实际插入位置（slide.SlideIndex），而非请求的 position（WPS 可能调整）
         var actualIndex = slide.SlideIndex !== undefined ? slide.SlideIndex : position;
+        if (titleFailed) {
+            return ok({ slideIndex: actualIndex, titleFailed: true, warning: '幻灯片已插入但标题设置失败（布局可能无标题占位符）' });
+        }
         return ok({ slideIndex: actualIndex });
     } catch (e) {
         return fail('添加幻灯片失败: ' + e.message);
@@ -308,14 +322,26 @@ registerHandler('setSlideContent', function(params) {
         if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
         var slide = pres.Slides.Item(idx);
         var count = 0;
+        // 优先按正文占位符（ppPlaceholderBody=2）定位——与 setSlideSubtitle 按 Type=15 精确定位的语义对称，
+        // 避免「第一个有文本的非标题形状」启发式在 [副标题, 正文] 顺序下把副标题当正文覆盖
         for (var j = 1; j <= slide.Shapes.Count; j++) {
             var s = slide.Shapes.Item(j);
             if (!s.HasTextFrame) continue;
-            // 跳过标题占位符（ppPlaceholderTitle=13 / ppPlaceholderCenterTitle=14），
-            // 不能用 j===1 序号判断（标题形状不一定在索引 1）
             try {
                 var pf = s.PlaceholderFormat;
-                if (pf && (pf.Type === 13 || pf.Type === 14)) continue;
+                if (pf && pf.Type === 2) {
+                    s.TextFrame.TextRange.Text = params.content || '';
+                    return ok({ updated: true, via: 'body-placeholder' });
+                }
+            } catch (e) {}
+        }
+        // 兜底：跳过标题（13/14）与副标题（15）占位符后，取第一个有文本的形状（旧行为，兼容无正文占位符的布局）
+        for (var j = 1; j <= slide.Shapes.Count; j++) {
+            var s = slide.Shapes.Item(j);
+            if (!s.HasTextFrame) continue;
+            try {
+                var pf = s.PlaceholderFormat;
+                if (pf && (pf.Type === 13 || pf.Type === 14 || pf.Type === 15)) continue;
             } catch (e) {}
             if (s.TextFrame.TextRange.Text) {
                 s.TextFrame.TextRange.Text = params.content || '';

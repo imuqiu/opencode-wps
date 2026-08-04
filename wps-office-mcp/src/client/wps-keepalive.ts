@@ -114,8 +114,10 @@ function startService(): Promise<void> {
     if (IS_LINUX) {
       // Linux 下按可用性拉起 WPS 家族（优先 wps，回退 et/wpp/wpsoffice），避免只装 et/wpp 时 nohup wps 失败
       // 注意：不能用 `cmd && nohup x & || ...` 链式写法（`&` 与 `||` 组合是非法 shell 语法，bash -n 直接报错）
+      // 不用 break：command -v 只证明命令存在，不证明启动成功（如无 DISPLAY）——不 break 让后续命令
+      // 也尝试拉起，由就绪确认阶段判断哪个真正存活（第 17 轮评审 warning）
       exec(
-        'for c in wps et wpp wpsoffice; do command -v "$c" >/dev/null 2>&1 && { nohup "$c" >/dev/null 2>&1 & break; }; done',
+        'for c in wps et wpp wpsoffice; do command -v "$c" >/dev/null 2>&1 && { nohup "$c" >/dev/null 2>&1 & }; done',
         () => {
           // 就绪确认：拉起后轮询等待进程存活（最多 5s），避免固定 3s 在慢速启动场景不足导致重复拉起
           let waited = 0;

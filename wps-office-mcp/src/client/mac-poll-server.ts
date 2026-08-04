@@ -575,11 +575,12 @@ class MacPollServer {
    */
   private getRequiredApp(action: string, params: Record<string, unknown> = {}): string {
     // 通用动作：按文件路径扩展名推断目标应用（跨应用打开时轮询桥必须切换应用，否则单应用沙箱内必然失败）
+    // 用正则边界匹配（\.xlsx?$ 等），避免 includes('.xls') 误匹配 .xlss/.document 等非标准后缀（第 17 轮评审 info）
     if (action === 'openFile' || action === 'saveAs') {
       const filePath = String(params.path || params.filePath || '').toLowerCase();
-      if (filePath.includes('.xls')) return 'excel';
-      if (filePath.includes('.doc')) return 'word';
-      if (filePath.includes('.ppt')) return 'ppt';
+      if (/\.xlsx?$/.test(filePath)) return 'excel';
+      if (/\.docx?$/.test(filePath)) return 'word';
+      if (/\.pptx?$/.test(filePath)) return 'ppt';
     }
     // save/getSelectedText/getAppInfo/ping/wireCheck/setSelectedText/convertToPDF 等通用动作：不切应用，跟随当前环境
     return COMMAND_APP_MAP[action] || '';
