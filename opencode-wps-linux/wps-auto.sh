@@ -65,12 +65,28 @@ with zipfile.ZipFile('${file_path}.pptx', 'w') as zf:
 close_all() {
     echo "[WPS-Auto] 关闭所有 WPS 应用..."
     # 精确匹配进程名（pkill -x），避免 -f 匹配完整命令行误杀无关进程（如 wpscan/ethtool 或含 wps 子串的 Node 进程）
+    # 兼容带版本后缀的进程名变体（如 wps-12.1.2 / et-office6 / wpp 等），用 -f 但限定 WPS 安装路径
     for name in "wps" "et" "wpp" "wpsoffice" "wpspdf"; do
         pkill -x "$name" 2>/dev/null || true
     done
-    # 再按 WPS 专属安装路径匹配（/opt/kingsoft/wps 等），只杀 WPS 家族进程
-    pkill -f "/kingsoft/(wps|et|wpp)" 2>/dev/null || true
-    sleep 2
+    # 再按 WPS 专属安装路径匹配（/opt/kingsoft/wps 等），只杀 WPS 家族进程；
+    # 兼容可执行文件名带版本后缀的变体（pkill -f 匹配完整命令行，但限定 /kingsoft/ 路径避免误杀）
+    pkill -f "/kingsoft/(wps|et|wpp|wpsoffice|wpspdf)" 2>/dev/null || true
+    # 轮询确认所有 WPS 进程退出（最多 10s），避免慢速退出/保存对话框场景进程残留导致启动新应用冲突
+    local waited=0
+    while [ $waited -lt 10 ]; do
+        if ! pgrep -f "/kingsoft/(wps|et|wpp|wpsoffice|wpspdf)" >/dev/null 2>&1 && \
+           ! pgrep -x "wps" >/dev/null 2>&1 && ! pgrep -x "et" >/dev/null 2>&1 && \
+           ! pgrep -x "wpp" >/dev/null 2>&1 && ! pgrep -x "wpsoffice" >/dev/null 2>&1 && \
+           ! pgrep -x "wpspdf" >/dev/null 2>&1; then
+            break
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+    if [ $waited -ge 10 ]; then
+        echo "[WPS-Auto] 警告: 等待 10s 后仍有 WPS 进程存活（可能有未保存文档对话框）" >&2
+    fi
 }
 
 start_app() {
@@ -125,7 +141,7 @@ start_app() {
 switch_to() {
     local target=$1
     close_all
-    sleep 2
+    # close_all 已内置退出确认（最多 10s），此处不再额外 sleep
     if ! start_app "$target"; then
         echo "[WPS-Auto] 切换失败: 未知应用 $target" >&2
         return 1

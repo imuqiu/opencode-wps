@@ -142,7 +142,9 @@ registerHandler('addSlide', function(params) {
         if (params.title && slide.Shapes.HasTitle) {
             slide.Shapes.Title.TextFrame.TextRange.Text = params.title;
         }
-        return ok({ slideIndex: position });
+        // 返回实际插入位置（slide.SlideIndex），而非请求的 position（WPS 可能调整）
+        var actualIndex = slide.SlideIndex !== undefined ? slide.SlideIndex : position;
+        return ok({ slideIndex: actualIndex });
     } catch (e) {
         return fail('添加幻灯片失败: ' + e.message);
     }
@@ -847,7 +849,10 @@ registerHandler('startSlideShow', function(params) {
 
 registerHandler('endSlideShow', function(params) {
     try {
-        Application.SlideShowWindows.Item(1).View.Exit();
+        // 无放映窗口时视为已结束（幂等），避免 Item(1) 抛错误导 AI
+        var windows = Application.SlideShowWindows;
+        if (!windows || windows.Count < 1) return ok({ alreadyStopped: true });
+        windows.Item(1).View.Exit();
         return ok({});
     } catch (e) {
         return fail('结束放映失败: ' + e.message);

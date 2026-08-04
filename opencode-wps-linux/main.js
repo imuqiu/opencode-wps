@@ -195,21 +195,27 @@ function poll() {
                         if (response.command.requestId && response.command.requestId === _lastRequestId) {
                             // 上一轮已执行过，跳过（命令可能仍在执行中，等待结果 POST 完成）
                             console.log('跳过重复命令: ' + response.command.requestId);
+                            scheduleNext();
                         } else {
                             _lastRequestId = response.command.requestId || '';
+                            // 先排下一轮轮询再执行命令，避免耗时命令（如大范围 getRangeData）同步阻塞轮询节奏
+                            scheduleNext();
                             dispatchCommand(response.command);
                         }
+                    } else {
+                        scheduleNext();
                     }
                 } catch (e) {
                     console.error('解析响应失败:', e);
                     _failCount++;
                     _lastError = '解析失败: ' + e.message;
+                    scheduleNext();
                 }
             } else {
                 _failCount++;
                 _lastError = 'HTTP ' + xhr.status;
+                scheduleNext();
             }
-            scheduleNext();
         };
 
         xhr.onerror = function() {
