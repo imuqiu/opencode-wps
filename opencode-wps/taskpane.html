@@ -1623,6 +1623,10 @@ function scrollToBottom() { setTimeout(function() { if ($messages) $messages.scr
         var inputBox = document.getElementById('input-box');
         if (inputBox && document.activeElement === inputBox) return;
         var oldDisplay = app.style.display;
+        // 重排前记录消息列表滚动位置：display:none 会重置滚动容器的 scrollTop，
+        // 必须在重排前保存，重排后恢复（否则用户消息列表被滚回顶部）
+        var messagesEl = $messages;
+        var savedScrollTop = messagesEl ? messagesEl.scrollTop : 0;
         // 强制重排最小间隔 300ms：防多个入口（rAF/load/定时器/resize/showChat）
         // 在同一时间窗内排队多次强制重排（每次都是完整布局管线，成本高）
         var now = Date.now();
@@ -1644,18 +1648,27 @@ function scrollToBottom() { setTimeout(function() { if ($messages) $messages.scr
             }
         }
         reflowFixed = reflowOk;
-        // 重排确实修复了头部且用户消息列表不在底部时才滚动：
-        // 尊重用户查看历史消息的位置，避免自愈强行把滚动条拉回底部打断阅读
-        if (CONNECTED && reflowOk && $messages) {
-            var nearBottom = ($messages.scrollTop + $messages.clientHeight >= $messages.scrollHeight - 50);
-            if (nearBottom) scrollToBottom();
+        // 重排后恢复消息列表滚动位置：
+        // - 用户原本在底部（看新消息）→ 滚动到底部
+        // - 用户原本在历史位置（查看旧消息）→ 精确恢复原 scrollTop，不打断阅读
+        if (CONNECTED && reflowOk && messagesEl) {
+            var wasNearBottom = (savedScrollTop + messagesEl.clientHeight >= messagesEl.scrollHeight - 50);
+            if (wasNearBottom) scrollToBottom();
+            else messagesEl.scrollTop = savedScrollTop;
         }
     }
     function scheduleReflowFix() {
         // 节流：resize 事件高频触发时只重排最后一次；容器尺寸变化时
         // 重置已修复状态，允许再次自愈（切窗口后视口可能变化）
         if (reflowTimer) clearTimeout(reflowTimer);
-        reflowTimer = setTimeout(function() { reflowTimer = null; reflowFixed = false; forceReflowFix(); }, 100);
+        reflowTimer = setTimeout(function() {
+            reflowTimer = null;
+            // 距上次强制重排不足 300ms：跳过且不重置 reflowFixed（避免状态位
+            // 被置 false 但实际未执行重排的「空转」——状态与事实保持一致）
+            if (Date.now() - lastForceReflowAt < 300) return;
+            reflowFixed = false;
+            forceReflowFix();
+        }, 100);
     }
     // 暴露给 showChat() 等视图切换函数：setup→chat 切换后主动调度自愈，
     // 不依赖旧 WebView 内核是否在 display:none→block 时派发 resize 事件
@@ -1678,8 +1691,8 @@ function scrollToBottom() { setTimeout(function() { if ($messages) $messages.scr
     } else {
         rafOnce(forceReflowFix);
     }
-    setTimeout(function() { reflowFixed = false; forceReflowFix(); }, 300);
-    setTimeout(function() { reflowFixed = false; forceReflowFix(); }, 1000);
+    setTimeout(function() { scheduleReflowFix(); }, 300);
+    setTimeout(function() { scheduleReflowFix(); }, 1000);
 })()
 </script>
 </body>

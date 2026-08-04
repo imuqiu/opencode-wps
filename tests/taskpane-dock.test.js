@@ -703,8 +703,9 @@ test('taskpane.html 自愈骨架：position:fixed 锚定 + forceReflowFix 关键
   // ⑤ 首次渲染多时机兜底（rAF + load + 定时器）
   assertTrue(/rafOnce\s*\(\s*forceReflowFix\s*\)/.test(html), '应通过 rafOnce 在首帧前重排');
   assertTrue(/addEventListener\('load'/.test(html), '应监听 load 事件兜底重排');
-  assertTrue(/setTimeout\s*\(\s*function\s*\(\s*\)\s*\{\s*reflowFixed\s*=\s*false\s*;\s*forceReflowFix\s*\(\s*\)\s*;?\s*\}\s*,\s*300\s*\)/.test(html), '应保留 300ms 定时器兜底（重置状态位后重排）');
-  assertTrue(/setTimeout\s*\(\s*function\s*\(\s*\)\s*\{\s*reflowFixed\s*=\s*false\s*;\s*forceReflowFix\s*\(\s*\)\s*;?\s*\}\s*,\s*1000\s*\)/.test(html), '应保留 1000ms 定时器兜底（重置状态位后重排）');
+  // 定时器兜底改走 scheduleReflowFix（内部含 300ms 最小间隔检查 + 状态位重置）
+  assertTrue(/setTimeout\s*\(\s*function\s*\(\s*\)\s*\{\s*scheduleReflowFix\s*\(\s*\)\s*;?\s*\}\s*,\s*300\s*\)/.test(html), '应保留 300ms 定时器兜底（走 scheduleReflowFix）');
+  assertTrue(/setTimeout\s*\(\s*function\s*\(\s*\)\s*\{\s*scheduleReflowFix\s*\(\s*\)\s*;?\s*\}\s*,\s*1000\s*\)/.test(html), '应保留 1000ms 定时器兜底（走 scheduleReflowFix）');
   // ⑥ chat 视图隐藏时跳过无效重排（避免在 display:none 父级上重排）
   assertTrue(/view-chat/.test(html) && /classList\.contains\('hidden'\)/.test(html), 'chat 视图隐藏时 forceReflowFix 应跳过');
   // ⑦ 双头部检查（topbar + session-header）
@@ -714,8 +715,8 @@ test('taskpane.html 自愈骨架：position:fixed 锚定 + forceReflowFix 关键
   assertTrue(/__scheduleReflowFix\(\)/.test(html), 'showChat 应主动调度自愈');
   // ⑨ 用户在输入时跳过强制重排（避免 display:none 导致输入框失焦丢光标）
   assertTrue(/activeElement\s*===\s*inputBox/.test(html), '输入框聚焦时 forceReflowFix 应跳过');
-  // ⑩ 滚动位置尊重：仅用户消息列表在底部时才滚动
-  assertTrue(/nearBottom/.test(html), '应检查用户是否在消息列表底部再决定是否滚动');
+  // ⑩ 滚动位置尊重：重排后恢复用户滚动位置（wasNearBottom 判断）
+  assertTrue(/wasNearBottom/.test(html), '应根据用户是否在消息列表底部决定滚动策略');
   // ⑪ 自愈注册晚于视图切换的时序倒挂补触发（chat 已先行显示时补调度）
   assertTrue(/if\s*\(vc\s*&&\s*!vc\.classList\.contains\('hidden'\)\)\s*scheduleReflowFix\(\)/.test(html), 'chat 已先行显示时应补触发自愈');
   // ⑫ 强制重排最小间隔 300ms（防多入口密集触发昂贵布局）
@@ -726,6 +727,11 @@ test('taskpane.html 自愈骨架：position:fixed 锚定 + forceReflowFix 关键
   assertTrue(/reflowRetryCount\s*=\s*0/.test(html), '.app 找到后应重置重试计数');
   // ⑮ heads 为空时复查视为未修复（持续可重试）
   assertTrue(/reflowOk\s*=\s*heads\.length\s*>\s*0/.test(html), 'heads 为空时复查应视为未修复');
+  // ⑯ 重排前保存滚动位置、重排后恢复（防 display:none 重置 scrollTop 丢位置）
+  assertTrue(/savedScrollTop/.test(html), '应保存重排前滚动位置');
+  assertTrue(/messagesEl\.scrollTop\s*=\s*savedScrollTop/.test(html), '重排后应恢复用户滚动位置');
+  // ⑰ 定时器兜底走 scheduleReflowFix（300ms 最小间隔 + 状态位一致）
+  assertTrue(/Date\.now\(\)\s*-\s*lastForceReflowAt\s*<\s*300/.test(html), 'scheduleReflowFix 应含最小间隔检查');
 });
 
 // ==================== 测试结果汇总 ====================
