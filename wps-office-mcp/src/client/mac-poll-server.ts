@@ -343,10 +343,38 @@ class MacPollServer {
 
       this.server.on('error', (err: NodeJS.ErrnoException) => {
         if (err.code === 'EADDRINUSE') {
-          log.warn(`[Mac] Port ${this.port} already in use, trying to reuse`);
-          // 端口被占用，可能是之前的实例没关干净
-          this._isRunning = true;
-          resolve();
+          // 端口被占用：不要假启动——先探测已有服务是否可用（可能是上一次残留的同构轮询服务）
+          log.warn(`[Poll] Port ${this.port} already in use, probing existing service...`);
+          const http = require('http');
+          const probe = http.get(
+            { host: '127.0.0.1', port: this.port, path: '/status', timeout: 2000 },
+            (res: any) => {
+              let body = '';
+              res.on('data', (chunk: any) => (body += chunk));
+              res.on('end', () => {
+                try {
+                  const st = JSON.parse(body);
+                  if (st.status === 'running') {
+                    // 已有可用的轮询服务（残留实例），复用即可
+                    log.info(`[Poll] Reusing existing poll server on port ${this.port}`);
+                    this._isRunning = true;
+                    resolve();
+                    return;
+                  }
+                } catch (e) {
+                  // 非 JSON 响应，视为不可用
+                }
+                reject(new Error(`Port ${this.port} already in use by non-poll service`));
+              });
+            }
+          );
+          probe.on('error', () => {
+            reject(new Error(`Port ${this.port} already in use and unresponsive`));
+          });
+          probe.on('timeout', () => {
+            probe.destroy();
+            reject(new Error(`Port ${this.port} already in use and timeout`));
+          });
         } else {
           reject(err);
         }

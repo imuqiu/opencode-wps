@@ -321,13 +321,16 @@ registerHandler('setPageSetup', function(params) {
         var doc = Application.ActiveDocument;
         if (!doc) return fail('没有打开的文档');
         var ps = doc.PageSetup;
-        if (params.topMargin) ps.TopMargin = params.topMargin;
-        if (params.bottomMargin) ps.BottomMargin = params.bottomMargin;
-        if (params.leftMargin) ps.LeftMargin = params.leftMargin;
-        if (params.rightMargin) ps.RightMargin = params.rightMargin;
-        if (params.orientation) ps.Orientation = params.orientation === 'landscape' ? 1 : 2;
-        if (params.pageWidth) ps.PageWidth = params.pageWidth;
-        if (params.pageHeight) ps.PageHeight = params.pageHeight;
+        // wdOrientation: wdOrientPortrait=0, wdOrientLandscape=1（0 是合法 portrait 值，不能用真值判断）
+        if (params.orientation !== undefined) {
+            ps.Orientation = params.orientation === 'landscape' ? 1 : 0;
+        }
+        if (params.topMargin !== undefined) ps.TopMargin = params.topMargin;
+        if (params.bottomMargin !== undefined) ps.BottomMargin = params.bottomMargin;
+        if (params.leftMargin !== undefined) ps.LeftMargin = params.leftMargin;
+        if (params.rightMargin !== undefined) ps.RightMargin = params.rightMargin;
+        if (params.pageWidth !== undefined) ps.PageWidth = params.pageWidth;
+        if (params.pageHeight !== undefined) ps.PageHeight = params.pageHeight;
         return ok({});
     } catch (e) {
         return fail('设置页面失败: ' + e.message);

@@ -869,12 +869,42 @@ registerHandler('insertPptTable', function(params) {
     }
 });
 
+// 在指定幻灯片中按名称或序号（第 N 个表格）定位表格形状；非表格返回 null
+function findPptTable(slide, tableNameOrIndex) {
+    if (typeof tableNameOrIndex === 'number') {
+        // 按"第 N 个表格"定位
+        var n = 0;
+        for (var j = 1; j <= slide.Shapes.Count; j++) {
+            var s = slide.Shapes.Item(j);
+            if (s.HasTable) {
+                n++;
+                if (n === tableNameOrIndex) return s;
+            }
+        }
+        return null;
+    }
+    if (tableNameOrIndex == null) {
+        // 默认取第一个表格
+        for (var j = 1; j <= slide.Shapes.Count; j++) {
+            if (slide.Shapes.Item(j).HasTable) return slide.Shapes.Item(j);
+        }
+        return null;
+    }
+    // 按名称精确匹配
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+        var s = slide.Shapes.Item(j);
+        if (s.Name === tableNameOrIndex && s.HasTable) return s;
+    }
+    return null;
+}
+
 registerHandler('getPptTableCell', function(params) {
     try {
         var pres = getPPT();
         if (!pres) return fail('没有打开的演示文稿');
         var slide = pres.Slides.Item(params.slideIndex);
-        var table = slide.Shapes.Item(params.tableName || params.tableIndex || 1);
+        var table = findPptTable(slide, params.tableName !== undefined ? params.tableName : (params.tableIndex || 1));
+        if (!table) return fail('未找到表格形状（需为表格且名称/序号匹配）');
         var cell = table.Table.Cell(params.row, params.col);
         return ok({ text: cell.Shape.TextFrame.TextRange.Text });
     } catch (e) {
@@ -887,7 +917,8 @@ registerHandler('setPptTableCell', function(params) {
         var pres = getPPT();
         if (!pres) return fail('没有打开的演示文稿');
         var slide = pres.Slides.Item(params.slideIndex);
-        var table = slide.Shapes.Item(params.tableName || 1);
+        var table = findPptTable(slide, params.tableName !== undefined ? params.tableName : (params.tableIndex || 1));
+        if (!table) return fail('未找到表格形状（需为表格且名称/序号匹配）');
         table.Table.Cell(params.row, params.col).Shape.TextFrame.TextRange.Text = params.text || '';
         return ok({});
     } catch (e) {
@@ -899,7 +930,8 @@ registerHandler('unifyFont', function(params) {
     try {
         var pres = getPPT();
         if (!pres) return fail('没有打开的演示文稿');
-        var fontName = params.fontName || '微软雅黑';
+        // Linux 默认字体：思源黑体（主流发行版预装）；调用方可显式传 fontName 覆盖
+        var fontName = params.fontName || 'Noto Sans CJK SC';
         var count = 0;
         for (var i = 1; i <= pres.Slides.Count; i++) {
             var slide = pres.Slides.Item(i);

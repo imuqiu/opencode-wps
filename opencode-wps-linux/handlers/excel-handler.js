@@ -1201,9 +1201,38 @@ registerHandler('cleanData', function(params) {
         if (!wb) return fail('没有打开的工作簿');
         var sheet = getExcelSheet(wb, params.sheet);
         var range = sheet.Range(params.range);
-        range.Replace(' ', '', 2);
-        range.Replace('\t', '', 2);
-        return ok({});
+        // 清洗模式：trim=去首尾空白（默认，安全）；collapse=连续多空格折叠为单个；all=删除所有空白（激进，谨慎）
+        var mode = params.mode || 'trim';
+        var replaced = 0;
+        if (mode === 'all') {
+            range.Replace(' ', '', 2);
+            range.Replace('\t', '', 2);
+        } else if (mode === 'collapse') {
+            // 用单元格级处理：仅折叠连续空白，保留单个空格
+            for (var i = 1; i <= range.Rows.Count; i++) {
+                for (var j = 1; j <= range.Columns.Count; j++) {
+                    var cell = range.Cells.Item(i, j);
+                    var v = cell.Value2;
+                    if (typeof v === 'string' && /\s{2,}/.test(v)) {
+                        cell.Value2 = v.replace(/[\t\n ]{2,}/g, ' ');
+                        replaced++;
+                    }
+                }
+            }
+        } else {
+            // trim：仅去首尾空白（Excel 无原生 Trim 函数，用 TRIM 公式值回写）
+            for (var i = 1; i <= range.Rows.Count; i++) {
+                for (var j = 1; j <= range.Columns.Count; j++) {
+                    var cell = range.Cells.Item(i, j);
+                    var v = cell.Value2;
+                    if (typeof v === 'string') {
+                        var t = v.replace(/^[\s\u00a0]+|[\s\u00a0]+$/g, '');
+                        if (t !== v) { cell.Value2 = t; replaced++; }
+                    }
+                }
+            }
+        }
+        return ok({ mode: mode, replaced: replaced });
     } catch (e) {
         return fail('清洗数据失败: ' + e.message);
     }
