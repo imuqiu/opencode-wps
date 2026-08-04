@@ -40,11 +40,17 @@ with zipfile.ZipFile('${file_path}.docx', 'w') as zf:
             echo "${file_path}.docx"
             ;;
         "pptx")
+            # 纯标准库 zipfile 手写最小 pptx（避免依赖第三方 python-pptx）
             python3 -c "
-from pptx import Presentation
-p = Presentation()
-p.slides.add_slide(p.slide_layouts[6])
-p.save('${file_path}.pptx')
+import zipfile
+with zipfile.ZipFile('${file_path}.pptx', 'w') as zf:
+    zf.writestr('[Content_Types].xml', '<?xml version=\"1.0\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/ppt/presentation.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml\"/><Override PartName=\"/ppt/slides/slide1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slide+xml\"/><Override PartName=\"/ppt/slideLayouts/slideLayout1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml\"/><Override PartName=\"/ppt/slideMasters/slideMaster1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml\"/></Types>')
+    zf.writestr('_rels/.rels', '<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"ppt/presentation.xml\"/></Relationships>')
+    zf.writestr('ppt/presentation.xml', '<?xml version=\"1.0\"?><p:presentation xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><p:sldMasterIdLst><p:sldMasterId id=\"2147483648\" r:id=\"rId1\"/></p:sldMasterIdLst><p:sldIdLst><p:sldId id=\"256\" r:id=\"rId2\"/></p:sldIdLst><p:sldSz cx=\"9144000\" cy=\"6858000\"/></p:presentation>')
+    zf.writestr('ppt/_rels/presentation.xml.rels', '<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster\" Target=\"slideMasters/slideMaster1.xml\"/><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide\" Target=\"slides/slide1.xml\"/></Relationships>')
+    zf.writestr('ppt/slideMasters/slideMaster1.xml', '<?xml version=\"1.0\"?><p:sldMaster xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld><p:clrMap bg1=\"lt1\" tx1=\"dk1\" bg2=\"lt2\" tx2=\"dk2\" accent1=\"accent1\" accent2=\"accent2\" accent3=\"accent3\" accent4=\"accent4\" accent5=\"accent5\" accent6=\"accent6\" hlink=\"hlink\" folHlink=\"folHlink\"/></p:sldMaster>')
+    zf.writestr('ppt/slideLayouts/slideLayout1.xml', '<?xml version=\"1.0\"?><p:sldLayout xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" type=\"blank\"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"/></p:clrMapOvr></p:sldLayout>')
+    zf.writestr('ppt/slides/slide1.xml', '<?xml version=\"1.0\"?><p:sld xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"/></p:clrMapOvr></p:sld>')
 " 2>/dev/null
             echo "${file_path}.pptx"
             ;;
@@ -58,9 +64,13 @@ wps_installed() {
 
 close_all() {
     echo "[WPS-Auto] 关闭所有 WPS 应用..."
-    for name in "wps" "et" "wpp" "wpsoffice" "wpspdf" "kingsoft"; do
-        pkill -f "$name" 2>/dev/null || true
+    # 精确匹配进程名（pkill -x），避免 -f 匹配完整命令行误杀无关进程（如 wpscan/ethtool 或含 wps 子串的 Node 进程）
+    for name in "wps" "et" "wpp" "wpsoffice" "wpspdf"; do
+        pkill -x "$name" 2>/dev/null || true
     done
+    # 再按 WPS 专属安装路径匹配（/opt/kingsoft/wps 等），只杀 WPS 家族进程
+    pkill -f "/kingsoft/(wps|et|wpp)" 2>/dev/null || true
+    pkill -f "wpspdf" 2>/dev/null || true
     sleep 2
 }
 
