@@ -151,7 +151,11 @@ registerHandler('setFont', function(params) {
         if (params.fontSize) range.Font.Size = params.fontSize;
         if (params.bold !== undefined) range.Font.Bold = params.bold;
         if (params.italic !== undefined) range.Font.Italic = params.italic;
-        if (params.color) range.Font.Color = params.color;
+        if (params.color !== undefined) {
+            var fc = parseColor(params.color);
+            if (fc === null) return fail('无效的颜色值: ' + params.color + '，支持的格式: #FF0000, FF0000, red, blue 等');
+            range.Font.Color = fc;
+        }
         if (params.underline !== undefined) range.Font.Underline = params.underline;
         return ok({});
     } catch (e) {
@@ -366,28 +370,24 @@ var COLOR_NAMES = {
     maroon: toBgr(0x800000), lime: toBgr(0x00FF00), silver: toBgr(0xC0C0C0), gold: toBgr(0xFFD700)
 };
 
+// 统一颜色解析：支持颜色名 / #RRGGBB / RRGGBB / 数字（BGR），非法返回 null
+function parseColor(color) {
+    if (typeof color === 'number') return color;
+    if (typeof color !== 'string' || !color) return null;
+    var lower = color.toLowerCase();
+    if (COLOR_NAMES[lower] !== undefined) return COLOR_NAMES[lower];
+    var hexStr = color.indexOf('#') === 0 ? color.substring(1) : color;
+    if (!/^[0-9a-fA-F]{6}$/.test(hexStr)) return null;
+    return toBgr(parseInt(hexStr, 16));
+}
+
 registerHandler('setTextColor', function(params) {
     try {
         var doc = Application.ActiveDocument;
         if (!doc) return fail('没有打开的文档');
         var range = Application.Selection.Range;
-        var color;
-        if (typeof params.color === 'string') {
-            var lower = params.color.toLowerCase();
-            if (COLOR_NAMES[lower] !== undefined) {
-                color = COLOR_NAMES[lower];
-            } else if (params.color.indexOf('#') === 0) {
-                var hex = parseInt(params.color.substring(1), 16);
-                if (isNaN(hex)) return fail('无效的颜色值: ' + params.color);
-                color = toBgr(hex);
-            } else {
-                var hex = parseInt(params.color, 16);
-                if (isNaN(hex)) return fail('无效的颜色值: ' + params.color + '，支持的格式: #FF0000, FF0000, red, blue 等');
-                color = toBgr(hex);
-            }
-        } else {
-            color = params.color;
-        }
+        var color = parseColor(params.color);
+        if (color === null) return fail('无效的颜色值: ' + params.color + '，支持的格式: #FF0000, FF0000, red, blue 等');
         range.Font.Color = color;
         return ok({});
     } catch (e) {

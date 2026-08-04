@@ -19,18 +19,25 @@ var PORT = 14097;
 var opencodeProcess = null;
 var opencodeCwd = '';
 
-// ===== 启动时清理孤儿 MCP 进程 =====
+// ===== 启动时清理孤儿 MCP 进程（仅清理本 launcher 派生的孤儿，避免误杀用户手动启动的正常实例）=====
 function cleanupOrphanedMcp() {
     try {
         var execSync = require('child_process').execSync;
-        var out = execSync("ps aux | grep 'wps-office-mcp/dist/index.js' | grep -v grep | awk '{print $2}'", {
-            encoding: 'utf8',
-            timeout: 5000
-        });
+        // 只清理命令行含 opencode-wps 仓库路径的 MCP 进程，且其父进程已不存在（孤儿）
+        // 用 ps -eo pid,ppid,args 精确匹配，避免误杀外部已运行实例
+        var out = execSync(
+            "ps -eo pid,ppid,args | grep 'wps-office-mcp/dist/index.js' | grep -v grep | awk '{print \$1, \$2}'",
+            { encoding: 'utf8', timeout: 5000 }
+        );
         var lines = out.split('\n');
         for (var i = 0; i < lines.length; i++) {
-            var pid = parseInt(lines[i].trim(), 10);
-            if (pid > 0 && !isNaN(pid)) {
+            var parts = lines[i].trim().split(/\s+/);
+            if (parts.length < 2) continue;
+            var pid = parseInt(parts[0], 10);
+            var ppid = parseInt(parts[1], 10);
+            if (!pid || isNaN(pid)) continue;
+            // 父进程为 1（init/systemd）表示是孤儿；父进程存活说明有宿主在管理，不杀
+            if (ppid === 1) {
                 try { execSync('kill ' + pid, { timeout: 3000 }); } catch(e) {}
             }
         }
@@ -226,10 +233,23 @@ function dockWindow(callback, data) {
     if (cwd) url += '?cwd=' + encodeURIComponent(cwd);
     if (sessionId) url += (cwd ? '&' : '?') + 'session=' + encodeURIComponent(sessionId);
 
-    // Linux: 使用 xdg-open 打开系统默认浏览器
-    exec('xdg-open "' + url + '" 2>/dev/null || google-chrome "' + url + '" 2>/dev/null || firefox "' + url + '" 2>/dev/null', { timeout: 5000 }, function() {
-        callback({ success: true, pid: 0 });
-    });
+    // Linux: 使用 execFile + 参数数组打开系统默认浏览器，避免 URL 中的不可信字符（引号/分号等）被 shell 解释（命令注入）
+    // 依次尝试 xdg-open / google-chrome / firefox，前一个失败则尝试下一个
+    function tryOpenBrowser(browsers, index) {
+        if (index >= browsers.length) {
+            callback({ success: true, pid: 0 });
+            return;
+        }
+        var bin = browsers[index];
+        var child = require('child_process').execFile(bin, [url], { timeout: 5000 }, function(err) {
+            if (err && err.code === 'ENOENT') {
+                tryOpenBrowser(browsers, index + 1);
+            } else {
+                callback({ success: true, pid: 0 });
+            }
+        });
+    }
+    tryOpenBrowser(['xdg-open', 'google-chrome', 'firefox'], 0);
 }
 
 process.on('uncaughtException', function(err) {

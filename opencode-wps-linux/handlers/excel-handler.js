@@ -324,11 +324,23 @@ registerHandler('getContext', function(params) {
         if (!wb) return fail('没有打开的工作簿');
         var sheet = Application.ActiveSheet;
         var headers = [];
+        var headerRow = 0;
         try {
             var used = sheet.UsedRange;
             if (used.Rows.Count > 0) {
-                for (var i = 1; i <= Math.min(used.Columns.Count, 26); i++) {
-                    headers.push(String.fromCharCode(64 + i));
+                // 读取首行真实值作为表头候选（若首行是数据而非表头，则 headerRow 标记为 0）
+                var colCount = Math.min(used.Columns.Count, 26);
+                var firstRowValues = [];
+                var nonEmptyCount = 0;
+                for (var i = 1; i <= colCount; i++) {
+                    var hv = used.Cells.Item(1, i).Value2;
+                    firstRowValues.push(hv !== null && hv !== undefined ? String(hv) : '');
+                    if (firstRowValues[i - 1] !== '') nonEmptyCount++;
+                }
+                // 首行大部分单元格非空且含文本（非纯数字）时视为表头
+                if (nonEmptyCount >= Math.ceil(colCount / 2)) {
+                    headers = firstRowValues;
+                    headerRow = 1;
                 }
             }
         } catch (e) {}
@@ -343,7 +355,8 @@ registerHandler('getContext', function(params) {
             currentSheet: sheet.Name,
             allSheets: sheets,
             selectedCell: Application.Selection ? Application.Selection.Address() : '',
-            headers: headers
+            headers: headers,
+            headerRow: headerRow
         });
     } catch (e) {
         return fail('获取上下文失败: ' + e.message);
@@ -1211,23 +1224,14 @@ registerHandler('cleanData', function(params) {
         // 清洗模式：trim=去首尾空白（默认，安全）；collapse=连续多空格折叠为单个；all=删除所有空白（激进，谨慎）
         var mode = params.mode || 'trim';
         var replaced = 0;
+        // 三模式统一用单元格级正则处理，不依赖 Range.Replace 的平台差异行为
+        var pattern = null;
         if (mode === 'all') {
-            range.Replace(' ', '', 2);
-            range.Replace('\t', '', 2);
+            pattern = /[\s\u00a0]+/g;
         } else if (mode === 'collapse') {
-            // 用单元格级处理：仅折叠连续空白，保留单个空格
-            for (var i = 1; i <= range.Rows.Count; i++) {
-                for (var j = 1; j <= range.Columns.Count; j++) {
-                    var cell = range.Cells.Item(i, j);
-                    var v = cell.Value2;
-                    if (typeof v === 'string' && /\s{2,}/.test(v)) {
-                        cell.Value2 = v.replace(/[\t\n ]{2,}/g, ' ');
-                        replaced++;
-                    }
-                }
-            }
+            pattern = /[\t\n ]{2,}/g;
         } else {
-            // trim：仅去首尾空白（Excel 无原生 Trim 函数，用 TRIM 公式值回写）
+            // trim：仅去首尾空白
             for (var i = 1; i <= range.Rows.Count; i++) {
                 for (var j = 1; j <= range.Columns.Count; j++) {
                     var cell = range.Cells.Item(i, j);
@@ -1236,6 +1240,17 @@ registerHandler('cleanData', function(params) {
                         var t = v.replace(/^[\s\u00a0]+|[\s\u00a0]+$/g, '');
                         if (t !== v) { cell.Value2 = t; replaced++; }
                     }
+                }
+            }
+            return ok({ mode: mode, replaced: replaced });
+        }
+        for (var i = 1; i <= range.Rows.Count; i++) {
+            for (var j = 1; j <= range.Columns.Count; j++) {
+                var cell = range.Cells.Item(i, j);
+                var v = cell.Value2;
+                if (typeof v === 'string' && pattern.test(v)) {
+                    cell.Value2 = v.replace(pattern, mode === 'all' ? '' : ' ');
+                    replaced++;
                 }
             }
         }
