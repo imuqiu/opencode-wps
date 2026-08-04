@@ -3,6 +3,16 @@
  * 文档内容读写、格式设置、表格、书签等
  */
 
+// 获取选中区域 Range；无选中时返回 null（供依赖 Selection 的 handler 做明确错误提示）
+function getSelectionRange() {
+    try {
+        if (!Application.Selection) return null;
+        return Application.Selection.Range;
+    } catch (e) {
+        return null;
+    }
+}
+
 registerHandler('getActiveDocument', function(params) {
     try {
         var doc = Application.ActiveDocument;
@@ -149,7 +159,8 @@ registerHandler('setFont', function(params) {
     try {
         var doc = Application.ActiveDocument;
         if (!doc) return fail('没有打开的文档');
-        var range = (params.range === 'all') ? doc.Content : Application.Selection.Range;
+        var range = (params.range === 'all') ? doc.Content : getSelectionRange();
+        if (!range) return fail('请先在文档中选中文本或设置光标');
         if (params.fontName) range.Font.Name = params.fontName;
         if (params.fontSize) range.Font.Size = params.fontSize;
         if (params.bold !== undefined) range.Font.Bold = params.bold;
@@ -168,7 +179,8 @@ registerHandler('setFont', function(params) {
 
 registerHandler('applyStyle', function(params) {
     try {
-        var range = Application.Selection.Range;
+        var range = getSelectionRange();
+        if (!range) return fail('请先在文档中选中文本');
         range.Style = params.styleName;
         return ok({});
     } catch (e) {
@@ -348,7 +360,8 @@ registerHandler('setParagraph', function(params) {
     try {
         var doc = Application.ActiveDocument;
         if (!doc) return fail('没有打开的文档');
-        var range = (params.range === 'all') ? doc.Content : Application.Selection.Range;
+        var range = (params.range === 'all') ? doc.Content : getSelectionRange();
+        if (!range) return fail('请先在文档中选中文本或设置光标');
         var para = range.ParagraphFormat;
         if (params.alignment !== undefined) para.Alignment = params.alignment;
         if (params.lineSpacing) para.LineSpacing = params.lineSpacing;
@@ -388,7 +401,8 @@ registerHandler('setTextColor', function(params) {
     try {
         var doc = Application.ActiveDocument;
         if (!doc) return fail('没有打开的文档');
-        var range = Application.Selection.Range;
+        var range = getSelectionRange();
+        if (!range) return fail('请先在文档中选中文本');
         var color = parseColor(params.color);
         if (color === null) return fail('无效的颜色值: ' + params.color + '，支持的格式: #FF0000, FF0000, red, blue 等');
         range.Font.Color = color;
@@ -424,7 +438,8 @@ registerHandler('setLineSpacing', function(params) {
             if (isNaN(paraIdx) || paraIdx < 0 || paraIdx >= doc.Paragraphs.Count) return fail('段落索引超出范围');
             range = doc.Paragraphs.Item(paraIdx + 1).Range;
         } else {
-            range = Application.Selection.Range;
+            range = getSelectionRange();
+            if (!range) return fail('请先在文档中选中文本或设置光标');
         }
         range.ParagraphFormat.LineSpacingRule = 5;
         range.ParagraphFormat.LineSpacing = lineSpacing;

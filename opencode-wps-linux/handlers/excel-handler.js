@@ -388,14 +388,16 @@ registerHandler('getContext', function(params) {
                 // 读取首行真实值作为表头候选（若首行是数据而非表头，则 headerRow 标记为 0）
                 var colCount = Math.min(used.Columns.Count, 26);
                 var firstRowValues = [];
-                var nonEmptyCount = 0;
+                var textCount = 0;
                 for (var i = 1; i <= colCount; i++) {
                     var hv = used.Cells.Item(1, i).Value2;
-                    firstRowValues.push(hv !== null && hv !== undefined ? String(hv) : '');
-                    if (firstRowValues[i - 1] !== '') nonEmptyCount++;
+                    var s = hv !== null && hv !== undefined ? String(hv) : '';
+                    firstRowValues.push(s);
+                    // 表头通常是文本：非空且非纯数字才算文本候选（过滤纯数字数据行误判）
+                    if (s !== '' && isNaN(Number(s))) textCount++;
                 }
-                // 首行大部分单元格非空且含文本（非纯数字）时视为表头
-                if (nonEmptyCount >= Math.ceil(colCount / 2)) {
+                // 首行大部分单元格为文本时视为表头
+                if (textCount >= Math.ceil(colCount / 2)) {
                     headers = firstRowValues;
                     headerRow = 1;
                 }
@@ -675,7 +677,7 @@ registerHandler('insertColumns', function(params) {
         var colLetter = resolveColumnLetter(col);
         var colNum = colToNumber(col);
         var endLetter = colToLetter(colNum + count - 1);
-        if (!colLetter || !endLetter) return fail('无效的列参数: ' + col);
+        if (!colLetter || !colNum || !endLetter) return fail('无效的列参数: ' + col);
         sheet.Columns(colLetter + ':' + endLetter).Insert();
         return ok({});
     } catch (e) {
@@ -691,7 +693,7 @@ registerHandler('deleteColumns', function(params) {
         var colLetter = resolveColumnLetter(col);
         var colNum = colToNumber(col);
         var endLetter = colToLetter(colNum + count - 1);
-        if (!colLetter || !endLetter) return fail('无效的列参数: ' + col);
+        if (!colLetter || !colNum || !endLetter) return fail('无效的列参数: ' + col);
         sheet.Columns(colLetter + ':' + endLetter).Delete();
         return ok({});
     } catch (e) {
@@ -1169,7 +1171,7 @@ registerHandler('groupColumns', function(params) {
         var col = resolveColumnLetter(params.column);
         var colNum = colToNumber(params.column);
         var endLetter = colToLetter(colNum + (params.count || 1) - 1);
-        if (!col || !endLetter) return fail('无效的列参数: ' + params.column);
+        if (!col || !colNum || !endLetter) return fail('无效的列参数: ' + params.column);
         var range = sheet.Range(col + ':' + endLetter);
         range.Group();
         return ok({});

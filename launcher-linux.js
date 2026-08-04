@@ -242,7 +242,8 @@ function dockWindow(callback, data) {
         }
         var bin = browsers[index];
         var child = require('child_process').execFile(bin, [url], { timeout: 5000 }, function(err) {
-            if (err && err.code === 'ENOENT') {
+            if (err) {
+                // ENOENT(命令不存在) 或其它启动失败（无图形会话/无默认应用）都尝试下一个浏览器
                 tryOpenBrowser(browsers, index + 1);
             } else {
                 callback({ success: true, pid: 0 });
