@@ -47,8 +47,23 @@ cleanupOrphanedMcp();
 
 function parseBody(req, callback) {
     var body = '';
-    req.on('data', function(chunk) { body += chunk; });
+    var size = 0;
+    var aborted = false;
+    // 请求体上限 1MB：launcher 接口（start/dock）请求体极小，超限视为异常客户端直接拒绝，避免内存耗尽
+    var MAX_BODY = 1024 * 1024;
+    req.on('data', function(chunk) {
+        if (aborted) return;
+        size += chunk.length;
+        if (size > MAX_BODY) {
+            aborted = true;
+            console.log('[launcher] Body too large, rejecting');
+            try { req.destroy(); } catch (e) {}
+            return;
+        }
+        body += chunk;
+    });
     req.on('end', function() {
+        if (aborted) return;
         try { callback(JSON.parse(body)); }
         catch(e) {
             console.log('[launcher] Parse error: ' + e.message);

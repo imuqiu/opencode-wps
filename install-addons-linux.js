@@ -212,8 +212,9 @@ if (fsEx.existsSync(mcpServer.src)) {
         console.log('  依赖安装完成');
         depsInstalled = true;
     } catch (e) {
-        console.log('  [警告] npm install 失败（详见上方输出），请手动运行: cd ' + mcpServer.src + ' && npm install');
-        depsInstalled = false;
+        console.error('  ✗ npm install 失败（详见上方输出）');
+        console.error('    MCP 服务器无法编译，插件将不可用。请手动运行: cd ' + mcpServer.src + ' && npm install 后重试。');
+        process.exit(1);
     }
 
     if (depsInstalled) {
@@ -223,7 +224,9 @@ if (fsEx.existsSync(mcpServer.src)) {
             execSync('npm run build', { cwd: mcpServer.src, stdio: 'inherit', timeout: 600000 });
             console.log('  编译完成');
         } catch (e) {
-            console.log('  [警告] npm run build 失败（详见上方输出），请手动运行: cd ' + mcpServer.src + ' && npm run build');
+            console.error('  ✗ npm run build 失败（详见上方输出）');
+            console.error('    MCP 服务器编译失败，插件将不可用。请手动运行: cd ' + mcpServer.src + ' && npm run build 后重试。');
+            process.exit(1);
         }
     } else {
         console.log('  [跳过] 依赖安装失败，跳过 npm run build（先修复依赖安装）');

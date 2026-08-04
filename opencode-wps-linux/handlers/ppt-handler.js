@@ -904,8 +904,14 @@ registerHandler('insertPptTable', function(params) {
         var table = slide.Shapes.AddTable(rows, cols, params.left || 100, params.top || 100, params.width || 400, params.height || 200);
         if (params.data) {
             for (var r = 0; r < Math.min(params.data.length, rows); r++) {
-                for (var c = 0; c < Math.min(params.data[r].length, cols); c++) {
-                    table.Table.Cell(r + 1, c + 1).Shape.TextFrame.TextRange.Text = String(params.data[r][c]);
+                // 行归一化为数组：兼容标量/null 行（与 excel setRangeData 的 toRowArray 语义一致），避免 .length 抛 TypeError
+                var rowData = params.data[r];
+                if (rowData && typeof rowData === 'object' && rowData.length !== undefined) {
+                    for (var c = 0; c < Math.min(rowData.length, cols); c++) {
+                        table.Table.Cell(r + 1, c + 1).Shape.TextFrame.TextRange.Text = String(rowData[c]);
+                    }
+                } else if (rowData !== null && rowData !== undefined) {
+                    table.Table.Cell(r + 1, 1).Shape.TextFrame.TextRange.Text = String(rowData);
                 }
             }
         }

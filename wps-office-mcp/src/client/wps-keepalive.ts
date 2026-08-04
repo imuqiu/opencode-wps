@@ -39,7 +39,9 @@ function checkLinuxWpsRunning(): boolean {
       const pid = parseInt(p, 10);
       if (!pid || isNaN(pid)) continue;
       try {
-        const cmdline = require('fs').readFileSync('/proc/' + pid + '/cmdline', 'utf8').replace(/\0/g, ' ');
+        const cmdline = require('fs')
+          .readFileSync('/proc/' + pid + '/cmdline', 'utf8')
+          .replace(/\0/g, ' ');
         // 取第一个 token（进程名/可执行路径）与目标进程名精确比对
         const name = cmdline.trim().split(/[\s/]+/)[0];
         if (targets.has(name)) return true;
@@ -73,7 +75,7 @@ async function checkService(): Promise<boolean> {
  * 启动WPS内置HTTP服务
  */
 function startService(): Promise<void> {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     if (isStarting) {
       resolve();
       return;
@@ -83,7 +85,7 @@ function startService(): Promise<void> {
 
     if (IS_MAC) {
       // Mac下通过open命令启动WPS
-      exec(`open "${STARTUP_PROTOCOL}"`, (error) => {
+      exec(`open "${STARTUP_PROTOCOL}"`, error => {
         if (error) {
           log.error('[Keepalive] Failed to start WPS service on Mac', error);
         }
@@ -96,10 +98,10 @@ function startService(): Promise<void> {
     }
 
     if (IS_LINUX) {
-      // Linux 下按可用性拉起 WPS 家族（优先 wps，回退 et/wpp），避免只装 et/wpp 时 nohup wps 失败
+      // Linux 下按可用性拉起 WPS 家族（优先 wps，回退 et/wpp/wpsoffice），避免只装 et/wpp 时 nohup wps 失败
       // 注意：不能用 `cmd && nohup x & || ...` 链式写法（`&` 与 `||` 组合是非法 shell 语法，bash -n 直接报错）
       exec(
-        'for c in wps et wpp; do command -v "$c" >/dev/null 2>&1 && { nohup "$c" >/dev/null 2>&1 & break; }; done',
+        'for c in wps et wpp wpsoffice; do command -v "$c" >/dev/null 2>&1 && { nohup "$c" >/dev/null 2>&1 & break; }; done',
         () => {
           // 就绪确认：拉起后轮询等待进程存活（最多 5s），避免固定 3s 在慢速启动场景不足导致重复拉起
           let waited = 0;
@@ -125,7 +127,7 @@ function startService(): Promise<void> {
     }
 
     // Windows下通过start命令启动自定义协议
-    exec(`start "" "${STARTUP_PROTOCOL}"`, (error) => {
+    exec(`start "" "${STARTUP_PROTOCOL}"`, error => {
       if (error) {
         log.error('[Keepalive] Failed to start WPS service', error);
       }

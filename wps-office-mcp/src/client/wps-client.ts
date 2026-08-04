@@ -72,7 +72,10 @@ async function execMacPoll(action: string, params: Record<string, unknown> = {})
  * 执行Linux轮询调用（与Mac同架构，复用MacPollServer，仅注入Linux切换脚本）
  * 通过轮询服务器发送命令，等待WPS加载项取走并返回结果
  */
-async function execLinuxPoll(action: string, params: Record<string, unknown> = {}): Promise<unknown> {
+async function execLinuxPoll(
+  action: string,
+  params: Record<string, unknown> = {}
+): Promise<unknown> {
   log.debug('Executing Linux Poll', { action, params });
 
   try {
@@ -95,38 +98,45 @@ async function execLinuxPoll(action: string, params: Record<string, unknown> = {
  * 执行PowerShell命令 (Windows)
  * 返回进程引用以便调用方在超时时终止
  */
-function spawnPowerShell(action: string, params: Record<string, unknown> = {}): {
+function spawnPowerShell(
+  action: string,
+  params: Record<string, unknown> = {}
+): {
   process: import('child_process').ChildProcess;
   result: Promise<unknown>;
 } {
   const paramsJson = JSON.stringify(params);
   const args = [
-    '-ExecutionPolicy', 'Bypass',
-    '-File', PS_SCRIPT_PATH,
-    '-Action', action,
-    '-Params', paramsJson
+    '-ExecutionPolicy',
+    'Bypass',
+    '-File',
+    PS_SCRIPT_PATH,
+    '-Action',
+    action,
+    '-Params',
+    paramsJson,
   ];
 
   log.debug('Executing PowerShell', { action, params });
 
   const ps = spawn('powershell', args, {
     windowsHide: true,
-    stdio: ['pipe', 'pipe', 'pipe']
+    stdio: ['pipe', 'pipe', 'pipe'],
   });
 
   let stdout = '';
   let stderr = '';
 
-  ps.stdout.on('data', (data) => {
+  ps.stdout.on('data', data => {
     stdout += data.toString();
   });
 
-  ps.stderr.on('data', (data) => {
+  ps.stderr.on('data', data => {
     stderr += data.toString();
   });
 
   const result = new Promise<unknown>((resolve, reject) => {
-    ps.on('close', (code) => {
+    ps.on('close', code => {
       if (code !== 0) {
         if (stderr) {
           log.error('PowerShell error', { stderr, code, pid: ps.pid, action });
@@ -147,7 +157,7 @@ function spawnPowerShell(action: string, params: Record<string, unknown> = {}): 
       }
     });
 
-    ps.on('error', (err) => {
+    ps.on('error', err => {
       reject(err);
     });
   });
@@ -156,7 +166,10 @@ function spawnPowerShell(action: string, params: Record<string, unknown> = {}): 
 }
 
 /** @deprecated 保留兼容，新代码请使用 spawnPowerShell */
-async function execPowerShell(action: string, params: Record<string, unknown> = {}): Promise<unknown> {
+async function execPowerShell(
+  action: string,
+  params: Record<string, unknown> = {}
+): Promise<unknown> {
   return spawnPowerShell(action, params).result;
 }
 
@@ -165,7 +178,10 @@ async function execPowerShell(action: string, params: Record<string, unknown> = 
  * Windows: PowerShell调用COM接口
  * Mac/Linux: 反向轮询模式（MCP Server是服务端，WPS加载项来取命令）
  */
-async function execWpsAction(action: string, params: Record<string, unknown> = {}): Promise<unknown> {
+async function execWpsAction(
+  action: string,
+  params: Record<string, unknown> = {}
+): Promise<unknown> {
   const channel = getWpsChannel();
   if (channel === 'darwin') {
     return execMacPoll(action, params);
@@ -179,7 +195,7 @@ async function execWpsAction(action: string, params: Record<string, unknown> = {
 // 超时时间（毫秒）— 按工具类型区分
 const COM_TIMEOUT_DEFAULT = 30000;
 const COM_TIMEOUTS: Record<string, number> = {
-  getDocumentParagraphs: 30000,    // 大批段落可能耗时较长
+  getDocumentParagraphs: 30000, // 大批段落可能耗时较长
   getDocumentTextByRange: 15000,
   proofreadBasic: 15000,
   replaceInParagraph: 10000,
@@ -198,7 +214,11 @@ function getTimeout(action: string): number {
  * Windows: 超时时主动 kill PowerShell 进程并记录 PID
  * Mac/Linux: Promise.race 快速失败（无法取消轮询）
  */
-async function execWpsActionWithRetry(action: string, params: Record<string, unknown> = {}, maxRetries: number = 3): Promise<unknown> {
+async function execWpsActionWithRetry(
+  action: string,
+  params: Record<string, unknown> = {},
+  maxRetries: number = 3
+): Promise<unknown> {
   let lastError: Error | null = null;
   const isWin = os.platform() === 'win32';
 
@@ -219,10 +239,20 @@ async function execWpsActionWithRetry(action: string, params: Record<string, unk
         });
         actionPromise = Promise.race([result, timeoutPromise]);
       } else {
-        // Mac/Linux: 轮询桥超时由 executeCommand 内部管理（从命令入队后开始计时，不含切换耗时），
-        // 外层不再用 Promise.race 计时——否则首次跨应用切换（最坏 22s+2s）时短超时命令（5-15s）在切换完成前就被 reject，
-        // 且重试 3 次每次重新切换，必然失败（第 11 轮评审 critical）
-        actionPromise = execWpsAction(action, params);
+        // Mac/Linux: 轮询桥命令超时由 executeCommand 内部管理（从命令入队后开始计时，不含切换耗时），
+        // 因此不用短命令超时（5-15s）race——否则首次跨应用切换（最坏 22s+2s）时短超时命令在切换完成前就被 reject，
+        // 且重试 3 次每次重新切换，必然失败（第 11 轮评审 critical）。
+        // 但仍需一个宽松的**安全兜底**（远大于最坏路径：切换 60s+2s + 命令 30s ≈ 92s，故取 180s）：
+        // 防止 start()/switchApp() 等前置环节异常挂起（永不 resolve/reject）导致整个调用链无限等待。
+        // 兜底超时只防死锁，正常路径不会触发。
+        actionPromise = Promise.race([
+          execWpsAction(action, params),
+          new Promise((_, reject) => {
+            setTimeout(() => {
+              reject(new Error(`轮询调用安全兜底超时（180s）: ${action}`));
+            }, 180000);
+          }),
+        ]);
       }
 
       return await actionPromise;
@@ -256,19 +286,27 @@ export class WpsClient {
   constructor(_config?: Partial<WpsEndpointConfig>) {
     this.status = { connected: false };
     const channel = getWpsChannel();
-    const method = channel === 'win32' ? 'PowerShell COM' : channel === 'darwin' ? 'HTTP (Mac Addon)' : 'HTTP (Linux Addon)';
+    const method =
+      channel === 'win32'
+        ? 'PowerShell COM'
+        : channel === 'darwin'
+          ? 'HTTP (Mac Addon)'
+          : 'HTTP (Linux Addon)';
     log.info('WPS Client initialized', { method, platform: os.platform() });
   }
 
   /**
    * 调用WPS接口（跨平台）
    */
-  async invokeAction<T = unknown>(action: string, params: Record<string, unknown> = {}): Promise<WpsApiResponse<T>> {
+  async invokeAction<T = unknown>(
+    action: string,
+    params: Record<string, unknown> = {}
+  ): Promise<WpsApiResponse<T>> {
     const startTime = Date.now();
     logRequest(action, params);
 
     try {
-      const result = await execWpsActionWithRetry(action, params, 3) as WpsApiResponse<T>;
+      const result = (await execWpsActionWithRetry(action, params, 3)) as WpsApiResponse<T>;
       const duration = Date.now() - startTime;
       logResponse(action, result.success, duration);
 
@@ -297,7 +335,7 @@ export class WpsClient {
       'range.getData': 'getRangeData',
       'range.setData': 'setRangeData',
       'file.save': 'save',
-      'ping': 'ping',
+      ping: 'ping',
     };
     const action = actionMap[request.method] || request.method;
     return this.invokeAction<T>(action, request.params || {});
@@ -333,17 +371,29 @@ export class WpsClient {
   }
 
   async getCellValue(sheet: string | number, row: number, col: number): Promise<unknown> {
-    const response = await this.invokeAction<{ value: unknown }>('getCellValue', { sheet, row, col });
+    const response = await this.invokeAction<{ value: unknown }>('getCellValue', {
+      sheet,
+      row,
+      col,
+    });
     return response.data?.value;
   }
 
-  async setCellValue(sheet: string | number, row: number, col: number, value: unknown): Promise<boolean> {
+  async setCellValue(
+    sheet: string | number,
+    row: number,
+    col: number,
+    value: unknown
+  ): Promise<boolean> {
     const response = await this.invokeAction('setCellValue', { sheet, row, col, value });
     return response.success;
   }
 
   async getRangeData(sheet: string | number, range: string): Promise<unknown[][]> {
-    const response = await this.invokeAction<{ data: unknown[][] }>('getRangeData', { sheet, range });
+    const response = await this.invokeAction<{ data: unknown[][] }>('getRangeData', {
+      sheet,
+      range,
+    });
     return response.data?.data || [];
   }
 
@@ -352,7 +402,12 @@ export class WpsClient {
     return response.success;
   }
 
-  async setFormula(sheet: string | number, row: number, col: number, formula: string): Promise<boolean> {
+  async setFormula(
+    sheet: string | number,
+    row: number,
+    col: number,
+    formula: string
+  ): Promise<boolean> {
     const response = await this.invokeAction('setFormula', { sheet, row, col, formula });
     return response.success;
   }

@@ -362,7 +362,10 @@ describe('WpsClient', () => {
       mockLinuxModule.linuxPollServer.executeCommand.mockResolvedValue({ success: true });
       const client = new WpsClient();
       const result = await client.createDocument();
-      expect(mockLinuxModule.linuxPollServer.executeCommand).toHaveBeenCalledWith('createDocument', {});
+      expect(mockLinuxModule.linuxPollServer.executeCommand).toHaveBeenCalledWith(
+        'createDocument',
+        {}
+      );
       expect(result).toBe(true);
     });
 
@@ -376,6 +379,26 @@ describe('WpsClient', () => {
       expect(mockLinuxModule.linuxPollServer.executeCommand).toHaveBeenCalledTimes(2);
       expect(mockedSpawn).not.toHaveBeenCalled();
       expect(result).toBe(7);
+    });
+
+    it('Linux模式下 executeCommand 永挂起时有安全兜底超时（不无限等待）', async () => {
+      // 模拟 executeCommand 永不 resolve（WPS 加载项未连接/前置环节挂起）——
+      // 外层 Promise.race 的 180s 安全兜底必须在合理时间内 reject，避免整个调用链无限等待
+      jest.useFakeTimers();
+      mockLinuxModule.linuxPollServer.executeCommand.mockReturnValue(new Promise(() => {}));
+      const client = new WpsClient();
+      const pending = client.getCellValue('Sheet1', 1, 1);
+      // 先挂断言（避免推进 timers 时 rejection 未处理导致 unhandled rejection）
+      const assertion = expect(pending).rejects.toThrow(/轮询调用安全兜底超时/);
+      // 兜底超时 180s × 3 次重试 + 重试间隔 500ms/1000ms，全部推进后应抛错（而非无限挂起）
+      await jest.advanceTimersByTimeAsync(180000 + 500);
+      await jest.advanceTimersByTimeAsync(180000 + 1000);
+      await jest.advanceTimersByTimeAsync(180000);
+      await assertion;
+      // 重试 3 次（不 spawn PowerShell，走轮询）
+      expect(mockLinuxModule.linuxPollServer.executeCommand).toHaveBeenCalledTimes(3);
+      expect(mockedSpawn).not.toHaveBeenCalled();
+      jest.useRealTimers();
     });
   });
 });

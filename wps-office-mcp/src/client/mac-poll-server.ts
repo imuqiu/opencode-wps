@@ -393,6 +393,10 @@ class MacPollServer {
    * WPS加载项每500ms来问一次：有活干不？
    */
   private handlePoll(res: http.ServerResponse): void {
+    // 禁止缓存：轮询接口响应（尤其空响应）若被 WPS 侧 Chromium 缓存，命令到达会延迟甚至丢失
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     if (this.pendingCommand) {
       const cmd = {
         action: this.pendingCommand.action,
