@@ -233,8 +233,11 @@ function startOpenCode(cwd, port) {
 
         console.log('[launcher] Started PID: ' + opencodeProcess.pid);
 
-        var pidFile = path.join(__dirname, 'opencode.pid');
-        try { fs.writeFileSync(pidFile, String(opencodeProcess.pid)); } catch(e) {}
+        var pidFile = path.join(os.homedir(), '.opencode', 'opencode-wps-launcher.pid');
+        try {
+            fs.mkdirSync(path.join(os.homedir(), '.opencode'), { recursive: true });
+            fs.writeFileSync(pidFile, String(opencodeProcess.pid));
+        } catch(e) {}
 
         return { success: true, pid: opencodeProcess.pid };
     } catch(e) {
@@ -301,7 +304,7 @@ function dockWindow(callback, data) {
 process.on('uncaughtException', function(err) {
     console.error('[launcher] CRASH: ' + (err && err.message || err));
     try {
-        var pidFile = path.join(__dirname, 'opencode.pid');
+        var pidFile = path.join(os.homedir(), '.opencode', 'opencode-wps-launcher.pid');
         try { fs.unlinkSync(pidFile); } catch(e) {}
     } catch(e) {}
     server.close();

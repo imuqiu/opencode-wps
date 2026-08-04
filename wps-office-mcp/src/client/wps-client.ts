@@ -60,7 +60,10 @@ async function execMacPoll(action: string, params: Record<string, unknown> = {})
     }
 
     // 通过轮询服务器执行命令
-    const result = await macPollServer.executeCommand(action, params);
+    // 传 getTimeout(action) 与 Windows 分支的超时契约一致（findReplace=10s/getActiveDocument=10s 等），
+    // 避免同一命令 Windows 10s vs Mac/Linux 30s 的跨平台漂移（第 21 轮终审 warning）。
+    // 注意：该超时从命令入队后计时，不含切换耗时（第 11 轮修复语义）。
+    const result = await macPollServer.executeCommand(action, params, getTimeout(action));
     return result;
   } catch (error) {
     log.error('Mac Poll call failed', { action, error });
@@ -85,8 +88,8 @@ async function execLinuxPoll(
       await linuxPollServer.start(POLL_PORT);
     }
 
-    // 通过轮询服务器执行命令
-    const result = await linuxPollServer.executeCommand(action, params);
+    // 通过轮询服务器执行命令（超时与 Windows 契约一致，见 execMacPoll 注释）
+    const result = await linuxPollServer.executeCommand(action, params, getTimeout(action));
     return result;
   } catch (error) {
     log.error('Linux Poll call failed', { action, error });

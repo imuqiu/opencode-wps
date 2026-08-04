@@ -289,9 +289,13 @@ function sendResult(requestId, result, attempt) {
         xhr.setRequestHeader('Content-Type', 'application/json');
         xhr.timeout = 3000;
         // 失败重试（最多 3 次，500ms 退避），避免命令已执行但结果 POST 失败导致 MCP 侧空等超时
-        // 3 次全部失败时打印明确错误（供排查：MCP 侧会 30s 超时，WPS 侧必须留痕）
+        // 3 次全部失败时打印明确错误（供排查：MCP 侧会 30s 超时，WPS 侧必须留痕），
+        // 并清空 _lastRequestId：避免命令已执行但结果未送达时，去重状态残留导致边缘场景重复执行（第 21 轮终审 info）
         function failFinal(kind) {
             console.error('发送结果失败（已重试 3 次）: ' + kind + ' requestId=' + requestId + ' action 结果将被 MCP 判超时');
+            if (_lastRequestId === requestId) {
+                _lastRequestId = '';
+            }
         }
         xhr.onload = function() {
             if (xhr.status !== 200) {

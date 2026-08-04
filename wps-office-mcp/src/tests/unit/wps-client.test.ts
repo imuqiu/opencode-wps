@@ -324,7 +324,7 @@ describe('WpsClient', () => {
         sheet: 'Sheet1',
         row: 1,
         col: 1,
-      });
+      }, 30000);
       expect(result).toBe(42);
     });
 
@@ -332,7 +332,7 @@ describe('WpsClient', () => {
       mockMacModule.macPollServer.executeCommand.mockResolvedValue({ success: true });
       const client = new WpsClient();
       const result = await client.createDocument();
-      expect(mockMacModule.macPollServer.executeCommand).toHaveBeenCalledWith('createDocument', {});
+      expect(mockMacModule.macPollServer.executeCommand).toHaveBeenCalledWith('createDocument', {}, 30000);
       expect(result).toBe(true);
     });
   });
@@ -354,7 +354,7 @@ describe('WpsClient', () => {
         sheet: 'Sheet1',
         row: 1,
         col: 1,
-      });
+      }, 30000);
       expect(result).toBe(42);
     });
 
@@ -364,7 +364,8 @@ describe('WpsClient', () => {
       const result = await client.createDocument();
       expect(mockLinuxModule.linuxPollServer.executeCommand).toHaveBeenCalledWith(
         'createDocument',
-        {}
+        {},
+        30000
       );
       expect(result).toBe(true);
     });

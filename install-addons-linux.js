@@ -169,17 +169,37 @@ try {
         try { existing = fs.readFileSync(authwebsiteXmlPath, 'utf-8'); } catch (e) {}
         const missing = authSites.filter(function(site) { return existing.indexOf(site) === -1; });
         if (missing.length > 0) {
-            const lines = existing.trim().split(/\n/);
-            // 在 </AuthWebsiteList> 前插入缺失站点
-            const closeIdx = lines.lastIndexOf('</AuthWebsiteList>');
-            const inserts = missing.map(function(site) { return '    <Website url="' + site + '"/>'; });
-            if (closeIdx !== -1) {
-                lines.splice(closeIdx, 0, inserts.join('\n'));
+            // 无闭合标签时重建整个文件：以模板为基础 + 保留用户已有站点（去重），
+            // 避免 append 到无闭合标签的文件产生损坏 XML（第 21 轮终审 info）
+            if (existing.indexOf('</AuthWebsiteList>') === -1) {
+                const userSites = [];
+                const siteRe = /<Website\s+url=["']([^"']+)["']\s*\/>/g;
+                let m = null;
+                while ((m = siteRe.exec(existing)) !== null) {
+                    if (userSites.indexOf(m[1]) === -1) userSites.push(m[1]);
+                }
+                const allSites = userSites.concat(authSites.filter(function(s) { return userSites.indexOf(s) === -1; }));
+                const rebuilt = [
+                    '<?xml version="1.0" encoding="UTF-8"?>',
+                    '<AuthWebsiteList>',
+                    allSites.map(function(site) { return '    <Website url="' + site + '"/>'; }).join('\n'),
+                    '</AuthWebsiteList>'
+                ].join('\n') + '\n';
+                fs.writeFileSync(authwebsiteXmlPath, rebuilt, 'utf-8');
+                console.log('  已重建 authwebsite.xml（原文件无闭合标签，合并 ' + allSites.length + ' 个站点）');
             } else {
-                lines.push(inserts.join('\n'));
+                const lines = existing.trim().split(/\n/);
+                // 在 </AuthWebsiteList> 前插入缺失站点
+                const closeIdx = lines.lastIndexOf('</AuthWebsiteList>');
+                const inserts = missing.map(function(site) { return '    <Website url="' + site + '"/>'; });
+                if (closeIdx !== -1) {
+                    lines.splice(closeIdx, 0, inserts.join('\n'));
+                } else {
+                    lines.push(inserts.join('\n'));
+                }
+                fs.writeFileSync(authwebsiteXmlPath, lines.join('\n') + '\n', 'utf-8');
+                console.log('  已合并授权站点到 authwebsite.xml: ' + missing.join(', '));
             }
-            fs.writeFileSync(authwebsiteXmlPath, lines.join('\n') + '\n', 'utf-8');
-            console.log('  已合并授权站点到 authwebsite.xml: ' + missing.join(', '));
         } else {
             console.log('  authwebsite.xml 已包含全部授权站点，跳过');
         }

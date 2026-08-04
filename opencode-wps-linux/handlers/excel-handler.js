@@ -97,7 +97,9 @@ registerHandler('getActiveWorkbook', function(params) {
             name: wb.Name,
             path: wb.FullName,
             sheetCount: wb.Sheets.Count,
-            sheets: sheets
+            sheets: sheets,
+            // activeSheet 与 getSheetList 契约一致（第 21 轮终审 info）
+            activeSheet: Application.ActiveSheet ? Application.ActiveSheet.Name : ''
         });
     } catch (e) {
         return fail('获取工作簿信息失败: ' + e.message);
@@ -468,7 +470,15 @@ registerHandler('sortRange', function(params) {
     try {
         var sheet = Application.ActiveSheet;
         var range = sheet.Range(params.range);
-        var key = params.keyColumn ? sheet.Range(params.keyColumn) : range.Columns.Item(1);
+        // keyColumn 支持列字母（'A'）或完整地址（'A1'/'$A$1'）：纯字母补行号，避免 Range('A') 抛费解错误（第 21 轮终审 warning）
+        var key = null;
+        if (params.keyColumn) {
+            var kc = String(params.keyColumn).trim();
+            if (/^[A-Za-z]+$/.test(kc)) kc = kc.toUpperCase() + '1';
+            key = sheet.Range(kc);
+        } else {
+            key = range.Columns.Item(1);
+        }
         // order 大小写不敏感：'DESC'/'Desc' 都识别为降序，避免 AI 传大写静默变升序
         var orderStr = String(params.order || '').toLowerCase();
         var order = orderStr === 'desc' ? 2 : 1;
