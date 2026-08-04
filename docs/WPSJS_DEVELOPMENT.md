@@ -197,6 +197,8 @@ function setTaskPaneDockPosition(tskpane) {
 
     **补 DEV 增量（2026-08-04）**：① `forceReflowFix` 在 `.app` 尚未挂载时改为 rAF 链式重试（不再直接 return 丢兜底）；② 新增 `raf` 兼容层，`requestAnimationFrame` 缺失时用 `setTimeout 16ms` 兜底（兼容旧 WebView 内核）；③ 首次渲染触发时机扩展为三路（rAF 首帧前 + `load` 事件 + 300ms/1000ms 定时器），覆盖 WebView 视口高度计算的不同时序；④ 测试新增「taskpane.html 自愈骨架」静态校验用例（`tests/taskpane-dock.test.js` 末尾），防止后续改动删掉任一关键防御结构。
 
+16. **`forceTaskPaneRedraw` 异步恢复的已知限制——原生关闭语义**：`forceTaskPaneRedraw` 用 `lastUserTaskPaneAction`（`OnAction` toggle 分支记录）+ `redrawStartTime` 比对，重绘期间用户操作过窗格则放弃恢复。但 **WPS TaskPane 原生右上角 X 关闭不经过 `OnAction`**，该时间戳不会更新——若原生关闭为「销毁」语义（`GetTaskPane` 返回 null）则异步回调的 `!cur` 判空已覆盖；若个别版本为「隐藏」语义（`Visible=false` 保留对象）则异步恢复可能把用户刚关闭的窗格误弹回来。实测 WPS 多为销毁语义，但维护时需知晓该限制（对应 `main.js` 内注释）。
+
 ---
 
 ## 五、部署模式

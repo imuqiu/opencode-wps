@@ -347,7 +347,10 @@ function forceTaskPaneRedraw() {
             taskPaneRedrawPending = false
             try {
                 // 重绘期间用户手动操作过窗格（如点按钮关闭）→ 尊重用户意图，放弃恢复；
-                // 用 >= 覆盖同毫秒边界（用户操作与重绘开始同毫秒时也不能误恢复）
+                // 用 >= 覆盖同毫秒边界（用户操作与重绘开始同毫秒时也不能误恢复）。
+                // 已知限制：WPS TaskPane 原生右上角 X 关闭不经过 OnAction，lastUserTaskPaneAction
+                // 不会更新——若原生关闭为「销毁」语义（GetTaskPane 返回 null）则下方 !cur 已覆盖；
+                // 若个别版本为「隐藏」语义（Visible=false 保留对象）则可能被本恢复误弹，见文档注意事项 16
                 if (lastUserTaskPaneAction >= redrawStartTime) return
                 var cur = window.Application.GetTaskPane(tsId)
                 if (!cur) return          // 窗格已销毁：放弃恢复

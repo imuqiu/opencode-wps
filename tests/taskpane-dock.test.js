@@ -722,6 +722,10 @@ test('taskpane.html 自愈骨架：position:fixed 锚定 + forceReflowFix 关键
   assertTrue(/lastForceReflowAt/.test(html), '应有强制重排最小间隔状态');
   // ⑬ scrollToBottom 内部判空
   assertTrue(/if\s*\(\$messages\)\s*\$messages\.scrollTop/.test(html), 'scrollToBottom 应判空防 TypeError');
+  // ⑭ .app 成功找到后重置连续失败计数
+  assertTrue(/reflowRetryCount\s*=\s*0/.test(html), '.app 找到后应重置重试计数');
+  // ⑮ heads 为空时复查视为未修复（持续可重试）
+  assertTrue(/reflowOk\s*=\s*heads\.length\s*>\s*0/.test(html), 'heads 为空时复查应视为未修复');
 });
 
 // ==================== 测试结果汇总 ====================

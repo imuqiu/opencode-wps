@@ -1591,6 +1591,8 @@ function scrollToBottom() { setTimeout(function() { if ($messages) $messages.scr
             }
             return;
         }
+        // .app 成功找到：连续失败计数清零（重试上限语义=「连续」失败上限）
+        reflowRetryCount = 0;
         // chat 视图未显示（还在 setup 视图）时无头部可修：直接跳过，
         // 避免在 display:none 的父级上做无效重排（offsetHeight 为 0）
         var viewChat = document.getElementById('view-chat');
@@ -1631,8 +1633,9 @@ function scrollToBottom() { setTimeout(function() { if ($messages) $messages.scr
         void app.offsetHeight;
         app.style.display = oldDisplay || '';
         // 复查：重排后头部是否已回到视口内。仍越界时不置 reflowFixed，
-        // 保留后续重试机会（WebView 布局 bug 顽固时一次重排可能不够）
-        var reflowOk = true;
+        // 保留后续重试机会（WebView 布局 bug 顽固时一次重排可能不够）。
+        // heads 为空（结构变动）时视为未修复（reflowOk=false），维持持续可重试语义
+        var reflowOk = heads.length > 0;
         for (var j = 0; j < heads.length; j++) {
             var rr = heads[j].getBoundingClientRect();
             if (!(rr.width > 0 && rr.top >= 0 && rr.bottom <= window.innerHeight)) {
