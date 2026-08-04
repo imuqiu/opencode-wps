@@ -80,16 +80,19 @@ function startService(): Promise<void> {
     }
 
     if (IS_LINUX) {
-      // Linux下通过 wps/et/wpp 命令拉起 WPS（启动后会自动加载加载项并连接轮询服务器）
-      exec('nohup wps >/dev/null 2>&1 &', (error) => {
-        if (error) {
-          log.error('[Keepalive] Failed to start WPS service on Linux', error);
+      // Linux 下按可用性拉起 WPS 家族（优先 wps，回退 et/wpp），避免只装 et/wpp 时 nohup wps 失败
+      exec(
+        'command -v wps >/dev/null 2>&1 && nohup wps >/dev/null 2>&1 & || command -v et >/dev/null 2>&1 && nohup et >/dev/null 2>&1 & || command -v wpp >/dev/null 2>&1 && nohup wpp >/dev/null 2>&1 &',
+        (error) => {
+          if (error) {
+            log.error('[Keepalive] Failed to start WPS service on Linux', error);
+          }
+          setTimeout(() => {
+            isStarting = false;
+            resolve();
+          }, 3000);
         }
-        setTimeout(() => {
-          isStarting = false;
-          resolve();
-        }, 3000);
-      });
+      );
       return;
     }
 

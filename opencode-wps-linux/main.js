@@ -256,12 +256,32 @@ function dispatchCommand(cmd) {
     sendResult(cmd.requestId, result);
 }
 
-function sendResult(requestId, result) {
+function sendResult(requestId, result, attempt) {
+    attempt = attempt || 1;
     try {
         var xhr = new XMLHttpRequest();
         xhr.open('POST', CONFIG.SERVER_URL + '/result', true);
         xhr.setRequestHeader('Content-Type', 'application/json');
         xhr.timeout = 3000;
+        // 失败重试（最多 3 次，500ms 退避），避免命令已执行但结果 POST 失败导致 MCP 侧空等超时
+        xhr.onload = function() {
+            if (xhr.status !== 200 && attempt < 3) {
+                console.warn('发送结果失败 HTTP ' + xhr.status + '，重试 ' + (attempt + 1));
+                setTimeout(function() { sendResult(requestId, result, attempt + 1); }, 500 * attempt);
+            }
+        };
+        xhr.onerror = function() {
+            if (attempt < 3) {
+                console.warn('发送结果网络错误，重试 ' + (attempt + 1));
+                setTimeout(function() { sendResult(requestId, result, attempt + 1); }, 500 * attempt);
+            }
+        };
+        xhr.ontimeout = function() {
+            if (attempt < 3) {
+                console.warn('发送结果超时，重试 ' + (attempt + 1));
+                setTimeout(function() { sendResult(requestId, result, attempt + 1); }, 500 * attempt);
+            }
+        };
         xhr.send(JSON.stringify({ requestId: requestId, result: result }));
     } catch (e) {
         console.error('发送结果失败:', e);
