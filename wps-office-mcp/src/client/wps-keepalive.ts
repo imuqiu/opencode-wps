@@ -9,7 +9,7 @@
  */
 
 import axios from 'axios';
-import { exec, execSync } from 'child_process';
+import { exec } from 'child_process';
 import { log } from '../utils/logger';
 
 const IS_MAC = process.platform === 'darwin';
@@ -30,12 +30,28 @@ let isStarting = false;
  * 因此改为探测 WPS 主进程（wps/et/wpp/wpsoffice）是否存活，避免每 5 秒误判"未运行"反复拉起。
  */
 function checkLinuxWpsRunning(): boolean {
+  // 用 /proc 扫描（非阻塞，与 launcher 一致），避免 execSync 同步阻塞主线程每 5s 一次
+  // （MCP 是单线程进程，execSync 最长阻塞 3s 会卡顿所有正在轮询的命令）
   try {
-    execSync(
-      'pgrep -x wps >/dev/null 2>&1 || pgrep -x et >/dev/null 2>&1 || pgrep -x wpp >/dev/null 2>&1 || pgrep -x wpsoffice >/dev/null 2>&1 || pgrep -x wpspdf >/dev/null 2>&1',
-      { timeout: 3000 }
-    );
-    return true;
+    const procs = require('fs').readdirSync('/proc');
+    const targets = new Set(['wps', 'et', 'wpp', 'wpsoffice', 'wpspdf']);
+    for (const p of procs) {
+      const pid = parseInt(p, 10);
+      if (!pid || isNaN(pid)) continue;
+      try {
+        const cmdline = require('fs').readFileSync('/proc/' + pid + '/cmdline', 'utf8').replace(/\0/g, ' ');
+        // 取第一个 token（进程名/可执行路径）与目标进程名精确比对
+        const name = cmdline.trim().split(/[\s/]+/)[0];
+        if (targets.has(name)) return true;
+        // 兼容 wps 启动的子进程名（如 wpspdf 带版本后缀），回退精确前缀匹配
+        for (const t of targets) {
+          if (name.startsWith(t)) return true;
+        }
+      } catch {
+        // 进程可能已退出，跳过
+      }
+    }
+    return false;
   } catch {
     return false;
   }
@@ -84,14 +100,25 @@ function startService(): Promise<void> {
       // 注意：不能用 `cmd && nohup x & || ...` 链式写法（`&` 与 `||` 组合是非法 shell 语法，bash -n 直接报错）
       exec(
         'for c in wps et wpp; do command -v "$c" >/dev/null 2>&1 && { nohup "$c" >/dev/null 2>&1 & break; }; done',
-        (error) => {
-          if (error) {
-            log.error('[Keepalive] Failed to start WPS service on Linux', error);
-          }
-          setTimeout(() => {
-            isStarting = false;
-            resolve();
-          }, 3000);
+        () => {
+          // 就绪确认：拉起后轮询等待进程存活（最多 5s），避免固定 3s 在慢速启动场景不足导致重复拉起
+          let waited = 0;
+          const checkReady = () => {
+            if (checkLinuxWpsRunning()) {
+              isStarting = false;
+              resolve();
+              return;
+            }
+            waited += 1000;
+            if (waited >= 5000) {
+              log.warn('[Keepalive] WPS start timed out after 5s, continuing anyway');
+              isStarting = false;
+              resolve();
+              return;
+            }
+            setTimeout(checkReady, 1000);
+          };
+          checkReady();
         }
       );
       return;

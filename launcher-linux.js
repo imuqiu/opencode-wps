@@ -24,17 +24,17 @@ function cleanupOrphanedMcp() {
     try {
         var execSync = require('child_process').execSync;
         // 只清理命令行含 opencode-wps 仓库路径的 MCP 进程，且其父进程已不存在（孤儿）
-        // 用 ps -eo pid,ppid,args 精确匹配，避免误杀外部已运行实例
+        // 用 ps 纯列输出（pid= ppid= args=）+ JS 解析，避免依赖 awk（精简发行版/容器可能没有）
         var out = execSync(
-            "ps -eo pid,ppid,args | grep 'wps-office-mcp/dist/index.js' | grep -v grep | awk '{print \$1, \$2}'",
+            "ps -eo pid=,ppid=,args= | grep 'wps-office-mcp/dist/index.js' | grep -v grep",
             { encoding: 'utf8', timeout: 5000 }
         );
         var lines = out.split('\n');
         for (var i = 0; i < lines.length; i++) {
-            var parts = lines[i].trim().split(/\s+/);
-            if (parts.length < 2) continue;
-            var pid = parseInt(parts[0], 10);
-            var ppid = parseInt(parts[1], 10);
+            var m = lines[i].trim().match(/^(\d+)\s+(\d+)\s+/);
+            if (!m) continue;
+            var pid = parseInt(m[1], 10);
+            var ppid = parseInt(m[2], 10);
             if (!pid || isNaN(pid)) continue;
             // 父进程为 1（init/systemd）表示是孤儿；父进程存活说明有宿主在管理，不杀
             if (ppid === 1) {
@@ -114,6 +114,8 @@ function findOpenCodePidsByPort(targetPort) {
 
     var pids = [];
     var portStr = String(targetPort);
+    // 端口精确匹配正则：--port <port>（后跟空白或结束），避免 14096 子串误匹配 114096/140960
+    var portRe = new RegExp('--port\\s+' + portStr + '(\\s|$)', 'i');
     for (var i = 0; i < procs.length; i++) {
         var pid = parseInt(procs[i], 10);
         if (!pid || isNaN(pid)) continue;
@@ -123,7 +125,7 @@ function findOpenCodePidsByPort(targetPort) {
             if (cmdline.indexOf('opencode') !== -1 &&
                 cmdline.indexOf('serve') !== -1 &&
                 cmdline.indexOf('--port') !== -1 &&
-                cmdline.indexOf(portStr) !== -1) {
+                portRe.test(cmdline)) {
                 pids.push(pid);
             }
         } catch(e) {}

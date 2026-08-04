@@ -99,10 +99,14 @@ registerHandler('getDocumentText', function(params) {
         if (!doc) return fail('没有打开的文档');
         var text = doc.Content.Text;
         var length = text.length;
-        if (length > 10000) {
-            text = text.substring(0, 10000) + '\n...(截断, 共 ' + length + ' 字符)';
+        var maxLength = params.maxLength !== undefined ? parseInt(params.maxLength, 10) : 10000;
+        var truncated = false;
+        if (maxLength > 0 && length > maxLength) {
+            text = text.substring(0, maxLength) + '\n...(截断, 共 ' + length + ' 字符)';
+            truncated = true;
         }
-        return ok({ text: text, length: length });
+        // truncated 标记让 AI 知道内容不完整，可请求分段读取或传更大 maxLength
+        return ok({ text: text, length: length, truncated: truncated, maxLength: maxLength });
     } catch (e) {
         return fail('获取文档文本失败: ' + e.message);
     }
@@ -139,11 +143,8 @@ registerHandler('findReplace', function(params) {
         var find = doc.Content.Find;
         find.ClearFormatting();
         find.Replacement.ClearFormatting();
-        find.Text = params.findText;
-        find.Replacement.Text = params.replaceText || '';
+        // 统一通过 Execute 位置参数传查找/替换文本，避免前置赋值 + 位置参数双写（WPS 对 Execute 位置参数敏感，双写行为未定义）
         var replaceType = params.replaceAll ? 2 : 1;
-        // 仅传一次 findText/replaceText（前面已通过 find.Text / find.Replacement.Text 设置），
-        // 避免 12 个位置参数重复传参导致错位（WPS/Word JSAPI 的 Find.Execute 位置参数易错位）
         var result = find.Execute(
             params.findText, false, false, false, false, false,
             true, 1, false, params.replaceText || '', replaceType
