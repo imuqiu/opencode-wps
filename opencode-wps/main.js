@@ -297,8 +297,49 @@ function connectOpenCode() {
 function OnAddinLoad(ribbonUI) {
     if (typeof window.Application.ribbonUI !== "object") window.Application.ribbonUI = ribbonUI
     if (typeof window.Application.Enum !== "object") window.Application.Enum = WPS_Enum
+    // 注册 WPS 窗口激活事件：新建/切换标签页后强制重绘任务窗格，
+    // 修复 TaskPane WebView 首次渲染布局 bug（头部被遮挡/空白）——
+    // 用户实测「新建标签页后再切回原标签头部即恢复」，说明切换窗口会触发重绘，
+    // 这里在宿主侧主动复现该行为，无需用户手动操作。
+    registerWindowActivateReflow()
     connectOpenCode()
     return true
+}
+
+// 强制重绘任务窗格：Visible false→true（仅当当前可见时），
+// 触发 WPS 宿主对 WebView 的重新布局/重绘，修复头部被挤出可视区的首次渲染 bug。
+// 窗格不存在或不可见时不执行——避免把用户主动关闭的窗格重新弹出来。
+function forceTaskPaneRedraw() {
+    try {
+        var tsId = window.Application.PluginStorage.getItem("taskpane_id") || taskpaneIdCache || ""
+        if (!tsId) return
+        var tp = window.Application.GetTaskPane(tsId)
+        if (!tp || !tp.Visible) return
+        // 停靠位置重新校正（防漂移）
+        setTaskPaneDockPosition(tp)
+        // 先隐藏再显示，强制 WebView 重新布局
+        tp.Visible = false
+        tp.Visible = true
+        console.log('[WPS] 任务窗格已强制重绘（WindowActivate 触发布局修复）')
+    } catch (e) {
+        console.error('[WPS] 强制重绘任务窗格失败: ' + errMsg(e))
+    }
+}
+
+// 注册 WPS 窗口激活事件（官方 SDK：AddApiEventListener('WindowActivate')）；
+// 个别版本不支持/抛异常时静默降级（不影响既有功能）
+function registerWindowActivateReflow() {
+    try {
+        if (typeof window.Application.AddApiEventListener === 'function') {
+            window.Application.AddApiEventListener('WindowActivate', function() {
+                // 延迟执行：等 WPS 完成窗口切换布局后再重绘
+                setTimeout(function() { forceTaskPaneRedraw() }, 200)
+            })
+            console.log('[WPS] 已注册 WindowActivate 重绘监听')
+        }
+    } catch (e) {
+        console.warn('[WPS] 注册 WindowActivate 监听失败（已降级，不影响使用）: ' + errMsg(e))
+    }
 }
 
 function getControlId(control) {

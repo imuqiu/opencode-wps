@@ -6,7 +6,10 @@
 <title>OpenCode</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{width:100%;height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;font-size:14px;color:#1a1a1a;background:#fff}
+/* 视口容器：部分 WPS 版本 TaskPane WebView 首次渲染时高度计算异常（100% 失效），
+   会把 flex 布局的头部（topbar/session-header）挤出可视区导致「头部被遮挡」；
+   position:fixed + inset:0 直接锚定视口四边，规避该版本级布局 bug。 */
+html,body{position:fixed;top:0;left:0;right:0;bottom:0;width:100%;height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;font-size:14px;color:#1a1a1a;background:#fff}
 
 /* CSS-only icons for WPS Chromium 104 compatibility */
 .icon-play{display:inline-block;width:0;height:0;border-style:solid;border-width:7px 0 7px 12px;border-color:transparent transparent transparent #fff;margin-right:6px;vertical-align:middle}
@@ -1544,6 +1547,35 @@ function scrollToBottom() { setTimeout(function() { $messages.scrollTop = $messa
         CONNECTED = false;
         updateConnectionStatus();
     });
+
+    // ===== 头部遮挡自愈（WPS TaskPane WebView 首次渲染布局 bug）=====
+    // 现象：任务窗格刚打开时，topbar/session-header 所在区域为空白（flex 布局
+    // 因视口高度计算错误把头部挤出可视区）；新建 WPS 标签页/切换窗口触发重排后恢复。
+    // 对策：监听 resize / visibilitychange / 容器尺寸变化，强制触发 reflow 修复。
+    function forceReflowFix() {
+        // 先隐藏再恢复 .app，强制浏览器重排（不闪屏：display 在同步帧内往返）
+        var app = document.querySelector('.app');
+        if (!app) return;
+        var oldDisplay = app.style.display;
+        app.style.display = 'none';
+        // 强制同步 reflow
+        void app.offsetHeight;
+        app.style.display = oldDisplay || '';
+        if (CONNECTED) scrollToBottom();
+    }
+    var reflowTimer = null;
+    function scheduleReflowFix() {
+        // 节流：resize 事件高频触发时只重排最后一次
+        if (reflowTimer) clearTimeout(reflowTimer);
+        reflowTimer = setTimeout(function() { reflowTimer = null; forceReflowFix(); }, 100);
+    }
+    window.addEventListener('resize', scheduleReflowFix);
+    document.addEventListener('visibilitychange', function() {
+        if (!document.hidden) scheduleReflowFix();
+    });
+    // 首次加载完成后延迟重排一次，兜底 WebView 初始视口高度错误
+    setTimeout(function() { forceReflowFix(); }, 300);
+    setTimeout(function() { forceReflowFix(); }, 1000);
 })()
 </script>
 </body>

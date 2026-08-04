@@ -477,6 +477,89 @@ test('停靠校正失败但窗格可用：留痕说明窗格仍可用，仍返�
   assertTrue(hasUsable, '应输出「窗格仍可用」增强留痕，实际错误日志: ' + JSON.stringify(sandbox.__errorLogs));
 });
 
+// ==================== 头部遮挡自愈（Issue #78 复诊）====================
+// 用户实测：PR #79 的 DockPosition 修复后头部仍被遮挡；新建 WPS 标签页再切回即恢复。
+// 像素分析结论：任务窗格 WebView 首次渲染时 topbar/session-header 区域为空白（flex 布局
+// 因视口高度计算错误把头部挤出可视区），切换窗口触发宿主重绘后才恢复。
+// 修复：宿主侧注册 WindowActivate 事件，切回时强制任务窗格 false→true 重绘；
+// 仅当窗格原本可见时执行，避免把用户关闭的窗格重新弹出来。
+
+test('OnAddinLoad 注册 WindowActivate 重绘监听（Issue #78 复诊加固）', function () {
+  var events = {};
+  var appMock = {
+    AddApiEventListener: function (name, cb) { events[name] = cb; },
+    PluginStorage: { getItem: function () { return ''; }, setItem: function () {} }
+  };
+  var sandbox = loadMainJs(appMock);
+  sandbox.OnAddinLoad({});
+  assertTrue(typeof events.WindowActivate === 'function', '应注册 WindowActivate 监听，实际: ' + JSON.stringify(Object.keys(events)));
+});
+
+test('OnAddinLoad 注册 WindowActivate 时旧版本无 AddApiEventListener 应静默降级', function () {
+  var appMock = {
+    PluginStorage: { getItem: function () { return ''; }, setItem: function () {} }
+  };
+  var sandbox = loadMainJs(appMock);
+  // 不应抛异常
+  sandbox.OnAddinLoad({});
+  var hasWarn = sandbox.__errorLogs.some(function (l) { return l.indexOf('注册 WindowActivate 监听失败') >= 0; });
+  // 无 AddApiEventListener 时不走 catch，也不应有失败留痕（静默降级）
+  assertTrue(!hasWarn, '无 AddApiEventListener 时不应报注册失败，实际: ' + JSON.stringify(sandbox.__errorLogs));
+});
+
+test('forceTaskPaneRedraw：窗格可见时 false→true 重绘并重新校正停靠', function () {
+  var pane = { ID: 'tp-redraw', DockPosition: 0, Visible: true };
+  var visibleLog = [];
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return true; },
+    set: function (v) { visibleLog.push(v); }
+  });
+  var appMock = {
+    CreateTaskPane: function () { throw new Error('不应调用 CreateTaskPane'); },
+    GetTaskPane: function () { return pane; },
+    PluginStorage: {
+      getItem: function () { return 'tp-redraw'; },
+      setItem: function () {}
+    }
+  };
+  var sandbox = loadMainJs(appMock);
+  sandbox.forceTaskPaneRedraw();
+  assertEqual(visibleLog.length, 2, '应执行 false→true 两次置位，实际: ' + JSON.stringify(visibleLog));
+  assertEqual(visibleLog[0], false, '第一次应先隐藏');
+  assertEqual(visibleLog[1], true, '第二次再显示');
+  assertEqual(pane.DockPosition, 2, '重绘时应重新校正 DockPosition 为 Right(2)');
+});
+
+test('forceTaskPaneRedraw：窗格不存在/不可见时不误显示（不把用户关闭的窗格弹出）', function () {
+  var appMock = {
+    GetTaskPane: function () { return null; },
+    PluginStorage: {
+      getItem: function () { return 'tp-gone'; },
+      setItem: function () {}
+    }
+  };
+  var sandbox = loadMainJs(appMock);
+  // GetTaskPane 返回 null → 直接返回，不抛异常
+  sandbox.forceTaskPaneRedraw();
+  var hasError = sandbox.__errorLogs.some(function (l) { return l.indexOf('强制重绘任务窗格失败') >= 0; });
+  assertTrue(!hasError, '窗格不存在时应静默返回，实际: ' + JSON.stringify(sandbox.__errorLogs));
+});
+
+test('forceTaskPaneRedraw：GetTaskPane 抛异常时静默降级（不误弹窗、不中断）', function () {
+  var appMock = {
+    GetTaskPane: function () { throw new Error('无效 id'); },
+    PluginStorage: {
+      getItem: function () { return 'tp-bad'; },
+      setItem: function () {}
+    }
+  };
+  var sandbox = loadMainJs(appMock);
+  // forceTaskPaneRedraw 内部 try/catch 捕获异常并留痕，不中断
+  sandbox.forceTaskPaneRedraw();
+  var hasError = sandbox.__errorLogs.some(function (l) { return l.indexOf('强制重绘任务窗格失败') >= 0; });
+  assertTrue(hasError, 'GetTaskPane 抛异常应留痕，实际: ' + JSON.stringify(sandbox.__errorLogs));
+});
+
 // ==================== 测试结果汇总 ====================
 
 console.log('\n========== 测试结果 ==========');
