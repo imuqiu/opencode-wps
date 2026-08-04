@@ -21,6 +21,7 @@ var _isPolling = false;
 var _isPaused = false;
 var _failCount = 0;        // 连续失败计数（退避用）
 var _lastError = '';       // 最近一次轮询错误
+var _lastRequestId = '';   // 最近一次已执行的命令 requestId（去重用，防止 poll 重复取同一命令重复执行）
 
 // 退避间隔：500ms -> 1s -> 2s -> 5s 封顶（MCP 不可用时避免 CPU 空转）
 var _backoffBase = 500;
@@ -122,7 +123,9 @@ function selfStartOpenCode() {
         alert('打开Web失败：launcher 响应超时，请重试');
     };
     try {
-        xhr.send(JSON.stringify({ cwd: '' }));
+        // launcher 的 startOpenCode 要求 cwd 非空（空字符串会返回 {success:false, error:'cwd is undefined'}），
+        // 因此不传 cwd 或传默认值；此处传空对象让 launcher 使用其默认 cwd（opencodeCwd 或用户主目录）
+        xhr.send(JSON.stringify({}));
     } catch (e) {
         alert('打开Web失败：' + e.message);
     }
@@ -187,7 +190,15 @@ function poll() {
                 try {
                     var response = JSON.parse(xhr.responseText);
                     if (response.command) {
-                        dispatchCommand(response.command);
+                        // 去重：同一 requestId 不重复执行（MCP 侧 handlePoll 在命令未完成时会重复返回同一命令，
+                        // 无去重会导致非幂等操作（setCellValue/deleteSlide/insertColumns）重复执行）
+                        if (response.command.requestId && response.command.requestId === _lastRequestId) {
+                            // 上一轮已执行过，跳过（命令可能仍在执行中，等待结果 POST 完成）
+                            console.log('跳过重复命令: ' + response.command.requestId);
+                        } else {
+                            _lastRequestId = response.command.requestId || '';
+                            dispatchCommand(response.command);
+                        }
                     }
                 } catch (e) {
                     console.error('解析响应失败:', e);

@@ -182,8 +182,10 @@ function startOpenCode(cwd, port) {
     if (opencodeProcess) {
         return { success: false, error: 'already running' };
     }
+    // cwd 为空时使用用户主目录（自愈/默认启动场景），避免空 cwd 导致启动失败
     if (!cwd) {
-        return { success: false, error: 'cwd is undefined' };
+        cwd = os.homedir();
+        console.log('[launcher] cwd 为空，使用用户主目录: ' + cwd);
     }
     if (!fs.existsSync(cwd)) {
         try { fs.mkdirSync(cwd, { recursive: true }); } catch(e) {}

@@ -12,7 +12,7 @@
  */
 
 import * as http from 'http';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import * as path from 'path';
 import { log } from '../utils/logger';
 
@@ -493,17 +493,18 @@ class MacPollServer {
     return new Promise((resolve, _reject) => {
       log.info(`[Poll] Executing switch script: ${scriptPath} switch ${app}`);
 
-      exec(`"${scriptPath}" switch ${app}`, { timeout: 60000 }, (error, stdout, stderr) => {
+      // 用 execFile 参数数组传递（不经 shell），避免脚本路径/应用名中的特殊字符被 shell 解释（命令注入）
+      execFile(scriptPath, ['switch', app], { timeout: 60000 }, (error, stdout, stderr) => {
         if (error) {
           log.error('[Mac] Switch app failed', { error, stderr });
           // 切换失败不要reject，让命令继续尝试
           // 可能用户已经手动打开了正确的应用
           log.warn('[Mac] Continuing despite switch failure');
+          // 切换失败时不更新 currentApp，保持旧值，让下次命令重试切换（避免命令发往错误应用）
         } else {
           log.info(`[Mac] Switched to ${app}`, { stdout: stdout.trim() });
+          this.currentApp = app;
         }
-
-        this.currentApp = app;
 
         // 等待一下让WPS加载项有时间连接
         setTimeout(() => resolve(), 2000);

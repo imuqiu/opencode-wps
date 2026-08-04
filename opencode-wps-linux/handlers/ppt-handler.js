@@ -133,7 +133,11 @@ registerHandler('addSlide', function(params) {
         if (!pres) return fail('没有打开的演示文稿');
         var layouts = { title: 1, title_content: 2, blank: 12, two_column: 3 };
         var layoutType = layouts[params.layout] || 2;
-        var position = params.position || (pres.Slides.Count + 1);
+        var position = params.position !== undefined ? parseInt(params.position, 10) : (pres.Slides.Count + 1);
+        // position 边界校验：WPS Slides.Add 要求 1 <= position <= Count+1，越界行为未定义（抛错或静默插错位置）
+        if (isNaN(position) || position < 1 || position > pres.Slides.Count + 1) {
+            return fail('无效的插入位置: ' + params.position + '（合法范围 1~' + (pres.Slides.Count + 1) + '）');
+        }
         var slide = pres.Slides.Add(position, layoutType);
         if (params.title && slide.Shapes.HasTitle) {
             slide.Shapes.Title.TextFrame.TextRange.Text = params.title;
@@ -172,7 +176,10 @@ registerHandler('moveSlide', function(params) {
     try {
         var pres = getPPT();
         if (!pres) return fail('没有打开的演示文稿');
-        pres.Slides.Item(params.slideIndex).MoveTo(params.targetIndex);
+        var idx = params.slideIndex || 1;
+        var target = params.targetIndex;
+        if (target === undefined || target === null) return fail('缺少 targetIndex');
+        pres.Slides.Item(idx).MoveTo(target);
         return ok({});
     } catch (e) {
         return fail('移动幻灯片失败: ' + e.message);
