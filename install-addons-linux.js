@@ -200,20 +200,27 @@ recordStep('build_mcp_server');
 if (fsEx.existsSync(mcpServer.src)) {
     console.log('  源目录: ' + mcpServer.src);
 
+    let depsInstalled = false;
     try {
         console.log('  正在安装依赖 (npm install)...');
-        execSync('npm install', { cwd: mcpServer.src, stdio: 'pipe' });
+        execSync('npm install', { cwd: mcpServer.src, stdio: 'inherit' });
         console.log('  依赖安装完成');
+        depsInstalled = true;
     } catch (e) {
-        console.log('  [警告] npm install 失败，请手动运行: cd ' + mcpServer.src + ' && npm install');
+        console.log('  [警告] npm install 失败（详见上方输出），请手动运行: cd ' + mcpServer.src + ' && npm install');
+        depsInstalled = false;
     }
 
-    try {
-        console.log('  正在编译 (npm run build)...');
-        execSync('npm run build', { cwd: mcpServer.src, stdio: 'pipe' });
-        console.log('  编译完成');
-    } catch (e) {
-        console.log('  [警告] npm run build 失败，请手动运行: cd ' + mcpServer.src + ' && npm run build');
+    if (depsInstalled) {
+        try {
+            console.log('  正在编译 (npm run build)...');
+            execSync('npm run build', { cwd: mcpServer.src, stdio: 'inherit' });
+            console.log('  编译完成');
+        } catch (e) {
+            console.log('  [警告] npm run build 失败（详见上方输出），请手动运行: cd ' + mcpServer.src + ' && npm run build');
+        }
+    } else {
+        console.log('  [跳过] 依赖安装失败，跳过 npm run build（先修复依赖安装）');
     }
 } else {
     console.log('  [跳过] MCP 服务器源目录不存在: ' + mcpServer.src);

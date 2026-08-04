@@ -19,6 +19,12 @@ var _ribbonUI = null;
 var _pollTimer = null;
 var _isPolling = false;
 var _isPaused = false;
+var _failCount = 0;        // 连续失败计数（退避用）
+var _lastError = '';       // 最近一次轮询错误
+
+// 退避间隔：500ms -> 1s -> 2s -> 5s 封顶（MCP 不可用时避免 CPU 空转）
+var _backoffBase = 500;
+var _backoffMax = 5000;
 
 function OnAddinLoad(ribbonUI) {
     _ribbonUI = ribbonUI;
@@ -33,7 +39,9 @@ function OnStatusClick() {
     info += '状态: ' + (_isPolling ? '轮询中' : '已停止') + '\n';
     info += '间隔: ' + CONFIG.POLL_INTERVAL + 'ms\n';
     info += '服务器: ' + CONFIG.SERVER_URL + '\n';
-    info += '已注册动作: ' + Object.keys(HANDLERS).length + ' 个';
+    info += '已注册动作: ' + Object.keys(HANDLERS).length + ' 个\n';
+    info += '连续失败: ' + _failCount + ' 次';
+    if (_lastError) info += '\n最近错误: ' + _lastError;
     alert(info);
     return true;
 }
@@ -141,6 +149,8 @@ function poll() {
 
         xhr.onload = function() {
             if (xhr.status === 200) {
+                _failCount = 0;  // 成功则重置退避
+                _lastError = '';
                 try {
                     var response = JSON.parse(xhr.responseText);
                     if (response.command) {
@@ -148,30 +158,50 @@ function poll() {
                     }
                 } catch (e) {
                     console.error('解析响应失败:', e);
+                    _failCount++;
+                    _lastError = '解析失败: ' + e.message;
                 }
+            } else {
+                _failCount++;
+                _lastError = 'HTTP ' + xhr.status;
             }
             scheduleNext();
         };
 
         xhr.onerror = function() {
+            _failCount++;
+            _lastError = '网络错误';
+            console.error('轮询网络错误 (连续失败 ' + _failCount + ' 次)');
             scheduleNext();
         };
 
         xhr.ontimeout = function() {
+            _failCount++;
+            _lastError = '超时';
+            console.error('轮询超时 (连续失败 ' + _failCount + ' 次)');
             scheduleNext();
         };
 
         xhr.send();
     } catch (e) {
+        _failCount++;
+        _lastError = e.message || String(e);
         console.error('轮询异常:', e);
         scheduleNext();
     }
 }
 
+// 退避调度：连续失败时指数退避（500ms -> 1s -> 2s -> 5s 封顶），成功时恢复 500ms
 function scheduleNext() {
     // 暂停（_isPolling=false）时不再排下一轮，避免 in-flight XHR 回调重建 timer 导致恢复按钮失效
     if (!_isPolling) return;
-    _pollTimer = setTimeout(poll, CONFIG.POLL_INTERVAL);
+    var delay = CONFIG.POLL_INTERVAL;
+    if (_failCount > 0) {
+        // 指数退避：500ms -> 1s -> 2s -> 4s -> 5s(封顶)
+        var multiplier = Math.pow(2, Math.min(_failCount - 1, 4));  // 1,2,4,8,16
+        delay = Math.min(_backoffBase * multiplier, _backoffMax);
+    }
+    _pollTimer = setTimeout(poll, delay);
 }
 
 function dispatchCommand(cmd) {

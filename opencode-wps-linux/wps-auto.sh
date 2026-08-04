@@ -70,7 +70,6 @@ close_all() {
     done
     # 再按 WPS 专属安装路径匹配（/opt/kingsoft/wps 等），只杀 WPS 家族进程
     pkill -f "/kingsoft/(wps|et|wpp)" 2>/dev/null || true
-    pkill -f "wpspdf" 2>/dev/null || true
     sleep 2
 }
 

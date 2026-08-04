@@ -1181,6 +1181,25 @@ registerHandler('replacePptText', function(params) {
     }
 });
 
+// 在备注页中定位备注占位符形状：优先 ppPlaceholderBody(2)/ppPlaceholderObject(7)，其次找第一个有文本的文本框
+function findNotesShape(notesPage) {
+    try {
+        for (var j = 1; j <= notesPage.Shapes.Count; j++) {
+            var s = notesPage.Shapes.Item(j);
+            try {
+                var pf = s.PlaceholderFormat;
+                if (pf && (pf.Type === 2 || pf.Type === 7)) return s;
+            } catch (e) {}
+        }
+        // 兜底：第一个 HasTextFrame 且 HasText 的形状
+        for (var j = 1; j <= notesPage.Shapes.Count; j++) {
+            var s = notesPage.Shapes.Item(j);
+            try { if (s.HasTextFrame && s.TextFrame.HasText) return s; } catch (e) {}
+        }
+    } catch (e) {}
+    return null;
+}
+
 registerHandler('getSlideNotes', function(params) {
     try {
         var pres = getPPT();
@@ -1188,7 +1207,10 @@ registerHandler('getSlideNotes', function(params) {
         var idx = params.slideIndex || 1;
         var slide = pres.Slides.Item(idx);
         var notes = '';
-        try { notes = slide.NotesPage.Shapes.Item(2).TextFrame.TextRange.Text; } catch (e) {}
+        try {
+            var shape = findNotesShape(slide.NotesPage.Shapes);
+            if (shape) notes = shape.TextFrame.TextRange.Text || '';
+        } catch (e) {}
         return ok({ slideIndex: idx, notes: notes });
     } catch (e) {
         return fail('获取备注失败: ' + e.message);
@@ -1201,9 +1223,9 @@ registerHandler('setSlideNotes', function(params) {
         if (!pres) return fail('没有打开的演示文稿');
         var idx = params.slideIndex || 1;
         var slide = pres.Slides.Item(idx);
-        try { slide.NotesPage.Shapes.Item(2).TextFrame.TextRange.Text = params.notes || ''; } catch (e) {
-            slide.NotesPage.Shapes.Item(1).TextFrame.TextRange.Text = params.notes || '';
-        }
+        var shape = findNotesShape(slide.NotesPage.Shapes);
+        if (!shape) return fail('未找到备注占位符，无法写入备注');
+        shape.TextFrame.TextRange.Text = params.notes || '';
         return ok({});
     } catch (e) {
         return fail('设置备注失败: ' + e.message);

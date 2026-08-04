@@ -263,6 +263,26 @@ registerHandler('getRangeData', function(params) {
         var sheet = getExcelSheet(wb, params.sheet);
         var range = sheet.Range(params.range);
         var data = [];
+        // 优先批量读取（range.Value2 返回二维数组，一次 COM 往返）；失败时降级逐格（兼容旧 WPS JSAPI）
+        try {
+            var matrix = range.Value2;
+            if (matrix && typeof matrix === 'object' && matrix.length !== undefined) {
+                for (var r = 0; r < matrix.length; r++) {
+                    var row = [];
+                    var srcRow = matrix[r];
+                    if (srcRow && typeof srcRow === 'object' && srcRow.length !== undefined) {
+                        for (var c = 0; c < srcRow.length; c++) row.push(srcRow[c]);
+                    } else {
+                        // 单行返回一维数组的情况
+                        row.push(srcRow);
+                    }
+                    data.push(row);
+                }
+                return ok({ data: data, rows: range.Rows.Count, columns: range.Columns.Count });
+            }
+        } catch (e) {
+            console.error('批量读取失败，降级逐格:', e);
+        }
         for (var r = 1; r <= range.Rows.Count; r++) {
             var row = [];
             for (var c = 1; c <= range.Columns.Count; c++) {
@@ -283,6 +303,24 @@ registerHandler('setRangeData', function(params) {
         var sheet = getExcelSheet(wb, params.sheet);
         var range = sheet.Range(params.range);
         var input = params.data || [];
+        // 优先批量写入（range.Value2 = 二维数组，一次 COM 往返）；失败时降级逐格
+        try {
+            var matrix = [];
+            for (var r = 0; r < input.length && r < range.Rows.Count; r++) {
+                var row = [];
+                var src = input[r];
+                if (src && typeof src === 'object' && src.length !== undefined) {
+                    for (var c = 0; c < src.length && c < range.Columns.Count; c++) row.push(src[c]);
+                } else {
+                    row.push(src);
+                }
+                matrix.push(row);
+            }
+            range.Value2 = matrix;
+            return ok({});
+        } catch (e) {
+            console.error('批量写入失败，降级逐格:', e);
+        }
         for (var r = 0; r < input.length && r < range.Rows.Count; r++) {
             for (var c = 0; c < input[r].length && c < range.Columns.Count; c++) {
                 range.Cells.Item(r + 1, c + 1).Value2 = input[r][c];
