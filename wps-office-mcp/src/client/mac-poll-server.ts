@@ -241,6 +241,7 @@ class MacPollServer {
   private pendingCommand: PendingCommand | null = null;
   private currentApp: string = '';
   private _isRunning: boolean = false;
+  private lastSwitchError: string | null = null;
   private port: number = 58891;
   private switchScriptPath: string;
 
@@ -251,12 +252,19 @@ class MacPollServer {
    */
   constructor(switchScriptPath?: string) {
     this.switchScriptPath =
-      switchScriptPath ||
-      path.join(__dirname, '../../../opencode-wps-assistant/wps-auto.sh');
+      switchScriptPath || path.join(__dirname, '../../../opencode-wps-assistant/wps-auto.sh');
   }
 
   get isRunning(): boolean {
     return this._isRunning;
+  }
+
+  /**
+   * 获取最近一次应用切换失败的原因（无失败返回 null）
+   * 供上层在命令失败时关联「可能因切换失败导致」的提示
+   */
+  getLastSwitchError(): string | null {
+    return this.lastSwitchError;
   }
 
   /**
@@ -297,11 +305,13 @@ class MacPollServer {
           this.handleResult(req, res);
         } else if (url === '/status') {
           // 状态检查接口
-          res.end(JSON.stringify({
-            status: 'running',
-            currentApp: this.currentApp,
-            hasPendingCommand: !!this.pendingCommand
-          }));
+          res.end(
+            JSON.stringify({
+              status: 'running',
+              currentApp: this.currentApp,
+              hasPendingCommand: !!this.pendingCommand,
+            })
+          );
         } else {
           res.writeHead(404);
           res.end(JSON.stringify({ error: 'Not found' }));
@@ -309,23 +319,46 @@ class MacPollServer {
       });
 
       this.server.on('error', (err: NodeJS.ErrnoException) => {
+        // listen 失败：无论哪种错误都不再持有 server（避免 stop() 对未监听实例 close 抛错 / 状态残留）
+        this.server = null;
         if (err.code === 'EADDRINUSE') {
-          // 端口被占用：不要假启动——先探测已有服务是否可用（可能是上一次残留的同构轮询服务）
+          // 端口被占用：**不复用**——新实例的 pendingCommand 是自身的，残留实例永远看不到，
+          // 复用必然导致所有命令 30s 超时且 stop() 无法重置状态（双实例状态分裂）。
+          // 探测仅用于生成清晰的错误信息（区分「残留同构服务」与「其他占用」），
+          // 无论结果如何都 reject，提示用户清理残留进程后重试。
           log.warn(`[Poll] Port ${this.port} already in use, probing existing service...`);
           const http = require('http');
           const probe = http.get(
             { host: '127.0.0.1', port: this.port, path: '/status', timeout: 2000 },
             (res: any) => {
               let body = '';
-              res.on('data', (chunk: any) => (body += chunk));
+              let size = 0;
+              // 探测响应体上限 1MB（异常服务可能返回超大响应）
+              const MAX_PROBE_BODY = 1024 * 1024;
+              let tooBig = false;
+              res.on('data', (chunk: any) => {
+                size += chunk.length;
+                if (size > MAX_PROBE_BODY) {
+                  tooBig = true;
+                  res.destroy();
+                  return;
+                }
+                body += chunk;
+              });
               res.on('end', () => {
+                if (tooBig) {
+                  reject(new Error(`Port ${this.port} already in use by oversized service`));
+                  return;
+                }
                 try {
                   const st = JSON.parse(body);
                   if (st.status === 'running') {
-                    // 已有可用的轮询服务（残留实例），复用即可
-                    log.info(`[Poll] Reusing existing poll server on port ${this.port}`);
-                    this._isRunning = true;
-                    resolve();
+                    // 残留的是同构轮询服务——不复用，明确提示清理（避免双实例 pendingCommand 分裂）
+                    reject(
+                      new Error(
+                        `Port ${this.port} 已被残留的 WPS 轮询服务占用，请清理残留进程后重试（launcher 会自动清理孤儿进程）`
+                      )
+                    );
                     return;
                   }
                 } catch (e) {
@@ -364,7 +397,7 @@ class MacPollServer {
       const cmd = {
         action: this.pendingCommand.action,
         params: this.pendingCommand.params,
-        requestId: this.pendingCommand.requestId
+        requestId: this.pendingCommand.requestId,
       };
       log.debug('[Mac] Sending command to addon', { action: cmd.action, requestId: cmd.requestId });
       res.end(JSON.stringify({ command: cmd }));
@@ -380,19 +413,58 @@ class MacPollServer {
    */
   private handleResult(req: http.IncomingMessage, res: http.ServerResponse): void {
     let body = '';
+    let size = 0;
+    // 请求体上限 10MB：WPS 加载项返回结果通常远小于此，超限视为异常客户端，直接 413 拒绝
+    const MAX_BODY = 10 * 1024 * 1024;
+    let aborted = false;
 
-    req.on('data', (chunk) => {
+    req.on('data', (chunk: Buffer) => {
+      if (aborted) return;
+      size += chunk.length;
+      if (size > MAX_BODY) {
+        aborted = true;
+        log.warn('[Mac] Result body exceeds limit, rejecting with 413');
+        res.writeHead(413, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Payload Too Large' }));
+        req.destroy();
+        return;
+      }
       body += chunk.toString();
     });
 
+    req.on('error', err => {
+      if (aborted) return;
+      aborted = true;
+      log.error('[Mac] Error reading result body', { error: err });
+      if (!res.headersSent) {
+        res.writeHead(400);
+        res.end(JSON.stringify({ error: 'Bad Request' }));
+      }
+    });
+
     req.on('end', () => {
+      if (aborted) return;
       try {
         const data = JSON.parse(body);
-        log.debug('[Mac] Received result', { requestId: data.requestId, success: data.result?.success });
+        log.debug('[Mac] Received result', {
+          requestId: data.requestId,
+          success: data.result?.success,
+        });
 
         if (this.pendingCommand && data.requestId === this.pendingCommand.requestId) {
           // 清除超时定时器
           clearTimeout(this.pendingCommand.timeout);
+
+          // 切换失败时给结果附加提示，便于上层/日志定位「命令在未切换的应用上执行」
+          const result = data.result;
+          if (this.lastSwitchError) {
+            const hint = `（注意：应用切换可能失败：${this.lastSwitchError}）`;
+            if (result && typeof result === 'object') {
+              result._switchWarning = hint;
+            } else {
+              log.warn(`[Mac] Command executed with possible switch failure: ${hint}`);
+            }
+          }
 
           // 返回结果
           this.pendingCommand.resolve(data.result);
@@ -404,8 +476,10 @@ class MacPollServer {
         res.end(JSON.stringify({ ok: true }));
       } catch (e) {
         log.error('[Mac] Failed to parse result', { error: e, body });
-        res.writeHead(400);
-        res.end(JSON.stringify({ error: 'Invalid JSON' }));
+        if (!res.headersSent) {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: 'Invalid JSON' }));
+        }
       }
     });
   }
@@ -417,14 +491,24 @@ class MacPollServer {
    * 2. 把命令放到队列里等WPS加载项来取
    * 3. 等待结果返回
    */
-  async executeCommand(action: string, params: Record<string, unknown> = {}, timeout: number = 30000): Promise<unknown> {
+  async executeCommand(
+    action: string,
+    params: Record<string, unknown> = {},
+    timeout: number = 30000
+  ): Promise<unknown> {
     // 确定需要的应用类型
     const requiredApp = this.getRequiredApp(action, params);
 
     // 如果需要切换应用
     if (requiredApp && requiredApp !== this.currentApp) {
       log.info(`[Mac] Switching app from ${this.currentApp || 'none'} to ${requiredApp}`);
-      await this.switchApp(requiredApp);
+      const switched = await this.switchApp(requiredApp);
+      if (!switched) {
+        // 切换失败：命令仍继续尝试（用户可能已手动打开），但记录上下文便于上层定位
+        log.error(
+          `[Poll] Command ${action} will run despite switch failure to ${requiredApp}: ${this.lastSwitchError}`
+        );
+      }
     }
 
     // 发送命令并等待结果
@@ -438,7 +522,7 @@ class MacPollServer {
           oldRequestId: this.pendingCommand.requestId,
           newRequestId: requestId,
           oldAction: this.pendingCommand.action,
-          newAction: action
+          newAction: action,
         });
         if (this.pendingCommand.timeout) clearTimeout(this.pendingCommand.timeout);
         this.pendingCommand.reject(new Error(`Command superseded by newer command: ${action}`));
@@ -450,7 +534,11 @@ class MacPollServer {
         if (this.pendingCommand?.requestId === requestId) {
           this.pendingCommand = null;
           // 含「超时」关键字（上层 execWpsActionWithRetry 用 errMsg.includes('超时') 分类重试日志）
-          reject(new Error(`命令超时 Command timeout after ${timeout}ms: ${action}`));
+          // 若此前切换失败，附加提示，让上层/日志能定位「命令可能发往了未切换的应用」
+          const switchHint = this.lastSwitchError
+            ? `（切换失败提示: ${this.lastSwitchError}）`
+            : '';
+          reject(new Error(`命令超时 Command timeout after ${timeout}ms: ${action}${switchHint}`));
         }
       }, timeout);
 
@@ -460,7 +548,7 @@ class MacPollServer {
         requestId,
         resolve,
         reject,
-        timeout: timeoutHandle
+        timeout: timeoutHandle,
       };
 
       log.debug('[Mac] Command queued', { action, requestId });
@@ -486,29 +574,33 @@ class MacPollServer {
   /**
    * 切换WPS应用
    * 调用wps-auto.sh脚本自动关闭当前应用并启动目标应用
+   * @returns true=切换成功；false=切换失败（不更新 currentApp，命令继续尝试，
+   *          但 lastSwitchError 会记录失败原因供 executeCommand/handleResult 关联提示）
    */
-  private async switchApp(app: string): Promise<void> {
+  private async switchApp(app: string): Promise<boolean> {
     // wps-auto.sh脚本路径 - 构造时注入（Mac: opencode-wps-assistant；Linux: opencode-wps-linux）
     const scriptPath = this.switchScriptPath;
 
-    return new Promise((resolve, _reject) => {
+    return new Promise(resolve => {
       log.info(`[Poll] Executing switch script: ${scriptPath} switch ${app}`);
 
       // 用 execFile 参数数组传递（不经 shell），避免脚本路径/应用名中的特殊字符被 shell 解释（命令注入）
       execFile(scriptPath, ['switch', app], { timeout: 60000 }, (error, stdout, stderr) => {
         if (error) {
+          this.lastSwitchError = `应用切换失败: ${error.message}${stderr ? ` (${String(stderr).trim()})` : ''}`;
           log.error('[Mac] Switch app failed', { error, stderr });
           // 切换失败不要reject，让命令继续尝试
           // 可能用户已经手动打开了正确的应用
           log.warn('[Mac] Continuing despite switch failure');
           // 切换失败时不更新 currentApp，保持旧值，让下次命令重试切换（避免命令发往错误应用）
         } else {
+          this.lastSwitchError = null;
           log.info(`[Mac] Switched to ${app}`, { stdout: stdout.trim() });
           this.currentApp = app;
         }
 
         // 等待一下让WPS加载项有时间连接
-        setTimeout(() => resolve(), 2000);
+        setTimeout(() => resolve(!error), 2000);
       });
     });
   }
@@ -524,7 +616,9 @@ class MacPollServer {
     }
 
     if (this.server) {
-      this.server.close();
+      if (this.server.listening) {
+        this.server.close();
+      }
       this.server = null;
       this._isRunning = false;
       log.info('[Mac] Poll server stopped');
