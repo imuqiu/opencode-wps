@@ -313,6 +313,10 @@ function OnAddinLoad(ribbonUI) {
 // 同一同步代码块内连续置位可能被 WPS 宿主合并处理，重绘实际不生效。
 // 重绘进行中标志：WindowActivate 可能连续触发，一次重绘未完成时跳过后续触发（防抖）
 var taskPaneRedrawPending = false
+// 用户最近一次主动操作任务窗格的时间戳（OnAction toggle 分支记录）：
+// forceTaskPaneRedraw 异步恢复前比对，若重绘期间用户手动关闭过窗格则放弃恢复，
+// 避免把用户刚关闭的窗格重新弹出来（尊重用户意图）
+var lastUserTaskPaneAction = 0
 function forceTaskPaneRedraw() {
     var tsId = ""
     try {
@@ -335,11 +339,14 @@ function forceTaskPaneRedraw() {
         // 确保 WPS 宿主真的执行隐藏→重排→显示流程（而非合并两次属性写入）。
         // 恢复延迟 150ms：慢速环境宿主完成隐藏→重排耗时不定，80ms 可能过早
         // 导致重绘不完整；页面侧 visibilitychange/resize 自愈会兜底最终布局
+        var redrawStartTime = Date.now()
         taskPaneRedrawPending = true
         tp.Visible = false
         setTimeout(function() {
             taskPaneRedrawPending = false
             try {
+                // 重绘期间用户手动操作过窗格（如点按钮关闭）→ 尊重用户意图，放弃恢复
+                if (lastUserTaskPaneAction > redrawStartTime) return
                 var cur = window.Application.GetTaskPane(tsId)
                 if (!cur) return          // 窗格已销毁：放弃恢复
                 if (cur.Visible) return   // 已被外部恢复（用户重新打开等）：不重复置位
@@ -415,6 +422,9 @@ function OnAction(control) {
                 // 避免个别 WPS 版本对该属性抛异常时直接中断按钮回调（后续 break 分支不执行）
                 try {
                     tp.Visible = !tp.Visible
+                    // 记录用户主动操作时间戳：forceTaskPaneRedraw 异步恢复前比对，
+                    // 重绘期间用户手动关闭过窗格则放弃恢复（不把用户刚关闭的窗格弹回来）
+                    lastUserTaskPaneAction = Date.now()
                 } catch (e) {
                     console.error('[WPS] 切换任务窗格可见性失败: ' + errMsg(e))
                 }

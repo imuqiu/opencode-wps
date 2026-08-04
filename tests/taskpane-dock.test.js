@@ -595,11 +595,39 @@ test('forceTaskPaneRedraw：异步恢复前用户已重新打开/恢复可见时
   var sandbox = loadMainJs(appMock);
   sandbox.forceTaskPaneRedraw();
   assertEqual(visibleLog.length, 1, '同步隐藏一次');
-  // 模拟用户/其他逻辑在 80ms 内把窗格恢复为可见（如用户点击按钮重新打开）
+  // 模拟用户/其他逻辑在重绘窗口内把窗格恢复为可见（如用户点击按钮重新打开）
   pane._visible = true;
   sandbox.__flushTimeouts();
   // 异步回调检测 cur.Visible 已为 true → 跳过恢复置位，不重复写
   assertEqual(visibleLog.length, 1, '外部已恢复可见时不应重复置位，实际: ' + JSON.stringify(visibleLog));
+});
+
+test('forceTaskPaneRedraw：重绘期间用户手动操作过窗格（OnAction toggle）则放弃恢复（尊重用户意图）', function () {
+  var pane = { ID: 'tp-redraw', DockPosition: 0, _visible: true };
+  var visibleLog = [];
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return pane._visible; },
+    set: function (v) { pane._visible = v; visibleLog.push(v); }
+  });
+  var appMock = {
+    GetTaskPane: function () { return pane; },
+    PluginStorage: {
+      getItem: function () { return 'tp-redraw'; },
+      setItem: function () {}
+    }
+  };
+  var sandbox = loadMainJs(appMock);
+  sandbox.forceTaskPaneRedraw();
+  assertEqual(visibleLog.length, 1, '同步隐藏一次');
+  // 模拟用户在 150ms 重绘窗口内通过 OnAction 点击按钮操作窗格（toggle 切换可见性）
+  // 注意：此时窗格已被重绘隐藏（_visible=false），用户点击 toggle 会重新打开（true）——
+  // 关键点不在于 toggle 方向，而在于「用户操作过」应阻止异步恢复再次置位
+  sandbox.OnAction({ Id: 'btnShowTaskPane' });
+  assertEqual(visibleLog.length, 2, '用户点击后应再次切换可见性');
+  sandbox.__flushTimeouts();
+  // 异步回调检测 lastUserTaskPaneAction > redrawStartTime → 放弃恢复
+  // 恢复置位不应发生：visibleLog 保持 2 次置位（重绘隐藏 + 用户操作）
+  assertEqual(visibleLog.length, 2, '重绘期间用户操作后不应恢复显示，实际: ' + JSON.stringify(visibleLog));
 });
 
 test('forceTaskPaneRedraw：异步恢复前窗格已销毁时应放弃恢复（不误弹）', function () {

@@ -1597,24 +1597,38 @@ function scrollToBottom() { setTimeout(function() { $messages.scrollTop = $messa
         // 注意：不能用 documentElement.scrollHeight（html,body 是 position:fixed，
         // 不产生滚动、scrollHeight 恒等于视口，无法反映头部是否被挤出）
         var heads = document.querySelectorAll('.topbar, .session-header');
-        var allInView = true;
-        for (var i = 0; i < heads.length; i++) {
-            var r = heads[i].getBoundingClientRect();
-            if (!(r.width > 0 && r.top >= 0 && r.bottom <= window.innerHeight)) {
-                allInView = false;
-                break;
+        // 找不到头部元素时（HTML 结构变动）不置 reflowFixed：保守保持可重试，
+        // 交由 300ms/1000ms 定时器继续兜底；避免空数组导致 allInView 恒真误判
+        if (heads.length > 0) {
+            var allInView = true;
+            for (var i = 0; i < heads.length; i++) {
+                var r = heads[i].getBoundingClientRect();
+                if (!(r.width > 0 && r.top >= 0 && r.bottom <= window.innerHeight)) {
+                    allInView = false;
+                    break;
+                }
             }
-        }
-        if (allInView) {
-            reflowFixed = true;
-            return;
+            if (allInView) {
+                reflowFixed = true;
+                return;
+            }
         }
         var oldDisplay = app.style.display;
         app.style.display = 'none';
         // 强制同步 reflow
         void app.offsetHeight;
         app.style.display = oldDisplay || '';
-        reflowFixed = true;
+        // 复查：重排后头部是否已回到视口内。仍越界时不置 reflowFixed，
+        // 保留后续重试机会（WebView 布局 bug 顽固时一次重排可能不够）
+        var reflowOk = true;
+        for (var j = 0; j < heads.length; j++) {
+            var rr = heads[j].getBoundingClientRect();
+            if (!(rr.width > 0 && rr.top >= 0 && rr.bottom <= window.innerHeight)) {
+                reflowOk = false;
+                break;
+            }
+        }
+        reflowFixed = reflowOk;
         if (CONNECTED) scrollToBottom();
     }
     function scheduleReflowFix() {
