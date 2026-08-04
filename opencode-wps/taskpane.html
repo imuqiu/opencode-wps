@@ -491,6 +491,9 @@ function showChat() {
     // 更新 topbar cwd 显示
     var cwd = PROJECT_DIR || getPS('opencode_cwd') || ''
     $topbarCwd.textContent = cwd || '点击选择工作目录'
+    // setup→chat 切换后主动调度头部自愈：旧 WebView 内核不保证在
+    // display:none→block 时派发 resize，这里显式触发一次（页面底部 IIFE 暴露）
+    if (typeof window.__scheduleReflowFix === 'function') window.__scheduleReflowFix()
 }
 
 // --- CWD Modal ---
@@ -1585,16 +1588,26 @@ function scrollToBottom() { setTimeout(function() { $messages.scrollTop = $messa
             }
             return;
         }
-        // 廉价预检：头部（topbar）在视口内可见 → 布局正常，跳过强制重排防闪屏。
+        // chat 视图未显示（还在 setup 视图）时无头部可修：直接跳过，
+        // 避免在 display:none 的父级上做无效重排（offsetHeight 为 0）
+        var viewChat = document.getElementById('view-chat');
+        if (viewChat && viewChat.classList.contains('hidden')) return;
+        // 廉价预检：头部（topbar + session-header）都在视口内可见 → 布局正常，
+        // 跳过强制重排防闪屏。
         // 注意：不能用 documentElement.scrollHeight（html,body 是 position:fixed，
         // 不产生滚动、scrollHeight 恒等于视口，无法反映头部是否被挤出）
-        var topbar = document.querySelector('.topbar');
-        if (topbar) {
-            var r = topbar.getBoundingClientRect();
-            if (r.top >= 0 && r.bottom <= window.innerHeight && r.width > 0) {
-                reflowFixed = true;
-                return;
+        var heads = document.querySelectorAll('.topbar, .session-header');
+        var allInView = true;
+        for (var i = 0; i < heads.length; i++) {
+            var r = heads[i].getBoundingClientRect();
+            if (!(r.width > 0 && r.top >= 0 && r.bottom <= window.innerHeight)) {
+                allInView = false;
+                break;
             }
+        }
+        if (allInView) {
+            reflowFixed = true;
+            return;
         }
         var oldDisplay = app.style.display;
         app.style.display = 'none';
@@ -1610,6 +1623,9 @@ function scrollToBottom() { setTimeout(function() { $messages.scrollTop = $messa
         if (reflowTimer) clearTimeout(reflowTimer);
         reflowTimer = setTimeout(function() { reflowTimer = null; reflowFixed = false; forceReflowFix(); }, 100);
     }
+    // 暴露给 showChat() 等视图切换函数：setup→chat 切换后主动调度自愈，
+    // 不依赖旧 WebView 内核是否在 display:none→block 时派发 resize 事件
+    window.__scheduleReflowFix = scheduleReflowFix;
     window.addEventListener('resize', scheduleReflowFix);
     document.addEventListener('visibilitychange', function() {
         if (!document.hidden) scheduleReflowFix();

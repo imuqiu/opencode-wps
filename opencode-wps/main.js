@@ -332,7 +332,9 @@ function forceTaskPaneRedraw() {
         // 停靠位置重新校正（防漂移）
         setTaskPaneDockPosition(tp)
         // 先隐藏再显示，强制 WebView 重新布局；两步间让出宿主事件循环，
-        // 确保 WPS 宿主真的执行隐藏→重排→显示流程（而非合并两次属性写入）
+        // 确保 WPS 宿主真的执行隐藏→重排→显示流程（而非合并两次属性写入）。
+        // 恢复延迟 150ms：慢速环境宿主完成隐藏→重排耗时不定，80ms 可能过早
+        // 导致重绘不完整；页面侧 visibilitychange/resize 自愈会兜底最终布局
         taskPaneRedrawPending = true
         tp.Visible = false
         setTimeout(function() {
@@ -346,7 +348,7 @@ function forceTaskPaneRedraw() {
             } catch (e) {
                 console.error('[WPS] 恢复任务窗格可见失败: ' + errMsg(e))
             }
-        }, 80)
+        }, 150)
     } catch (e) {
         taskPaneRedrawPending = false
         console.error('[WPS] 强制重绘任务窗格失败: ' + errMsg(e))

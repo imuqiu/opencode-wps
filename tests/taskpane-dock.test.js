@@ -677,6 +677,13 @@ test('taskpane.html 自愈骨架：position:fixed 锚定 + forceReflowFix 关键
   assertTrue(/addEventListener\('load'/.test(html), '应监听 load 事件兜底重排');
   assertTrue(/setTimeout\s*\(\s*function\s*\(\s*\)\s*\{\s*reflowFixed\s*=\s*false\s*;\s*forceReflowFix\s*\(\s*\)\s*;?\s*\}\s*,\s*300\s*\)/.test(html), '应保留 300ms 定时器兜底（重置状态位后重排）');
   assertTrue(/setTimeout\s*\(\s*function\s*\(\s*\)\s*\{\s*reflowFixed\s*=\s*false\s*;\s*forceReflowFix\s*\(\s*\)\s*;?\s*\}\s*,\s*1000\s*\)/.test(html), '应保留 1000ms 定时器兜底（重置状态位后重排）');
+  // ⑥ chat 视图隐藏时跳过无效重排（避免在 display:none 父级上重排）
+  assertTrue(/view-chat/.test(html) && /classList\.contains\('hidden'\)/.test(html), 'chat 视图隐藏时 forceReflowFix 应跳过');
+  // ⑦ 双头部检查（topbar + session-header）
+  assertTrue(/\.topbar,\s*\.session-header/.test(html), '预检应同时检查 topbar 与 session-header');
+  // ⑧ showChat 主动调度自愈（window.__scheduleReflowFix）
+  assertTrue(/window\.__scheduleReflowFix/.test(html), '应暴露 __scheduleReflowFix 供 showChat 调用');
+  assertTrue(/__scheduleReflowFix\(\)/.test(html), 'showChat 应主动调度自愈');
 });
 
 // ==================== 测试结果汇总 ====================
