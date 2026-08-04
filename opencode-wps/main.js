@@ -369,13 +369,17 @@ function forceTaskPaneRedraw() {
 
 // 注册 WPS 窗口激活事件（官方 SDK：AddApiEventListener('WindowActivate')）；
 // 个别版本不支持/抛异常时静默降级（不影响既有功能）
+// 已注册标志：OnAddinLoad 可能被多次调用（插件重载/异常恢复），防重复叠加监听
+var windowActivateListenerRegistered = false
 function registerWindowActivateReflow() {
     try {
+        if (windowActivateListenerRegistered) return
         if (typeof window.Application.AddApiEventListener === 'function') {
             window.Application.AddApiEventListener('WindowActivate', function() {
                 // 延迟执行：等 WPS 完成窗口切换布局后再重绘
                 setTimeout(function() { forceTaskPaneRedraw() }, 200)
             })
+            windowActivateListenerRegistered = true
             console.log('[WPS] 已注册 WindowActivate 重绘监听')
         }
     } catch (e) {

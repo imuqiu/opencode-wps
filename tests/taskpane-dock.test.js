@@ -508,6 +508,20 @@ test('OnAddinLoad 注册 WindowActivate 重绘监听（Issue #78 复诊加固）
   assertTrue(typeof events.WindowActivate === 'function', '应注册 WindowActivate 监听，实际: ' + JSON.stringify(Object.keys(events)));
 });
 
+test('OnAddinLoad 重复调用不应重复注册 WindowActivate 监听（防叠加）', function () {
+  var regCount = 0;
+  var appMock = {
+    AddApiEventListener: function (name, cb) { regCount++; },
+    PluginStorage: { getItem: function () { return ''; }, setItem: function () {} }
+  };
+  var sandbox = loadMainJs(appMock);
+  // OnAddinLoad 被多次调用（插件重载/异常恢复场景）
+  sandbox.OnAddinLoad({});
+  sandbox.OnAddinLoad({});
+  sandbox.OnAddinLoad({});
+  assertEqual(regCount, 1, 'WindowActivate 监听应只注册 1 次，实际注册 ' + regCount + ' 次');
+});
+
 test('OnAddinLoad 注册 WindowActivate 时旧版本无 AddApiEventListener 应静默降级', function () {
   var appMock = {
     PluginStorage: { getItem: function () { return ''; }, setItem: function () {} }
@@ -719,8 +733,9 @@ test('taskpane.html 自愈骨架：position:fixed 锚定 + forceReflowFix 关键
   assertTrue(/wasNearBottom/.test(html), '应根据用户是否在消息列表底部决定滚动策略');
   // ⑪ 自愈注册晚于视图切换的时序倒挂补触发（chat 已先行显示时补调度）
   assertTrue(/if\s*\(vc\s*&&\s*!vc\.classList\.contains\('hidden'\)\)\s*scheduleReflowFix\(\)/.test(html), 'chat 已先行显示时应补触发自愈');
-  // ⑫ 强制重排最小间隔 300ms（防多入口密集触发昂贵布局）
+  // ⑫ 强制重排最小间隔 300ms（提前到所有 DOM 访问之前，拦截时零 DOM 触碰）
   assertTrue(/lastForceReflowAt/.test(html), '应有强制重排最小间隔状态');
+  assertTrue(/if\s*\(now\s*-\s*lastForceReflowAt\s*<\s*300\)\s*return/.test(html), '最小间隔检查应提前到 DOM 访问之前');
   // ⑬ scrollToBottom 内部判空
   assertTrue(/if\s*\(\$messages\)\s*\$messages\.scrollTop/.test(html), 'scrollToBottom 应判空防 TypeError');
   // ⑭ .app 成功找到后重置连续失败计数

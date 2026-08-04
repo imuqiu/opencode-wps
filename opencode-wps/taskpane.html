@@ -1579,6 +1579,12 @@ function scrollToBottom() { setTimeout(function() { if ($messages) $messages.scr
     function forceReflowFix() {
         // 已确认布局正常（此前修复过且容器尺寸未再变化）→ 跳过，避免闪屏
         if (reflowFixed) return;
+        // 强制重排最小间隔 300ms 提前到所有 DOM 访问之前：
+        // 被拦截时零 DOM 触碰（getBoundingClientRect 是同步布局读取，成本高）；
+        // 同时防多个入口（rAF/load/定时器/resize/showChat）同一时间窗内排队
+        var now = Date.now();
+        if (now - lastForceReflowAt < 300) return;
+        lastForceReflowAt = now;
         var app = document.querySelector('.app');
         if (!app) {
             // .app 尚未挂载（首次渲染早期）：由 rAF 链式重试，避免丢兜底；
@@ -1629,11 +1635,6 @@ function scrollToBottom() { setTimeout(function() { if ($messages) $messages.scr
         // 必须在重排前保存，重排后恢复（否则用户消息列表被滚回顶部）
         var messagesEl = $messages;
         var savedScrollTop = messagesEl ? messagesEl.scrollTop : 0;
-        // 强制重排最小间隔 300ms：防多个入口（rAF/load/定时器/resize/showChat）
-        // 在同一时间窗内排队多次强制重排（每次都是完整布局管线，成本高）
-        var now = Date.now();
-        if (now - lastForceReflowAt < 300) return;
-        lastForceReflowAt = now;
         app.style.display = 'none';
         // 强制同步 reflow
         void app.offsetHeight;
