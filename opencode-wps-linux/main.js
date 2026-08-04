@@ -113,7 +113,15 @@ function selfStartOpenCode() {
             // 稍等 opencode 端口就绪后重试打开
             setTimeout(function() { dockOpen(''); }, 1500);
         } else {
-            alert('打开Web失败：opencode 启动失败（' + xhr.status + '），请手动运行 node launcher-linux.js');
+            // 400 可能是 "already running"（服务其实已运行）——主动探测确认，避免误导用户
+            var resp = null;
+            try { resp = JSON.parse(xhr.responseText || '{}'); } catch (e) {}
+            if (resp && resp.error && resp.error.indexOf('already running') !== -1) {
+                alert('OpenCode 服务已在运行，正在打开Web...');
+                setTimeout(function() { dockOpen(''); }, 800);
+            } else {
+                alert('打开Web失败：opencode 启动失败（' + xhr.status + '），请手动运行 node launcher-linux.js');
+            }
         }
     };
     xhr.onerror = function() {

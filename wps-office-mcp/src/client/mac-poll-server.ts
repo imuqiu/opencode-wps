@@ -459,8 +459,18 @@ class MacPollServer {
           // 清除超时定时器
           clearTimeout(this.pendingCommand.timeout);
 
+          // 空结果归一化：WPS 返回 null/undefined/非对象时，归一化为标准 fail 结构，
+          // 避免上层 invokeAction 对 result.success 访问 null 抛 TypeError
+          const result =
+            data.result && typeof data.result === 'object'
+              ? data.result
+              : {
+                  success: false,
+                  data: null,
+                  error: 'WPS 返回空结果（result 为空）',
+                };
+
           // 切换失败时给结果附加提示，便于上层/日志定位「命令在未切换的应用上执行」
-          const result = data.result;
           if (this.lastSwitchError) {
             const hint = `（注意：应用切换可能失败：${this.lastSwitchError}）`;
             if (result && typeof result === 'object') {
@@ -471,7 +481,7 @@ class MacPollServer {
           }
 
           // 返回结果
-          this.pendingCommand.resolve(data.result);
+          this.pendingCommand.resolve(result);
           this.pendingCommand = null;
         } else {
           log.warn('[Mac] Received result for unknown request', { requestId: data.requestId });

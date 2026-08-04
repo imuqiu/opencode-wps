@@ -221,6 +221,8 @@ async function execWpsActionWithRetry(
 ): Promise<unknown> {
   let lastError: Error | null = null;
   const isWin = os.platform() === 'win32';
+  // 轮询安全兜底 timer 句柄（函数级共享，命令完成后清理，避免泄漏）
+  let timeoutGuard: NodeJS.Timeout | null = null;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
@@ -248,11 +250,19 @@ async function execWpsActionWithRetry(
         actionPromise = Promise.race([
           execWpsAction(action, params),
           new Promise((_, reject) => {
-            setTimeout(() => {
+            // 用可清理的 timer：命令正常 resolve 后 clearTimeout，避免每次调用都累积一个 180s 空转 timer（泄漏）
+            timeoutGuard = setTimeout(() => {
               reject(new Error(`轮询调用安全兜底超时（180s）: ${action}`));
             }, 180000);
           }),
         ]);
+        // 命令完成后清理兜底 timer（无论成功/失败），避免 timer 泄漏累积
+        actionPromise = actionPromise.finally(() => {
+          if (timeoutGuard) {
+            clearTimeout(timeoutGuard);
+            timeoutGuard = null;
+          }
+        });
       }
 
       return await actionPromise;

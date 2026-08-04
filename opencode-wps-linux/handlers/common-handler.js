@@ -123,10 +123,12 @@ function getAppType() {
         if (typeof Application === 'undefined') return 'unknown';
         var name = '';
         try { name = Application.Name || ''; } catch (e) {}
+        // 大小写不敏感匹配：Linux WPS 的 Application.Name 可能返回小写命令名（wps/et/wpp）
+        var lowerName = String(name).toLowerCase();
 
-        if (name.indexOf('表格') !== -1 || name.indexOf('Excel') !== -1 || name.indexOf('ET') !== -1 || name.indexOf('Spreadsheet') !== -1) return 'et';
-        if (name.indexOf('演示') !== -1 || name.indexOf('Presentation') !== -1 || name.indexOf('WPP') !== -1 || name.indexOf('Slide') !== -1) return 'wpp';
-        if (name.indexOf('文字') !== -1 || name.indexOf('Writer') !== -1 || name.indexOf('Word') !== -1 || name.indexOf('WPS') !== -1) return 'wps';
+        if (lowerName.indexOf('表格') !== -1 || lowerName.indexOf('excel') !== -1 || lowerName.indexOf('et') !== -1 || lowerName.indexOf('spreadsheet') !== -1) return 'et';
+        if (lowerName.indexOf('演示') !== -1 || lowerName.indexOf('presentation') !== -1 || lowerName.indexOf('wpp') !== -1 || lowerName.indexOf('slide') !== -1) return 'wpp';
+        if (lowerName.indexOf('文字') !== -1 || lowerName.indexOf('writer') !== -1 || lowerName.indexOf('word') !== -1 || lowerName.indexOf('wps') !== -1) return 'wps';
 
         try { if (Application.ActiveDocument) return 'wps'; } catch (e) {}
         try { if (Application.ActiveWorkbook) return 'et'; } catch (e) {}

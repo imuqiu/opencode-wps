@@ -157,7 +157,11 @@ switch_to() {
     esac
     local waited=0
     while [ $waited -lt 10 ]; do
-        if pgrep -x "$proc_name" >/dev/null 2>&1; then
+        # 精确匹配 + 版本后缀变体（et-office6/wps-12.1.2/wpsoffice）都要识别，
+        # 与 keepalive 的边界匹配语义一致（pgrep -x 精确名 / pgrep -f 限定 /kingsoft/ 路径）
+        if pgrep -x "$proc_name" >/dev/null 2>&1 || \
+           pgrep -f "/kingsoft/.*$proc_name" >/dev/null 2>&1 || \
+           pgrep -x "wpsoffice" >/dev/null 2>&1; then
             break
         fi
         sleep 1
