@@ -42,8 +42,8 @@ function getWpsChannel(): WpsChannel {
 // PowerShell脚本路径 (Windows)
 const PS_SCRIPT_PATH = path.join(__dirname, '../../scripts/wps-com.ps1');
 
-// Mac轮询服务器端口
-const MAC_POLL_PORT = 58891;
+// 轮询服务器端口（Mac/Linux 共用同一反向轮询协议）
+const POLL_PORT = 58891;
 
 /**
  * 执行Mac轮询调用
@@ -56,7 +56,7 @@ async function execMacPoll(action: string, params: Record<string, unknown> = {})
     // 确保轮询服务器已启动
     if (!macPollServer.isRunning) {
       log.info('[Mac] Starting poll server...');
-      await macPollServer.start(MAC_POLL_PORT);
+      await macPollServer.start(POLL_PORT);
     }
 
     // 通过轮询服务器执行命令
@@ -79,7 +79,7 @@ async function execLinuxPoll(action: string, params: Record<string, unknown> = {
     // 确保轮询服务器已启动
     if (!linuxPollServer.isRunning) {
       log.info('[Linux] Starting poll server...');
-      await linuxPollServer.start(MAC_POLL_PORT);
+      await linuxPollServer.start(POLL_PORT);
     }
 
     // 通过轮询服务器执行命令

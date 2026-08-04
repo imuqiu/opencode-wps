@@ -25,7 +25,7 @@ OpenCode MCP 客户端
 | Linux 插件（独立目录） | `opencode-wps-linux/` | manifest/ribbon/main/handlers/wps-auto.sh，与 Win/Mac 目录完全隔离 |
 | Linux 轮询服务端 | `wps-office-mcp/src/client/linux-poll-server.ts` | 复用 MacPollServer 类，仅注入 Linux 切换脚本 |
 | MCP 平台路由 | `wps-office-mcp/src/client/wps-client.ts` | 三通道：win32(PowerShell COM) / darwin(轮询) / linux(轮询) |
-| Linux Launcher | `launcher-linux.js` | 端口 14097，lsof/ps/kill 管理 opencode 进程，xdg-open 打开浏览器 |
+| Linux Launcher | `launcher-linux.js` | 端口 14097，ps/kill + /proc 扫描管理 opencode 进程（无 lsof 依赖），xdg-open 打开浏览器 |
 | Linux 安装脚本 | `install-addons-linux.js` | 插件安装 + 注册文件 + MCP 配置 + skills/agents + XDG autostart |
 | 文档 | `docs/LINUX.md` | 本文档 |
 

@@ -108,7 +108,7 @@ opencode-wps/
 ├── install-addons-mac.js      # macOS 安装脚本（launchd plist + 插件部署）
 ├── install-addons-linux.js    # Linux 安装脚本（jsaddons + publish.xml + XDG autostart）
 ├── launcher-mac.js            # macOS Launcher 进程（lsof/kill/ps/open）
-├── launcher-linux.js          # Linux Launcher 进程（lsof/kill/ps + xdg-open）
+├── launcher-linux.js          # Linux Launcher 进程（/proc 扫描/kill/ps + xdg-open，无 lsof 依赖）
 ├── package.json               # 项目依赖
 └── README.md
 ```

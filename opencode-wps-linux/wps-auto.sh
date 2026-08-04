@@ -8,10 +8,6 @@
 #   wpp  -> WPS 演示 (Presentation)
 # 若命令不存在，则回退到 xdg-open 打开空白 Office 文件。
 
-SERVER_URL="http://127.0.0.1:58891"
-POLL_TIMEOUT=30
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-
 create_blank_file() {
     local file_type=$1
     local file_path="/tmp/opencode_auto_blank"
@@ -55,11 +51,6 @@ with zipfile.ZipFile('${file_path}.pptx', 'w') as zf:
             echo "${file_path}.pptx"
             ;;
     esac
-}
-
-# 判断 WPS 是否已安装（wps/et/wpp 任一命令存在即视为已安装）
-wps_installed() {
-    command -v wps >/dev/null 2>&1 || command -v et >/dev/null 2>&1 || command -v wpp >/dev/null 2>&1
 }
 
 close_all() {

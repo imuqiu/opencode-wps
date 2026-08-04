@@ -3,7 +3,7 @@
  * launcher-linux.js - OpenCode 进程管理服务 (Linux)
  *
  * 基于 launcher-mac.js 适配 Linux：
- * - lsof / ps / kill 命令在 Linux 下通用（保留）
+ * - /proc 扫描 + ps / kill 定位 opencode 进程（Linux 最小化安装默认无 lsof，故不依赖）
  * - xdg-open 替代 open 打开浏览器
  * - PATH 探测增加 Linux 常见路径（/usr/local/bin, /usr/bin, ~/.local/bin, ~/.opencode/bin）
  * - 孤儿 MCP 进程清理使用 Linux 兼容的 ps 语法
@@ -99,38 +99,60 @@ function findOpenCodeBin() {
     return 'opencode';
 }
 
+// 扫描 /proc/*/cmdline，精确定位 opencode serve --port <targetPort> 进程
+// 不依赖 lsof（Linux 最小化安装/容器默认无 lsof），避免 execSync 抛异常导致 stop/重启失效
+function findOpenCodePidsByPort(targetPort) {
+    var procs = [];
+    try { procs = fs.readdirSync('/proc'); } catch(e) { return []; }
+
+    var pids = [];
+    var portStr = String(targetPort);
+    for (var i = 0; i < procs.length; i++) {
+        var pid = parseInt(procs[i], 10);
+        if (!pid || isNaN(pid)) continue;
+        try {
+            var cmdline = fs.readFileSync('/proc/' + pid + '/cmdline', 'utf8').replace(/\0/g, ' ');
+            // 同时匹配 opencode 与 --port <targetPort>，避免误杀其它进程
+            if (cmdline.indexOf('opencode') !== -1 &&
+                cmdline.indexOf('serve') !== -1 &&
+                cmdline.indexOf('--port') !== -1 &&
+                cmdline.indexOf(portStr) !== -1) {
+                pids.push(pid);
+            }
+        } catch(e) {}
+    }
+    return pids;
+}
+
 function stopOpenCodeByPort(targetPort) {
     targetPort = targetPort || 14096;
     console.log('[launcher] stopOpenCodeByPort: ' + targetPort);
 
     try {
         var execSync = require('child_process').execSync;
-        var out = execSync("lsof -ti tcp:" + targetPort, {
-            encoding: 'utf8',
-            timeout: 5000
-        });
-        var lines = out.split('\n');
-        for (var i = 0; i < lines.length; i++) {
-            var pid = parseInt(lines[i].trim(), 10);
-            if (pid > 0 && !isNaN(pid)) {
-                try {
-                    var nameOut = execSync("ps -p " + pid + " -o comm= 2>/dev/null", { encoding: 'utf8', timeout: 3000 });
-                    var procName = (nameOut || '').trim().toLowerCase();
-                    if (procName.indexOf('node') === -1 && procName.indexOf('opencode') === -1 && procName !== '') {
-                        console.log('[launcher] 跳过非 OpenCode 进程: ' + procName);
-                        continue;
-                    }
-                } catch(e) {}
-                try {
-                    execSync('kill ' + pid, { timeout: 3000 });
-                    console.log('[launcher] 已终止 PID: ' + pid);
-                } catch(e) {
-                    console.log('[launcher] 终止 PID ' + pid + ' 失败: ' + e.message);
+        var pids = findOpenCodePidsByPort(targetPort);
+        if (pids.length === 0) {
+            console.log('[launcher] 端口 ' + targetPort + ' 无 OpenCode 进程');
+        }
+        for (var i = 0; i < pids.length; i++) {
+            var pid = pids[i];
+            try {
+                var nameOut = execSync("ps -p " + pid + " -o comm= 2>/dev/null", { encoding: 'utf8', timeout: 3000 });
+                var procName = (nameOut || '').trim().toLowerCase();
+                if (procName.indexOf('node') === -1 && procName.indexOf('opencode') === -1 && procName !== '') {
+                    console.log('[launcher] 跳过非 OpenCode 进程: ' + procName);
+                    continue;
                 }
+            } catch(e) {}
+            try {
+                execSync('kill ' + pid, { timeout: 3000 });
+                console.log('[launcher] 已终止 PID: ' + pid);
+            } catch(e) {
+                console.log('[launcher] 终止 PID ' + pid + ' 失败: ' + e.message);
             }
         }
     } catch(e) {
-        console.log('[launcher] 端口 ' + targetPort + ' 无占用进程');
+        console.log('[launcher] 端口 ' + targetPort + ' 处理失败: ' + e.message);
     }
 
     return { success: true };

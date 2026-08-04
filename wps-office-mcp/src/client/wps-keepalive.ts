@@ -3,22 +3,43 @@
  * Output: 服务保活状态
  * Pos: WPS 服务保活器。一旦我被修改，请更新我的头部注释，以及所属文件夹的md。
  * WPS服务保活器 - 老王的保活神器
- * 定期检查WPS内置HTTP服务，断了就自动重启
+ * 定期检查WPS服务，断了就自动重启
+ * Windows/macOS：探测内置 RelayHttpServer（:58890）
+ * Linux：探测 WPS 主进程（wps/et/wpp/wpsoffice，轮询桥无 :58890 服务）
  */
 
 import axios from 'axios';
-import { exec } from 'child_process';
+import { exec, execSync } from 'child_process';
 import { log } from '../utils/logger';
 
 const IS_MAC = process.platform === 'darwin';
 const IS_LINUX = process.platform === 'linux';
 
+// Windows/macOS 通过内置 RelayHttpServer（:58890）暴露 HTTP 服务；
+// Linux 无 RelayHttpServer，WPS 加载项走反向轮询桥（MCP 侧 :58891），因此保活探测方式按平台区分。
 const WPS_SERVICE_URL = 'http://127.0.0.1:58890';
 const CHECK_INTERVAL = 5000; // 5秒检查一次
 const STARTUP_PROTOCOL = 'ksoWPSCloudSvr://start=RelayHttpServer';
 
 let keepaliveTimer: NodeJS.Timeout | null = null;
 let isStarting = false;
+
+/**
+ * 检查Linux下WPS是否在运行
+ * Linux 版 WPS 没有 RelayHttpServer（:58890），加载项是轮询 MCP 侧 :58891 的轮询服务器；
+ * 因此改为探测 WPS 主进程（wps/et/wpp/wpsoffice）是否存活，避免每 5 秒误判"未运行"反复拉起。
+ */
+function checkLinuxWpsRunning(): boolean {
+  try {
+    execSync(
+      'pgrep -x wps >/dev/null 2>&1 || pgrep -x et >/dev/null 2>&1 || pgrep -x wpp >/dev/null 2>&1 || pgrep -x wpsoffice >/dev/null 2>&1',
+      { timeout: 3000 }
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * 检查WPS服务是否在运行
@@ -90,7 +111,7 @@ function startService(): Promise<void> {
  * 保活循环
  */
 async function keepaliveLoop(): Promise<void> {
-  const isRunning = await checkService();
+  const isRunning = IS_LINUX ? checkLinuxWpsRunning() : await checkService();
   if (!isRunning) {
     log.warn('[Keepalive] WPS service not running, restarting...');
     await startService();
@@ -130,7 +151,7 @@ export function stopKeepalive(): void {
 export async function ensureService(): Promise<boolean> {
   let retries = 3;
   while (retries > 0) {
-    if (await checkService()) {
+    if (IS_LINUX ? checkLinuxWpsRunning() : await checkService()) {
       return true;
     }
     await startService();
