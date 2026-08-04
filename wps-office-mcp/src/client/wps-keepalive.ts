@@ -42,12 +42,22 @@ function checkLinuxWpsRunning(): boolean {
         const cmdline = require('fs')
           .readFileSync('/proc/' + pid + '/cmdline', 'utf8')
           .replace(/\0/g, ' ');
-        // 取第一个 token（进程名/可执行路径）与目标进程名精确比对
-        const name = cmdline.trim().split(/[\s/]+/)[0];
+        const trimmed = cmdline.trim();
+        // 取第一个 token 的**文件名部分**（去掉目录）：
+        // - 相对路径启动：wps → wps
+        // - 绝对路径启动（.desktop/autostart）：/opt/kingsoft/wps-office/wps → wps
+        // - 子进程：wpspdf → wpspdf
+        const base = trimmed.split(/[\s/]+/).filter(Boolean)[0] || '';
+        // 去掉路径前缀取文件名（如 /opt/kingsoft/wps-office/wps → wps）
+        const name = base.split('/').pop() || '';
+        if (!name) continue;
+        // 精确匹配优先：wps/et/wpp/wpsoffice/wpspdf
         if (targets.has(name)) return true;
-        // 兼容 wps 启动的子进程名（如 wpspdf 带版本后缀），回退精确前缀匹配
+        // 兼容带版本后缀的进程名变体（如 wps-12.1.2 / et-office6 / wpspdf-6.0），
+        // 但必须用**边界前缀**匹配（name === target 或以 target + '-' 开头），
+        // 避免 wpscan/wpspdfx 等无关进程被误判为 WPS 在运行
         for (const t of targets) {
-          if (name.startsWith(t)) return true;
+          if (name === t || name.startsWith(t + '-')) return true;
         }
       } catch {
         // 进程可能已退出，跳过

@@ -652,8 +652,11 @@ registerHandler('autoFitAll', function(params) {
 registerHandler('insertRows', function(params) {
     try {
         var sheet = Application.ActiveSheet;
-        var row = params.row || 1;
-        var count = params.count || 1;
+        // 行参数校验：row 必须为正整数，count 默认 1 且非负（与列侧 resolveColumnLetter 校验语义对齐）
+        var row = parseInt(params.row, 10);
+        if (isNaN(row) || row < 1) return fail('无效的行参数: ' + params.row + '（必须为正整数）');
+        var count = parseInt(params.count, 10) || 1;
+        if (count < 1) return fail('无效的插入行数: ' + params.count);
         sheet.Rows(row + ':' + (row + count - 1)).Insert();
         return ok({});
     } catch (e) {
@@ -664,8 +667,10 @@ registerHandler('insertRows', function(params) {
 registerHandler('deleteRows', function(params) {
     try {
         var sheet = Application.ActiveSheet;
-        var row = params.row || 1;
-        var count = params.count || 1;
+        var row = parseInt(params.row, 10);
+        if (isNaN(row) || row < 1) return fail('无效的行参数: ' + params.row + '（必须为正整数）');
+        var count = parseInt(params.count, 10) || 1;
+        if (count < 1) return fail('无效的删除行数: ' + params.count);
         sheet.Rows(row + ':' + (row + count - 1)).Delete();
         return ok({});
     } catch (e) {
@@ -708,7 +713,11 @@ registerHandler('deleteColumns', function(params) {
 registerHandler('hideRows', function(params) {
     try {
         var sheet = Application.ActiveSheet;
-        sheet.Rows(params.row + ':' + (params.row + (params.count || 1) - 1)).Hidden = true;
+        var row = parseInt(params.row, 10);
+        if (isNaN(row) || row < 1) return fail('无效的行参数: ' + params.row + '（必须为正整数）');
+        var count = parseInt(params.count, 10) || 1;
+        if (count < 1) return fail('无效的行数: ' + params.count);
+        sheet.Rows(row + ':' + (row + count - 1)).Hidden = true;
         return ok({});
     } catch (e) {
         return fail('隐藏行失败: ' + e.message);
@@ -730,7 +739,11 @@ registerHandler('hideColumns', function(params) {
 registerHandler('showRows', function(params) {
     try {
         var sheet = Application.ActiveSheet;
-        sheet.Rows(params.row + ':' + (params.row + (params.count || 1) - 1)).Hidden = false;
+        var row = parseInt(params.row, 10);
+        if (isNaN(row) || row < 1) return fail('无效的行参数: ' + params.row + '（必须为正整数）');
+        var count = parseInt(params.count, 10) || 1;
+        if (count < 1) return fail('无效的行数: ' + params.count);
+        sheet.Rows(row + ':' + (row + count - 1)).Hidden = false;
         return ok({});
     } catch (e) {
         return fail('显示行失败: ' + e.message);
@@ -1173,7 +1186,11 @@ registerHandler('deleteNamedRange', function(params) {
 registerHandler('groupRows', function(params) {
     try {
         var sheet = Application.ActiveSheet;
-        var range = sheet.Range(params.row + ':' + (params.row + (params.count || 1) - 1));
+        var row = parseInt(params.row, 10);
+        if (isNaN(row) || row < 1) return fail('无效的行参数: ' + params.row + '（必须为正整数）');
+        var count = parseInt(params.count, 10) || 1;
+        if (count < 1) return fail('无效的行数: ' + params.count);
+        var range = sheet.Range(row + ':' + (row + count - 1));
         range.Group();
         return ok({});
     } catch (e) {
@@ -1302,11 +1319,18 @@ registerHandler('cleanData', function(params) {
         var mode = params.mode || 'trim';
         var replaced = 0;
         // 三模式统一用单元格级正则处理，不依赖 Range.Replace 的平台差异行为
+        // 注意两点：
+        // 1. 判断用**非全局正则**（.test 无 lastIndex）——带 g 的全局正则 .test() 会因 lastIndex 状态
+        //    导致相邻单元格交替漏判（经典 bug）
+        // 2. 替换用**每次新建的全局正则**——非全局正则 .replace 只替换第一处匹配，会漏掉同一单元格的后续匹配
         var pattern = null;
+        var replacePattern = null;
         if (mode === 'all') {
-            pattern = /[\s\u00a0]+/g;
+            pattern = /[\s\u00a0]+/;
+            replacePattern = /[\s\u00a0]+/g;
         } else if (mode === 'collapse') {
-            pattern = /[\t\n ]{2,}/g;
+            pattern = /[\t\n ]{2,}/;
+            replacePattern = /[\t\n ]{2,}/g;
         } else {
             // trim：仅去首尾空白
             for (var i = 1; i <= range.Rows.Count; i++) {
@@ -1326,7 +1350,7 @@ registerHandler('cleanData', function(params) {
                 var cell = range.Cells.Item(i, j);
                 var v = cell.Value2;
                 if (typeof v === 'string' && pattern.test(v)) {
-                    cell.Value2 = v.replace(pattern, mode === 'all' ? '' : ' ');
+                    cell.Value2 = v.replace(replacePattern, mode === 'all' ? '' : ' ');
                     replaced++;
                 }
             }
@@ -1407,8 +1431,9 @@ registerHandler('setZoom', function(params) {
     try {
         var wb = Application.ActiveWorkbook;
         if (!wb) return fail('没有打开的工作簿');
-        var percent = params.percent;
-        if (percent < 10 || percent > 400) return fail('缩放比例必须在10-400之间');
+        // 显式数值转换 + 校验：字符串/NaN 会被 parseInt 拦截，避免 "abc" < 10 隐式转换误放行
+        var percent = parseInt(params.percent, 10);
+        if (isNaN(percent) || percent < 10 || percent > 400) return fail('缩放比例必须在10-400之间，当前值: ' + params.percent);
         Application.ActiveWindow.Zoom = percent;
         return ok({});
     } catch (e) {

@@ -14,6 +14,15 @@ function getPPT() {
     return Application.ActivePresentation;
 }
 
+// 校验并归一化 slideIndex（必须为正整数且不越界）；非法返回 null
+// 大量 handler 直接 pres.Slides.Item(idx) 对越界抛错返回泛化 fail，统一前置校验给出明确错误
+function resolveSlideIndex(pres, idx) {
+    var n = parseInt(idx, 10);
+    if (isNaN(n) || n < 1) return null;
+    if (n > pres.Slides.Count) return null;
+    return n;
+}
+
 // 将颜色参数解析为整型 RGB：支持 #RRGGBB、RRGGBB、RGB 简写；数字直接返回；非法返回 null
 // （与 excel-handler 的 toExcelColor 语义对称，供 PPT COM 的 ForeColor.RGB 赋值使用）
 function toRgb(color) {
@@ -154,7 +163,8 @@ registerHandler('deleteSlide', function(params) {
     try {
         var pres = getPPT();
         if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || params.index || 1;
+        var idx = resolveSlideIndex(pres, params.slideIndex || params.index || 1);
+        if (idx === null) return fail('无效的幻灯片索引: ' + (params.slideIndex || params.index) + '（合法范围 1~' + pres.Slides.Count + '）');
         pres.Slides.Item(idx).Delete();
         return ok({});
     } catch (e) {
@@ -166,7 +176,8 @@ registerHandler('duplicateSlide', function(params) {
     try {
         var pres = getPPT();
         if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
+        var idx = resolveSlideIndex(pres, params.slideIndex || 1);
+        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
         pres.Slides.Item(idx).Duplicate();
         return ok({});
     } catch (e) {
@@ -178,10 +189,15 @@ registerHandler('moveSlide', function(params) {
     try {
         var pres = getPPT();
         if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
+        var idx = resolveSlideIndex(pres, params.slideIndex || 1);
+        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
         var target = params.targetIndex;
         if (target === undefined || target === null) return fail('缺少 targetIndex');
-        pres.Slides.Item(idx).MoveTo(target);
+        var targetNum = parseInt(target, 10);
+        if (isNaN(targetNum) || targetNum < 1 || targetNum > pres.Slides.Count) {
+            return fail('无效的目标位置: ' + target + '（合法范围 1~' + pres.Slides.Count + '）');
+        }
+        pres.Slides.Item(idx).MoveTo(targetNum);
         return ok({});
     } catch (e) {
         return fail('移动幻灯片失败: ' + e.message);
@@ -247,7 +263,9 @@ registerHandler('setSlideTitle', function(params) {
     try {
         var pres = getPPT();
         if (!pres) return fail('没有打开的演示文稿');
-        var slide = pres.Slides.Item(params.slideIndex);
+        var idx = resolveSlideIndex(pres, params.slideIndex);
+        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
+        var slide = pres.Slides.Item(idx);
         // 无标题占位符时明确 fail（与 setSlideSubtitle 语义一致），避免 AI 误以为设置成功
         if (!slide.Shapes.HasTitle) return fail('当前幻灯片无标题占位符（可能使用了空白布局）');
         slide.Shapes.Title.TextFrame.TextRange.Text = params.title;
@@ -261,7 +279,9 @@ registerHandler('setSlideSubtitle', function(params) {
     try {
         var pres = getPPT();
         if (!pres) return fail('没有打开的演示文稿');
-        var slide = pres.Slides.Item(params.slideIndex);
+        var idx = resolveSlideIndex(pres, params.slideIndex);
+        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
+        var slide = pres.Slides.Item(idx);
         // 按副标题占位符类型（ppPlaceholderSubtitle=15）定位，避免用 t.length<100 猜文本误覆盖标题/正文
         for (var j = 1; j <= slide.Shapes.Count; j++) {
             var s = slide.Shapes.Item(j);
@@ -284,7 +304,9 @@ registerHandler('setSlideContent', function(params) {
     try {
         var pres = getPPT();
         if (!pres) return fail('没有打开的演示文稿');
-        var slide = pres.Slides.Item(params.slideIndex);
+        var idx = resolveSlideIndex(pres, params.slideIndex);
+        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
+        var slide = pres.Slides.Item(idx);
         var count = 0;
         for (var j = 1; j <= slide.Shapes.Count; j++) {
             var s = slide.Shapes.Item(j);
@@ -733,7 +755,9 @@ registerHandler('setSlideLayout', function(params) {
     try {
         var pres = getPPT();
         if (!pres) return fail('没有打开的演示文稿');
-        var slide = pres.Slides.Item(params.slideIndex);
+        var idx = resolveSlideIndex(pres, params.slideIndex);
+        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
+        var slide = pres.Slides.Item(idx);
         var layouts = { title: 1, title_content: 2, blank: 12, two_column: 3 };
         var lt = layouts[params.layout] || 2;
         slide.Layout = lt;
@@ -954,7 +978,9 @@ registerHandler('getPptTableCell', function(params) {
     try {
         var pres = getPPT();
         if (!pres) return fail('没有打开的演示文稿');
-        var slide = pres.Slides.Item(params.slideIndex);
+        var idx = resolveSlideIndex(pres, params.slideIndex);
+        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
+        var slide = pres.Slides.Item(idx);
         var table = findPptTable(slide, params.tableName !== undefined ? params.tableName : (params.tableIndex || 1));
         if (!table) return fail('未找到表格形状（需为表格且名称/序号匹配）');
         var cell = table.Table.Cell(params.row, params.col);
@@ -968,7 +994,9 @@ registerHandler('setPptTableCell', function(params) {
     try {
         var pres = getPPT();
         if (!pres) return fail('没有打开的演示文稿');
-        var slide = pres.Slides.Item(params.slideIndex);
+        var idx = resolveSlideIndex(pres, params.slideIndex);
+        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
+        var slide = pres.Slides.Item(idx);
         var table = findPptTable(slide, params.tableName !== undefined ? params.tableName : (params.tableIndex || 1));
         if (!table) return fail('未找到表格形状（需为表格且名称/序号匹配）');
         table.Table.Cell(params.row, params.col).Shape.TextFrame.TextRange.Text = params.text || '';
@@ -1427,8 +1455,11 @@ registerHandler('setBackgroundColor', function(params) {
         if (!pres) return fail('没有打开的演示文稿');
         var idx = params.slideIndex || 1;
         var slide = pres.Slides.Item(idx);
+        // 非法颜色必须明确 fail（与 setSlideBackground 语义一致），不能用 || 0xFFFFFF 静默兜底——AI 传错色值会"静默变白"误导
+        var bg = toRgb(params.color);
+        if (bg === null) return fail('无效的背景颜色: ' + params.color + '，支持 #RRGGBB/RRGGBB/数字');
         slide.FollowMasterBackground = 0;
-        slide.Background.Fill.ForeColor.RGB = params.color !== undefined ? toRgb(params.color) || 0xFFFFFF : 0xFFFFFF;
+        slide.Background.Fill.ForeColor.RGB = bg;
         slide.Background.Fill.Visible = 1;
         return ok({});
     } catch (e) {
@@ -1572,10 +1603,17 @@ registerHandler('setSlideSize', function(params) {
     try {
         var pres = Application.ActivePresentation;
         if (!pres) return fail('没有打开的演示文稿');
-        var width = params.width;
-        var height = params.height;
-        if (width) pres.PageSetup.SlideWidth = width;
-        if (height) pres.PageSetup.SlideHeight = height;
+        // 显式数值转换 + 校验（避免字符串宽度被真值判断放行后 COM 抛类型错误；width=0 非法）
+        if (params.width !== undefined) {
+            var w = parseInt(params.width, 10);
+            if (isNaN(w) || w <= 0) return fail('无效的幻灯片宽度: ' + params.width + '（必须为正数）');
+            pres.PageSetup.SlideWidth = w;
+        }
+        if (params.height !== undefined) {
+            var h = parseInt(params.height, 10);
+            if (isNaN(h) || h <= 0) return fail('无效的幻灯片高度: ' + params.height + '（必须为正数）');
+            pres.PageSetup.SlideHeight = h;
+        }
         return ok({});
     } catch (e) {
         return fail('设置幻灯片大小失败: ' + e.message);

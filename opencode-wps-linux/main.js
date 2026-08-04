@@ -281,22 +281,34 @@ function sendResult(requestId, result, attempt) {
         xhr.setRequestHeader('Content-Type', 'application/json');
         xhr.timeout = 3000;
         // 失败重试（最多 3 次，500ms 退避），避免命令已执行但结果 POST 失败导致 MCP 侧空等超时
+        // 3 次全部失败时打印明确错误（供排查：MCP 侧会 30s 超时，WPS 侧必须留痕）
+        function failFinal(kind) {
+            console.error('发送结果失败（已重试 3 次）: ' + kind + ' requestId=' + requestId + ' action 结果将被 MCP 判超时');
+        }
         xhr.onload = function() {
-            if (xhr.status !== 200 && attempt < 3) {
-                console.warn('发送结果失败 HTTP ' + xhr.status + '，重试 ' + (attempt + 1));
-                setTimeout(function() { sendResult(requestId, result, attempt + 1); }, 500 * attempt);
+            if (xhr.status !== 200) {
+                if (attempt < 3) {
+                    console.warn('发送结果失败 HTTP ' + xhr.status + '，重试 ' + (attempt + 1));
+                    setTimeout(function() { sendResult(requestId, result, attempt + 1); }, 500 * attempt);
+                } else {
+                    failFinal('HTTP ' + xhr.status);
+                }
             }
         };
         xhr.onerror = function() {
             if (attempt < 3) {
                 console.warn('发送结果网络错误，重试 ' + (attempt + 1));
                 setTimeout(function() { sendResult(requestId, result, attempt + 1); }, 500 * attempt);
+            } else {
+                failFinal('网络错误');
             }
         };
         xhr.ontimeout = function() {
             if (attempt < 3) {
                 console.warn('发送结果超时，重试 ' + (attempt + 1));
                 setTimeout(function() { sendResult(requestId, result, attempt + 1); }, 500 * attempt);
+            } else {
+                failFinal('超时');
             }
         };
         xhr.send(JSON.stringify({ requestId: requestId, result: result }));
