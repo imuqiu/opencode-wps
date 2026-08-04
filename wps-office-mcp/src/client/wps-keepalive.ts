@@ -32,7 +32,7 @@ let isStarting = false;
 function checkLinuxWpsRunning(): boolean {
   try {
     execSync(
-      'pgrep -x wps >/dev/null 2>&1 || pgrep -x et >/dev/null 2>&1 || pgrep -x wpp >/dev/null 2>&1 || pgrep -x wpsoffice >/dev/null 2>&1',
+      'pgrep -x wps >/dev/null 2>&1 || pgrep -x et >/dev/null 2>&1 || pgrep -x wpp >/dev/null 2>&1 || pgrep -x wpsoffice >/dev/null 2>&1 || pgrep -x wpspdf >/dev/null 2>&1',
       { timeout: 3000 }
     );
     return true;

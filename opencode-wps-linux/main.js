@@ -76,7 +76,9 @@ function OnOpenWebClick() {
             st = JSON.parse(probe.responseText || '{}');
         } catch (e) {}
         if (!st || st.running !== true) {
-            alert('打开Web失败：OpenCode 服务未启动，请先运行 node launcher-linux.js');
+            // 自愈：launcher 在但 opencode 未运行 -> 尝试 POST /start 拉起后重试
+            alert('OpenCode 服务未启动，正在尝试拉起...');
+            selfStartOpenCode();
             return;
         }
         dockOpen(st.cwd || '');
@@ -93,6 +95,37 @@ function OnOpenWebClick() {
         alert('打开Web失败：' + e.message);
     }
     return true;
+}
+
+/**
+ * 自愈：launcher 可达但 opencode 服务未运行（running !== true）时，
+ * 调用 POST /start 拉起 opencode serve，成功后重试 dock。
+ */
+function selfStartOpenCode() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', CONFIG.LAUNCHER_URL + '/start', true);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.timeout = 5000;
+    xhr.onload = function() {
+        if (xhr.status === 200) {
+            alert('OpenCode 服务已启动，正在打开Web...');
+            // 稍等 opencode 端口就绪后重试打开
+            setTimeout(function() { dockOpen(''); }, 1500);
+        } else {
+            alert('打开Web失败：opencode 启动失败（' + xhr.status + '），请手动运行 node launcher-linux.js');
+        }
+    };
+    xhr.onerror = function() {
+        alert('打开Web失败：launcher 不可达，请确认 launcher-linux 已启动');
+    };
+    xhr.ontimeout = function() {
+        alert('打开Web失败：launcher 响应超时，请重试');
+    };
+    try {
+        xhr.send(JSON.stringify({ cwd: '' }));
+    } catch (e) {
+        alert('打开Web失败：' + e.message);
+    }
 }
 
 function dockOpen(cwd) {

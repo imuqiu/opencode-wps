@@ -31,6 +31,22 @@ function resolveColumnLetter(col) {
     return null;
 }
 
+// 将列字母转回列号：A->1, Z->26, AA->27, AB->28；数字列号原样返回；非法返回 null
+// （与 colToLetter 对称，供 insertColumns/deleteColumns/groupColumns 计算结束列用）
+function colToNumber(col) {
+    if (typeof col === 'number') return col >= 1 ? col : null;
+    if (typeof col === 'string') {
+        var t = col.trim().toUpperCase();
+        if (!/^[A-Z]{1,3}$/.test(t)) return null;
+        var n = 0;
+        for (var i = 0; i < t.length; i++) {
+            n = n * 26 + (t.charCodeAt(i) - 64);
+        }
+        return n;
+    }
+    return null;
+}
+
 // 对齐常量（与 Windows wps-com.ps1 的 H_ALIGN_MAP / V_ALIGN_MAP 保持一致）
 var H_ALIGN_MAP = { left: -4131, center: -4108, right: -4152 };
 var V_ALIGN_MAP = { top: -4160, center: -4108, bottom: -4107 };
@@ -498,7 +514,9 @@ registerHandler('setBorder', function(params) {
             for (var i = 1; i <= 6; i++) { borders.Item(i).LineStyle = params.styleIndex; }
         }
         if (params.color !== undefined) {
-            for (var i = 1; i <= 6; i++) { borders.Item(i).Color = params.color; }
+            var bc = toExcelColor(params.color);
+            if (bc === null) return fail('无效的边框颜色: ' + params.color + '，支持 #RRGGBB/RRGGBB/数字');
+            for (var i = 1; i <= 6; i++) { borders.Item(i).Color = bc; }
         }
         return ok({});
     } catch (e) {

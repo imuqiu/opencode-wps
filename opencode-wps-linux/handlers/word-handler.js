@@ -132,11 +132,14 @@ registerHandler('findReplace', function(params) {
         find.Text = params.findText;
         find.Replacement.Text = params.replaceText || '';
         var replaceType = params.replaceAll ? 2 : 1;
+        // 仅传一次 findText/replaceText（前面已通过 find.Text / find.Replacement.Text 设置），
+        // 避免 12 个位置参数重复传参导致错位（WPS/Word JSAPI 的 Find.Execute 位置参数易错位）
         var result = find.Execute(
             params.findText, false, false, false, false, false,
             true, 1, false, params.replaceText || '', replaceType
         );
-        return ok({ replaced: result });
+        // 部分 WPS 版本返回 Find 对象而非 boolean，统一转布尔
+        return ok({ replaced: !!result });
     } catch (e) {
         return fail('查找替换失败: ' + e.message);
     }

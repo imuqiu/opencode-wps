@@ -126,7 +126,10 @@ switch_to() {
     local target=$1
     close_all
     sleep 2
-    start_app "$target"
+    if ! start_app "$target"; then
+        echo "[WPS-Auto] 切换失败: 未知应用 $target" >&2
+        return 1
+    fi
     sleep 3
 }
 
