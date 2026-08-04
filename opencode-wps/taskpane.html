@@ -492,8 +492,10 @@ function showChat() {
     var cwd = PROJECT_DIR || getPS('opencode_cwd') || ''
     $topbarCwd.textContent = cwd || '点击选择工作目录'
     // setup→chat 切换后主动调度头部自愈：旧 WebView 内核不保证在
-    // display:none→block 时派发 resize，这里显式触发一次（页面底部 IIFE 暴露）
-    if (typeof window.__scheduleReflowFix === 'function') window.__scheduleReflowFix()
+    // display:none→block 时派发 resize，这里显式触发一次；
+    // 若本函数先于自愈 IIFE 执行（时序倒挂），由 IIFE 挂载时的
+    // 「chat 已先行显示则补触发」兜底，两层机制互补
+    if (window.__scheduleReflowFix) window.__scheduleReflowFix()
 }
 
 // --- CWD Modal ---
@@ -1679,7 +1681,10 @@ function scrollToBottom() { setTimeout(function() { if ($messages) $messages.scr
     if (vc && !vc.classList.contains('hidden')) scheduleReflowFix();
     window.addEventListener('resize', scheduleReflowFix);
     document.addEventListener('visibilitychange', function() {
-        if (!document.hidden) scheduleReflowFix();
+        // 隐藏时复位已修复状态：WPS 切走标签时 WebView 可能被销毁重建，
+        // 回显时必须重新检查布局（不能沿用隐藏前的「已修复」状态）
+        if (document.hidden) { reflowFixed = false; return; }
+        scheduleReflowFix();
     });
     // 首次渲染兜底（多时机覆盖 WebView 视口高度计算时序）:
     // 1) 下一帧（rAF）— 首个可绘制帧前重排；

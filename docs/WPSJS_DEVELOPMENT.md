@@ -197,6 +197,8 @@ function setTaskPaneDockPosition(tskpane) {
 
     **补 DEV 增量（2026-08-04）**：① `forceReflowFix` 在 `.app` 尚未挂载时改为 rAF 链式重试（不再直接 return 丢兜底）；② 新增 `raf` 兼容层，`requestAnimationFrame` 缺失时用 `setTimeout 16ms` 兜底（兼容旧 WebView 内核）；③ 首次渲染触发时机扩展为三路（rAF 首帧前 + `load` 事件 + 300ms/1000ms 定时器），覆盖 WebView 视口高度计算的不同时序；④ 测试新增「taskpane.html 自愈骨架」静态校验用例（`tests/taskpane-dock.test.js` 末尾），防止后续改动删掉任一关键防御结构。
 
+    **补 DEV 增量 2（2026-08-05，PR #83 第 5~8 轮评审）**：⑤ 强制重排前检查 `#input-box` 是否聚焦，聚焦时跳过重排（避免 `display:none` 移除再恢复输入框导致输入框失焦丢光标）；⑥ 重排**前**保存 `.messages` 滚动位置、重排后恢复（`display:none` 会重置 `scrollTop`，不保存会把用户消息列表滚回顶部）；⑦ 强制重排最小间隔 300ms（`lastForceReflowAt`），多个入口（rAF/load/定时器/resize/showChat）同一时间窗内只执行一次；⑧ chat 视图隐藏（`view-chat` 含 `hidden`）时跳过无效重排；⑨ 自愈注册晚于视图切换的时序倒挂补触发（IIFE 挂载后若 chat 已先行显示则补 `scheduleReflowFix()`）；⑩ `visibilitychange` 隐藏时复位 `reflowFixed`（切走标签 WebView 可能重建，回显必须重新检查）；⑪ 300ms/1000ms 定时器兜底统一走 `scheduleReflowFix`（最小间隔检查先于状态位重置，避免状态位与事实不符）。
+
 16. **`forceTaskPaneRedraw` 异步恢复的已知限制——原生关闭语义**：`forceTaskPaneRedraw` 用 `lastUserTaskPaneAction`（`OnAction` toggle 分支记录）+ `redrawStartTime` 比对，重绘期间用户操作过窗格则放弃恢复。但 **WPS TaskPane 原生右上角 X 关闭不经过 `OnAction`**，该时间戳不会更新——若原生关闭为「销毁」语义（`GetTaskPane` 返回 null）则异步回调的 `!cur` 判空已覆盖；若个别版本为「隐藏」语义（`Visible=false` 保留对象）则异步恢复可能把用户刚关闭的窗格误弹回来。实测 WPS 多为销毁语义，但维护时需知晓该限制（对应 `main.js` 内注释）。
 
 ---

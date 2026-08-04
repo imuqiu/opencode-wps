@@ -732,6 +732,10 @@ test('taskpane.html 自愈骨架：position:fixed 锚定 + forceReflowFix 关键
   assertTrue(/messagesEl\.scrollTop\s*=\s*savedScrollTop/.test(html), '重排后应恢复用户滚动位置');
   // ⑰ 定时器兜底走 scheduleReflowFix（300ms 最小间隔 + 状态位一致）
   assertTrue(/Date\.now\(\)\s*-\s*lastForceReflowAt\s*<\s*300/.test(html), 'scheduleReflowFix 应含最小间隔检查');
+  // ⑱ visibilitychange 隐藏时复位 reflowFixed（切走标签 WebView 重建后必须重新检查）
+  assertTrue(/document\.hidden\s*\)\s*\{\s*reflowFixed\s*=\s*false/.test(html), 'visibilitychange 隐藏时应复位已修复状态');
+  // ⑲ showChat 无条件调用（typeof 检查移除，由 IIFE 补触发兜底时序倒挂）
+  assertTrue(/if\s*\(window\.__scheduleReflowFix\)\s*window\.__scheduleReflowFix\(\)/.test(html), 'showChat 应直接调用（IIFE 补触发兜底）');
 });
 
 // ==================== 测试结果汇总 ====================
