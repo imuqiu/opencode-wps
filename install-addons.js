@@ -21,6 +21,19 @@ function handleError(stepName, error) {
     console.error('  ✗ ' + stepName + ': ' + errMsg);
 }
 
+/**
+ * XML 特殊字符转义（用于 schtasks XML 中嵌入路径）
+ * 路径含 & < > " ' 时 XML 非法，schtasks /Create 会失败
+ */
+function xmlEscape(s) {
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+}
+
 // ===== 1. WPS 插件定义 =====
 const addons = [
     {
@@ -524,7 +537,11 @@ if (fsEx.existsSync(launcherPath)) {
     const launcherVbsPath = path.join(jsaddonsDir, 'opencode-wps_', 'start-launcher.vbs');
     // VBS: "node ""path""" → 实际执行 node "path"
     // 外层 "..." 是 VBS 字符串，内层 "" 是字面引号，最后一个 " 关闭 VBS 字符串
-    const launcherVbsContent = 'CreateObject("Wscript.Shell").Run "node ""' + launcherPath + '""", 0, False';
+    // 安全：launcherPath 来自我们自己的 jsaddons 目录（含 \）不可能是用户输入，
+    // 但路径若含引号会破坏 VBS 字符串——防御性替换（实际路径不会含引号）
+    // 注：VBS 字符串字面量内的 & 是普通字符（仅表达式上下文的 & 才是连接符），无需转义
+    const vbsSafePath = launcherPath.replace(/"/g, '""');
+    const launcherVbsContent = 'CreateObject("Wscript.Shell").Run "node ""' + vbsSafePath + '""", 0, False';
     fs.writeFileSync(launcherVbsPath, launcherVbsContent, 'utf-8');
     console.log('  已生成 launcher VBS: ' + launcherVbsPath);
 
@@ -551,7 +568,7 @@ if (fsEx.existsSync(launcherPath)) {
         '  <Actions Context="Author">',
         '    <Exec>',
         '      <Command>wscript.exe</Command>',
-        '      <Arguments>"' + launcherVbsPath + '"</Arguments>',
+        '      <Arguments>"' + xmlEscape(launcherVbsPath) + '"</Arguments>',
         '    </Exec>',
         '  </Actions>',
         '</Task>'

@@ -22,10 +22,21 @@ var server = http.createServer(function (req, res) {
     var urlPath = req.url.split('?')[0]
     if (urlPath === '/') urlPath = '/index.html'
 
-    var filePath = path.join(ROOT, urlPath)
+    // 先 decodeURIComponent：req.url 是原始未解码路径，%2e%2e 等编码
+    // 必须先解码成 '..' 才能被 path.join/path.relative 正确识别并拦截
+    try {
+        urlPath = decodeURIComponent(urlPath)
+    } catch (e) {
+        res.writeHead(400)
+        res.end('Bad Request')
+        return
+    }
 
-    // Security: prevent path traversal
-    if (filePath.indexOf(ROOT) !== 0) {
+    // 归一化为相对路径后用 path.relative 严格校验：
+    // 旧实现用 indexOf(ROOT) 前缀匹配，理论上存在 "C:\root2\x" 绕过 "C:\root" 前缀的边界问题
+    var filePath = path.join(ROOT, urlPath)
+    var rel = path.relative(ROOT, filePath)
+    if (rel.indexOf('..') === 0 || path.isAbsolute(rel)) {
         res.writeHead(403)
         res.end('Forbidden')
         return
@@ -34,7 +45,7 @@ var server = http.createServer(function (req, res) {
     fs.readFile(filePath, function (err, data) {
         if (err) {
             res.writeHead(404)
-            res.end('Not found: ' + urlPath)
+            res.end('Not found')
             return
         }
         var ext = path.extname(filePath).toLowerCase()

@@ -542,7 +542,10 @@ function renderCwdHistory() {
     for (var i = 0; i < CWD_HISTORY.length; i++) {
         var c = CWD_HISTORY[i]
         var sel = (c === PROJECT_DIR)
-        html += '<div class="cwd-history-item' + (sel ? ' active' : '') + '" onclick="selectCwdHistory(\'' + c.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/&/g, '&amp;') + '\')">' + escapeHtml(c) + '</div>'
+        // 先翻倍反斜杠（JS 字符串字面量），再 escapeAttr（& < > " '）；
+        // 顺序不能反：若先 escapeAttr 会把 ' 转成 \'，后翻倍反斜杠会把 \' 误翻成 \\' 破坏转义
+        var escC = c.replace(/\\/g, '\\\\')
+        html += '<div class="cwd-history-item' + (sel ? ' active' : '') + '" onclick="selectCwdHistory(\'' + escapeAttr(escC) + '\')">' + escapeHtml(c) + '</div>'
     }
     container.innerHTML = html
 }
@@ -662,6 +665,9 @@ function stopOpenCode() {
     SERVER_RUNNING = false
     CONNECTED = false
     if (SSE) { SSE.close(); SSE = null }
+    // 清理 SSE 自动重连定时器：服务已停止时若仍有排程中的重连回调，
+    // 会继续向已停止的服务发起连接（浪费资源 + 触发错误日志）
+    if (sseReconnectTimer) { clearTimeout(sseReconnectTimer); sseReconnectTimer = null; sseReconnectDelay = 1000; }
     updateServerStatus(false)
     showSetup()
 }
@@ -748,7 +754,15 @@ function escapeHtml(s) {
         return map[c];
     });
 }
-function escapeAttr(s) { return s.replace(/'/g, "\\'").replace(/"/g, '&quot;') }
+function escapeAttr(s) {
+    if (typeof s !== 'string') return '';
+    // onclick 属性 = HTML 属性值 + JS 代码双层解析：
+    // - 单引号必须用 \'（JS 字符串转义，HTML 不解析反斜杠，安全）
+    //   不能用 &#39; —— HTML 先解码成 ' 会重新破坏 JS 字符串定界
+    // - 双引号用 &quot;（HTML 实体，防属性定界符提前结束）
+    // - & 用 &amp; 防实体注入；< > 转义防标签注入
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, "\\'");
+}
 
 // Mode dropdown
 function toggleModeDropdown(e) {
@@ -770,8 +784,8 @@ function toggleProviderDropdown(e) {
         for (var i = 0; i < AVAILABLE_PROVIDERS.length; i++) {
             var p = AVAILABLE_PROVIDERS[i]
             var sel = (p.id === CURRENT_PROVIDER)
-            html += '<div class="dd-item' + (sel ? ' selected' : '') + '" onclick="selectProvider(\'' + p.id + '\')">'
-            html += '<span>' + p.name + '</span>'
+            html += '<div class="dd-item' + (sel ? ' selected' : '') + '" onclick="selectProvider(\'' + escapeAttr(p.id) + '\')">'
+            html += '<span>' + escapeHtml(p.name) + '</span>'
             if (sel) html += '<span class="dd-check">&#10003;</span>'
             html += '</div>'
         }
@@ -998,7 +1012,7 @@ function renameSession() {
     var renameBox = document.createElement('div')
     renameBox.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.2);z-index:100;padding:20px;width:260px'
     renameBox.innerHTML = '<div style="font-size:15px;font-weight:600;margin-bottom:12px">重命名会话</div>' +
-        '<input id="rename-input" type="text" value="' + escapeHtml($sessionTitle.textContent) + '" style="width:100%;border:1px solid #e5e5e5;border-radius:8px;padding:8px 12px;font-size:14px;outline:none;font-family:inherit" />'
+        '<input id="rename-input" type="text" value="' + escapeAttr($sessionTitle.textContent) + '" style="width:100%;border:1px solid #e5e5e5;border-radius:8px;padding:8px 12px;font-size:14px;outline:none;font-family:inherit" />'
     var btnRow = document.createElement('div'); btnRow.style.cssText = 'display:flex;gap:8px;margin-top:14px;justify-content:flex-end'
     var cancelBtn = document.createElement('button'); cancelBtn.textContent = '取消'; cancelBtn.style.cssText = 'padding:6px 16px;border:1px solid #e0e0e0;border-radius:8px;background:#fff;cursor:pointer;font-size:13px'
     var confirmBtn = document.createElement('button'); confirmBtn.textContent = '重命名'; confirmBtn.style.cssText = 'padding:6px 16px;border:none;border-radius:8px;background:#1a1a1a;color:#fff;cursor:pointer;font-size:13px'
@@ -1048,7 +1062,7 @@ function openSidebar() {
         var el = document.getElementById('sidebar-list'); if (!el) return
         if (!list.length) { el.innerHTML = '<div style="padding:16px;color:#999;font-size:13px">暂无会话</div>'; return }
         var html = ''
-        for (var i = 0; i < list.length; i++) { var s = list[i], active = (s.id === SESSION_ID); var date = s.time ? new Date(s.time.updated || s.time.created) : null; var ts = date ? (date.getMonth()+1)+'/'+date.getDate() : ''; html += '<div class="sidebar-item' + (active ? ' active' : '') + '" onclick="switchSession(\'' + s.id + '\')"><span class="sl-slug">' + escapeHtml(s.title || s.slug || s.id) + '</span><span class="sl-time">' + ts + '</span></div>' }
+        for (var i = 0; i < list.length; i++) { var s = list[i], active = (s.id === SESSION_ID); var date = s.time ? new Date(s.time.updated || s.time.created) : null; var ts = date ? (date.getMonth()+1)+'/'+date.getDate() : ''; html += '<div class="sidebar-item' + (active ? ' active' : '') + '" onclick="switchSession(\'' + escapeAttr(s.id) + '\')"><span class="sl-slug">' + escapeHtml(s.title || s.slug || s.id) + '</span><span class="sl-time">' + ts + '</span></div>' }
         el.innerHTML = html
     })
 }
@@ -1331,7 +1345,10 @@ function handleFileUpload(e) {
         var base64 = evt.target.result.split(',')[1];
         // 文件内容以 base64 发送到服务端，可能在服务端日志/消息历史中留存
         // 含敏感信息的文件建议使用完毕后清理服务器端会话历史
-        var msg = '<file-upload>\nfilename: ' + file.name + '\ntype: ' + file.type + '\ndata: ' + base64 + '\n</file-upload>';
+        // filename/type 清洗换行/控制字符：避免伪造 </file-upload> 结束标记注入额外块
+        var safeName = String(file.name).replace(/[\r\n\x00-\x1f]/g, ' ');
+        var safeType = String(file.type || '').replace(/[\r\n\x00-\x1f]/g, ' ');
+        var msg = '<file-upload>\nfilename: ' + safeName + '\ntype: ' + safeType + '\ndata: ' + base64 + '\n</file-upload>';
         postMessage('/session/' + SESSION_ID + '/message', { parts: [{ type: 'text', text: msg }] });
     };
     reader.readAsDataURL(file);
@@ -1489,7 +1506,7 @@ function inlineFmt(s) {
     s = s.replace(/\*(.+?)\*/g, '<em>$1</em>')
     s = s.replace(/~~(.+?)~~/g, '<del>$1</del>')
     s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, function(m, alt, url) { return '<img src="' + safeHref(url) + '" alt="' + alt + '" style="max-width:100%">' })
-    s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(m, text, url) { return '<a href="' + safeHref(url) + '" target="_blank">' + text + '</a>' })
+    s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(m, text, url) { return '<a href="' + safeHref(url) + '" target="_blank" rel="noopener noreferrer">' + text + '</a>' })
     return s
 }
 function scrollToBottom() { setTimeout(function() { if ($messages) $messages.scrollTop = $messages.scrollHeight }, 50) }
