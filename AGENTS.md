@@ -39,8 +39,15 @@ npm run format:check            # Check formatting
 ```
 opencode-wps/              # WPS JS add-in (main.js, taskpane.html, ribbon.xml, config.js, launcher.js)
   opencode-proxy.js        # CORS proxy (port 14098, strips CSP headers)
+opencode-wps-assistant/    # macOS JS add-in (reverse polling bridge, no Chat UI)
+  wps-auto.sh              # macOS WPS app switch script (open + pkill)
+opencode-wps-linux/        # Linux JS add-in (reverse polling bridge, separate dir)
+  wps-auto.sh              # Linux WPS app switch script (wps/et/wpp + xdg-open)
 wps-office-mcp/            # MCP server (TypeScript, ~257 COM Actions + 12 built-in tools)
   src/                     # Server, client, tools, types, utils
+    client/                # wps-client (win32/mac/linux channel routing)
+      mac-poll-server.ts   # Reverse polling server (reused by Linux via constructor)
+      linux-poll-server.ts # Linux poll server (injects Linux wps-auto.sh path)
     utils/path-safety.ts   # Path validation (validateFilePath/validateImagePath/isAllowedUrl)
 skills/                    # 5 OpenCode Skills (wps-excel/word/ppt/office/proofread)
   README.md                # MUST READ before modifying skills
@@ -48,7 +55,10 @@ agents/                    # 4 agent definitions (wps-expert, wps-word, wps-exce
 .opencode/
   plugins/governance.js    # Execution governance plugin (G1-G7 + P1-P16 + T1-T11 rules)
   opencode.jsonc           # OpenCode config template (merged into ~/.config/opencode/opencode.json)
-install-addons.js          # One-shot install script (7 steps)
+install-addons.js          # One-shot install script (7 steps) — Windows
+install-addons-mac.js      # One-shot install script — macOS (launchd autostart)
+install-addons-linux.js    # One-shot install script — Linux (XDG autostart)
+launcher-linux.js          # Linux process manager (port 14097, xdg-open dock)
 ```
 
 ## MCP Server
