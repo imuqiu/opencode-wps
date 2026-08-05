@@ -196,7 +196,8 @@ function stopOpenCodeByPort(port) {
         var execSync = require('child_process').execSync;
         
         // 查找占用指定端口的进程 PID
-        var output = execSync('netstat -ano | findstr :' + port, { 
+        // findstr 匹配 ":port "（带尾空格）减少 :140960/:114096 等子串误匹配
+        var output = execSync('netstat -ano | findstr ":' + port + ' "', { 
             shell: 'cmd.exe',
             encoding: 'utf8',
             timeout: 5000
@@ -210,29 +211,41 @@ function stopOpenCodeByPort(port) {
             if (line.indexOf('LISTENING') > 0 || line.indexOf('ESTABLISHED') > 0) {
                 var parts = line.split(/\s+/);
                 var localAddr = parts[1] || '';
-                // 检查是否为指定端口
-                var addrParts = localAddr.split(':');
-                var listenPort = parseInt(addrParts[addrParts.length - 1], 10);
+                // 检查是否为指定端口：IPv6 地址 [::1]:14096 含多个冒号，用 lastIndexOf 取端口
+                var listenPort = parseInt(localAddr.substring(localAddr.lastIndexOf(':') + 1), 10);
                 
                 if (listenPort === port) {
                     var pid = parseInt(parts[parts.length - 1], 10);
                     if (pid > 0) {
                         console.log('[launcher] Found process on port ' + port + ', PID: ' + pid);
-                        // 验证进程名，避免误杀。注意：Windows 11 已移除 wmic，
-                        // 查询失败时**不再继续 kill**（保守策略）——否则会把占用
-                        // 该端口的非 OpenCode 进程（如浏览器/其它 node 服务）误杀
+                        // 验证进程名，避免误杀。优先用 PowerShell Get-CimInstance（Win11 兼容，
+                        // wmic 已在 Win11 移除）；查询失败再保守跳过，避免误杀非 OpenCode 进程。
+                        // 注意：不能无条件 continue——否则 Win11 上永远杀不掉合法进程。
+                        var isOpenCode = false;
                         try {
-                            var nameOut = execSync('wmic process where ProcessId=' + pid + ' get Name /format:csv', { encoding: 'utf8', timeout: 3000, shell: 'cmd.exe' });
-                            var procName = (nameOut.split('\n')[1] || '').trim().toLowerCase();
-                            if (procName !== 'node.exe' && procName !== 'opencode.exe' && procName !== '') {
+                            var psNameCmd = "powershell -NoProfile -Command \"(Get-CimInstance Win32_Process -Filter 'ProcessId=" + pid + "').Name\"";
+                            var nameOut = execSync(psNameCmd, { encoding: 'utf8', timeout: 3000 });
+                            var procName = (nameOut.split('\n')[0] || '').trim().toLowerCase();
+                            isOpenCode = (procName === 'node.exe' || procName === 'opencode.exe' || procName === '');
+                            if (!isOpenCode) {
                                 console.log('[launcher] Skipping non-OpenCode process: ' + procName);
                                 continue;
                             }
                         } catch(e) {
-                            // wmic 不可用（Windows 11 移除）或查询失败：无法确认进程身份，
-                            // 保守跳过，避免误杀非 OpenCode 进程
-                            console.log('[launcher] Cannot verify process name for PID ' + pid + ' (wmic unavailable), skipping');
-                            continue;
+                            // PowerShell 也失败（极少数环境）：回退尝试 wmic（老系统），再失败则保守跳过
+                            try {
+                                var wmicOut = execSync('wmic process where ProcessId=' + pid + ' get Name /format:csv', { encoding: 'utf8', timeout: 3000, shell: 'cmd.exe' });
+                                var wmicName = (wmicOut.split('\n')[1] || '').trim().toLowerCase();
+                                isOpenCode = (wmicName === 'node.exe' || wmicName === 'opencode.exe' || wmicName === '');
+                                if (!isOpenCode) {
+                                    console.log('[launcher] Skipping non-OpenCode process: ' + wmicName);
+                                    continue;
+                                }
+                            } catch(e2) {
+                                // 两种方式都失败：无法确认进程身份，保守跳过
+                                console.log('[launcher] Cannot verify process name for PID ' + pid + ', skipping');
+                                continue;
+                            }
                         }
                         try {
                             execSync('taskkill /F /PID ' + pid + ' 2>nul', { 
@@ -454,14 +467,14 @@ function dockWindow(callback, data) {
         setTimeout(function() { try { fs.unlinkSync(scriptPath) } catch(e) {} }, 2000)
         if (err) {
             // exec 超时 ≠ 启动失败：Edge 冷启动可能超过 5 秒，PowerShell 可能仍在拉起窗口。
-            // 探测 Edge 进程是否出现，出现则视为成功（只报 timeout 提示）
+            // 探测"带 --app= 且指向 14096 的 msedge 进程"是否出现（避免误判用户已开的普通 Edge 浏览器）
             console.error('[launcher] dockWindow exec error: ' + (err.message || err));
             try {
                 var execSync = require('child_process').execSync;
-                var edgeCheck = execSync('powershell -NoProfile -Command "(Get-Process msedge -ErrorAction SilentlyContinue | Measure-Object).Count"', { encoding: 'utf8', timeout: 3000 });
+                var edgeCheck = execSync('powershell -NoProfile -Command "(Get-CimInstance Win32_Process -Filter \"Name=\'msedge.exe\'\" | Where-Object { $_.CommandLine -match \'14096\' } | Measure-Object).Count"', { encoding: 'utf8', timeout: 3000 });
                 var count = parseInt(edgeCheck.trim(), 10);
                 if (count > 0) {
-                    console.log('[launcher] dockWindow exec timed out but Edge process detected (' + count + '), treating as success');
+                    console.log('[launcher] dockWindow exec timed out but Edge app process detected (' + count + '), treating as success');
                     callback({ success: true, pid: 0, timeout: true });
                     return;
                 }
