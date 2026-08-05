@@ -141,8 +141,7 @@ function selfStartOpenCode() {
     alert('打开Web失败：launcher 响应超时，请重试');
   };
   try {
-    // launcher 的 startOpenCode 要求 cwd 非空（空字符串会返回 {success:false, error:'cwd is undefined'}），
-    // 因此传空对象让 launcher 使用其默认 cwd（opencodeCwd 或用户主目录）
+    // 传空对象让 launcher 使用其默认 cwd（launcher 对空 cwd 会回退用户主目录，与 Linux 版一致）
     xhr.send(JSON.stringify({}));
   } catch (e) {
     alert('打开Web失败：' + e.message);
