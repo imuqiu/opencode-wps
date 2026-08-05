@@ -42,7 +42,7 @@ node install-addons-mac.js      # macOS（7 步自动安装）
 node install-addons-linux.js    # Linux
 ```
 
-安装完成后重启 WPS，功能区出现 **OpenCode AI** 标签页，点击 **打开面板** 即可开始对话。
+安装完成后重启 WPS，功能区出现 **OpenCode AI** 标签页：Windows 点击 **打开面板** 即可开始对话；macOS / Linux 点击 **打开Web** 在浏览器中对话。
 
 > 📖 三平台完整安装步骤、目录路径与卸载说明见 [docs/INSTALLATION.md](./docs/INSTALLATION.md)。
 

@@ -70,7 +70,7 @@ MCP 服务器采用三层工具体系，AI 通过不同的方式发现和调用�
 | 层级 | 数量 | 命名约定 | 调用方式 | 说明 |
 |------|------|----------|----------|------|
 | **内置工具** | 12 | `wps_xxx` | 直接 MCP 调用 | 启动即注册，始终可用。含 10 个基础工具 + 2 个 Gateway 工具（`wps_office_search`/`wps_office_execute`） |
-| **注册工具** | ~240 | `wps_xxx_xxx`（Excel ~82 / Word ~37 / PPT ~112 / Common ~10） | → Gateway 路由 | 通过 `tools/index.ts` 注册，有完整的 TypeScript handler（参数校验+类型安全），不注册到 MCP，由 Gateway 优先调用 |
+| **注册工具** | ~240 | `wps_xxx_xxx`（Excel ~82 / Word ~36 / PPT ~112 / Common ~10） | → Gateway 路由 | 通过 `tools/index.ts` 注册，有完整的 TypeScript handler（参数校验+类型安全），不注册到 MCP，由 Gateway 优先调用 |
 | **COM_ACTIONS** | ~257 | 短名称（`getCellValue`, `setFont`, `addSlide`） | `wps_office_search` → `wps_office_execute` → PS1 兜底 | Gateway 索引，按需发现。有 TS handler → 走 handler，无 handler → 透传 PS1 脚本 |
 
 > 各层数量随开发持续演进，**以代码为准**（内置工具见 `mcp-server.ts`，注册工具见 `tools/index.ts`，COM_ACTIONS 见 `gateway/index.ts`，校验见 `scripts/validate-tool-counts.js`）。

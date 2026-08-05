@@ -19,10 +19,17 @@
 
 | 规则 | 说明 |
 |------|------|
-| T1 | 填写前评估文档结构，确定段落总数和字段位置 |
-| T2-T3 | 分批处理，每批 ≤200 段 |
-| T4 | 开启修订模式 |
-| T5-T11 | 禁止编造字段值、跳过签字字段、所有填值加下划线标记等 |
+| T1 | 填写前调用 `getActiveDocument` 评估文档规模，确定段落总数和字段位置 |
+| T2 | 填写前调用 `getDocumentParagraphs` 分批，每批 ≤200 段 |
+| T3 | 填写前调用 `enableTrackChanges(true)` 开启修订模式 |
+| T4 | 填写后建议调用 `findInDocument` 检查遗漏 |
+| T5 | 批次连续性检查（同 P2） |
+| T6 | 禁止子串重复填写（新 keyword 是已填 keyword 的子串/超串时拦截） |
+| T7 | 禁止编造——首次填写前必须输出「文档字段 ↔ 用户值」对照表并获用户确认 |
+| T8 | 跳过签字字段（含「签字/签名/签章」的关键字无需填写） |
+| T9 | 日期字段推荐 underline 模式 |
+| T10 | 禁止同一 (keyword, value) 重复填写 |
+| T11 | 所有填入的值必须加下划线（`smartFillField` 工具层自动执行） |
 
 ### 适用场景
 
@@ -53,9 +60,9 @@
 | **P4-P7** | after | 批次状态追踪（批数/段数/完成计数/状态设置） |
 | **P8-P10** | before | `confirmBatchAiProofread` 前必须调 `proofreadBasic`，禁止跳过基础校对 |
 | **P11** | before | 每批必须完成（proofread → confirm → fix）才能进入下一批 |
-| **P12** | before | `getDocumentParagraphs` 禁止获取超出本批范围的段落 |
-| **P13** | before | `confirmBatchAiProofread` 确认前必须调 `proofreadBasic` |
-| **P14** | before | `confirmBatchAiProofread` 前必须调 `proofreadBasic`，禁止 AI "分析"后跳过 |
+| **P12** | before | 当前批未完成（proofread → confirm → fix）禁止获取下一批段落 |
+| **P13** | before | `getDocumentTextByRange` 禁止拉取超出本批预期范围的多批文本（≤200 段） |
+| **P14** | before | `confirmBatchAiProofread` 必须在 `proofreadBasic` 之后调用，禁止 AI "分析"后跳过 |
 | **P15** | before | 当 `proofreadHadIssues=false`（基础校对无问题）时，最多允许 1 次 AI 自定修复，超限需 `_force_ai_fix` |
 | **P16** | before | `replaceInParagraph` 的 `findText` 必须与至少一条 `proofreadIssueOriginals` 原文匹配 |
 
