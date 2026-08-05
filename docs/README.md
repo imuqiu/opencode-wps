@@ -48,7 +48,7 @@
 | [I18N_PLAN.md](./I18N_PLAN.md) | 国际化 (i18n) 支持规划（未来规划） |
 | [proofread-fluency-conciseness-design.md](./proofread-fluency-conciseness-design.md) | Word 校对通顺度/简洁度技术设计文档 |
 | [HISTORY.md](./HISTORY.md) | 演进历史与致谢 |
-| [superpowers/specs/](./superpowers/specs/) | 设计规格存档（端口杀进程、MCP 渐进式加载等） |
+| [superpowers/specs/](./superpowers/specs/) | 设计规格存档：[端口杀进程设计](./superpowers/specs/2026-05-05-port-kill-design.md) · [MCP 渐进式加载设计](./superpowers/specs/2026-05-08-mcp-progressive-loading-design.md) |
 
 ---
 
