@@ -149,7 +149,10 @@ registerHandler('addSlide', function (params) {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
     var layouts = { title: 1, title_content: 2, blank: 12, two_column: 3 };
-    var layoutType = layouts[params.layout] || 2;
+    // 未知 layout 显式 fail（与 setSlideTransition 未知 type 语义一致），避免静默兜底 title_content 误导 AI
+    var layoutType = layouts[params.layout];
+    if (layoutType === undefined)
+      return fail('无效的布局: ' + params.layout + '（支持 title/title_content/blank/two_column）');
     var position =
       params.position !== undefined ? parseInt(params.position, 10) : pres.Slides.Count + 1;
     // position 边界校验：WPS Slides.Add 要求 1 <= position <= Count+1，越界行为未定义（抛错或静默插错位置）
@@ -834,8 +837,9 @@ registerHandler('groupShapes', function (params) {
     if (!pres) return fail('没有打开的演示文稿');
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
-    var names = params.shapeNames || [];
-    if (names.length < 2) return fail('至少需要两个形状');
+    // shapeNames 显式数组校验：字符串/'abc' 传 Shapes.Range 抛类型错误
+    var names = params.shapeNames;
+    if (!Array.isArray(names) || names.length < 2) return fail('至少需要两个形状（shapeNames 数组）');
     var range = slide.Shapes.Range(names);
     var group = range.Group();
     return ok({ groupName: group.Name });
@@ -869,8 +873,9 @@ registerHandler('alignShapes', function (params) {
     if (!pres) return fail('没有打开的演示文稿');
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
-    var names = params.shapeNames || [];
-    if (names.length < 2) return fail('至少需要两个形状');
+    // shapeNames 显式数组校验：字符串/'abc' 传 Shapes.Range 抛类型错误
+    var names = params.shapeNames;
+    if (!Array.isArray(names) || names.length < 2) return fail('至少需要两个形状（shapeNames 数组）');
     var range = slide.Shapes.Range(names);
     var align = params.align || 'left';
     var map = { left: 0, center: 1, right: 2, top: 3, middle: 4, bottom: 5 };
@@ -887,8 +892,9 @@ registerHandler('distributeShapes', function (params) {
     if (!pres) return fail('没有打开的演示文稿');
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
-    var names = params.shapeNames || [];
-    if (names.length < 2) return fail('至少需要两个形状');
+    // shapeNames 显式数组校验：字符串/'abc' 传 Shapes.Range 抛类型错误
+    var names = params.shapeNames;
+    if (!Array.isArray(names) || names.length < 2) return fail('至少需要两个形状（shapeNames 数组）');
     var range = slide.Shapes.Range(names);
     if (params.direction === 'horizontal') range.Distribute(0, 0);
     else range.Distribute(1, 0);
@@ -904,8 +910,9 @@ registerHandler('smartDistribute', function (params) {
     if (!pres) return fail('没有打开的演示文稿');
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
-    var names = params.shapeNames || [];
-    if (names.length < 2) return fail('至少需要两个形状');
+    // shapeNames 显式数组校验：字符串/'abc' 传 Shapes.Range 抛类型错误
+    var names = params.shapeNames;
+    if (!Array.isArray(names) || names.length < 2) return fail('至少需要两个形状（shapeNames 数组）');
     var range = slide.Shapes.Range(names);
     range.Align(1, 0);
     range.Distribute(0, 0);
@@ -950,7 +957,10 @@ registerHandler('setSlideLayout', function (params) {
       );
     var slide = pres.Slides.Item(idx);
     var layouts = { title: 1, title_content: 2, blank: 12, two_column: 3 };
-    var lt = layouts[params.layout] || 2;
+    // 未知 layout 显式 fail（与 addSlide 语义一致）
+    var lt = layouts[params.layout];
+    if (lt === undefined)
+      return fail('无效的布局: ' + params.layout + '（支持 title/title_content/blank/two_column）');
     slide.Layout = lt;
     return ok({});
   } catch (e) {
@@ -1049,10 +1059,17 @@ registerHandler('addAnimation', function (params) {
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
+    // shapeName 前置校验：循环空转后「未找到形状」误导（与 setShapeZOrder 语义对齐）
+    if (!shapeName) return invalidParam('缺少 shapeName');
     for (var j = 1; j <= slide.Shapes.Count; j++) {
       if (slide.Shapes.Item(j).Name === shapeName) {
         var effectTypes = { fade: 0, flyIn: 1, zoomIn: 64, wipe: 15 };
-        var etype = effectTypes[params.animationType || 'fade'] || 0;
+        // 未知 animationType 显式 fail（与 setSlideTransition 语义一致）
+        var etype = effectTypes[params.animationType || 'fade'];
+        if (etype === undefined)
+          return fail(
+            '无效的动画类型: ' + params.animationType + '（支持 fade/flyIn/zoomIn/wipe）'
+          );
         slide.TimeLine.MainSequence.AddEffect(slide.Shapes.Item(j), 0, 0, etype);
         return ok({});
       }
@@ -1069,9 +1086,15 @@ registerHandler('removeAnimation', function (params) {
     if (!pres) return fail('没有打开的演示文稿');
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
-    while (slide.TimeLine.MainSequence.Count > 0) {
+    // 循环上限防死循环：若 Item(1).Delete() 不减少 Count（部分 WPS 语义异常）会无限循环
+    var maxIter = 1000;
+    var iter = 0;
+    while (slide.TimeLine.MainSequence.Count > 0 && iter < maxIter) {
       slide.TimeLine.MainSequence.Item(1).Delete();
+      iter++;
     }
+    if (iter >= maxIter)
+      return fail('移除动画达到循环上限（' + maxIter + '），可能仍有残留动画');
     return ok({});
   } catch (e) {
     return fail('移除动画失败: ' + e.message);
@@ -1980,8 +2003,14 @@ registerHandler('setFontColor', function (params) {
   try {
     var pres = Application.ActivePresentation;
     if (!pres) return fail('没有打开的演示文稿');
-    var slideIndex = params.slideIndex || 1;
-    var slide = pres.Slides.Item(slideIndex);
+    // slideIndex 显式校验：越界 Slides.Item 抛费解错误（与 resolveSlideIndex 语义对齐）
+    var slideIndex = params.slideIndex;
+    var idx = resolveSlideIndex(pres, slideIndex);
+    if (idx === null)
+      return fail(
+        '无效的幻灯片索引: ' + slideIndex + '（合法范围 1~' + pres.Slides.Count + '）'
+      );
+    var slide = pres.Slides.Item(idx);
     var shape = findShape(
       slide,
       params.shapeIndex !== undefined ? params.shapeIndex : params.shapeName
@@ -2030,8 +2059,14 @@ registerHandler('setShapeFill', function (params) {
   try {
     var pres = Application.ActivePresentation;
     if (!pres) return fail('没有打开的演示文稿');
-    var slideIndex = params.slideIndex || 1;
-    var slide = pres.Slides.Item(slideIndex);
+    // slideIndex 显式校验：越界 Slides.Item 抛费解错误（与 resolveSlideIndex 语义对齐）
+    var slideIndex = params.slideIndex;
+    var idx = resolveSlideIndex(pres, slideIndex);
+    if (idx === null)
+      return fail(
+        '无效的幻灯片索引: ' + slideIndex + '（合法范围 1~' + pres.Slides.Count + '）'
+      );
+    var slide = pres.Slides.Item(idx);
     var shape = findShape(
       slide,
       params.shapeIndex !== undefined ? params.shapeIndex : params.shapeName

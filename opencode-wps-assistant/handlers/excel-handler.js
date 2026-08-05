@@ -364,6 +364,11 @@ registerHandler('setRangeData', function (params) {
     // range 前置校验：Range(undefined) 抛费解错误
     if (!params.range) return invalidParam('缺少 range');
     var range = sheet.Range(params.range);
+    // OOM 边界（与 getRangeData 第 5 轮修复对称）：超大范围写入 OOM/长时间阻塞
+    var cellCount = range.Rows.Count * range.Columns.Count;
+    var MAX_CELLS = 1000000;
+    if (cellCount > MAX_CELLS)
+      return fail('范围过大（' + cellCount + ' 单元格，上限 ' + MAX_CELLS + '），请缩小 range');
     var input = params.data || [];
     // 将一行输入归一化为数组（兼容标量/null 行），供批量与逐格路径共用，避免降级时 input[r].length 抛 TypeError
     function toRowArray(src, maxCols) {
@@ -1497,6 +1502,11 @@ registerHandler('exportChartAsImage', function (params) {
     if (!chartName) return invalidParam('缺少 chartName');
     var format = (params.format || 'PNG').toUpperCase();
     var filterName = format === 'JPEG' ? 'JPG' : format;
+    // format 白名单校验（与 exportSlideAsImage 第 7 轮修复对齐）：任意字符串传 Export 抛类型错误
+    var allowed = { PNG: 'PNG', JPG: 'JPG', JPEG: 'JPG', GIF: 'GIF', BMP: 'BMP' };
+    filterName = allowed[filterName] || null;
+    if (!filterName)
+      return fail('无效的导出格式: ' + params.format + '（支持 PNG/JPG/JPEG/GIF/BMP）');
     var chartObj = sheet.ChartObjects(chartName);
     chartObj.Chart.Export(outputPath, filterName);
     return ok({ chartName: chartName, outputPath: outputPath, format: filterName });
