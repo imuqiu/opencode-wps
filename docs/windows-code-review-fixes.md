@@ -134,3 +134,24 @@
 | 🔴 | `security.test.js`/`launcher.test.js` 未接入 CI | `.cnb.yml` Validate 阶段补两行 |
 | 🟡 | 文档未同步第 1-5 轮新增修复 | 本文件追加「评审迭代记录」章节 |
 | ℹ️ | Windows 侧 JS 无语法门禁 | `.cnb.yml` 补 `node --check` 4 个 Windows 文件 |
+
+### 第 7 轮（提交 `7a4dced`）
+| 级别 | 问题 | 修复 |
+|------|------|------|
+| 🔴 | wmic 在 Win11 移除 → `stopOpenCode` 完全失效（永远杀不掉进程） | 改用 `Get-CimInstance Win32_Process`（Win11 兼容），失败回退 wmic，再失败才保守跳过 |
+| 🟡 | dockWindow 超时探测 `count>0` 误判用户已开的普通 Edge | 改为 `CommandLine -match 14096` 精确匹配 dock 专属进程 |
+| ℹ️ | findstr `:14096` 子串误匹配 `:140960` 等；IPv6 地址解析错 | findstr 加尾空格；`lastIndexOf(':')` 取端口 |
+
+### 第 8 轮（提交 `62e39e2`）
+| 级别 | 问题 | 修复 |
+|------|------|------|
+| 🟡 | schtasks XML 中 `launcherVbsPath` 未转义，路径含 `&` 导致 XML 非法、开机自启静默失效 | 新增 `xmlEscape`（& < > " ' 全转义）后拼入 XML |
+| ℹ️ | `opencode.pid` 写入/删除竞态 + 插件目录残留 | 幂等说明（双向 unlink 均 try/catch） |
+| ℹ️ | `opencodePath` 未校验，config.json 被篡改可指向任意 exe | `findOpenCodeBin` 校验文件名含 opencode 或 .exe/.cmd/.ps1 |
+
+### 第 9 轮（提交 `160434b`）
+| 级别 | 问题 | 修复 |
+|------|------|------|
+| 🟡 | proxy 未监听 `clientRes` error（EPIPE/ECONNRESET → 未捕获异常） | 补 `clientRes.on('error')` → destroy 上游 |
+| ℹ️ | `x-opencode-directory` 请求头原样转发上游，可伪造目录访问 | 转发前 delete（连同 x-forwarded-*） |
+| ℹ️ | 上游 5xx 响应头含 `x-powered-by`/`server` 泄露 | 过滤 LEAK_HEADERS 4 项 |
