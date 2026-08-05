@@ -11,11 +11,15 @@
 
 ```
 opencode-wps/              # 第 1 层（Win）：WPS JS 插件（前台 Chat 窗口 + 后台 Launcher）
+│   ├── index.html              # WPS 加载项入口文件（WPS 启动时加载）
 │   ├── main.js                # Ribbon 回调、状态管理、OpenCode 连接
 │   ├── taskpane.html          # Chat UI（SSE 流式对话、Markdown 渲染、会话管理、Agent 选择）
 │   ├── launcher.js            # Launcher 进程（Windows 版）
 │   ├── opencode-proxy.js      # CORS 代理（端口 14098，剥离 CSP 头）
-│   └── config.js              # 全局配置中心
+│   ├── ribbon.xml             # 功能区按钮定义
+│   ├── manifest.xml           # 插件清单
+│   ├── config.js              # 全局配置中心
+│   └── serve.js               # 开发静态服务器（端口 3444，仅开发用）
 ├── opencode-wps-assistant/  # 第 1 层（Mac）：WPS JS 插件（命令轮询桥，无 Chat UI）
 │   ├── main.js                # 轮询循环 + 命令分发
 │   ├── handlers/              # Word/Excel/PPT 操作处理器（206 个动作，word 26 / excel 88 / ppt 82 / common 10）

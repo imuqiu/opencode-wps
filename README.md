@@ -79,9 +79,9 @@ Win: PowerShell COM 桥接  /  Mac·Linux: HTTP 轮询 (反向轮询插件)
 | 分类 | 文档 |
 |------|------|
 | 🧭 **使用** | [安装指南](./docs/INSTALLATION.md) · [使用指南](./docs/USAGE.md) · [特色功能](./docs/FEATURES.md) · [问题排查](./docs/TROUBLESHOOTING.md) |
-| 🔧 **开发** | [开发指南](./docs/DEVELOPMENT_GUIDE.md) · [代码审查](./docs/CODE_REVIEW_GUIDE.md) · [WPS JS 开发](./docs/WPSJS_DEVELOPMENT.md) · [安装脚本说明](./docs/INSTALL_SCRIPT.md) |
+| 🔧 **开发** | [开发指南](./docs/DEVELOPMENT_GUIDE.md) · [代码审查](./docs/CODE_REVIEW_GUIDE.md) · [WPS JS 开发](./docs/WPSJS_DEVELOPMENT.md) · [安装脚本说明](./docs/INSTALL_SCRIPT.md) · [Skills](./docs/SKILLS.md) |
 | 🖥️ **平台专题** | [Linux 支持](./docs/LINUX.md) |
-| 📚 **内部参考** | [架构](./docs/ARCHITECTURE.md) · [MCP](./docs/MCP.md) · [Skills](./docs/SKILLS.md) · [API 参考](./docs/OPENCODE_API.md) · [安全](./docs/SECURITY.md) · [NPC Team](./docs/NPC_TEAM.md) |
+| 📚 **内部参考** | [架构](./docs/ARCHITECTURE.md) · [MCP](./docs/MCP.md) · [API 参考](./docs/OPENCODE_API.md) · [安全](./docs/SECURITY.md) · [NPC Team](./docs/NPC_TEAM.md) |
 
 > 📚 完整文档中心（含全部 22 份顶层文档 + 2 份设计规格的索引）见 [docs/README.md](./docs/README.md)。
 
