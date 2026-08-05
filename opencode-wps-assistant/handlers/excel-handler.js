@@ -1117,9 +1117,16 @@ registerHandler('fillSeries', function (params) {
   try {
     var sheet = Application.ActiveSheet;
     var range = sheet.Range(params.range);
-    range.AutoFill(
-      range.Resize(params.rowCount || range.Rows.Count, params.colCount || range.Columns.Count)
-    );
+    // 行/列数显式校验：0/负数/字符串静默兜底问题（与 insertRows 语义对齐），
+    // 避免 rowCount:'-1' 产生 Resize 负数尺寸抛费解错误
+    var rowCount = params.rowCount !== undefined ? parseInt(params.rowCount, 10) : range.Rows.Count;
+    if (isNaN(rowCount) || rowCount < 1)
+      return fail('无效的填充行数: ' + params.rowCount + '（必须为正整数）');
+    var colCount =
+      params.colCount !== undefined ? parseInt(params.colCount, 10) : range.Columns.Count;
+    if (isNaN(colCount) || colCount < 1)
+      return fail('无效的填充列数: ' + params.colCount + '（必须为正整数）');
+    range.AutoFill(range.Resize(rowCount, colCount));
     return ok({});
   } catch (e) {
     return fail('填充序列失败: ' + e.message);
@@ -1242,6 +1249,9 @@ registerHandler('createNamedRange', function (params) {
   try {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
+    // 前置校验：name/range 必填（原实现 undefined 传给 Names.Add 抛费解错误）
+    if (!params.name) return invalidParam('缺少 name');
+    if (!params.range) return invalidParam('缺少 range');
     wb.Names.Add(params.name, wb.ActiveSheet.Range(params.range));
     return ok({});
   } catch (e) {
@@ -1267,6 +1277,8 @@ registerHandler('deleteNamedRange', function (params) {
   try {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
+    // 前置校验：缺 name 时 Names.Item(undefined) 抛费解错误
+    if (!params.name) return invalidParam('缺少 name');
     wb.Names.Item(params.name).Delete();
     return ok({});
   } catch (e) {
@@ -1514,6 +1526,8 @@ registerHandler('evaluateFormula', function (params) {
   try {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
+    // formula 前置校验：空/非字符串时显式 fail（原实现会把 undefined 直接赋给 target.Formula 抛费解错误）
+    if (typeof params.formula !== 'string' || !params.formula) return invalidParam('缺少 formula');
     var formula = params.formula;
     var cell = params.cell || 'A1';
     var sheet = wb.ActiveSheet;
@@ -1525,7 +1539,11 @@ registerHandler('evaluateFormula', function (params) {
     var origFormula = target.Formula;
     target.Formula = formula;
     var value = target.Value;
-    target.Formula = origFormula;
+    // 恢复原公式放 try/finally：Evaluate 不可用时的降级路径若赋值/取值抛错，
+    // 原公式必须恢复（此前异常会跳过恢复，用户表格公式被永久替换）
+    try {
+      target.Formula = origFormula;
+    } catch (e) {}
     return ok({ result: value });
   } catch (e) {
     return fail('公式计算失败: ' + e.message);

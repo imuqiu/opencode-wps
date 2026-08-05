@@ -302,9 +302,14 @@ const plistPath = path.join(launchAgentDir, 'com.opencode.launcher.plist');
 
 // 修复恒真条件：launcherPath 指向 opencode-wps-assistant/launcher-mac.js（该文件不存在），
 // 实际使用 rootDir 下的 launcher-mac.js。此前 `existsSync(launcherPath) || true` 恒真，分支判断形同虚设
-if (fsEx.existsSync(path.resolve(rootDir, 'launcher-mac.js'))) {
+// 注意：同时校验 wps-auto.sh 存在（launcher 启动后由 MCP 调用的切换脚本，缺失时安装无意义）
+const rootLauncher = path.resolve(rootDir, 'launcher-mac.js');
+if (
+  fsEx.existsSync(rootLauncher) &&
+  fsEx.existsSync(path.resolve(rootDir, 'opencode-wps-assistant', 'wps-auto.sh'))
+) {
   // 使用 rootDir 下的 launcher-mac.js
-  const actualLauncher = path.resolve(rootDir, 'launcher-mac.js');
+  const actualLauncher = rootLauncher;
 
   fsEx.ensureDirSync(launchAgentDir);
 

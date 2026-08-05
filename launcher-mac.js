@@ -100,7 +100,21 @@ function findOpenCodeBin() {
   var nvmDir = path.join(os.homedir(), '.nvm', 'versions', 'node');
   var nvmBin = '';
   try {
-    var nvmVersions = fs.readdirSync(nvmDir).sort();
+    // sort 默认字典序：'v14.0.0' 会排在 'v9.0.0' 前面，直接取最后一个会选到旧版本；
+    // 需用版本号数值比较取最新（与 install-addons-mac.js 的排序逻辑对齐）
+    var nvmVersions = fs
+      .readdirSync(nvmDir)
+      .filter(function (v) {
+        return v.indexOf('v') === 0;
+      })
+      .sort(function (a, b) {
+        var pa = a.substring(1).split('.').map(Number);
+        var pb = b.substring(1).split('.').map(Number);
+        for (var i = 0; i < 3; i++) {
+          if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) - (pb[i] || 0);
+        }
+        return 0;
+      });
     if (nvmVersions.length > 0)
       nvmBin = path.join(nvmDir, nvmVersions[nvmVersions.length - 1], 'bin', 'opencode');
   } catch (e) {}
@@ -231,6 +245,11 @@ function startOpenCode(cwd, port) {
     opencodeProcess.on('exit', function (code) {
       console.log('[launcher] Exited: ' + code);
       opencodeProcess = null;
+      // 正常退出也清理 pid 文件（此前仅 uncaughtException 清理），避免残留 pid 导致下次启动误判/重复清理
+      try {
+        var pidPath = path.join(os.homedir(), '.opencode', 'launcher-opencode.pid');
+        fs.unlinkSync(pidPath);
+      } catch (e) {}
     });
 
     console.log('[launcher] Started PID: ' + opencodeProcess.pid);
@@ -258,24 +277,43 @@ function dockWindow(callback, data) {
 
   // 命令注入防护：用 spawn + 参数数组（而非 exec + 字符串拼接），
   // 避免 cwd/session 中的引号/分号等不可信字符被 shell 解释
-  // macOS 上依次尝试 Chrome → Edge → 默认浏览器（open 命令带 URL 参数，本身不拼接 shell）
+  // macOS 上依次尝试 Chrome → 默认浏览器（open 命令带 URL 参数，本身不拼接 shell）
   var openBin = '/usr/bin/open';
   var tried = [];
+  var done = false;
+  var startedFallback = false;
+  function finish() {
+    if (done) return;
+    done = true;
+    callback({ success: true, pid: 0 });
+  }
   function tryOpen(bundleId) {
     if (bundleId) tried.push(bundleId);
     var args = bundleId ? ['-a', bundleId, url] : [url];
     var child = require('child_process').spawn(openBin, args, { stdio: 'ignore' });
+    // macOS open 默认不等待应用退出，进程很快以退出码返回：
+    // code===0 才算打开成功；非 0（如 Chrome 未安装时 open -a 报错）回退默认浏览器，避免"假成功"
+    // （旧实现用 on('spawn') 立即回调 success，Chrome 缺失时 open 仍会 spawn 成功但实际没打开）
     child.on('error', function (err) {
       console.log('[launcher] open failed (' + (bundleId || 'default') + '): ' + err.message);
+      if (done) return;
       if (tried.length >= 2) {
-        callback({ success: true, pid: 0 });
-      } else {
+        finish();
+      } else if (!startedFallback) {
+        startedFallback = true;
         tryOpen(null);
       }
     });
-    // 打开成功即回调（open 进程可能常驻等待，不等待退出）
-    child.on('spawn', function () {
-      callback({ success: true, pid: 0 });
+    child.on('close', function (code) {
+      if (done) return;
+      if (code === 0) {
+        finish();
+      } else if (tried.length >= 2) {
+        finish();
+      } else if (!startedFallback) {
+        startedFallback = true;
+        tryOpen(null);
+      }
     });
   }
   tryOpen('Google Chrome');

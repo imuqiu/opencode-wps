@@ -288,7 +288,11 @@ registerHandler('insertHyperlink', function (params) {
   try {
     var doc = Application.ActiveDocument;
     if (!doc) return fail('没有打开的文档');
-    doc.Hyperlinks.Add(Application.Selection.Range, params.url, '', '', params.text || params.url);
+    if (!params.url) return invalidParam('缺少 url');
+    // 无选中/无活动窗口时 Selection.Range 抛错——前置保护给明确提示（与 setTextColor 语义一致）
+    var range = getSelectionRange();
+    if (!range) return fail('请先在文档中选中文本或设置光标');
+    doc.Hyperlinks.Add(range, params.url, '', '', params.text || params.url);
     return ok({});
   } catch (e) {
     return fail('插入超链接失败: ' + e.message);
@@ -299,7 +303,10 @@ registerHandler('insertBookmark', function (params) {
   try {
     var doc = Application.ActiveDocument;
     if (!doc) return fail('没有打开的文档');
-    doc.Bookmarks.Add(params.name, Application.Selection.Range);
+    if (!params.name) return invalidParam('缺少 name');
+    var range = getSelectionRange();
+    if (!range) return fail('请先在文档中选中文本或设置光标');
+    doc.Bookmarks.Add(params.name, range);
     return ok({});
   } catch (e) {
     return fail('插入书签失败: ' + e.message);
@@ -324,7 +331,10 @@ registerHandler('addComment', function (params) {
   try {
     var doc = Application.ActiveDocument;
     if (!doc) return fail('没有打开的文档');
-    var comment = doc.Comments.Add(Application.Selection.Range, params.text || '');
+    if (params.text === undefined || params.text === null) return invalidParam('缺少 text');
+    var range = getSelectionRange();
+    if (!range) return fail('请先在文档中选中文本或设置光标');
+    doc.Comments.Add(range, params.text);
     return ok({});
   } catch (e) {
     return fail('添加批注失败: ' + e.message);
@@ -396,7 +406,16 @@ registerHandler('setParagraph', function (params) {
     var range = params.range === 'all' ? doc.Content : getSelectionRange();
     if (!range) return fail('请先在文档中选中文本或设置光标');
     var para = range.ParagraphFormat;
-    if (params.alignment !== undefined) para.Alignment = params.alignment;
+    // 对齐值统一走映射：支持 'left'/'center'/'right'/'justify' 字符串（AI 常见传参），
+    // 避免字符串直接赋给 COM 对齐属性抛类型错误（与 excel 侧 resolveAlignment 语义一致）
+    var alignMap = { left: 0, center: 1, right: 2, justify: 3, distribute: 4 };
+    if (params.alignment !== undefined) {
+      var align =
+        typeof params.alignment === 'string'
+          ? alignMap[params.alignment.toLowerCase()]
+          : params.alignment;
+      if (align !== undefined) para.Alignment = align;
+    }
     if (params.lineSpacing) para.LineSpacing = params.lineSpacing;
     if (params.spaceBefore !== undefined) para.SpaceBefore = params.spaceBefore;
     if (params.spaceAfter !== undefined) para.SpaceAfter = params.spaceAfter;

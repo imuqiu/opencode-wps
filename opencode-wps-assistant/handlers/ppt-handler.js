@@ -710,10 +710,15 @@ registerHandler('setShapeTransparency', function (params) {
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
+    // 透明度显式数值校验：0~1 范围（0=不透明，1=全透明），字符串/负数/越界显式 fail，
+    // 避免 '0.5' 字符串直接赋 COM 属性抛类型错误、负数静默生效
+    var transparency = parseFloat(params.transparency);
+    if (isNaN(transparency) || transparency < 0 || transparency > 1)
+      return fail('无效的透明度: ' + params.transparency + '（必须在 0~1 之间）');
     for (var j = 1; j <= slide.Shapes.Count; j++) {
       var s = slide.Shapes.Item(j);
       if (s.Name === shapeName) {
-        s.Fill.Transparency = params.transparency || 0;
+        s.Fill.Transparency = transparency;
         return ok({});
       }
     }
@@ -1065,6 +1070,14 @@ registerHandler('insertPptTable', function (params) {
     var slide = pres.Slides.Item(idx);
     var rows = params.rows || 3;
     var cols = params.cols || 3;
+    // 行列显式校验：0/负数/字符串静默兜底问题（与 excel insertRows 语义对齐），
+    // 避免 rows:'0' 传 AddTable 抛类型错误或生成空表
+    var rowsNum = parseInt(rows, 10);
+    if (isNaN(rowsNum) || rowsNum < 1) return fail('无效的行数: ' + rows + '（必须为正整数）');
+    var colsNum = parseInt(cols, 10);
+    if (isNaN(colsNum) || colsNum < 1) return fail('无效的列数: ' + cols + '（必须为正整数）');
+    rows = rowsNum;
+    cols = colsNum;
     var table = slide.Shapes.AddTable(
       rows,
       cols,
@@ -1288,15 +1301,20 @@ registerHandler('autoLayout', function (params) {
     var slide = pres.Slides.Item(idx);
     var totalW = 0,
       count = 0;
+    var maxRight = 0;
     for (var j = 1; j <= slide.Shapes.Count; j++) {
       if (slide.Shapes.Item(j).Width > 50) {
         totalW += slide.Shapes.Item(j).Width;
+        var right = slide.Shapes.Item(j).Left + slide.Shapes.Item(j).Width;
+        if (right > maxRight) maxRight = right;
         count++;
       }
     }
     // 空白幻灯片（无有效形状）直接返回，避免 Shapes.Item(1) 越界
     if (count === 0) return ok({ layouted: 0 });
-    var spacing = (slide.Shapes.Item(1).Width - totalW) / (count + 1);
+    // 总宽基准用「最右边界」而非 Shapes.Item(1).Width：
+    // 若第 1 个形状是窄装饰形状（宽度 < 有效形状），原实现会算出负 spacing 或错位（真实 bug）
+    var spacing = (maxRight - totalW) / (count + 1);
     if (spacing < 10) spacing = 10;
     var curX = spacing;
     for (var j = 1; j <= slide.Shapes.Count; j++) {
