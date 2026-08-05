@@ -18,7 +18,7 @@ opencode-wps/              # 第 1 层（Win）：WPS JS 插件（前台 Chat �
 │   └── config.js              # 全局配置中心
 ├── opencode-wps-assistant/  # 第 1 层（Mac）：WPS JS 插件（命令轮询桥，无 Chat UI）
 │   ├── main.js                # 轮询循环 + 命令分发
-│   ├── handlers/              # Word/Excel/PPT 操作处理器（~300 个动作）
+│   ├── handlers/              # Word/Excel/PPT 操作处理器（206 个动作，word 26 / excel 88 / ppt 82 / common 10）
 │   └── wps-auto.sh            # Mac 自动安装脚本
 ├── opencode-wps-linux/      # 第 1 层（Linux）：WPS JS 插件（独立目录，命令轮询桥）
 │   ├── main.js                # 轮询循环 + 命令分发（500ms 轮询 :58891）

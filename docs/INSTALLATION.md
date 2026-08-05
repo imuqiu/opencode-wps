@@ -115,7 +115,7 @@ node launcher-mac.js
 git clone https://github.com/lnxsun/opencode-wps.git
 cd opencode-wps
 
-# 2. 安装项目依赖（install-addons-linux.js 依赖根目录 node_modules，如 fs-extra）
+# 2. 安装项目依赖
 npm install
 
 # 3. 运行 Linux 安装脚本
@@ -127,6 +127,10 @@ node install-addons-linux.js
 ```bash
 node launcher-linux.js
 ```
+
+### 4. 重启 WPS Office
+
+重启 WPS，功能区出现 **OpenCode AI** 标签页，点击 **打开Web** 即可在浏览器中对话。
 
 > 📖 Linux 完整说明（前置条件/组件清单/应用切换/已知限制/常见问题）见 [LINUX.md](./LINUX.md)。
 
@@ -143,11 +147,11 @@ node launcher-linux.js
 
 > 卸载 = 移除插件 + 清理 MCP/Skills/Agents/Plugins 配置 + 移除自启。三平台均可手动删除，无官方卸载命令。
 
-| 平台 | 插件目录 | 自启清理 | MCP 配置 |
-|------|----------|----------|----------|
-| **Windows** | 删除 `%APPDATA%\kingsoft\wps\jsaddons\opencode-wps_` | 计划任务：`schtasks /Delete /TN "OpenCodeLauncher" /F`（另有旧任务 `OpenCodeServer` 一并清理） | 从 `~/.config/opencode/opencode.json` 移除 wps-office MCP 条目 |
-| **macOS** | 删除 `~/Library/Containers/com.kingsoft.wpsformac/Data/Documents/jsaddons/` 下对应目录 | `launchctl unload ~/Library/LaunchAgents/com.opencode.launcher.plist` 并删除 plist | 同上 |
-| **Linux** | 删除 `~/.local/share/Kingsoft/wps/jsaddons/opencode-wps-linux_` | 删除 `~/.config/autostart/opencode-wps-launcher.desktop` | 同上 |
+| 平台 | 插件目录 | 注册文件 | 自启清理 | MCP 配置 |
+|------|----------|----------|----------|----------|
+| **Windows** | 删除 `%APPDATA%\kingsoft\wps\jsaddons\opencode-wps_` | 从 `publish.xml`/`jsplugins.xml` 移除 `opencode-wps` 条目（安装时合并追加，需单独移除） | 计划任务：`schtasks /Delete /TN "OpenCodeLauncher" /F`（另有旧任务 `OpenCodeServer` 一并清理） | 从 `~/.config/opencode/opencode.json` 移除 wps-office MCP 条目 |
+| **macOS** | 删除 `~/Library/Containers/com.kingsoft.wpsformac/Data/Documents/jsaddons/` 下对应目录 | 无需处理（macOS 安装不写注册文件，WPS 自动扫描 jsaddons 目录） | `launchctl unload ~/Library/LaunchAgents/com.opencode.launcher.plist` 并删除 plist | 同上 |
+| **Linux** | 删除 `~/.local/share/Kingsoft/wps/jsaddons/opencode-wps-linux_` | 从 `publish.xml`/`jsplugins.xml` 移除 `opencode-wps-linux` 条目（安装时整文件写入） | 删除 `~/.config/autostart/opencode-wps-launcher.desktop` | 同上 |
 
 卸载后重启 WPS，功能区不再显示 **OpenCode AI** 标签页即完成。
 

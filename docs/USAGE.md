@@ -15,7 +15,7 @@
 Mac/Linux 版为命令轮询桥架构（无内嵌侧边栏），对话在浏览器中进行：
 
 1. 在 WPS 功能区点击 **OpenCode AI** 标签页
-2. 点击 **打开Web** 按钮，自动在系统默认浏览器（优先 Chrome/Edge）中打开 OpenCode AI 对话界面（`http://127.0.0.1:14096`）
+2. 点击 **打开Web** 按钮，自动在系统浏览器中打开 OpenCode AI 对话界面（`http://127.0.0.1:14096`）——macOS 优先 Chrome（缺失时回退系统默认浏览器），Linux 优先系统默认浏览器（xdg-open，缺失时回退 google-chrome/firefox）
 3. 在浏览器中与 AI 对话，文档操作经 WPS 插件轮询桥（`:58891`）自动执行
 
 > 若 launcher 未启动导致「打开Web」无响应，请先运行 `node launcher-mac.js`（macOS）或 `node launcher-linux.js`（Linux），或重启系统让自启机制拉起。
