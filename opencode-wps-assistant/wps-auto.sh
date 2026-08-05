@@ -169,11 +169,12 @@ case $1 in
         start_app "$2"
         ;;
     "stop"|"close")
-        # 幂等：先探测是否有 WPS 进程，无则直接退出（避免 pkill 空转 + 10s 轮询等待）
+        # 幂等：先探测是否有 WPS 进程（含 wpspdf，与 close_all 的 pkill 清单一致），无则直接退出（避免 pkill 空转 + 10s 轮询等待）
         if ! pgrep -x "wpsoffice" >/dev/null 2>&1 && \
            ! pgrep -x "wps" >/dev/null 2>&1 && \
            ! pgrep -x "et" >/dev/null 2>&1 && \
            ! pgrep -x "wpp" >/dev/null 2>&1 && \
+           ! pgrep -x "wpspdf" >/dev/null 2>&1 && \
            ! pgrep -f "com.kingsoft.wpsoffice" >/dev/null 2>&1; then
             echo "[WPS-Auto] 无 WPS 进程，跳过关闭"
             exit 0

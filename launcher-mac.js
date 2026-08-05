@@ -152,11 +152,18 @@ function findOpenCodeBin() {
 
 function stopOpenCodeByPort(targetPort) {
   targetPort = targetPort || 14096;
+  // 端口显式数值校验：字符串/'14096; rm -rf ~' 等不可信输入注入 shell 命令（防御性参数化）
+  targetPort = parseInt(targetPort, 10);
+  if (isNaN(targetPort) || targetPort < 1 || targetPort > 65535) {
+    console.log('[launcher] 无效端口: ' + targetPort);
+    return { success: false };
+  }
   console.log('[launcher] stopOpenCodeByPort: ' + targetPort);
 
   try {
     var execSync = require('child_process').execSync;
-    var out = execSync('lsof -ti tcp:' + targetPort, {
+    // 参数数组形式：lsof -ti tcp:<port>（避免端口拼接进 shell 命令）
+    var out = execSync('lsof', ['-ti', 'tcp:' + targetPort], {
       encoding: 'utf8',
       timeout: 5000,
     });
@@ -364,10 +371,26 @@ var server = http.createServer(function (req, res) {
   }
 
   if (req.method === 'GET' && url === '/status') {
+    var running = opencodeProcess !== null;
+    var pid = opencodeProcess ? opencodeProcess.pid : null;
+    // pid 文件交叉校验：launcher 重启后 opencodeProcess 为 null，但若 pid 文件指向的进程仍存活（孤儿），状态应如实上报
+    if (!running) {
+      try {
+        var pidFilePath = path.join(os.homedir(), '.opencode', 'launcher-opencode.pid');
+        var savedPid = parseInt(fs.readFileSync(pidFilePath, 'utf-8'), 10);
+        if (savedPid > 0) {
+          try {
+            process.kill(savedPid, 0); // 信号 0 仅探测存活
+            running = true;
+            pid = savedPid;
+          } catch (e) {}
+        }
+      } catch (e) {}
+    }
     sendJSON(res, 200, {
-      running: opencodeProcess !== null,
+      running: running,
       cwd: opencodeCwd,
-      pid: opencodeProcess ? opencodeProcess.pid : null,
+      pid: pid,
     });
     return;
   }

@@ -138,9 +138,65 @@ if (fsEx.existsSync(mcpEntryPath)) {
   fsEx.ensureDirSync(opencodeConfigDir);
 
   function stripJsoncComments(text) {
-    return text.replace(/\\"|"(?:[^"\\]|\\.)*"|\/\/.*|\/\*[\s\S]*?\*\//g, function (m) {
-      return m.startsWith('"') || m.startsWith('\\"') ? m : '';
-    });
+    // 安全去注释：只在字符串字面量外删除 // 与 /* */ 注释，
+    // 避免误删 URL/路径中的 //（如 https:// 或 "//" 形式）（原正则 \/\/.* 会把 URL 的 // 当注释删除导致 JSON 损坏）
+    var out = '';
+    var i = 0;
+    var len = text.length;
+    var inString = false;
+    var inLineComment = false;
+    var inBlockComment = false;
+    while (i < len) {
+      var ch = text[i];
+      var next = i + 1 < len ? text[i + 1] : '';
+      if (inLineComment) {
+        if (ch === '\n') {
+          inLineComment = false;
+          out += ch;
+        }
+        i++;
+        continue;
+      }
+      if (inBlockComment) {
+        if (ch === '*' && next === '/') {
+          inBlockComment = false;
+          i += 2;
+          continue;
+        }
+        i++;
+        continue;
+      }
+      if (inString) {
+        out += ch;
+        if (ch === '\\' && i + 1 < len) {
+          out += text[i + 1];
+          i += 2;
+          continue;
+        }
+        if (ch === '"') inString = false;
+        i++;
+        continue;
+      }
+      if (ch === '"') {
+        inString = true;
+        out += ch;
+        i++;
+        continue;
+      }
+      if (ch === '/' && next === '/') {
+        inLineComment = true;
+        i += 2;
+        continue;
+      }
+      if (ch === '/' && next === '*') {
+        inBlockComment = true;
+        i += 2;
+        continue;
+      }
+      out += ch;
+      i++;
+    }
+    return out;
   }
 
   let config = {};

@@ -43,12 +43,14 @@ registerHandler('getSelectedText', function (params) {
 
 registerHandler('setSelectedText', function (params) {
   try {
+    // text 前置校验：缺省时静默清空选中文本是危险操作（与 addComment 第 1 轮修复语义对齐）
+    if (params.text === undefined || params.text === null) return invalidParam('缺少 text');
     var sel = null;
     try {
       sel = Application.Selection;
     } catch (e) {}
     if (!sel) return fail('没有选中的文本范围');
-    sel.Text = params.text || '';
+    sel.Text = params.text;
     return ok({});
   } catch (e) {
     return fail('设置选中文本失败: ' + e.message);

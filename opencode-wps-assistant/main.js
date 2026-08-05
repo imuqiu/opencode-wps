@@ -327,6 +327,12 @@ function sendResult(requestId, result, attempt) {
         } else {
           failFinal('HTTP ' + xhr.status);
         }
+      } else {
+        // 成功送达后清空去重状态：MCP 已确认收到结果，后续即使重发同 requestId 也应允许重新执行
+        // （避免「执行成功但去重状态残留」导致 MCP 超时后重发的命令被误跳）
+        if (_lastRequestId === requestId) {
+          _lastRequestId = '';
+        }
       }
     };
     xhr.onerror = function () {
