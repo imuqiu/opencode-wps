@@ -471,6 +471,9 @@ function OnAction(control) {
                     // 窗格已可见且原重绘的恢复回调会处理状态，此时再调度会造成额外闪烁；
                     // 由原重绘的 lastUserTaskPaneAction 比对统一收口（放弃恢复）。
                     // 读取 Visible 失败（COM 属性异常）时保守不调度，避免误判状态。
+                    // 已知竞态：tp.Visible = !tp.Visible 与下方 nowVisible 读取为两次 COM 属性访问，
+                    // 但 WPS 宿主不会在同步代码块内异步改变窗格状态，读到的即切换后的状态，
+                    // 竞态窗口可接受（即使极端场景误判，最坏只是多做一次无害重绘）。
                     var nowVisible = false
                     try { nowVisible = !!tp.Visible } catch (e) { nowVisible = false }
                     if (nowVisible && !taskPaneRedrawPending) {

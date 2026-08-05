@@ -535,18 +535,23 @@ test('btnShowTaskPane 首次创建：延迟 400ms 后主动调度宿主重绘（
 
 test('btnShowTaskPane 首次创建：窗格不可见时不误调度重绘（可见置位失败）', function () {
   var pane = { ID: 'tp-open2', DockPosition: undefined, _visible: false };
+  var visibleSetCount = 0;
   Object.defineProperty(pane, 'Visible', {
     get: function () { return pane._visible; },
-    set: function (v) { throw new Error('Visible 只读'); } // createTaskPane 内置可见失败
+    set: function (v) { visibleSetCount++; throw new Error('Visible 只读'); } // createTaskPane 内置可见失败
   });
   var sandbox = loadMainJs(makeOpenPaneApp(pane));
   sandbox.OnAction({ Id: 'btnShowTaskPane' });
-  // 创建路径仍调度了定时器（代码无条件调度，但 forceTaskPaneRedraw 会因 !tp.Visible 直接返回）
-  sandbox.__flushTimeouts();
-  sandbox.__flushTimeouts();
-  assertEqual(pane._visible, false, '窗格不可见时不应被误置可见');
+  // createTaskPane 内置可见失败 → 留痕 + 仍返回窗格对象
   var hasError = sandbox.__errorLogs.some(function (l) { return l.indexOf('置任务窗格可见失败') >= 0; });
   assertTrue(hasError, '应输出可见置位失败留痕，实际: ' + JSON.stringify(sandbox.__errorLogs));
+  assertEqual(visibleSetCount, 1, 'createTaskPane 应尝试置可见 1 次');
+  // flush 全部定时器：首次创建路径调度的宿主重绘执行时，forceTaskPaneRedraw
+  // 因窗格不可见（!tp.Visible）直接返回，不应再次触发 Visible 置位尝试
+  sandbox.__flushTimeouts();
+  sandbox.__flushTimeouts();
+  assertEqual(visibleSetCount, 1, '窗格不可见时调度的重绘不应再次尝试置位，实际尝试 ' + visibleSetCount + ' 次');
+  assertEqual(pane._visible, false, '窗格不可见时不应被误置可见');
 });
 
 test('btnShowTaskPane 切换打开（已存在窗格）：延迟 400ms 后主动调度宿主重绘', function () {
@@ -584,19 +589,20 @@ test('btnShowTaskPane 切换关闭（窗格变隐藏）：不调度宿主重绘'
 
 test('btnShowTaskPane 切换打开：读取 Visible 抛异常时保守不调度重绘', function () {
   var pane = { ID: 'tp-open5', DockPosition: 0 };
+  var visibleSetCount = 0;
   Object.defineProperty(pane, 'Visible', {
     get: function () { throw new Error('Visible 读取失败'); },
-    set: function (v) {}
+    set: function (v) { visibleSetCount++; }
   });
   var sandbox = loadMainJs(makeOpenPaneApp(pane, { storedId: 'tp-open5' }));
   sandbox.OnAction({ Id: 'btnShowTaskPane' }); // 不应抛异常
   // tp.Visible = !tp.Visible 在求值阶段读取 Visible 即抛异常 → 切换失败留痕，不调度重绘
   var hasError = sandbox.__errorLogs.some(function (l) { return l.indexOf('切换任务窗格可见性失败') >= 0; });
   assertTrue(hasError, 'Visible 读取抛异常应走切换失败留痕，实际: ' + JSON.stringify(sandbox.__errorLogs));
+  assertEqual(visibleSetCount, 0, '读取失败时不应有置位发生');
   // flush 定时器：不应有任何重绘置位（调度分支因读取失败未执行）
   sandbox.__flushTimeouts();
-  var visibleSet = sandbox.__visibleSet || 0;
-  assertEqual(visibleSet, 0, 'Visible 读取失败不应触发任何额外置位');
+  assertEqual(visibleSetCount, 0, 'Visible 读取失败不应触发任何额外置位');
 });
 
 test('forceTaskPaneRedraw(force=true)：不受 taskPaneRedrawPending 首次防抖影响前重绘可执行', function () {
