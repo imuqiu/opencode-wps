@@ -45,6 +45,8 @@ registerHandler('getActiveDocument', function (params) {
 
 registerHandler('getOpenDocuments', function (params) {
   try {
+    // Documents 集合保护：无文档/无活动窗口时部分 WPS 访问抛错而非返回空集合
+    if (!Application.Documents) return ok({ documents: [] });
     var docs = Application.Documents;
     var list = [];
     for (var i = 1; i <= docs.Count; i++) {
@@ -53,14 +55,16 @@ registerHandler('getOpenDocuments', function (params) {
     }
     return ok({ documents: list });
   } catch (e) {
-    return fail('获取文档列表失败: ' + e.message);
+    return ok({ documents: [], error: e.message });
   }
 });
 
 registerHandler('switchDocument', function (params) {
   try {
     var docs = Application.Documents;
-    var target = params.name || params.index;
+    var target = params.name !== undefined ? params.name : params.index;
+    if (target === undefined || target === null || target === '')
+      return invalidParam('缺少 name 或 index');
     var doc = null;
 
     if (typeof target === 'number') {
@@ -142,7 +146,10 @@ registerHandler('insertText', function (params) {
         doc.Range(end, end).InsertAfter(text);
         break;
       default:
-        Application.Selection.TypeText(text);
+        // 无选中/无活动窗口时 Selection 抛错——前置保护给明确提示（与 insertHyperlink/insertTable 修复模式一致）
+        var range = getSelectionRange();
+        if (!range) return fail('请先在文档中选中文本或设置光标');
+        range.InsertAfter(text);
     }
     return ok({});
   } catch (e) {
@@ -215,6 +222,7 @@ registerHandler('setFont', function (params) {
 
 registerHandler('applyStyle', function (params) {
   try {
+    if (!params.styleName) return invalidParam('缺少 styleName');
     var range = getSelectionRange();
     if (!range) return fail('请先在文档中选中文本');
     range.Style = params.styleName;
@@ -285,8 +293,17 @@ registerHandler('insertImage', function (params) {
     var filePath = params.path || params.imagePath;
     if (!filePath) return invalidParam('缺少 path');
     var inlineShape = doc.InlineShapes.AddPicture(filePath);
-    if (params.width) inlineShape.Width = params.width;
-    if (params.height) inlineShape.Height = params.height;
+    // 尺寸显式数值化：0 是合法值不能被真值判断吞掉，字符串直赋抛类型错误
+    if (params.width !== undefined) {
+      var wv = parseFloat(params.width);
+      if (isNaN(wv) || wv <= 0) return fail('无效的图片宽度: ' + params.width + '（必须为正数）');
+      inlineShape.Width = wv;
+    }
+    if (params.height !== undefined) {
+      var hv = parseFloat(params.height);
+      if (isNaN(hv) || hv <= 0) return fail('无效的图片高度: ' + params.height + '（必须为正数）');
+      inlineShape.Height = hv;
+    }
     return ok({});
   } catch (e) {
     return fail('插入图片失败: ' + e.message);
@@ -369,6 +386,7 @@ registerHandler('insertHeader', function (params) {
   try {
     var doc = Application.ActiveDocument;
     if (!doc) return fail('没有打开的文档');
+    if (!doc.Sections || doc.Sections.Count < 1) return fail('文档没有节，无法插入页眉');
     doc.Sections.Item(1).Headers.Item(1).Range.Text = params.text || '';
     return ok({});
   } catch (e) {
@@ -380,6 +398,7 @@ registerHandler('insertFooter', function (params) {
   try {
     var doc = Application.ActiveDocument;
     if (!doc) return fail('没有打开的文档');
+    if (!doc.Sections || doc.Sections.Count < 1) return fail('文档没有节，无法插入页脚');
     doc.Sections.Item(1).Footers.Item(1).Range.Text = params.text || '';
     return ok({});
   } catch (e) {
@@ -396,12 +415,17 @@ registerHandler('setPageSetup', function (params) {
     if (params.orientation !== undefined) {
       ps.Orientation = params.orientation === 'landscape' ? 1 : 0;
     }
-    if (params.topMargin !== undefined) ps.TopMargin = params.topMargin;
-    if (params.bottomMargin !== undefined) ps.BottomMargin = params.bottomMargin;
-    if (params.leftMargin !== undefined) ps.LeftMargin = params.leftMargin;
-    if (params.rightMargin !== undefined) ps.RightMargin = params.rightMargin;
-    if (params.pageWidth !== undefined) ps.PageWidth = params.pageWidth;
-    if (params.pageHeight !== undefined) ps.PageHeight = params.pageHeight;
+    // 边距/页面尺寸显式数值化：字符串（'2.5'）直赋 COM 抛类型错误（与 setLineSpacing 语义对齐）
+    var marginKeys = ['topMargin', 'bottomMargin', 'leftMargin', 'rightMargin', 'pageWidth', 'pageHeight'];
+    for (var mi = 0; mi < marginKeys.length; mi++) {
+      var mk = marginKeys[mi];
+      if (params[mk] !== undefined) {
+        var mv = parseFloat(params[mk]);
+        if (isNaN(mv) || mv < 0)
+          return fail('无效的 ' + mk + ': ' + params[mk] + '（必须为非负数）');
+        ps[mk === 'topMargin' ? 'TopMargin' : mk === 'bottomMargin' ? 'BottomMargin' : mk === 'leftMargin' ? 'LeftMargin' : mk === 'rightMargin' ? 'RightMargin' : mk === 'pageWidth' ? 'PageWidth' : 'PageHeight'] = mv;
+      }
+    }
     return ok({});
   } catch (e) {
     return fail('设置页面失败: ' + e.message);

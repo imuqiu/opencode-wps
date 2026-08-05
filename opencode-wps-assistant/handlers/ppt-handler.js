@@ -528,12 +528,18 @@ registerHandler('setTextBoxStyle', function (params) {
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
+    if (!shapeName) return invalidParam('缺少 shapeName');
     for (var j = 1; j <= slide.Shapes.Count; j++) {
       var s = slide.Shapes.Item(j);
       if (s.Name === shapeName && s.HasTextFrame) {
         var tr = s.TextFrame.TextRange;
         if (params.fontName) tr.Font.Name = params.fontName;
-        if (params.fontSize) tr.Font.Size = params.fontSize;
+        // fontSize 显式数值校验（与 word setFont 语义对齐）：字符串/'16pt' 直赋抛类型错误
+        if (params.fontSize !== undefined) {
+          var fs = parseFloat(params.fontSize);
+          if (isNaN(fs) || fs <= 0) return fail('无效的字体大小: ' + params.fontSize + '（必须为正数）');
+          tr.Font.Size = fs;
+        }
         return ok({});
       }
     }
@@ -709,6 +715,7 @@ registerHandler('setShapeBorder', function (params) {
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
+    if (!shapeName) return invalidParam('缺少 shapeName');
     for (var j = 1; j <= slide.Shapes.Count; j++) {
       var s = slide.Shapes.Item(j);
       if (s.Name === shapeName) {
@@ -718,7 +725,12 @@ registerHandler('setShapeBorder', function (params) {
           if (lc === null) return fail('无效的边框颜色: ' + params.color);
           s.Line.ForeColor.RGB = lc;
         }
-        if (params.weight) s.Line.Weight = params.weight;
+        // weight 显式数值校验：字符串/'2pt' 直赋抛类型错误（与 setShapeFullStyle 语义对齐）
+        if (params.weight !== undefined) {
+          var wv = parseFloat(params.weight);
+          if (isNaN(wv) || wv <= 0) return fail('无效的边框粗细: ' + params.weight + '（必须为正数）');
+          s.Line.Weight = wv;
+        }
         return ok({});
       }
     }
@@ -1083,15 +1095,20 @@ registerHandler('insertPptImage', function (params) {
     var slide = pres.Slides.Item(idx);
     var filePath = params.path || params.imagePath;
     if (!filePath) return invalidParam('缺少 path');
-    var pic = slide.Shapes.AddPicture(
-      filePath,
-      false,
-      true,
-      params.left || 0,
-      params.top || 0,
-      params.width || -1,
-      params.height || -1
-    );
+    // 尺寸/坐标显式数值化（与 insertExcelImage 第 7 轮修复语义对齐）：0 是合法值不能被 || 吞掉，字符串直赋抛类型错误
+    function imgSize(v) {
+      if (v === undefined || v === null) return -1;
+      var n = parseFloat(v);
+      return isNaN(n) ? null : n;
+    }
+    var w = imgSize(params.width);
+    var h = imgSize(params.height);
+    if (w === null || h === null) return fail('无效的图片尺寸（width/height 必须为数值）');
+    var left = params.left !== undefined ? parseFloat(params.left) : 0;
+    if (isNaN(left)) return fail('无效的 left: ' + params.left);
+    var top = params.top !== undefined ? parseFloat(params.top) : 0;
+    if (isNaN(top)) return fail('无效的 top: ' + params.top);
+    var pic = slide.Shapes.AddPicture(filePath, false, true, left, top, w, h);
     return ok({ name: pic.Name });
   } catch (e) {
     return fail('插入图片失败: ' + e.message);
@@ -1730,18 +1747,34 @@ registerHandler('setImageStyle', function (params) {
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
+    if (!shapeName) return invalidParam('缺少 shapeName');
     for (var j = 1; j <= slide.Shapes.Count; j++) {
       var s = slide.Shapes.Item(j);
       if (s.Name === shapeName) {
-        if (params.width !== undefined) s.Width = params.width;
-        if (params.height !== undefined) s.Height = params.height;
+        // 尺寸显式数值化：字符串直赋抛类型错误（与 setShapePosition 语义对齐）
+        if (params.width !== undefined) {
+          var wv = parseFloat(params.width);
+          if (isNaN(wv) || wv <= 0) return fail('无效的图片宽度: ' + params.width + '（必须为正数）');
+          s.Width = wv;
+        }
+        if (params.height !== undefined) {
+          var hv = parseFloat(params.height);
+          if (isNaN(hv) || hv <= 0) return fail('无效的图片高度: ' + params.height + '（必须为正数）');
+          s.Height = hv;
+        }
         if (params.borderColor) {
           var bc = toRgb(params.borderColor);
           if (bc === null) return fail('无效的边框颜色: ' + params.borderColor);
           s.Line.Visible = 1;
           s.Line.ForeColor.RGB = bc;
         }
-        if (params.borderWidth) s.Line.Weight = params.borderWidth;
+        // borderWidth 显式数值校验（与 setShapeBorder 语义对齐）
+        if (params.borderWidth !== undefined) {
+          var bw = parseFloat(params.borderWidth);
+          if (isNaN(bw) || bw <= 0)
+            return fail('无效的边框粗细: ' + params.borderWidth + '（必须为正数）');
+          s.Line.Weight = bw;
+        }
         return ok({});
       }
     }
@@ -1841,6 +1874,7 @@ registerHandler('setShapeFullStyle', function (params) {
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
+    if (!shapeName) return invalidParam('缺少 shapeName');
     for (var j = 1; j <= slide.Shapes.Count; j++) {
       var s = slide.Shapes.Item(j);
       if (s.Name === shapeName) {
@@ -1856,7 +1890,13 @@ registerHandler('setShapeFullStyle', function (params) {
           s.Line.ForeColor.RGB = lc;
           s.Line.Visible = 1;
         }
-        if (params.lineWeight) s.Line.Weight = params.lineWeight;
+        // lineWeight 显式数值校验（与 setShapeBorder 语义对齐）
+        if (params.lineWeight !== undefined) {
+          var lw = parseFloat(params.lineWeight);
+          if (isNaN(lw) || lw <= 0)
+            return fail('无效的线条粗细: ' + params.lineWeight + '（必须为正数）');
+          s.Line.Weight = lw;
+        }
         if (params.shadow) {
           s.Shadow.Visible = 1;
         }
@@ -1885,8 +1925,12 @@ registerHandler('setShapeRoundness', function (params) {
         }
         // WPS JSAPI 写法：Item(索引, 值) 传第二参数（与 Mac 版 opencode-wps-assistant 一致），
         // 不能用 Item(1) = value 赋值（那是 VBA 语法，JS 运行时必报 Invalid left-hand side）
+        // roundness 显式数值校验：0~1 范围（与 setShapeTransparency 语义对齐），字符串直赋抛类型错误
+        var roundness = params.roundness !== undefined ? parseFloat(params.roundness) : 0.2;
+        if (isNaN(roundness) || roundness < 0 || roundness > 1)
+          return fail('无效的圆角值: ' + params.roundness + '（必须在 0~1 之间）');
         try {
-          s.Adjustments.Item(1, params.roundness || 0.2);
+          s.Adjustments.Item(1, roundness);
         } catch (adjE) {
           return fail('设置圆角失败: ' + adjE.message);
         }
@@ -1915,7 +1959,12 @@ registerHandler('setFontColor', function (params) {
     var color = toRgb(params.color);
     if (color === null) return fail('无效的颜色值: ' + params.color + '，支持 #RRGGBB/RRGGBB/数字');
     textRange.Font.Color.RGB = color;
-    if (params.size) textRange.Font.Size = params.size;
+    // size 显式数值校验：字符串/'16pt' 直赋抛类型错误（与 setTextBoxStyle 语义对齐）
+    if (params.size !== undefined) {
+      var sz = parseFloat(params.size);
+      if (isNaN(sz) || sz <= 0) return fail('无效的字体大小: ' + params.size + '（必须为正数）');
+      textRange.Font.Size = sz;
+    }
     if (params.bold !== undefined) textRange.Font.Bold = params.bold;
     return ok({});
   } catch (e) {
