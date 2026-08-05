@@ -682,6 +682,66 @@ test('forceTaskPaneRedraw 重绘窗口内用户关闭：放弃恢复不误弹（
   assertEqual(visibleLog.length, 1, '应仅隐藏一次（无恢复置位），实际: ' + JSON.stringify(visibleLog));
 });
 
+test('forceTaskPaneRedraw 重绘窗口内无用户操作：正常恢复显示（正向对照）', function () {
+  var pane = { ID: 'tp-open10', DockPosition: 0, _visible: true };
+  var visibleLog = [];
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return pane._visible; },
+    set: function (v) { pane._visible = v; visibleLog.push(v); }
+  });
+  var appMock = {
+    GetTaskPane: function () { return pane; },
+    PluginStorage: {
+      getItem: function () { return 'tp-open10'; },
+      setItem: function () {}
+    }
+  };
+  var sandbox = loadMainJs(appMock);
+  sandbox.forceTaskPaneRedraw(true);
+  assertEqual(pane._visible, false, '重绘第一步应隐藏窗格');
+  // 不注入任何用户操作：恢复回调应正常恢复显示（证明恢复逻辑本身在工作，
+  // 与「用户关闭不误弹」负向用例形成对照——否则负向用例可能因恢复逻辑坏掉而误通过）
+  sandbox.__flushTimeouts();
+  assertEqual(pane._visible, true, '无用户操作时应正常恢复显示');
+  assertEqual(visibleLog.length, 2, '应有 隐藏+恢复 共 2 次置位，实际: ' + JSON.stringify(visibleLog));
+});
+
+test('scheduleTaskPaneOpenRedraw 等待期内用户操作：保留用户时间戳不执行重绘（守卫）', function () {
+  var pane = { ID: 'tp-open11', DockPosition: 0, _visible: false };
+  var visibleLog = [];
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return pane._visible; },
+    set: function (v) { pane._visible = v; visibleLog.push(v); }
+  });
+  var sandbox = loadMainJs(makeOpenPaneApp(pane, { storedId: 'tp-open11' }));
+  assertEqual(sandbox.lastUserTaskPaneAction, 0, '初始时间戳应为 0');
+  // 手动调用调度函数（等价 OnAction 切换打开后进入等待期）
+  sandbox.scheduleTaskPaneOpenRedraw();
+  // 模拟等待期内用户主动操作：时间戳晚于调度起点
+  var userTs = Date.now() + 1000;
+  sandbox.lastUserTaskPaneAction = userTs;
+  // flush 等待期回调：守卫应放弃本次自愈调度（不清零用户时间戳，
+  // 保留给可能进行中的其他重绘的恢复回调比对，避免误弹用户刚操作过的窗格）
+  sandbox.__flushTimeouts();
+  assertEqual(sandbox.lastUserTaskPaneAction, userTs, '守卫应保留等待期内用户操作时间戳，不被清零');
+  assertEqual(visibleLog.length, 0, '守卫应放弃重绘（无任何置位），实际: ' + JSON.stringify(visibleLog));
+});
+
+test('scheduleTaskPaneOpenRedraw 等待期内无用户操作：正常清零并执行重绘（正向对照）', function () {
+  var pane = { ID: 'tp-open12', DockPosition: 0, _visible: true };
+  var visibleLog = [];
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return pane._visible; },
+    set: function (v) { pane._visible = v; visibleLog.push(v); }
+  });
+  var sandbox = loadMainJs(makeOpenPaneApp(pane, { storedId: 'tp-open12' }));
+  sandbox.scheduleTaskPaneOpenRedraw();
+  // 无用户操作（lastUserTaskPaneAction 保持 0，早于调度起点）：应清零并执行隐藏→显示重绘
+  sandbox.__flushTimeouts();
+  assertEqual(visibleLog.length, 2, '应有 隐藏+恢复 共 2 次置位，实际: ' + JSON.stringify(visibleLog));
+  assertEqual(pane._visible, true, '重绘后应恢复可见');
+});
+
 test('forceTaskPaneRedraw 恢复回调 GetTaskPane 返回 null（窗格销毁）：放弃恢复（Issue #78 安全边界）', function () {
   var pane = { ID: 'tp-open9', DockPosition: 0, _visible: true };
   var visibleLog = [];

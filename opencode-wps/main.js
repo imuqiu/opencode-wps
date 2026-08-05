@@ -323,14 +323,27 @@ var lastUserTaskPaneAction = 0
 // 用户主动打开（tp.Visible=true）→ 等 400ms 宿主完成首次布局 → 再走 150ms
 // 隐藏→显示重绘，全程约 550ms 完成自愈。
 var TASKPANE_OPEN_REDRAW_DELAY = 400
+// WindowActivate 触发后的重绘延迟：等 WPS 完成窗口切换布局后再重绘（PR #83）
+// 与 TASKPANE_OPEN_REDRAW_DELAY 语义不同、不可混用：
+// - 400ms：等「新窗格首次布局」完成（打开面板路径，首次打开必触发）；
+// - 200ms：等「窗口切换布局」完成（切标签路径，宿主已完成布局、仅需重绘）。
+var WINDOW_ACTIVATE_REDRAW_DELAY = 200
 // 打开面板后主动调度一次宿主重绘（Issue #78 三诊）——首次创建与切换显示两路共用：
 // 等宿主完成首次布局后，重置用户操作时间戳并触发 forceTaskPaneRedraw(true)。
 // 注意：真实保护链是 forceTaskPaneRedraw 内的可见性检查（!tp.Visible return 不误弹），
 // 时间戳清零仅用于清理调度等待期（400ms 内）残留的旧操作时间戳，避免语义混乱——
 // 后续 150ms 重绘窗口内的新用户操作仍会重新设置时间戳而被尊重。
 // 依赖关系：若未来移除可见性检查，本清零将失效，必须同步保留可见性防线。
+// 调度起点晚于 toggle 时间戳（OnAction 先置时间戳再调用本函数，同毫秒或早 1ms），
+// 用严格大于区分「调度自身刚记录的时间戳」与「等待期内用户的新操作」。
 function scheduleTaskPaneOpenRedraw() {
+    var scheduleAt = Date.now()
     setTimeout(function() {
+        // 等待期内用户主动操作过窗格（时间戳晚于调度起点，如 400ms 内又点了一次开关）：
+        // 尊重用户意图，放弃本次自愈调度（窗格状态已由用户最新操作决定，重绘意义不大）；
+        // 同时避免清零覆盖用户操作时间戳——否则若恰有进行中的重绘，其恢复回调的
+        // lastUserTaskPaneAction 比对会失效，行为退化为仅靠可见性检查兜底（见上方依赖注释）。
+        if (lastUserTaskPaneAction > scheduleAt) return
         lastUserTaskPaneAction = 0
         forceTaskPaneRedraw(true)
     }, TASKPANE_OPEN_REDRAW_DELAY)
@@ -405,7 +418,7 @@ function registerWindowActivateReflow() {
         if (typeof window.Application.AddApiEventListener === 'function') {
             window.Application.AddApiEventListener('WindowActivate', function() {
                 // 延迟执行：等 WPS 完成窗口切换布局后再重绘
-                setTimeout(function() { forceTaskPaneRedraw() }, 200)
+                setTimeout(function() { forceTaskPaneRedraw() }, WINDOW_ACTIVATE_REDRAW_DELAY)
             })
             windowActivateListenerRegistered = true
             console.log('[WPS] 已注册 WindowActivate 重绘监听')
