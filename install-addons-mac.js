@@ -107,7 +107,8 @@ if (fsEx.existsSync(mcpServer.src)) {
 
   try {
     console.log('  正在安装依赖 (npm install)...');
-    execSync('npm install', { cwd: mcpServer.src, stdio: 'pipe' });
+    // 显式 timeout：网络异常/依赖下载慢时避免 npm install 挂起整机安装（与 launcher-mac 的 execSync timeout 语义对齐）
+    execSync('npm install', { cwd: mcpServer.src, stdio: 'pipe', timeout: 120000 });
     console.log('  依赖安装完成');
   } catch (e) {
     console.log('  [警告] npm install 失败，请手动运行: cd ' + mcpServer.src + ' && npm install');
@@ -115,7 +116,7 @@ if (fsEx.existsSync(mcpServer.src)) {
 
   try {
     console.log('  正在编译 (npm run build)...');
-    execSync('npm run build', { cwd: mcpServer.src, stdio: 'pipe' });
+    execSync('npm run build', { cwd: mcpServer.src, stdio: 'pipe', timeout: 120000 });
     console.log('  编译完成');
   } catch (e) {
     console.log(
@@ -138,9 +139,65 @@ if (fsEx.existsSync(mcpEntryPath)) {
   fsEx.ensureDirSync(opencodeConfigDir);
 
   function stripJsoncComments(text) {
-    return text.replace(/\\"|"(?:[^"\\]|\\.)*"|\/\/.*|\/\*[\s\S]*?\*\//g, function (m) {
-      return m.startsWith('"') || m.startsWith('\\"') ? m : '';
-    });
+    // 安全去注释：只在字符串字面量外删除 // 与 /* */ 注释，
+    // 避免误删 URL/路径中的 //（如 https:// 或 "//" 形式）（原正则 \/\/.* 会把 URL 的 // 当注释删除导致 JSON 损坏）
+    var out = '';
+    var i = 0;
+    var len = text.length;
+    var inString = false;
+    var inLineComment = false;
+    var inBlockComment = false;
+    while (i < len) {
+      var ch = text[i];
+      var next = i + 1 < len ? text[i + 1] : '';
+      if (inLineComment) {
+        if (ch === '\n') {
+          inLineComment = false;
+          out += ch;
+        }
+        i++;
+        continue;
+      }
+      if (inBlockComment) {
+        if (ch === '*' && next === '/') {
+          inBlockComment = false;
+          i += 2;
+          continue;
+        }
+        i++;
+        continue;
+      }
+      if (inString) {
+        out += ch;
+        if (ch === '\\' && i + 1 < len) {
+          out += text[i + 1];
+          i += 2;
+          continue;
+        }
+        if (ch === '"') inString = false;
+        i++;
+        continue;
+      }
+      if (ch === '"') {
+        inString = true;
+        out += ch;
+        i++;
+        continue;
+      }
+      if (ch === '/' && next === '/') {
+        inLineComment = true;
+        i += 2;
+        continue;
+      }
+      if (ch === '/' && next === '*') {
+        inBlockComment = true;
+        i += 2;
+        continue;
+      }
+      out += ch;
+      i++;
+    }
+    return out;
   }
 
   let config = {};
@@ -296,15 +353,18 @@ if (fsEx.existsSync(pluginSrcDir)) {
 console.log('\n【第 7 步】配置 launchd 开机自启');
 recordStep('configure_launchd');
 
-const launcherPath = path.join(rootDir, 'opencode-wps-assistant', 'launcher-mac.js');
 const launchAgentDir = path.join(homeDir, 'Library', 'LaunchAgents');
 const plistPath = path.join(launchAgentDir, 'com.opencode.launcher.plist');
 
-// 修复恒真条件：launcherPath 指向 opencode-wps-assistant/launcher-mac.js（该文件不存在），
-// 实际使用 rootDir 下的 launcher-mac.js。此前 `existsSync(launcherPath) || true` 恒真，分支判断形同虚设
-if (fsEx.existsSync(path.resolve(rootDir, 'launcher-mac.js'))) {
+// 说明：assistant 目录下的 launcher-mac.js 不存在（实际文件在根目录），
+// 因此直接使用 rootDir 下的 launcher-mac.js，并校验其存在 + wps-auto.sh 存在（切换脚本缺失时安装无意义）
+const rootLauncher = path.resolve(rootDir, 'launcher-mac.js');
+if (
+  fsEx.existsSync(rootLauncher) &&
+  fsEx.existsSync(path.resolve(rootDir, 'opencode-wps-assistant', 'wps-auto.sh'))
+) {
   // 使用 rootDir 下的 launcher-mac.js
-  const actualLauncher = path.resolve(rootDir, 'launcher-mac.js');
+  const actualLauncher = rootLauncher;
 
   fsEx.ensureDirSync(launchAgentDir);
 
@@ -374,9 +434,15 @@ if (fsEx.existsSync(path.resolve(rootDir, 'launcher-mac.js'))) {
   try {
     // 先卸载旧注册（bootout 忽略不存在错误），再用 bootstrap 注册（launchctl load 在 macOS 10.10+ 已废弃）
     try {
-      execSync('launchctl bootout gui/' + process.getuid() + ' ' + plistPath, { stdio: 'pipe' });
+      execSync('launchctl bootout gui/' + process.getuid() + ' ' + plistPath, {
+        stdio: 'pipe',
+        timeout: 10000,
+      });
     } catch (e) {}
-    execSync('launchctl bootstrap gui/' + process.getuid() + ' ' + plistPath, { stdio: 'pipe' });
+    execSync('launchctl bootstrap gui/' + process.getuid() + ' ' + plistPath, {
+      stdio: 'pipe',
+      timeout: 10000,
+    });
     console.log('  已注册开机自启: com.opencode.launcher');
   } catch (e) {
     console.log('  [警告] launchctl bootstrap 失败，请手动运行:');

@@ -22,6 +22,7 @@ var _isPaused = false;
 var _failCount = 0; // 连续失败计数（退避用）
 var _lastError = ''; // 最近一次轮询错误
 var _lastRequestId = ''; // 最近一次已执行的命令 requestId（去重用，防止 poll 重复取同一命令重复执行）
+var _busy = false; // 命令执行中标志：防止轮询在耗时命令执行期间拉取新命令并发交错
 
 // 退避间隔：500ms -> 1s -> 2s -> 5s 封顶（MCP 不可用时避免 CPU 空转）
 var _backoffBase = 500;
@@ -112,10 +113,8 @@ function selfStartOpenCode() {
   xhr.onload = function () {
     if (xhr.status === 200) {
       alert('OpenCode 服务已启动，正在打开Web...');
-      // 稍等 opencode 端口就绪后重试打开
-      setTimeout(function () {
-        dockOpen('');
-      }, 1500);
+      // 轮询探测 opencode 端口就绪（最多 5s，替代固定 1.5s 等待——慢速机器上端口可能未就绪）
+      waitOpenCodeReady(0);
     } else {
       // 400 可能是 "already running"（服务其实已运行）——主动探测确认，避免误导用户
       var resp = null;
@@ -124,9 +123,7 @@ function selfStartOpenCode() {
       } catch (e) {}
       if (resp && resp.error && resp.error.indexOf('already running') !== -1) {
         alert('OpenCode 服务已在运行，正在打开Web...');
-        setTimeout(function () {
-          dockOpen('');
-        }, 800);
+        waitOpenCodeReady(0);
       } else {
         alert(
           '打开Web失败：opencode 启动失败（' + xhr.status + '），请手动运行 node launcher-mac.js'
@@ -145,6 +142,38 @@ function selfStartOpenCode() {
     xhr.send(JSON.stringify({}));
   } catch (e) {
     alert('打开Web失败：' + e.message);
+  }
+}
+
+// 轮询探测 opencode 端口就绪（最多 5s，每次间隔 500ms），就绪后 dock
+function waitOpenCodeReady(attempt) {
+  if (attempt >= 10) {
+    alert('OpenCode 服务端口未在预期时间内就绪，请稍后手动打开');
+    return;
+  }
+  var probe = new XMLHttpRequest();
+  probe.open('GET', CONFIG.OPENCODE_URL + '/', true);
+  probe.timeout = 2000;
+  probe.onload = function () {
+    // 任何 HTTP 响应都说明端口已监听
+    dockOpen('');
+  };
+  probe.onerror = function () {
+    setTimeout(function () {
+      waitOpenCodeReady(attempt + 1);
+    }, 500);
+  };
+  probe.ontimeout = function () {
+    setTimeout(function () {
+      waitOpenCodeReady(attempt + 1);
+    }, 500);
+  };
+  try {
+    probe.send();
+  } catch (e) {
+    setTimeout(function () {
+      waitOpenCodeReady(attempt + 1);
+    }, 500);
   }
 }
 
@@ -177,7 +206,12 @@ function dockOpen(cwd) {
 }
 
 function startPolling() {
-  if (_pollTimer) return;
+  // 先清旧 timer 再置标志：快速 暂停→恢复 时 _pollTimer 可能残留（in-flight XHR 回调的 scheduleNext 会重建 timer），
+  // 若直接 if (_pollTimer) return 会误判为已在轮询而拒绝恢复
+  if (_pollTimer) {
+    clearTimeout(_pollTimer);
+    _pollTimer = null;
+  }
   _isPolling = true;
   console.log('开始轮询: ' + CONFIG.SERVER_URL);
   poll();
@@ -207,6 +241,13 @@ function poll() {
         try {
           var response = JSON.parse(xhr.responseText);
           if (response.command) {
+            // 执行中保护：前一个命令尚未执行完（dispatchCommand 同步执行中）时跳过本轮新命令，
+            // 避免耗时命令（大范围 getRangeData）与后续命令的 XHR 回调时序交错
+            if (_busy) {
+              console.log('命令执行中，跳过: ' + response.command.requestId);
+              scheduleNext();
+              return;
+            }
             // 去重：同一 requestId 不重复执行（MCP 侧 handlePoll 在命令未完成时会重复返回同一命令，
             // 无去重会导致非幂等操作（setCellValue/deleteSlide/insertColumns）重复执行）
             if (response.command.requestId && response.command.requestId === _lastRequestId) {
@@ -217,7 +258,12 @@ function poll() {
               _lastRequestId = response.command.requestId || '';
               // 先排下一轮轮询再执行命令，避免耗时命令（如大范围 getRangeData）同步阻塞轮询节奏
               scheduleNext();
-              dispatchCommand(response.command);
+              _busy = true;
+              try {
+                dispatchCommand(response.command);
+              } finally {
+                _busy = false;
+              }
             }
           } else {
             scheduleNext();
@@ -321,6 +367,12 @@ function sendResult(requestId, result, attempt) {
           }, 500 * attempt);
         } else {
           failFinal('HTTP ' + xhr.status);
+        }
+      } else {
+        // 成功送达后清空去重状态：MCP 已确认收到结果，后续即使重发同 requestId 也应允许重新执行
+        // （避免「执行成功但去重状态残留」导致 MCP 超时后重发的命令被误跳）
+        if (_lastRequestId === requestId) {
+          _lastRequestId = '';
         }
       }
     };

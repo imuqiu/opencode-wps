@@ -127,7 +127,8 @@ switch_to() {
     close_all
     # close_all 已内置退出确认（最多 10s），此处不再额外 sleep
     if ! start_app "$target"; then
-        echo "[WPS-Auto] 切换失败: 未知应用 $target" >&2
+        # close_all 已关闭原应用——切换失败后用户处于无应用状态，必须给出明确恢复指引
+        echo "[WPS-Auto] 切换失败: 未知应用 $target，原应用已关闭，请手动重新打开 WPS" >&2
         return 1
     fi
     # 就绪确认：轮询等待目标应用进程存活（最多 10s），避免固定 sleep 3 在慢速机器上
@@ -154,12 +155,31 @@ switch_to() {
 
 case $1 in
     "switch")
+        # app 参数缺失时直接报错退出，避免误执行 close_all 关掉已打开文档
+        if [ -z "$2" ]; then
+            echo "[WPS-Auto] 错误: switch 需要指定应用 (excel/word/ppt)" >&2
+            exit 2
+        fi
         switch_to "$2"
         ;;
     "start")
+        if [ -z "$2" ]; then
+            echo "[WPS-Auto] 错误: start 需要指定应用 (excel/word/ppt)" >&2
+            exit 2
+        fi
         start_app "$2"
         ;;
     "stop"|"close")
+        # 幂等：先探测是否有 WPS 进程（含 wpspdf，与 close_all 的 pkill 清单一致），无则直接退出（避免 pkill 空转 + 10s 轮询等待）
+        if ! pgrep -x "wpsoffice" >/dev/null 2>&1 && \
+           ! pgrep -x "wps" >/dev/null 2>&1 && \
+           ! pgrep -x "et" >/dev/null 2>&1 && \
+           ! pgrep -x "wpp" >/dev/null 2>&1 && \
+           ! pgrep -x "wpspdf" >/dev/null 2>&1 && \
+           ! pgrep -f "com.kingsoft.wpsoffice" >/dev/null 2>&1; then
+            echo "[WPS-Auto] 无 WPS 进程，跳过关闭"
+            exit 0
+        fi
         close_all
         ;;
     *)

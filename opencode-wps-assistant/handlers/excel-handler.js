@@ -107,6 +107,8 @@ registerHandler('getActiveWorkbook', function (params) {
 
 registerHandler('getOpenWorkbooks', function (params) {
   try {
+    // Workbooks 集合保护：无活动窗口时访问抛错（与 getOpenDocuments 第 7 轮修复对齐）
+    if (!Application.Workbooks) return ok({ workbooks: [] });
     var wbs = Application.Workbooks;
     var list = [];
     for (var i = 1; i <= wbs.Count; i++) {
@@ -115,14 +117,16 @@ registerHandler('getOpenWorkbooks', function (params) {
     }
     return ok({ workbooks: list });
   } catch (e) {
-    return fail('获取工作簿列表失败: ' + e.message);
+    return ok({ workbooks: [], error: e.message });
   }
 });
 
 registerHandler('switchWorkbook', function (params) {
   try {
     var wbs = Application.Workbooks;
-    var target = params.name || params.index;
+    var target = params.name !== undefined ? params.name : params.index;
+    if (target === undefined || target === null || target === '')
+      return invalidParam('缺少 name 或 index');
     var found = null;
     if (typeof target === 'number') {
       found = wbs.Item(target);
@@ -166,7 +170,8 @@ registerHandler('closeWorkbook', function (params) {
   try {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
-    var save = params.save !== undefined ? params.save : true;
+    // save 显式布尔化：'false' 字符串不能被真值判断放行（布尔参数语义）
+    var save = params.save === undefined ? true : !!params.save;
     wb.Close(save);
     return ok({});
   } catch (e) {
@@ -182,7 +187,12 @@ registerHandler('getSheetList', function (params) {
     for (var i = 1; i <= wb.Sheets.Count; i++) {
       sheets.push({ name: wb.Sheets.Item(i).Name, index: i });
     }
-    return ok({ sheets: sheets, activeSheet: Application.ActiveSheet.Name });
+    // ActiveSheet 包 try/catch：无活动工作表时抛错导致整个列表获取失败（与 getContext selectedCell 保护模式一致）
+    var activeName = '';
+    try {
+      activeName = Application.ActiveSheet.Name;
+    } catch (e) {}
+    return ok({ sheets: sheets, activeSheet: activeName });
   } catch (e) {
     return fail('获取工作表列表失败: ' + e.message);
   }
@@ -205,6 +215,8 @@ registerHandler('renameSheet', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
+    // name 前置校验：空名直赋抛费解错误
+    if (!params.name) return invalidParam('缺少 name');
     sheet.Name = params.name;
     return ok({});
   } catch (e) {
@@ -255,7 +267,10 @@ registerHandler('moveSheet', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
-    var pos = params.position || wb.Sheets.Count;
+    var pos = params.position !== undefined ? parseInt(params.position, 10) : wb.Sheets.Count;
+    // position 显式校验：0/负数/字符串静默兜底 + 越界抛费解错误
+    if (isNaN(pos) || pos < 1 || pos > wb.Sheets.Count)
+      return fail('无效的目标位置: ' + params.position + '（合法范围 1~' + wb.Sheets.Count + '）');
     sheet.Move(null, wb.Sheets.Item(pos));
     return ok({});
   } catch (e) {
@@ -272,7 +287,12 @@ registerHandler('getCellValue', function (params) {
     if (!rc)
       return fail('无效的行/列参数: row=' + params.row + ' col=' + params.col + '（必须为正整数）');
     var cell = sheet.Cells.Item(rc.row, rc.col);
-    return ok({ value: cell.Value2, text: cell.Text, formula: cell.Formula });
+    // cell.Text 包 try/catch：部分 WPS 对日期/公式单元格访问 .Text 抛错，Value2/Formula 已拿到不应丢弃
+    var textVal = '';
+    try {
+      textVal = cell.Text;
+    } catch (e) {}
+    return ok({ value: cell.Value2, text: textVal, formula: cell.Formula });
   } catch (e) {
     return fail('读取单元格失败: ' + e.message);
   }
@@ -298,7 +318,13 @@ registerHandler('getRangeData', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
+    // range 前置校验 + 边界上限：Range(undefined) 抛费解错误；超大范围（如 A1:XFD1048576）批量读取 OOM
+    if (!params.range) return invalidParam('缺少 range');
     var range = sheet.Range(params.range);
+    var cellCount = range.Rows.Count * range.Columns.Count;
+    var MAX_CELLS = 1000000;
+    if (cellCount > MAX_CELLS)
+      return fail('范围过大（' + cellCount + ' 单元格，上限 ' + MAX_CELLS + '），请缩小 range');
     var data = [];
     // 优先批量读取（range.Value2 返回二维数组，一次 COM 往返）；失败时降级逐格（兼容旧 WPS JSAPI）
     try {
@@ -341,7 +367,14 @@ registerHandler('setRangeData', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
+    // range 前置校验：Range(undefined) 抛费解错误
+    if (!params.range) return invalidParam('缺少 range');
     var range = sheet.Range(params.range);
+    // OOM 边界（与 getRangeData 第 5 轮修复对称）：超大范围写入 OOM/长时间阻塞
+    var cellCount = range.Rows.Count * range.Columns.Count;
+    var MAX_CELLS = 1000000;
+    if (cellCount > MAX_CELLS)
+      return fail('范围过大（' + cellCount + ' 单元格，上限 ' + MAX_CELLS + '），请缩小 range');
     var input = params.data || [];
     // 将一行输入归一化为数组（兼容标量/null 行），供批量与逐格路径共用，避免降级时 input[r].length 抛 TypeError
     function toRowArray(src, maxCols) {
@@ -384,6 +417,8 @@ registerHandler('setFormula', function (params) {
     var rc = resolveRowCol(params.row, params.col);
     if (!rc)
       return fail('无效的行/列参数: row=' + params.row + ' col=' + params.col + '（必须为正整数）');
+    // formula 前置校验：Formula = undefined 直赋 COM 抛费解错误（与 evaluateFormula 语义对齐）
+    if (typeof params.formula !== 'string' || !params.formula) return invalidParam('缺少 formula');
     sheet.Cells.Item(rc.row, rc.col).Formula = params.formula;
     return ok({});
   } catch (e) {
@@ -462,7 +497,11 @@ registerHandler('getContext', function (params) {
 
 registerHandler('getSelection', function (params) {
   try {
-    var sel = Application.Selection;
+    // Selection 包 try/catch：无选中/无活动窗口时部分 WPS 抛错而非返回 null（与 getContext 修复模式一致）
+    var sel = null;
+    try {
+      sel = Application.Selection;
+    } catch (e) {}
     if (!sel) return fail('没有选中的区域');
     return ok({ address: sel.Address(), count: sel.Count, row: sel.Row, column: sel.Column });
   } catch (e) {
@@ -473,6 +512,7 @@ registerHandler('getSelection', function (params) {
 registerHandler('sortRange', function (params) {
   try {
     var sheet = Application.ActiveSheet;
+    if (!params.range) return invalidParam('缺少 range');
     var range = sheet.Range(params.range);
     // keyColumn 支持列字母（'A'）或完整地址（'A1'/'$A$1'）：纯字母补行号，避免 Range('A') 抛费解错误
     var key = null;
@@ -496,6 +536,7 @@ registerHandler('sortRange', function (params) {
 registerHandler('autoFilter', function (params) {
   try {
     var sheet = Application.ActiveSheet;
+    if (!params.range) return invalidParam('缺少 range');
     var range = sheet.Range(params.range);
     if (params.criteria) {
       // field 前置校验：criteria 存在但 field 缺失时 AutoFilter(undefined, ...) 抛费解错误
@@ -514,10 +555,17 @@ registerHandler('autoFilter', function (params) {
 registerHandler('createChart', function (params) {
   try {
     var sheet = Application.ActiveSheet;
+    // dataRange 前置校验：Range(undefined) 抛费解错误（与 updateChart 语义对齐）
+    if (!params.dataRange) return invalidParam('缺少 dataRange');
     var range = sheet.Range(params.dataRange);
     var chartTypes = { column: 51, bar: 57, line: 4, pie: 5, area: 1, scatter: -4169 };
     var chartType = chartTypes[params.chartType] || 51;
-    var chartObj = sheet.ChartObjects().Add(params.left || 100, params.top || 100, 400, 300);
+    // left/top 显式数值化：0 是合法值，不能 || 兜底成 100
+    var left = params.left !== undefined ? parseFloat(params.left) : 100;
+    if (isNaN(left)) return fail('无效的 left: ' + params.left);
+    var top = params.top !== undefined ? parseFloat(params.top) : 100;
+    if (isNaN(top)) return fail('无效的 top: ' + params.top);
+    var chartObj = sheet.ChartObjects().Add(left, top, 400, 300);
     chartObj.Chart.SetSourceData(range);
     chartObj.Chart.ChartType = chartType;
     if (params.title) {
@@ -532,7 +580,11 @@ registerHandler('createChart', function (params) {
 
 registerHandler('updateChart', function (params) {
   try {
-    var sheet = Application.ActiveSheet;
+    var wb = Application.ActiveWorkbook;
+    if (!wb) return fail('没有打开的工作簿');
+    // chartName 前置校验：ChartObjects(undefined) 抛费解错误（与 createChart 语义对齐）
+    if (!params.chartName) return invalidParam('缺少 chartName');
+    var sheet = getExcelSheet(wb, params.sheet);
     var chartObj = sheet.ChartObjects(params.chartName);
     if (params.dataRange) chartObj.Chart.SetSourceData(sheet.Range(params.dataRange));
     if (params.title) {
@@ -548,6 +600,7 @@ registerHandler('updateChart', function (params) {
 registerHandler('removeDuplicates', function (params) {
   try {
     var sheet = Application.ActiveSheet;
+    if (!params.range) return invalidParam('缺少 range');
     var range = sheet.Range(params.range);
     range.RemoveDuplicates(params.columns || [1], 1);
     return ok({});
@@ -561,7 +614,10 @@ registerHandler('setBorder', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
-    var range = sheet.Range(params.range || params.rangeAddress);
+    // range/rangeAddress 双参兼容但都缺时 Range(undefined) 抛费解错误
+    var rangeParam = params.range || params.rangeAddress;
+    if (!rangeParam) return invalidParam('缺少 range');
+    var range = sheet.Range(rangeParam);
     var borders = range.Borders;
     if (params.weight !== undefined) {
       for (var i = 1; i <= 6; i++) {
@@ -593,6 +649,7 @@ registerHandler('setCellFormat', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
+    if (!params.range) return invalidParam('缺少 range');
     var range = sheet.Range(params.range);
     var fmt = params.format || {};
     // 数字格式（format 对象内的优先，顶层兼容旧调用）
@@ -644,8 +701,12 @@ registerHandler('setNumberFormat', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
+    // range/format 前置校验：Range(undefined)/NumberFormat=undefined 抛费解错误
+    if (!params.range) return invalidParam('缺少 range');
+    var format = params.format || params.numberFormat;
+    if (format === undefined || format === null) return invalidParam('缺少 format');
     var range = sheet.Range(params.range);
-    range.NumberFormat = params.format || params.numberFormat;
+    range.NumberFormat = format;
     return ok({});
   } catch (e) {
     return fail('设置数字格式失败: ' + e.message);
@@ -657,7 +718,12 @@ registerHandler('setColumnWidth', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
-    sheet.Columns(params.column).ColumnWidth = params.width;
+    // column/width 显式校验：Columns(undefined) 抛费解错误、字符串宽直赋 COM 抛类型错误
+    var colLetter = resolveColumnLetter(params.column);
+    if (!colLetter) return fail('无效的列参数: ' + params.column);
+    var width = parseFloat(params.width);
+    if (isNaN(width) || width <= 0) return fail('无效的列宽: ' + params.width + '（必须为正数）');
+    sheet.Columns(colLetter).ColumnWidth = width;
     return ok({});
   } catch (e) {
     return fail('设置列宽失败: ' + e.message);
@@ -669,7 +735,12 @@ registerHandler('setRowHeight', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
-    sheet.Rows(params.row).RowHeight = params.height;
+    // row/height 显式校验（与 setColumnWidth 语义对齐）
+    var row = parseInt(params.row, 10);
+    if (isNaN(row) || row < 1) return fail('无效的行参数: ' + params.row + '（必须为正整数）');
+    var height = parseFloat(params.height);
+    if (isNaN(height) || height <= 0) return fail('无效的行高: ' + params.height + '（必须为正数）');
+    sheet.Rows(row).RowHeight = height;
     return ok({});
   } catch (e) {
     return fail('设置行高失败: ' + e.message);
@@ -679,7 +750,10 @@ registerHandler('setRowHeight', function (params) {
 registerHandler('autoFitColumn', function (params) {
   try {
     var sheet = Application.ActiveSheet;
-    sheet.Columns(params.column).AutoFit();
+    // column 显式校验：Columns(undefined) 抛费解错误（与 setColumnWidth 第 3 轮修复对齐）
+    var colLetter = resolveColumnLetter(params.column);
+    if (!colLetter) return fail('无效的列参数: ' + params.column);
+    sheet.Columns(colLetter).AutoFit();
     return ok({});
   } catch (e) {
     return fail('自动调整列宽失败: ' + e.message);
@@ -689,7 +763,10 @@ registerHandler('autoFitColumn', function (params) {
 registerHandler('autoFitRow', function (params) {
   try {
     var sheet = Application.ActiveSheet;
-    sheet.Rows(params.row).AutoFit();
+    // row 显式校验：Rows(undefined) 抛费解错误（与 setRowHeight 第 3 轮修复对齐）
+    var row = parseInt(params.row, 10);
+    if (isNaN(row) || row < 1) return fail('无效的行参数: ' + params.row + '（必须为正整数）');
+    sheet.Rows(row).AutoFit();
     return ok({});
   } catch (e) {
     return fail('自动调整行高失败: ' + e.message);
@@ -832,6 +909,7 @@ registerHandler('mergeCells', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
+    if (!params.range) return invalidParam('缺少 range');
     sheet.Range(params.range).Merge();
     return ok({});
   } catch (e) {
@@ -844,6 +922,7 @@ registerHandler('unmergeCells', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
+    if (!params.range) return invalidParam('缺少 range');
     sheet.Range(params.range).UnMerge();
     return ok({});
   } catch (e) {
@@ -856,7 +935,12 @@ registerHandler('freezePanes', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
-    var cell = sheet.Cells.Item(params.row || 2, params.col || 2);
+    // row/col 显式校验：0/'0'/字符串被 || 兜底为 2 是静默错误（与 resolveRowCol 语义对齐）
+    var row = parseInt(params.row, 10);
+    if (isNaN(row) || row < 1) return fail('无效的行参数: ' + params.row + '（必须为正整数）');
+    var col = parseInt(params.col, 10);
+    if (isNaN(col) || col < 1) return fail('无效的列参数: ' + params.col + '（必须为正整数）');
+    var cell = sheet.Cells.Item(row, col);
     sheet.Activate();
     cell.Activate();
     Application.ActiveWindow.FreezePanes = true;
@@ -962,6 +1046,7 @@ registerHandler('deleteCellComment', function (params) {
 registerHandler('addConditionalFormat', function (params) {
   try {
     var sheet = Application.ActiveSheet;
+    if (!params.range) return invalidParam('缺少 range');
     var range = sheet.Range(params.range);
     // 前置校验：条件格式公式必填，避免 undefined 传参抛费解错误
     if (!params.formula) return fail('缺少 formula（条件格式判断公式）');
@@ -985,6 +1070,7 @@ registerHandler('clearRange', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
+    if (!params.range) return invalidParam('缺少 range');
     sheet.Range(params.range).Clear();
     return ok({});
   } catch (e) {
@@ -997,6 +1083,7 @@ registerHandler('clearFormats', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
+    if (!params.range) return invalidParam('缺少 range');
     sheet.Range(params.range).ClearFormats();
     return ok({});
   } catch (e) {
@@ -1009,6 +1096,7 @@ registerHandler('findInSheet', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
+    if (!params.query && !params.text) return invalidParam('缺少 query');
     var found = sheet.Cells.Find(params.query || params.text);
     if (found) {
       return ok({ found: true, cell: found.Address(), value: found.Value2 });
@@ -1042,6 +1130,8 @@ registerHandler('setHyperlink', function (params) {
     if (!rc)
       return fail('无效的行/列参数: row=' + params.row + ' col=' + params.col + '（必须为正整数）');
     var cell = sheet.Cells.Item(rc.row, rc.col);
+    // url 前置校验：Hyperlinks.Add(cell, undefined) 抛费解错误
+    if (!params.url) return invalidParam('缺少 url');
     sheet.Hyperlinks.Add(cell, params.url);
     if (params.text) cell.Value2 = params.text;
     return ok({});
@@ -1055,6 +1145,7 @@ registerHandler('setCellStyle', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
+    if (!params.range) return invalidParam('缺少 range');
     var range = sheet.Range(params.range);
     if (params.fontName) range.Font.Name = params.fontName;
     if (params.fontSize) range.Font.Size = params.fontSize;
@@ -1094,6 +1185,7 @@ registerHandler('wrapText', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
+    if (!params.range) return invalidParam('缺少 range');
     sheet.Range(params.range).WrapText = true;
     return ok({});
   } catch (e) {
@@ -1106,6 +1198,7 @@ registerHandler('lockCells', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
+    if (!params.range) return invalidParam('缺少 range');
     sheet.Range(params.range).Locked = true;
     return ok({});
   } catch (e) {
@@ -1116,10 +1209,18 @@ registerHandler('lockCells', function (params) {
 registerHandler('fillSeries', function (params) {
   try {
     var sheet = Application.ActiveSheet;
+    if (!params.range) return invalidParam('缺少 range');
     var range = sheet.Range(params.range);
-    range.AutoFill(
-      range.Resize(params.rowCount || range.Rows.Count, params.colCount || range.Columns.Count)
-    );
+    // 行/列数显式校验：0/负数/字符串静默兜底问题（与 insertRows 语义对齐），
+    // 避免 rowCount:'-1' 产生 Resize 负数尺寸抛费解错误
+    var rowCount = params.rowCount !== undefined ? parseInt(params.rowCount, 10) : range.Rows.Count;
+    if (isNaN(rowCount) || rowCount < 1)
+      return fail('无效的填充行数: ' + params.rowCount + '（必须为正整数）');
+    var colCount =
+      params.colCount !== undefined ? parseInt(params.colCount, 10) : range.Columns.Count;
+    if (isNaN(colCount) || colCount < 1)
+      return fail('无效的填充列数: ' + params.colCount + '（必须为正整数）');
+    range.AutoFill(range.Resize(rowCount, colCount));
     return ok({});
   } catch (e) {
     return fail('填充序列失败: ' + e.message);
@@ -1130,9 +1231,14 @@ registerHandler('copyRange', function (params) {
   try {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
+    // 前置校验：Range(undefined) 抛费解错误；sourceRange/targetRange 两参数语义一致化
+    var srcRange = params.sourceRange || params.range;
+    var dstRange = params.targetRange;
+    if (!srcRange) return invalidParam('缺少 sourceRange');
+    if (!dstRange) return invalidParam('缺少 targetRange');
     var srcSheet = getExcelSheet(wb, params.sourceSheet || params.sheet);
     var dstSheet = getExcelSheet(wb, params.targetSheet || params.sheet);
-    srcSheet.Range(params.sourceRange || params.range).Copy(dstSheet.Range(params.targetRange));
+    srcSheet.Range(srcRange).Copy(dstSheet.Range(dstRange));
     return ok({});
   } catch (e) {
     return fail('复制区域失败: ' + e.message);
@@ -1142,6 +1248,7 @@ registerHandler('copyRange', function (params) {
 registerHandler('pasteRange', function (params) {
   try {
     var sheet = Application.ActiveSheet;
+    if (!params.targetRange) return invalidParam('缺少 targetRange');
     sheet.Paste(sheet.Range(params.targetRange));
     return ok({});
   } catch (e) {
@@ -1154,6 +1261,8 @@ registerHandler('transpose', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
+    if (!params.range) return invalidParam('缺少 range');
+    if (!params.targetRange) return invalidParam('缺少 targetRange');
     var src = sheet.Range(params.range);
     src.Copy();
     var dst = sheet.Range(params.targetRange);
@@ -1170,6 +1279,7 @@ registerHandler('transpose', function (params) {
 registerHandler('textToColumns', function (params) {
   try {
     var sheet = Application.ActiveSheet;
+    if (!params.range) return invalidParam('缺少 range');
     var range = sheet.Range(params.range);
     // TextToColumns(Destination, DataType, TextQualifier, ConsecutiveDelimiter, Tab, Semicolon, Comma, Space, Other, OtherChar)
     // DataType=xlDelimited=1，TextQualifier=xlTextQualifierDoubleQuote=1，ConsecutiveDelimiter=false，Tab=true
@@ -1183,6 +1293,7 @@ registerHandler('textToColumns', function (params) {
 registerHandler('subtotal', function (params) {
   try {
     var sheet = Application.ActiveSheet;
+    if (!params.range) return invalidParam('缺少 range');
     var range = sheet.Range(params.range);
     range.Subtotal(1, -4157, range.Columns.Count, false, true, false);
     return ok({});
@@ -1194,6 +1305,7 @@ registerHandler('subtotal', function (params) {
 registerHandler('consolidate', function (params) {
   try {
     var sheet = Application.ActiveSheet;
+    if (!params.range) return invalidParam('缺少 range');
     var range = sheet.Range(params.range);
     var sources = params.sources || [];
     if (!Array.isArray(sources) || sources.length === 0)
@@ -1213,6 +1325,8 @@ registerHandler('createPivotTable', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
+    // sourceRange 前置校验：Range(undefined) 抛费解错误（与 copyRange 语义对齐）
+    if (!params.sourceRange) return invalidParam('缺少 sourceRange');
     var pc = wb.PivotCaches().Create(1, sheet.Range(params.sourceRange));
     var ptSheet = wb.Sheets.Add();
     var pt = pc.CreatePivotTable(ptSheet.Range('A1'), params.name || 'PivotTable1');
@@ -1229,8 +1343,12 @@ registerHandler('createPivotTable', function (params) {
 
 registerHandler('updatePivotTable', function (params) {
   try {
-    var sheet = Application.ActiveSheet;
-    var pt = sheet.PivotTables(params.name || sheet.PivotTables(1).Name);
+    var wb = Application.ActiveWorkbook;
+    if (!wb) return fail('没有打开的工作簿');
+    var sheet = getExcelSheet(wb, params.sheet);
+    // name 显式校验：PivotTables(undefined) 抛费解错误（与周边 handler 校验语义对齐）
+    if (!params.name) return invalidParam('缺少 name');
+    var pt = sheet.PivotTables(params.name);
     pt.RefreshTable();
     return ok({});
   } catch (e) {
@@ -1242,6 +1360,9 @@ registerHandler('createNamedRange', function (params) {
   try {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
+    // 前置校验：name/range 必填（原实现 undefined 传给 Names.Add 抛费解错误）
+    if (!params.name) return invalidParam('缺少 name');
+    if (!params.range) return invalidParam('缺少 range');
     wb.Names.Add(params.name, wb.ActiveSheet.Range(params.range));
     return ok({});
   } catch (e) {
@@ -1267,6 +1388,8 @@ registerHandler('deleteNamedRange', function (params) {
   try {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
+    // 前置校验：缺 name 时 Names.Item(undefined) 抛费解错误
+    if (!params.name) return invalidParam('缺少 name');
     wb.Names.Item(params.name).Delete();
     return ok({});
   } catch (e) {
@@ -1313,10 +1436,13 @@ registerHandler('addDataValidation', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
+    if (!params.range) return invalidParam('缺少 range');
     var range = sheet.Range(params.range);
     var dv = range.Validation;
+    // formula1 前置校验：空串传给 Validation.Add 抛费解错误（数据验证必须指定列表/公式）
+    if (!params.formula1) return invalidParam('缺少 formula1');
     dv.Delete();
-    dv.Add(3, 1, 1, params.formula1 || '', params.formula2 || '');
+    dv.Add(3, 1, 1, params.formula1, params.formula2 || '');
     return ok({});
   } catch (e) {
     return fail('添加数据验证失败: ' + e.message);
@@ -1328,6 +1454,7 @@ registerHandler('setArrayFormula', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
+    if (!params.range) return invalidParam('缺少 range');
     sheet.Range(params.range).FormulaArray = params.formula;
     return ok({});
   } catch (e) {
@@ -1340,6 +1467,8 @@ registerHandler('setPrintArea', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
+    // range 前置校验：PrintArea = undefined 直赋抛类型错误（与 setNumberFormat 语义对齐）
+    if (!params.range) return invalidParam('缺少 range');
     sheet.PageSetup.PrintArea = params.range;
     return ok({});
   } catch (e) {
@@ -1352,15 +1481,20 @@ registerHandler('insertExcelImage', function (params) {
     var sheet = Application.ActiveSheet;
     var filePath = params.path || params.imagePath;
     if (!filePath) return invalidParam('缺少 path');
-    var pic = sheet.Shapes.AddPicture(
-      filePath,
-      false,
-      true,
-      params.left || 0,
-      params.top || 0,
-      params.width || -1,
-      params.height || -1
-    );
+    // 尺寸显式数值化：undefined/null 才取 -1（原始尺寸），0 是合法值不能被 || 吞掉，字符串直赋抛类型错误
+    function imgSize(v) {
+      if (v === undefined || v === null) return -1;
+      var n = parseFloat(v);
+      return isNaN(n) ? null : n;
+    }
+    var w = imgSize(params.width);
+    var h = imgSize(params.height);
+    if (w === null || h === null) return fail('无效的图片尺寸（width/height 必须为数值）');
+    var left = params.left !== undefined ? parseFloat(params.left) : 0;
+    if (isNaN(left)) return fail('无效的 left: ' + params.left);
+    var top = params.top !== undefined ? parseFloat(params.top) : 0;
+    if (isNaN(top)) return fail('无效的 top: ' + params.top);
+    var pic = sheet.Shapes.AddPicture(filePath, false, true, left, top, w, h);
     return ok({ name: pic.Name });
   } catch (e) {
     return fail('插入图片失败: ' + e.message);
@@ -1378,6 +1512,11 @@ registerHandler('exportChartAsImage', function (params) {
     if (!chartName) return invalidParam('缺少 chartName');
     var format = (params.format || 'PNG').toUpperCase();
     var filterName = format === 'JPEG' ? 'JPG' : format;
+    // format 白名单校验（与 exportSlideAsImage 第 7 轮修复对齐）：任意字符串传 Export 抛类型错误
+    var allowed = { PNG: 'PNG', JPG: 'JPG', JPEG: 'JPG', GIF: 'GIF', BMP: 'BMP' };
+    filterName = allowed[filterName] || null;
+    if (!filterName)
+      return fail('无效的导出格式: ' + params.format + '（支持 PNG/JPG/JPEG/GIF/BMP）');
     var chartObj = sheet.ChartObjects(chartName);
     chartObj.Chart.Export(outputPath, filterName);
     return ok({ chartName: chartName, outputPath: outputPath, format: filterName });
@@ -1421,6 +1560,7 @@ registerHandler('cleanData', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
+    if (!params.range) return invalidParam('缺少 range');
     var range = sheet.Range(params.range);
     // 清洗模式：trim=去首尾空白（默认，安全）；collapse=连续多空格折叠为单个；all=删除所有空白（激进，谨慎）
     var mode = params.mode || 'trim';
@@ -1476,6 +1616,9 @@ registerHandler('copyFormat', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
+    // 前置校验：与 copyRange 第 5 轮修复语义对齐
+    if (!params.sourceRange) return invalidParam('缺少 sourceRange');
+    if (!params.targetRange) return invalidParam('缺少 targetRange');
     sheet.Range(params.sourceRange).Copy();
     sheet.Range(params.targetRange).PasteSpecial(-4122);
     Application.CutCopyMode = false;
@@ -1490,6 +1633,7 @@ registerHandler('autoSum', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
+    if (!params.range) return invalidParam('缺少 range');
     var range = sheet.Range(params.range);
     range.Select();
     var result;
@@ -1514,6 +1658,8 @@ registerHandler('evaluateFormula', function (params) {
   try {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
+    // formula 前置校验：空/非字符串时显式 fail（原实现会把 undefined 直接赋给 target.Formula 抛费解错误）
+    if (typeof params.formula !== 'string' || !params.formula) return invalidParam('缺少 formula');
     var formula = params.formula;
     var cell = params.cell || 'A1';
     var sheet = wb.ActiveSheet;
@@ -1522,10 +1668,25 @@ registerHandler('evaluateFormula', function (params) {
       return ok({ result: result });
     }
     var target = sheet.Range(cell);
-    var origFormula = target.Formula;
+    // origFormula 读取也包 try：读取失败（如目标单元格异常）时以 null 标记，避免把 undefined 写回覆盖原公式
+    var origFormula = null;
+    try {
+      origFormula = target.Formula;
+    } catch (e) {}
     target.Formula = formula;
-    var value = target.Value;
-    target.Formula = origFormula;
+    var value;
+    try {
+      value = target.Value;
+    } finally {
+      // 恢复原公式：Evaluate 不可用时的降级路径若赋值/取值抛错，原公式必须恢复（此前异常会跳过恢复，用户表格公式被永久替换）
+      if (origFormula !== null) {
+        try {
+          target.Formula = origFormula;
+        } catch (re) {
+          console.error('恢复原公式失败: ' + re.message);
+        }
+      }
+    }
     return ok({ result: value });
   } catch (e) {
     return fail('公式计算失败: ' + e.message);
@@ -1551,6 +1712,8 @@ registerHandler('diagnoseFormula', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = Application.ActiveSheet;
+    // cell 前置校验：Range(undefined) 抛费解错误
+    if (!params.cell) return invalidParam('缺少 cell');
     var cell = sheet.Range(params.cell);
     var value = cell.Value;
     var formula = cell.Formula;

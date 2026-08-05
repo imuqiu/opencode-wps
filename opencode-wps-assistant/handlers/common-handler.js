@@ -3,6 +3,18 @@
  * 跨应用操作、连接检测、文档信息等
  */
 
+var _commonPath = typeof require === 'function' ? require('path') : null;
+var _commonFs = typeof require === 'function' ? require('fs') : null;
+
+function ensureOutputDir(filePath, label) {
+  if (!filePath) return null;
+  var dir = _commonPath ? _commonPath.dirname(filePath) : '';
+  if (dir && _commonFs && !_commonFs.existsSync(dir)) {
+    return '输出目录不存在: ' + dir + '（请先创建目录）';
+  }
+  return null;
+}
+
 registerHandler('ping', function (params) {
   return ok({ message: 'pong', timestamp: new Date().getTime(), platform: 'mac' });
 });
@@ -31,12 +43,14 @@ registerHandler('getSelectedText', function (params) {
 
 registerHandler('setSelectedText', function (params) {
   try {
+    // text 前置校验：缺省时静默清空选中文本是危险操作（与 addComment 第 1 轮修复语义对齐）
+    if (params.text === undefined || params.text === null) return invalidParam('缺少 text');
     var sel = null;
     try {
       sel = Application.Selection;
     } catch (e) {}
     if (!sel) return fail('没有选中的文本范围');
-    sel.Text = params.text || '';
+    sel.Text = params.text;
     return ok({});
   } catch (e) {
     return fail('设置选中文本失败: ' + e.message);
@@ -60,6 +74,8 @@ registerHandler('saveAs', function (params) {
     if (!doc) return fail('没有打开的文档');
     var filePath = params.path || params.filePath;
     if (!filePath) return invalidParam('缺少 path');
+    var dirErr = ensureOutputDir(filePath);
+    if (dirErr) return fail(dirErr);
     doc.SaveAs(filePath);
     return ok({ path: filePath });
   } catch (e) {
@@ -102,6 +118,8 @@ registerHandler('convertToPDF', function (params) {
     if (!doc) return fail('没有打开的文档');
     var outputPath = params.outputPath || params.path;
     if (!outputPath) return invalidParam('缺少 outputPath');
+    var dirErr = ensureOutputDir(outputPath);
+    if (dirErr) return fail(dirErr);
     doc.ExportAsFixedFormat(outputPath, 17);
     return ok({ outputPath: outputPath });
   } catch (e) {
