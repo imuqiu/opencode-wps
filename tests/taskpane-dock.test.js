@@ -715,15 +715,15 @@ test('scheduleTaskPaneOpenRedraw 等待期内用户操作：保留用户时间�
   });
   var sandbox = loadMainJs(makeOpenPaneApp(pane, { storedId: 'tp-open11' }));
   assertEqual(sandbox.lastUserTaskPaneAction, 0, '初始时间戳应为 0');
-  // 手动调用调度函数（等价 OnAction 切换打开后进入等待期）
+  // 记录调度起点，随后注入「任何晚于调度起点」的用户操作时间戳：
+  // 等价于 400ms 等待期内的任意时刻用户主动操作（真实场景 toggle 分支会置 Date.now()）
+  var scheduleAt = Date.now();
   sandbox.scheduleTaskPaneOpenRedraw();
-  // 模拟等待期内用户主动操作：时间戳晚于调度起点
-  var userTs = Date.now() + 1000;
-  sandbox.lastUserTaskPaneAction = userTs;
+  sandbox.lastUserTaskPaneAction = scheduleAt + 1;
   // flush 等待期回调：守卫应放弃本次自愈调度（不清零用户时间戳，
   // 保留给可能进行中的其他重绘的恢复回调比对，避免误弹用户刚操作过的窗格）
   sandbox.__flushTimeouts();
-  assertEqual(sandbox.lastUserTaskPaneAction, userTs, '守卫应保留等待期内用户操作时间戳，不被清零');
+  assertEqual(sandbox.lastUserTaskPaneAction, scheduleAt + 1, '守卫应保留等待期内用户操作时间戳，不被清零');
   assertEqual(visibleLog.length, 0, '守卫应放弃重绘（无任何置位），实际: ' + JSON.stringify(visibleLog));
 });
 

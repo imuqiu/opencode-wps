@@ -334,8 +334,8 @@ var WINDOW_ACTIVATE_REDRAW_DELAY = 200
 // 时间戳清零仅用于清理调度等待期（400ms 内）残留的旧操作时间戳，避免语义混乱——
 // 后续 150ms 重绘窗口内的新用户操作仍会重新设置时间戳而被尊重。
 // 依赖关系：若未来移除可见性检查，本清零将失效，必须同步保留可见性防线。
-// 调度起点晚于 toggle 时间戳（OnAction 先置时间戳再调用本函数，同毫秒或早 1ms），
-// 用严格大于区分「调度自身刚记录的时间戳」与「等待期内用户的新操作」。
+// 调度起点恒 ≥ toggle 时间戳（OnAction 先置时间戳再调用本函数，同毫秒相等或晚 1ms），
+// 守卫用严格大于可正确区分「调度自身刚记录的时间戳」与「等待期内用户的新操作」。
 function scheduleTaskPaneOpenRedraw() {
     var scheduleAt = Date.now()
     setTimeout(function() {
@@ -343,7 +343,11 @@ function scheduleTaskPaneOpenRedraw() {
         // 尊重用户意图，放弃本次自愈调度（窗格状态已由用户最新操作决定，重绘意义不大）；
         // 同时避免清零覆盖用户操作时间戳——否则若恰有进行中的重绘，其恢复回调的
         // lastUserTaskPaneAction 比对会失效，行为退化为仅靠可见性检查兜底（见上方依赖注释）。
-        if (lastUserTaskPaneAction > scheduleAt) return
+        // 留痕：实机排查「打开面板仍遮挡」时可区分「守卫放弃」与「重绘执行但宿主未生效」。
+        if (lastUserTaskPaneAction > scheduleAt) {
+            console.log('[WPS] 打开面板自愈重绘已放弃（等待期内用户操作过窗格）')
+            return
+        }
         lastUserTaskPaneAction = 0
         forceTaskPaneRedraw(true)
     }, TASKPANE_OPEN_REDRAW_DELAY)
@@ -375,7 +379,14 @@ function forceTaskPaneRedraw(force) {
     if (taskPaneRedrawPending) return
     try {
         var tp = window.Application.GetTaskPane(tsId)
-        if (!tp || !tp.Visible) return
+        if (!tp) {
+            console.log('[WPS] 强制重绘跳过：任务窗格不存在（已销毁）')
+            return
+        }
+        if (!tp.Visible) {
+            console.log('[WPS] 强制重绘跳过：任务窗格当前不可见（不误弹，等待用户主动打开）')
+            return
+        }
         // 停靠位置重新校正（防漂移）
         setTaskPaneDockPosition(tp)
         // 先隐藏再显示，强制 WebView 重新布局；两步间让出宿主事件循环，
