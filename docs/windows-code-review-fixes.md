@@ -128,7 +128,7 @@
 | 🟡 | dockWindow exec 超时（Edge 冷启动>5s）误报失败 | 超时后探测 Edge 进程，出现则视为成功 |
 | ℹ️ | serve.js 404 回显路径含非法字符 | 固定文案 `Not found` |
 
-### 第 6 轮（提交中）
+### 第 6 轮（提交 `754f7d7`）
 | 级别 | 问题 | 修复 |
 |------|------|------|
 | 🔴 | `security.test.js`/`launcher.test.js` 未接入 CI | `.cnb.yml` Validate 阶段补两行 |
