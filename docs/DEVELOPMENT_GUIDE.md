@@ -23,7 +23,7 @@
 
 ## 行为准则
 
-请阅读并遵守我们的 [Code of Conduct](./CODE_OF_CONDUCT.md)（行为准则），确保社区友好包容。
+请阅读并遵守我们的 [Code of Conduct](../CODE_OF_CONDUCT.md)（行为准则），确保社区友好包容。
 
 ---
 

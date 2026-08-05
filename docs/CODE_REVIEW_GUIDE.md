@@ -399,7 +399,7 @@ Proposed | Accepted | Deprecated | Superseded by ADR-XXXX
 
 #### 行为准则
 
-- 禁止人身攻击 / 阴阳怪气（参考 [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md)）
+- 禁止人身攻击 / 阴阳怪气（参考 [`CODE_OF_CONDUCT.md`](../CODE_OF_CONDUCT.md)）
 - 评论聚焦**代码**与**决策**，不针对**个人**
 - 维护者拍板后 30 天内不接受同类争议（除非有新事实）
 

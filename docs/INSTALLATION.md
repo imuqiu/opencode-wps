@@ -1,0 +1,146 @@
+# 安装指南
+
+本文档覆盖 **Windows / macOS / Linux** 三平台的完整安装步骤、目录路径与卸载说明。快速安装只需运行对应平台的安装脚本：
+
+```bash
+node install-addons.js          # Windows
+node install-addons-mac.js      # macOS
+node install-addons-linux.js    # Linux
+```
+
+## 环境要求
+
+| 依赖 | 要求 |
+|------|------|
+| **操作系统** | Windows 10/11、macOS 12+、或 Linux（Debian/Ubuntu/Arch 等，x86_64 / aarch64） |
+| **WPS Office** | Windows：个人版 12.1.0+ 或企业版；macOS：WPS Office for Mac 最新版；Linux：12.1.x（[linux.wps.cn](https://linux.wps.cn)，deb/rpm） |
+| **Node.js** | 18.0.0+（或 Bun 1.0+） |
+| **OpenCode** | 已全局安装 opencode-ai（`npm install -g opencode-ai`） |
+| **Python 3** | 仅 Linux 需要（`wps-auto.sh` 生成空白 OOXML 用，缺失时回退无参启动） |
+
+## Windows 安装
+
+### 1. 克隆项目
+
+```bash
+git clone https://github.com/lnxsun/opencode-wps.git
+cd opencode-wps
+```
+
+### 2. 安装项目依赖
+
+```bash
+npm install
+```
+
+### 3. 一键安装
+
+```bash
+node install-addons.js
+```
+
+安装脚本自动完成以下 **8 个步骤**：
+
+| 步骤 | 操作 | 说明 |
+|------|------|------|
+| 1 | 安装 WPS 插件 | 复制 opencode-wps 到 `%APPDATA%\kingsoft\wps\jsaddons\`，注册到 publish.xml/jsplugins.xml |
+| 2 | 安装并编译 MCP 服务器 | 在 wps-office-mcp 目录执行 `npm install` + `npm run build` |
+| 3 | 配置 OpenCode MCP | 修改 `~/.config/opencode/opencode.json`，添加 wps-office MCP 服务器 |
+| 4 | 安装 Skills | 复制 5 个技能到 `~/.opencode/skills/` |
+| 5 | 安装 Agents | 复制自定义 agents 到 `~/.config/opencode/agents/` 和 `~/.opencode/agents/` |
+| 6 | 安装 Plugins | 复制治理插件到 `~/.config/opencode/plugins/` |
+| 7 | 清理旧配置 | 移除旧版 legacy 配置文件残留 |
+| 8 | 注册 Launcher | 注册 Windows 计划任务实现开机自启，监听 14097 端口管理服务 |
+
+### 4. 重启 WPS Office
+
+安装完成后重启 WPS，功能区会出现 **OpenCode AI** 标签页。
+
+## macOS 安装
+
+> Mac 版 WPS 使用与 Windows 不同的 JS 插件架构（基于 WPS JS API 而非 COM 桥接），因此采用独立插件实现与安装方式。
+
+### 1. 克隆项目
+
+```bash
+git clone https://github.com/lnxsun/opencode-wps.git
+cd opencode-wps
+```
+
+### 2. 安装项目依赖并编译 MCP
+
+```bash
+npm install
+cd wps-office-mcp && npm install && npm run build && cd ..
+```
+
+### 3. 安装 Mac 插件和组件
+
+```bash
+node install-addons-mac.js
+```
+
+安装脚本自动完成以下 **7 个步骤**：
+
+| 步骤 | 操作 | 说明 |
+|------|------|------|
+| 1 | 安装 WPS 插件 | 复制 `opencode-wps-assistant/` 到 `~/Library/Containers/com.kingsoft.wpsformac/Data/Documents/jsaddons/` |
+| 2 | 安装并编译 MCP 服务器 | 在 wps-office-mcp 目录执行 `npm install` + `npm run build` |
+| 3 | 配置 OpenCode MCP | 修改 `~/.config/opencode/opencode.json`，添加 wps-office MCP 服务器 |
+| 4 | 安装 Skills | 复制 5 个技能到 `~/.opencode/skills/` |
+| 5 | 安装 Agents | 复制 agents 到 `~/.config/opencode/agents/` 和 `~/.opencode/agents/` |
+| 6 | 安装 Plugins | 复制治理插件到 `~/.config/opencode/plugins/` |
+| 7 | 注册 LaunchAgent | 创建 `~/Library/LaunchAgents/com.opencode.launcher.plist` 实现开机自启 |
+
+### 4. 启动服务
+
+安装完成后，手动启动 launcher-mac：
+
+```bash
+node launcher-mac.js
+```
+
+或重启 Mac 让 LaunchAgent 自动启动。
+
+### 5. 重启 WPS Office
+
+重启 WPS Office for Mac，功能区会出现 **OpenCode AI** 标签页。
+
+## Linux 安装
+
+> Linux 版与 macOS 版同架构（反向轮询桥），插件独立目录 `opencode-wps-linux/`。状态：✅ 开发完成；⚠️ 尚未在真实 Linux + WPS 环境实测（需要实机验证）。
+
+```bash
+# 1. 克隆仓库
+git clone https://cnb.cool/lnxsun/opencode-wps.git
+cd opencode-wps
+
+# 2. 运行 Linux 安装脚本
+node install-addons-linux.js
+```
+
+安装后手动启动 launcher（或依赖 XDG autostart 开机自启）：
+
+```bash
+node launcher-linux.js
+```
+
+> 📖 Linux 完整说明（前置条件/组件清单/应用切换/已知限制/常见问题）见 [docs/LINUX.md](./LINUX.md)。
+
+## 平台路径速查
+
+| 资源 | Windows | macOS | Linux |
+|------|---------|-------|-------|
+| WPS 插件目录 | `%APPDATA%\kingsoft\wps\jsaddons\opencode-wps_` | `~/Library/Containers/com.kingsoft.wpsformac/Data/Documents/jsaddons/` | `~/.local/share/Kingsoft/wps/jsaddons/` |
+| 安装脚本 | `install-addons.js` | `install-addons-mac.js` | `install-addons-linux.js` |
+| Launcher | `opencode-wps/launcher.js`（计划任务自启） | `launcher-mac.js`（LaunchAgent 自启） | `launcher-linux.js`（XDG autostart 自启） |
+| MCP 通信 | PowerShell COM（wps-com.ps1） | HTTP 轮询（mac-poll-server.ts:58891） | HTTP 轮询（linux-poll-server.ts:58891） |
+
+## 常见问题
+
+- **插件不显示** → 检查插件目录是否存在、WPS 是否重启、`publish.xml/jsplugins.xml` 是否注册
+- **MCP 连接失败** → `cd wps-office-mcp && npm install && npm run build` 后重启 OpenCode
+- **Skills/Agents 未加载** → 重新运行安装脚本 + 重启 OpenCode 服务
+- **Linux 实机验证** → 参考 [docs/LINUX.md](./LINUX.md)「已知限制」「常见问题」章节
+
+> 📖 更多排查见 [docs/TROUBLESHOOTING.md](./TROUBLESHOOTING.md)；安装脚本实现细节见 [docs/INSTALL_SCRIPT.md](./INSTALL_SCRIPT.md)。
