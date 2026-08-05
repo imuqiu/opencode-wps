@@ -29,15 +29,22 @@ var server = http.createServer(function (clientReq, clientRes) {
             host: TARGET_HOST + ':' + TARGET_PORT
         })
     }
+    // 过滤路径控制/敏感头：x-opencode-directory 可伪造让上游访问任意目录，
+    // x-forwarded-* 等由本代理重新生成，不继承客户端值
+    delete options.headers['x-opencode-directory']
+    delete options.headers['x-forwarded-for']
+    delete options.headers['x-forwarded-host']
+    delete options.headers['x-forwarded-proto']
 
     var proxyReq = http.request(options, function (proxyRes) {
         // 复制响应头，但去掉 CSP 与 hop-by-hop 头（connection/transfer-encoding 等
         // 应由 Node 自动管理，转发会导致分块冲突/连接悬挂）
         var HOP_BY_HOP = ['connection', 'transfer-encoding', 'keep-alive', 'upgrade', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer']
+        var LEAK_HEADERS = ['x-powered-by', 'server', 'x-aspnet-version', 'x-runtime']
         var headers = {}
         for (var key in proxyRes.headers) {
             var lk = key.toLowerCase()
-            if (lk === 'content-security-policy' || HOP_BY_HOP.indexOf(lk) !== -1) continue
+            if (lk === 'content-security-policy' || HOP_BY_HOP.indexOf(lk) !== -1 || LEAK_HEADERS.indexOf(lk) !== -1) continue
             headers[key] = proxyRes.headers[key]
         }
         // 允许所有来源的 CORS
@@ -69,6 +76,10 @@ var server = http.createServer(function (clientReq, clientRes) {
     })
     clientReq.on('close', function () {
         if (!clientRes.writableEnded) proxyReq.destroy()
+    })
+    // clientRes 自身 error（EPIPE/ECONNRESET）也要处理，防未捕获异常
+    clientRes.on('error', function () {
+        proxyReq.destroy()
     })
 
     clientReq.pipe(proxyReq, { end: true })
