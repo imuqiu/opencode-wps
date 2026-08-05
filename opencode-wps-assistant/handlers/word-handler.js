@@ -414,7 +414,12 @@ registerHandler('setParagraph', function (params) {
         typeof params.alignment === 'string'
           ? alignMap[params.alignment.toLowerCase()]
           : params.alignment;
-      if (align !== undefined) para.Alignment = align;
+      // 数字也做范围校验（Word 对齐常量合法范围 0~4），越界显式 fail 而非抛泛化 COM 错误
+      if (typeof align !== 'number' || align < 0 || align > 4 || isNaN(align))
+        return fail(
+          '无效的对齐值: ' + params.alignment + '（支持 left/center/right/justify/distribute 或 0~4）'
+        );
+      para.Alignment = align;
     }
     if (params.lineSpacing) para.LineSpacing = params.lineSpacing;
     if (params.spaceBefore !== undefined) para.SpaceBefore = params.spaceBefore;

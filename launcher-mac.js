@@ -297,9 +297,10 @@ function dockWindow(callback, data) {
     child.on('error', function (err) {
       console.log('[launcher] open failed (' + (bundleId || 'default') + '): ' + err.message);
       if (done) return;
-      if (tried.length >= 2) {
+      // 兜底已尝试过默认浏览器仍失败：直接 finish（否则 callback 永不调用，HTTP 挂起）
+      if (startedFallback || tried.length >= 2) {
         finish();
-      } else if (!startedFallback) {
+      } else {
         startedFallback = true;
         tryOpen(null);
       }
@@ -308,9 +309,10 @@ function dockWindow(callback, data) {
       if (done) return;
       if (code === 0) {
         finish();
-      } else if (tried.length >= 2) {
+      } else if (startedFallback || tried.length >= 2) {
+        // Chrome 与默认浏览器都失败（无浏览器/无 http 关联）：必须 finish，避免 HTTP 挂起
         finish();
-      } else if (!startedFallback) {
+      } else {
         startedFallback = true;
         tryOpen(null);
       }

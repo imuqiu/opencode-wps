@@ -296,13 +296,11 @@ if (fsEx.existsSync(pluginSrcDir)) {
 console.log('\n【第 7 步】配置 launchd 开机自启');
 recordStep('configure_launchd');
 
-const launcherPath = path.join(rootDir, 'opencode-wps-assistant', 'launcher-mac.js');
 const launchAgentDir = path.join(homeDir, 'Library', 'LaunchAgents');
 const plistPath = path.join(launchAgentDir, 'com.opencode.launcher.plist');
 
-// 修复恒真条件：launcherPath 指向 opencode-wps-assistant/launcher-mac.js（该文件不存在），
-// 实际使用 rootDir 下的 launcher-mac.js。此前 `existsSync(launcherPath) || true` 恒真，分支判断形同虚设
-// 注意：同时校验 wps-auto.sh 存在（launcher 启动后由 MCP 调用的切换脚本，缺失时安装无意义）
+// 说明：assistant 目录下的 launcher-mac.js 不存在（实际文件在根目录），
+// 因此直接使用 rootDir 下的 launcher-mac.js，并校验其存在 + wps-auto.sh 存在（切换脚本缺失时安装无意义）
 const rootLauncher = path.resolve(rootDir, 'launcher-mac.js');
 if (
   fsEx.existsSync(rootLauncher) &&
