@@ -45,7 +45,7 @@ var server = http.createServer(function (req, res) {
     fs.readFile(filePath, function (err, data) {
         if (err) {
             res.writeHead(404)
-            res.end('Not found: ' + urlPath)
+            res.end('Not found')
             return
         }
         var ext = path.extname(filePath).toLowerCase()

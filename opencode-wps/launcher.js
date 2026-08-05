@@ -453,8 +453,19 @@ function dockWindow(callback, data) {
         // 延迟删除脚本：等 PowerShell 启动完成后再删，避免进程仍在读文件时被删
         setTimeout(function() { try { fs.unlinkSync(scriptPath) } catch(e) {} }, 2000)
         if (err) {
-            console.error('[launcher] dockWindow exec failed: ' + (err.message || err));
-            // 超时/失败不应误报成功：告知调用方真实状态
+            // exec 超时 ≠ 启动失败：Edge 冷启动可能超过 5 秒，PowerShell 可能仍在拉起窗口。
+            // 探测 Edge 进程是否出现，出现则视为成功（只报 timeout 提示）
+            console.error('[launcher] dockWindow exec error: ' + (err.message || err));
+            try {
+                var execSync = require('child_process').execSync;
+                var edgeCheck = execSync('powershell -NoProfile -Command "(Get-Process msedge -ErrorAction SilentlyContinue | Measure-Object).Count"', { encoding: 'utf8', timeout: 3000 });
+                var count = parseInt(edgeCheck.trim(), 10);
+                if (count > 0) {
+                    console.log('[launcher] dockWindow exec timed out but Edge process detected (' + count + '), treating as success');
+                    callback({ success: true, pid: 0, timeout: true });
+                    return;
+                }
+            } catch(e) { /* 探测失败，按失败处理 */ }
             callback({ success: false, error: 'dock exec failed: ' + (err.message || err) });
             return;
         }

@@ -1345,9 +1345,10 @@ function handleFileUpload(e) {
         var base64 = evt.target.result.split(',')[1];
         // 文件内容以 base64 发送到服务端，可能在服务端日志/消息历史中留存
         // 含敏感信息的文件建议使用完毕后清理服务器端会话历史
-        // filename 清洗换行/控制字符：避免文件名伪造 </file-upload> 结束标记注入额外块
+        // filename/type 清洗换行/控制字符：避免伪造 </file-upload> 结束标记注入额外块
         var safeName = String(file.name).replace(/[\r\n\x00-\x1f]/g, ' ');
-        var msg = '<file-upload>\nfilename: ' + safeName + '\ntype: ' + file.type + '\ndata: ' + base64 + '\n</file-upload>';
+        var safeType = String(file.type || '').replace(/[\r\n\x00-\x1f]/g, ' ');
+        var msg = '<file-upload>\nfilename: ' + safeName + '\ntype: ' + safeType + '\ndata: ' + base64 + '\n</file-upload>';
         postMessage('/session/' + SESSION_ID + '/message', { parts: [{ type: 'text', text: msg }] });
     };
     reader.readAsDataURL(file);
