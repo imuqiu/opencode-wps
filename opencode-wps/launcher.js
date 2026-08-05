@@ -335,8 +335,15 @@ function findOpenCodeBin() {
     var config = loadOpenCodeConfig();
     if (config.opencodePath) {
         if (config.opencodePath === 'opencode' || fs.existsSync(config.opencodePath)) {
-            console.log('[launcher] Using config path: ' + config.opencodePath);
-            return config.opencodePath;
+            // 校验路径是可执行文件且文件名合理（防 config.json 被篡改指向任意 exe）
+            var p = config.opencodePath;
+            var isFile = p !== 'opencode' ? fs.statSync(p).isFile() : true;
+            var nameOk = /opencode/i.test(path.basename(p)) || p === 'opencode' || /\.(exe|cmd|ps1)$/i.test(p);
+            if (isFile && nameOk) {
+                console.log('[launcher] Using config path: ' + config.opencodePath);
+                return config.opencodePath;
+            }
+            console.log('[launcher] Config opencodePath invalid (not opencode-like file), falling through');
         }
     }
 

@@ -21,6 +21,19 @@ function handleError(stepName, error) {
     console.error('  ✗ ' + stepName + ': ' + errMsg);
 }
 
+/**
+ * XML 特殊字符转义（用于 schtasks XML 中嵌入路径）
+ * 路径含 & < > " ' 时 XML 非法，schtasks /Create 会失败
+ */
+function xmlEscape(s) {
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+}
+
 // ===== 1. WPS 插件定义 =====
 const addons = [
     {
@@ -555,7 +568,7 @@ if (fsEx.existsSync(launcherPath)) {
         '  <Actions Context="Author">',
         '    <Exec>',
         '      <Command>wscript.exe</Command>',
-        '      <Arguments>"' + launcherVbsPath + '"</Arguments>',
+        '      <Arguments>"' + xmlEscape(launcherVbsPath) + '"</Arguments>',
         '    </Exec>',
         '  </Actions>',
         '</Task>'
