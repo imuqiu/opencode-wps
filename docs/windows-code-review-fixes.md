@@ -81,3 +81,56 @@
 | `scripts/validate-versions.js` | ✅ 1.1.0 全一致 |
 | `scripts/validate-settings.js` | ✅ |
 | `scripts/validate-npc-team-prompt.js` | ✅ |
+
+## 评审迭代记录（Issue #76 要求 10 轮彻底 review-修复循环）
+
+> 自 PR #87 创建后，按 Issue #76 要求执行 10 轮 review-修复循环，每轮评审与修复均在 PR 行级评论/评论中留痕。以下为每轮新增修复项（超出原始 12 项清单的增量）。
+
+### 第 1 轮（提交 `22da0dd`）
+| 级别 | 问题 | 修复 |
+|------|------|------|
+| 🔴 | `serve.js` 路径穿越校验可被 URL 编码绕过（`%2e%2e`） | `decodeURIComponent` 后再 `path.relative` 校验 |
+| 🟡 | `renderCwdHistory` 手写链式转义与 `escapeAttr` 不一致 | 统一改用 `escapeAttr`（先翻倍反斜杠再转义） |
+| 🟡 | dockWindow 临时脚本唯一名并发竞态窗口 | 注释澄清 + 保留唯一名机制 |
+| ℹ️ | dockWindow 超时仍回调 `success: true` 误报成功 | `err` 时回调 `{ success: false }` |
+| ℹ️ | serve.js 注释与实现不符 | 注释澄清 + 实现补齐 decode |
+| ℹ️ | `parseBody` 的 `_tooLarge` 可被外部 JSON 伪造 | 改用模块级 `Symbol` 标记 |
+
+### 第 2 轮（提交 `4fe6487`）
+| 级别 | 问题 | 修复 |
+|------|------|------|
+| 🟡 | proxy OPTIONS 预检在 `http.request` 之后，白白向上游发请求 | OPTIONS 判断移到 `http.request` 之前 |
+| 🟡 | 响应头逐 key 复制转发 `connection`/`transfer-encoding` | 过滤 8 项 hop-by-hop 头 |
+| ℹ️ | `/docinfo` POST 未校验 body 类型 | 校验普通对象，否则 400 |
+| ℹ️ | `/stop`/`/dock`/`/docinfo` 无来源校验（CSRF） | 统一走 `getAllowedOrigin` 白名单 |
+| ℹ️ | `validateCwd` 的 `includes('..')` 误拒 `my..folder` | 改为拒绝 `..` 完整路径段形态 |
+
+### 第 3 轮（提交 `05089e8`）
+| 级别 | 问题 | 修复 |
+|------|------|------|
+| 🔴 | `toggleProviderDropdown` 的 `p.name` 未转义（服务端配置可污染 → DOM XSS） | `escapeHtml(p.name)` |
+| 🟡 | renameBox input value 用 `escapeHtml`，`&quot;` 二次解码闭合属性 | 改用 `escapeAttr` |
+| ℹ️ | 补 reasoning/text XSS 单测防回归 | `tests/security.test.js` 新增 `escapeAttr` 同步副本 + 6 用例 |
+| ℹ️ | VBS 的 `&` 转义疑虑 | 已核实字符串字面量内 `&` 为普通字符，注释澄清 |
+
+### 第 4 轮（提交 `08520b4`）
+| 级别 | 问题 | 修复 |
+|------|------|------|
+| 🔴 | CSRF `isLocal` 判断与既有 CORS 白名单冲突，`file://` 面板被误拦截 | 删除双逻辑，统一复用 `getAllowedOrigin` |
+| 🟡 | `/start` 的 port 未校验，`String(port)` 原样拼 `--port` | `startOpenCode` 入口 parseInt + 1-65535 校验 |
+| 🟡 | proxy 的 proxyRes/proxyReq error 未处理 | error 监听 + `headersSent` 分流防二次写头 |
+| ℹ️ | dockWindow 校验后未用 resolved 路径 | 通过校验后用 `validation.resolved` 拼 `?cwd=` |
+
+### 第 5 轮（提交 `57bac1f`）
+| 级别 | 问题 | 修复 |
+|------|------|------|
+| 🔴 | `handleFileUpload` 只清洗 filename 未清洗 `file.type` | `file.type` 同控制字符清洗 |
+| 🟡 | dockWindow exec 超时（Edge 冷启动>5s）误报失败 | 超时后探测 Edge 进程，出现则视为成功 |
+| ℹ️ | serve.js 404 回显路径含非法字符 | 固定文案 `Not found` |
+
+### 第 6 轮（提交中）
+| 级别 | 问题 | 修复 |
+|------|------|------|
+| 🔴 | `security.test.js`/`launcher.test.js` 未接入 CI | `.cnb.yml` Validate 阶段补两行 |
+| 🟡 | 文档未同步第 1-5 轮新增修复 | 本文件追加「评审迭代记录」章节 |
+| ℹ️ | Windows 侧 JS 无语法门禁 | `.cnb.yml` 补 `node --check` 4 个 Windows 文件 |
