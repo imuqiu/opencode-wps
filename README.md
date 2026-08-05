@@ -27,6 +27,7 @@
 - **WPS Office**：Windows 个人版 12.1.0+ / Mac 最新版 / Linux 12.1.x（[linux.wps.cn](https://linux.wps.cn)）
 - **Node.js**：18.0.0+（或 Bun 1.0+）
 - **OpenCode**：`npm install -g opencode-ai`
+- **Python 3**：仅 Linux 需要（`wps-auto.sh` 生成空白 OOXML 用，缺失时回退无参启动）
 
 ### 一键安装
 
@@ -102,7 +103,7 @@ Win: PowerShell COM 桥接  /  Mac·Linux: HTTP 轮询 (反向轮询插件)
 
 <img src="docs/assets/wechat-group.png" alt="OpenCode-WPS 微信交流群" width="300">
 
-> 二维码有效期至 8/5，加入后会更新。如二维码过期，请提交 [Issue](https://github.com/lnxsun/opencode-wps/issues) 联系维护者。
+> 二维码不定期更新。如二维码过期，请提交 [Issue](https://github.com/lnxsun/opencode-wps/issues) 联系维护者。
 
 ## License
 
