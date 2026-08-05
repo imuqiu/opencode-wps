@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **以 README 为中心的文档体系重构（Issue #100）** — README.md 从 647 行精简为 113 行门户式结构（核心特性/快速开始/使用方式/架构速览/文档地图/NPC 零积分），详细内容子文档化：新增 `docs/INSTALLATION.md`（三平台安装合并+路径速查）、`docs/USAGE.md`（使用指南）、`docs/ARCHITECTURE.md`（4 层组件+十层调用链+工作原理+设计决策）、`docs/FEATURES.md`（特色功能详解）、`docs/HISTORY.md`（演进史+致谢）；重写 `docs/README.md` 为四象限完整文档中心索引（使用/开发/平台专题/内部参考，全覆盖 22 份顶层文档+2 份 specs，平台路径表补 Linux）；修复 `docs/CODE_REVIEW_GUIDE.md`、`docs/DEVELOPMENT_GUIDE.md` 两处既有断链（`./CODE_OF_CONDUCT.md` → `../CODE_OF_CONDUCT.md`）；自建 NPC（6 角色）配置参考迁入 `docs/NPC_TEAM.md` 防信息丢失；全库 41 份 md 文档相对链接经脚本校验全部有效，原 README 54 个关键概念全覆盖无遗漏
+
 - **修复 Issue #78 三诊：打开面板路径主动调度宿主重绘，首次打开头部不再遮挡** — 用户实测合并 PR #83 后首次打开面板头部仍被遮挡、切标签后才恢复，且「打开两个文档标签窗口后开启 opencode-wps 标签则正常」。根因：PR #83 的宿主重绘（`forceTaskPaneRedraw`）只挂在 `WindowActivate` 事件上，而首次打开面板（`btnShowTaskPane`）**不经过该事件** → 首次打开时宿主重绘永不触发；打开第二个文档标签触发 `WindowActivate` → 重绘执行 → 头部恢复，与用户全部观察吻合。修复：① `forceTaskPaneRedraw` 新增 `force` 参数（仅日志区分触发源，防抖语义不变）；② `btnShowTaskPane` 首次创建/切换显示为可见后，延迟 400ms 主动调度宿主重绘（隐藏→显示任务窗格），让 WPS 宿主重新布局 WebView 拿到正确视口；③ 关闭路径不调度；重绘窗口内用户操作仍被尊重（`lastUserTaskPaneAction` 时间戳比对不变），切换路径仅当无重绘进行中才调度（避免快速点击额外闪烁），调度前重置时间戳避免旧操作被误判为窗口内操作；`tests/taskpane-dock.test.js` 新增 12 个用例（31 → 43），全量 8 套件 + 语法门禁全绿（评审修复：抽 `scheduleTaskPaneOpenRedraw` 公共函数去重；新增「重绘窗口内用户关闭不误弹」「窗格销毁放弃恢复」安全边界用例；等待期守卫保留用户时间戳；`WINDOW_ACTIVATE_REDRAW_DELAY` 抽命名常量；可观测性增强——守卫放弃/窗格不存在/窗格不可见三条静默返回路径补日志留痕，形成 放弃/跳过/完成 三段可观测链）
 
 - **NPC Team 提示词校验：第 8 轮评审修复（Issue #76）** — 修复回归测试工作区残留：`tests/validate-npc-team-prompt.test.js` 的 `runValidate` finally 还原后追加 `unlinkSync` 清理 `.tmp`/`.bak`（实测此前每次运行都残留 `docs/NPC_TEAM.md.tmp` 被改写内容，可能污染 CI 后续步骤）；验证：运行后无残留、连续运行幂等、8 用例仍全通过
