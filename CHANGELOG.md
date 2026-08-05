@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+
+- **NPC Team 提示词校验：第 8 轮评审修复（Issue #76）** — 修复回归测试工作区残留：`tests/validate-npc-team-prompt.test.js` 的 `runValidate` finally 还原后追加 `unlinkSync` 清理 `.tmp`/`.bak`（实测此前每次运行都残留 `docs/NPC_TEAM.md.tmp` 被改写内容，可能污染 CI 后续步骤）；验证：运行后无残留、连续运行幂等、8 用例仍全通过
+  — ① 9.1 留痕正则 `留下.*痕迹` 跨行贪婪收紧为 `留下.{0,60}痕迹|可核实.{0,60}痕迹`（第 1 轮同类问题在 9.1 的遗留，实测删铁律 7 留痕句曾被文档其他位置"痕迹"跨段满足）；② 铁律 7 特有表述「可见回复/记录」纳入 `RULE7_ANTI_HALLUCINATION` 强校验（文档工作流程/门禁表另有等价表述，但铁律 7 自身句式须受控）；③ **新增 `tests/validate-npc-team-prompt.test.js` 回归测试**（8 用例：正向 + 第 4/5/6/7 轮负向攻击固化），接入 CI `.cnb.yml` Validate 阶段；负向验证：删铁律 7 留痕句 → 拦截；删「可见回复/记录」→ 拦截；正向 0 错误 0 警告
+  — ① 铁律 7 反幻觉细节纳入强校验：新增 `RULE7_ANTI_HALLUCINATION = ['可核实', '谎报']`，实测删铁律 7 括号约束（可核实痕迹/不存在的模拟器谎报）此前 exit 0 放行，现拦截；② `RULE8_CORE` 由"子串存在校验"升级为**顺序校验**（7 子串按铁律 8 段落内声明顺序递增 `indexOf`，打乱/插入干扰文本即报"句式顺序错乱"），并在注释显式记录 includes 校验局限（防删不改义，语义改写靠人工评审兜底）；负向验证：删铁律 7 括号约束 → 拦截；铁律 8 插入干扰句打乱顺序 → 拦截；正向 0 错误 0 警告
+  — 扩展 `RULE8_CORE` 强校验常量，封堵铁律 8 残余盲区：① 新增「循环执行直至问题清零」强校验（此前 9.2 旧校验 `循环.{0,40}清零` 为 OR 宽松匹配，实测只删铁律 8 该句、靠 CR 卡片残留「直至问题清零」仍放行）；② 新增「每轮留痕规则不变」「不得因裁剪而跳轮假装」强校验（此前「简单可缩但留痕纪律不变」红线无任何校验保护，实测删掉该句仍 exit 0）。负向验证：删「循环执行直至问题清零」→ 拦截；删防钻空子句 → 2 错误拦截；正向 `node scripts/validate-npc-team-prompt.js` 仍 0 错误 0 警告
+  — 修复 `scripts/validate-npc-team-prompt.js` 9.2.1 三项新增校验的 **OR 正则逃生口**：原校验（`每轮.{0,60}PR.{0,60}回复|分别回复|假装进行|...`）为 OR 匹配，只要提示词任意位置残留「分别回复」「假装进行」等字样即放行；实测删光铁律 8 核心约束（每轮 review 必须在 PR 中回复 / 每次修复也必须在 PR 中回复 / 绝不允许跳过轮次假装进行）、仅靠 CR 角色卡片残留「分别回复留痕」时校验仍 exit 0。改为**锁定铁律 8 完整句式常量 `RULE8_CORE` 逐字强校验**（4 个完整子串缺一即报错），负向验证：删铁律 8 核心约束 → 拦截；删单句「每轮 review 必须在 PR 中回复」→ 拦截；正向 `node scripts/validate-npc-team-prompt.js` 仍 0 错误 0 警告
+
+- **NPC Team 提示词：评审-修复循环升级为 10 轮彻底循环（Issue #76 补充）** — 按用户反馈"代码评审和修复循环不完善"，将提示词铁律 8 从模糊的"循环直至清零"升级为**至少 10 轮彻底的 PR review 与修复循环**：① 每轮 review 必须在 PR 中回复（真实评审记录），每次修复也必须在 PR 中回复（修复说明 + 提交），**绝不允许跳过轮次假装进行**；② 10 轮后仍有问题则继续循环至清零，不得带已知问题进入下一阶段；简单改动走最小路径时 review 轮数可缩减但留痕纪律不变；③ 同步更新角色卡片（CR）、流水线 5/10 阶段、工作流程章节、真实执行与循环门禁表、冒烟测试验证点；`scripts/validate-npc-team-prompt.js` 新增 3 项校验（10 轮要求 / 每轮 review 与每次修复在 PR 分别回复留痕 / 不允许跳过轮次假装进行），负向测试验证均正确拦截（删"10 轮"、删"每轮分别回复"、删"假装进行" → 全部报错）；README 同步更新
 - **修复 PR #86 第 1 轮评审 13 条（Issue #84 Mac 彻底评审）** — 对照 Linux 终版（PR #82 经 26 轮评审清零）逐文件比对，Mac 专属代码补齐 13 处 Linux 已修复而 Mac 未对齐的问题：① `launcher-mac.js` `startOpenCode` 空 cwd 改用 `os.homedir()` 兜底（此前直接报 `'cwd is undefined'`，导致「打开Web」自愈路径必败）；② `parseBody` 增加 `aborted` 标志防请求体超限后 `end` 事件双回调；③ `excel-handler.js` `insertRows`/`deleteRows`/`hideRows`/`showRows`/`groupRows` 行参数 `parseInt` + 正整数校验（此前 `params.row || 1` 对 0/负数/字符串静默兜底）；④ `sortRange` keyColumn 纯列字母补行号 + order 大小写不敏感；⑤ `autoFilter` criteria 存在时 field 必填校验；⑥ `replaceInSheet` 缺 findText 前置校验；⑦ `getCellComments` 无批注空保护；⑧ `transpose` 改 `PasteSpecial(-4104,false,false,true)` 真转置语义（此前普通粘贴覆盖）；⑨ `textToColumns` 参数修正（ConsecutiveDelimiter=false, Tab=true）；⑩ `consolidate` sources 非空 + function parseInt 校验；⑪ `getContext` 读首行真实值识别表头（新增 `headerRow` 字段）+ selectedCell 包 try/catch；⑫ `setCellStyle`/`setBorder`/`addConditionalFormat` 颜色统一走 `toExcelColor`、对齐走 `resolveAlignment`；⑬ `cleanData` 改 trim/collapse/all 三模式单元格级正则处理（去 Range.Replace 平台差异 + 全局正则 lastIndex 交替漏判 bug）；另修复 `setZoom` parseInt 校验；`tests/mac-bridge.test.js` 新增 8 个测试（17 → 25）；全部 JS `node --check` + `bash -n` 通过，6 套件 133 用例 + MCP 274 单测全绿，PR CI success
 - **修复 PR #83 第 10 轮（最终轮）评审 2 info**（Issue #78）— ① `registerWindowActivateReflow` 新增 `windowActivateListenerRegistered` 已注册标志：`OnAddinLoad` 可能被多次调用（插件重载/异常恢复），防重复叠加 WindowActivate 监听（重复注册会叠加执行完整重绘流程、多定时器交错）；② `forceReflowFix` 的 300ms 最小间隔检查**提前到所有 DOM 访问之前**：被拦截时零 DOM 触碰（`getBoundingClientRect` 是同步布局读取成本高），避免无效代码路径；新增「OnAddinLoad 重复调用不重复注册」测试用例，测试 30 → 31 个全通过，全量 122 个用例全绿；**至此 10 轮 review 修复循环全部完成**
 - **修复 PR #83 第 9 轮评审 3 info**（Issue #78）— ① `visibilitychange` 隐藏时复位 `reflowFixed`：WPS 切走标签时 WebView 可能被销毁重建，回显时必须重新检查布局，不能沿用隐藏前的「已修复」状态；② `showChat` 内 `typeof` 检查简化（`if (window.__scheduleReflowFix)` 直接调用）：时序倒挂由 IIFE 挂载时的「chat 已先行显示则补触发」兜底，两层机制互补，注释说明；③ `docs/WPSJS_DEVELOPMENT.md` 第 15 条补 DEV 增量 2：记录第 5~8 轮关键防护（输入焦点跳过/滚动位置保存恢复/300ms 最小间隔/chat 隐藏跳过/时序倒挂补触发/visibilitychange 隐藏复位/定时器统一走 scheduleReflowFix），维护者可读；测试 30 个全通过（静态骨架测试新增 ⑱visibilitychange 隐藏复位 / ⑲showChat 直接调用 断言），全量 121 个用例全绿
@@ -38,9 +46,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **NPC Team 校验脚本强化**（PR #77 复评 3 条 info 整改）— ① `scripts/validate-npc-team-prompt.js` 改用真正的命名捕获组 `m.groups.prompt`（移除恒为 undefined 的 `m.group ?? m[1]`）；② 角色校验从"全文中任意命中"弱校验升级为**强校验**：在 `【角色卡片】` 段内逐张匹配「emoji 缩写：/全称：」卡片行，卡片被误删（即使流水线正文仍含「开发/评审/测试」等词）也会报错拦截；③ 提示词代码块增加锚点 `# NPC_TEAM_PROMPT_START`，正则只捕获带锚点的块并校验长度下限（≥500 字符），避免将来在提示词前新增其他 text 块时静默捕获错误内容；`docs/NPC_TEAM.md` 同步在提示词块首行加锚点；负向测试验证：删除 QA 卡片 / 删除锚点均能正确拦截
 
 ### Added
+
 - **NPC Team 提示词 V2 优化 + 有效性测试**（Issue #76）— `docs/NPC_TEAM.md` 提示词从 ~2092 token 压缩到 ~1019 token（**-51%**，6 角色/10 阶段/零积分/安全红线全保留）：流水线改单行紧凑格式、合并身份声明与角色清单、切换卡示例压缩为单卡、去除与工作流程章节重复的流水线描述；新增 `scripts/validate-npc-team-prompt.js` 静态校验脚本（校验 6 角色齐全/10 阶段编号完整/零积分红线/安全红线/切换卡）并接入 `.cnb.yml` CI 的 Validate 阶段；文档新增「有效性测试（可复现）」章节（静态校验 + 2 分钟冒烟测试方法 + 实测结论）
 
 ### Fixed
+
 - **修复 offset 可选后的去重键 Bug**（PR #71 二轮评审 warning）— 累加器去重键 `offset|original` 在 offset 缺失时退化 `undefined|原文` 会误判重复丢弃：改为**仅对携带绝对 offset 的条目去重**，缺失时保守保留全部（不同位置同原文不误并）；SKILL.md 两处排序改为 `offset ?? Infinity` 次级 `paragraphIndex`，消除 NaN 比较排序不稳定；移除 accumulate schema 中无效的 `offset_in_paragraph` 字段声明、清理 agents/wps-word.md 与 proofread.ts 头部对已删除 `replace_range` 的残留引用
 - **对齐合并去重口径并补可观测性**（PR #71 三轮评审 3 warning + 3 info）— ① 去重键同键（同 offset 同 original）时 **source=ai 优先覆盖 mcp**（与 SKILL 合并口径一致，不再错留 2 条）；② 累加器返回文本补充 **offset 缺失计数**（「其中 N 条未携带绝对 offset，未参与去重」），报告侧可区分「位置未知」是漏传还是计算失败；③ `dedupedCount` 改为只统计**本批新增导致的去重**（不再把历史累计重复计入）；④ SKILL.md 公式移除已废弃的 `offset_in_paragraph` 字面量引用（改为「段内字符位置」）、「必须包含 offset」改为「强烈建议携带 paragraphIndex + offset」（与代码层可选语义对齐）；⑤ `normalizeIssueLocation` 删除被有意忽略的 `offset_in_paragraph` 类型声明（类型即文档）
 - **AI 覆盖 MCP 时保留 Layer 1 type + 统一 SKILL 两处合并口径**（PR #71 四轮评审 2 warning + 3 info）— ① 累加器 AI 条目覆盖 MCP 条目时，若 AI type 兜底为「未分类」而 MCP（Layer 1 正则命中）有具体 type，**保留 MCP 的 type**（与 SKILL 2d 保护逻辑对齐，避免报告五维评分失真）；② SKILL.md **两处合并去重逻辑完全统一**（此前无条件 AI 优先 vs `issue.score` 条件 AI 优先互相矛盾，AI 参照执行会得到不同结果），现统一为「同键 AI 无条件优先 + 保留 Layer 1 type」；③ 去重键 `offset|original` 改用 `JSON.stringify([offset, original])`，消除原文含 `|` 时的分隔符歧义；④ `formatIssueLocation` 对非法 `paragraphIndex`（0/负数，约定从 1 起）不再展示「段落 0」，降级为偏移展示；⑤ schema 中 `offset`/`paragraph_index` 描述注明兼容字符串数字（AI 层可能输出 "3"）；⑥ **跨批 type 提升**：AI 未分类条目先入、后续批次 MCP 带具体 type 后到（同位置同原文）时，用 MCP 的具体 type 提升 AI 条目的「未分类」（AI 优先语义不变，避免报告五维评分漏计）；新增 6 个单测覆盖以上行为
@@ -52,6 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **工具数量文档改为以代码为准**（Issue #50 P2-6）— README/AGENTS.md/docs/MCP.md 中的硬编码数字（238/240/490）改为约数并标注"以代码为准"，新增 `scripts/validate-tool-counts.js` 校验脚本防止过时数字残留
 
 ### Added
+
 - Agent 选择功能（wps-expert/wps-word/wps-excel/wps-ppt）
 - 4 层架构文档（JS插件 → Agents → Skills → MCP）
 - 测试套件（security.test.js, utils.test.js, launcher.test.js）
@@ -73,6 +84,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Mac 版「打开Web」按钮**（Issue #74）— `opencode-wps-assistant/ribbon.xml` 新增「对话」分组及「打开Web」按钮，`main.js` 新增 `OnOpenWebClick` 回调，点击后经 launcher `/dock` 自动在系统默认浏览器（优先 Chrome/Edge）打开 `http://127.0.0.1:14096`，消除 Mac 端「WPS 内操作、浏览器里手动输地址对话」的割裂感
 
 ### Changed
+
 - 安装脚本输出更详细的状态信息
 - `getActiveDocument` 输出格式：`页数` → `总段数`，对齐 COM 实际返回字段（`paragraphCount`）
 - `proofreadBasic` 增加异常空格检测（连续空格 / 全角空格）
@@ -85,6 +97,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 7 对重复工具逐一比对：#1-#5 修复 deprecated 消息提示额外功能，#3/#6 移除 deprecated（功能不同）
 
 ### Security
+
 - XSS 防护：safeInput 函数
 - 配置持久化：CONFIG 对象
 - Launcher 路径安全：配置文件读取、cwd 验证
@@ -100,6 +113,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **wmic 进程验证**：stopOpenCodeByPort 在 kill 前确认进程名
 
 ### Fixed
+
 - GetUrlPath 简化为 URL API
 - **Mac 侧 `setCellFormat` 支持视觉格式**：补齐 `format` 对象内 bold/italic/fontSize/fontName/fontColor/bgColor/underline/strikethrough/对齐/wrapText/numberFormat 处理，与 Windows `wps-com.ps1` 行为对齐（此前仅处理 4 个顶层参数，其余被静默丢弃）
   - 颜色支持 `format` 内优先、顶层 `fontColor`/`bgColor` 兼容旧调用
@@ -129,6 +143,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2026-04-21
 
 ### Added
+
 - WPS JS 加载项（opencode-wps）
 - MCP 服务器（wps-office-mcp）
 - 4 个 Skills（wps-word, wps-excel, wps-ppt, wps-office）
@@ -139,6 +154,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SSE 流式对话
 
 ### Features
+
 - 任务窗格 Chat UI
 - Ribbon 按钮
 - WPS COM 桥接（PowerShell）

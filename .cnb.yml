@@ -18,6 +18,7 @@ main:
             node scripts/validate-versions.js
             node scripts/validate-tool-counts.js
             node scripts/validate-npc-team-prompt.js
+            node tests/validate-npc-team-prompt.test.js
             node tests/taskpane-dock.test.js
             node tests/mac-bridge.test.js
             node tests/setcellformat-mac.test.js
