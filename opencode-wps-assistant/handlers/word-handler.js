@@ -189,7 +189,13 @@ registerHandler('setFont', function (params) {
     var range = params.range === 'all' ? doc.Content : getSelectionRange();
     if (!range) return fail('请先在文档中选中文本或设置光标');
     if (params.fontName) range.Font.Name = params.fontName;
-    if (params.fontSize) range.Font.Size = params.fontSize;
+    // fontSize 显式数值校验：字符串/'16pt' 直赋 COM 抛类型错误，0/负数无意义（与 insertTable rows/cols 校验语义对齐）
+    if (params.fontSize !== undefined) {
+      var fs = parseInt(params.fontSize, 10);
+      if (isNaN(fs) || fs < 1)
+        return fail('无效的字体大小: ' + params.fontSize + '（必须为正整数）');
+      range.Font.Size = fs;
+    }
     if (params.bold !== undefined) range.Font.Bold = params.bold;
     if (params.italic !== undefined) range.Font.Italic = params.italic;
     if (params.color !== undefined) {
@@ -227,7 +233,10 @@ registerHandler('insertTable', function (params) {
     if (isNaN(rows) || rows < 1) return fail('无效的行数: ' + params.rows + '（必须为正整数）');
     var cols = parseInt(params.cols, 10);
     if (isNaN(cols) || cols < 1) return fail('无效的列数: ' + params.cols + '（必须为正整数）');
-    var table = doc.Tables.Add(Application.Selection.Range, rows, cols);
+    // 无选中/无活动窗口时 Selection.Range 抛错——前置保护给明确提示（与第 1 轮 insertHyperlink 修复模式一致）
+    var selRange = getSelectionRange();
+    if (!selRange) return fail('请先在文档中选中文本或设置光标');
+    var table = doc.Tables.Add(selRange, rows, cols);
 
     if (params.data && Array.isArray(params.data)) {
       for (var r = 0; r < Math.min(params.data.length, rows); r++) {

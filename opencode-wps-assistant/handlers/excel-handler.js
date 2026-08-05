@@ -532,7 +532,11 @@ registerHandler('createChart', function (params) {
 
 registerHandler('updateChart', function (params) {
   try {
-    var sheet = Application.ActiveSheet;
+    var wb = Application.ActiveWorkbook;
+    if (!wb) return fail('没有打开的工作簿');
+    // chartName 前置校验：ChartObjects(undefined) 抛费解错误（与 createChart 语义对齐）
+    if (!params.chartName) return invalidParam('缺少 chartName');
+    var sheet = getExcelSheet(wb, params.sheet);
     var chartObj = sheet.ChartObjects(params.chartName);
     if (params.dataRange) chartObj.Chart.SetSourceData(sheet.Range(params.dataRange));
     if (params.title) {

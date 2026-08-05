@@ -951,7 +951,12 @@ registerHandler('applyTransitionToAll', function (params) {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
     var types = { fade: 1, push: 2, wipe: 3, split: 4, uncover: 5, cover: 6, zoom: 31 };
-    var transitionType = types[params.type] || 1;
+    // 未知 type 显式 fail（与 setSlideTransition 语义对齐），避免静默兜底 fade 误导 AI
+    var transitionType = types[params.type];
+    if (transitionType === undefined)
+      return fail(
+        '无效的切换类型: ' + params.type + '（支持 fade/push/wipe/split/uncover/cover/zoom）'
+      );
     for (var i = 1; i <= pres.Slides.Count; i++) {
       pres.Slides.Item(i).SlideShowTransition.EntryEffect = transitionType;
     }
@@ -1149,7 +1154,12 @@ registerHandler('getPptTableCell', function (params) {
       params.tableName !== undefined ? params.tableName : params.tableIndex || 1
     );
     if (!table) return fail('未找到表格形状（需为表格且名称/序号匹配）');
-    var cell = table.Table.Cell(params.row, params.col);
+    // 行列显式校验：0/负数/字符串传 Table.Cell 抛费解错误（与 excel 侧 resolveRowCol 语义对齐）
+    var rowNum = parseInt(params.row, 10);
+    if (isNaN(rowNum) || rowNum < 1) return fail('无效的行号: ' + params.row + '（必须为正整数）');
+    var colNum = parseInt(params.col, 10);
+    if (isNaN(colNum) || colNum < 1) return fail('无效的列号: ' + params.col + '（必须为正整数）');
+    var cell = table.Table.Cell(rowNum, colNum);
     return ok({ text: cell.Shape.TextFrame.TextRange.Text });
   } catch (e) {
     return fail('获取表格单元格失败: ' + e.message);
@@ -1171,7 +1181,12 @@ registerHandler('setPptTableCell', function (params) {
       params.tableName !== undefined ? params.tableName : params.tableIndex || 1
     );
     if (!table) return fail('未找到表格形状（需为表格且名称/序号匹配）');
-    table.Table.Cell(params.row, params.col).Shape.TextFrame.TextRange.Text = params.text || '';
+    // 行列显式校验（与 getPptTableCell 语义对齐）
+    var rowNum = parseInt(params.row, 10);
+    if (isNaN(rowNum) || rowNum < 1) return fail('无效的行号: ' + params.row + '（必须为正整数）');
+    var colNum = parseInt(params.col, 10);
+    if (isNaN(colNum) || colNum < 1) return fail('无效的列号: ' + params.col + '（必须为正整数）');
+    table.Table.Cell(rowNum, colNum).Shape.TextFrame.TextRange.Text = params.text || '';
     return ok({});
   } catch (e) {
     return fail('设置表格单元格失败: ' + e.message);
@@ -1335,10 +1350,18 @@ registerHandler('addArrow', function (params) {
     if (!pres) return fail('没有打开的演示文稿');
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
-    var startX = params.startX || 100;
-    var startY = params.startY || 100;
-    var endX = params.endX !== undefined ? params.endX : 200;
-    var endY = params.endY !== undefined ? params.endY : 100;
+    // 坐标/宽高显式数值校验：字符串坐标直赋 AddShape 抛类型错误（与 setSlideSize 语义对齐）
+    function toNum(v, def) {
+      if (v === undefined || v === null) return def;
+      var n = parseFloat(v);
+      return isNaN(n) ? null : n;
+    }
+    var startX = toNum(params.startX, 100);
+    var startY = toNum(params.startY, 100);
+    var endX = toNum(params.endX, 200);
+    var endY = toNum(params.endY, 100);
+    if (startX === null || startY === null || endX === null || endY === null)
+      return fail('无效的坐标参数（startX/startY/endX/endY 必须为数值）');
     var width = Math.abs(endX - startX) || 100;
     var height = Math.abs(endY - startY) || 20;
     var shape = slide.Shapes.AddShape(
@@ -1442,6 +1465,8 @@ registerHandler('replacePptText', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
+    // findText 前置校验：空字符串时 indexOf('') 恒为 0 会把所有形状替换，undefined 的 .replace 抛 TypeError（与 replaceInSheet/findReplace 语义对齐）
+    if (!params.findText) return invalidParam('缺少 findText');
     var count = 0;
     for (var i = 1; i <= pres.Slides.Count; i++) {
       var slide = pres.Slides.Item(i);
