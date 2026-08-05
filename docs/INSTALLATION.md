@@ -84,7 +84,7 @@ node install-addons-mac.js
 
 | 步骤 | 操作 | 说明 |
 |------|------|------|
-| 1 | 安装 WPS 插件 | 复制 `opencode-wps-assistant/` 到 `~/Library/Containers/com.kingsoft.wpsformac/Data/Documents/jsaddons/` |
+| 1 | 安装 WPS 插件 | 复制 `opencode-wps-assistant/` 到 `~/Library/Containers/com.kingsoft.wps/Data/Documents/jsaddons/` |
 | 2 | 安装并编译 MCP 服务器 | 在 wps-office-mcp 目录执行 `npm install` + `npm run build` |
 | 3 | 配置 OpenCode MCP | 修改 `~/.config/opencode/opencode.json`，添加 wps-office MCP 服务器 |
 | 4 | 安装 Skills | 复制 5 个技能到 `~/.opencode/skills/` |
@@ -138,7 +138,7 @@ node launcher-linux.js
 
 | 资源 | Windows | macOS | Linux |
 |------|---------|-------|-------|
-| WPS 插件目录 | `%APPDATA%\kingsoft\wps\jsaddons\opencode-wps_` | `~/Library/Containers/com.kingsoft.wpsformac/Data/Documents/jsaddons/` | `~/.local/share/Kingsoft/wps/jsaddons/` |
+| WPS 插件目录 | `%APPDATA%\kingsoft\wps\jsaddons\opencode-wps_` | `~/Library/Containers/com.kingsoft.wps/Data/Documents/jsaddons/` | `~/.local/share/Kingsoft/wps/jsaddons/` |
 | 安装脚本 | `install-addons.js` | `install-addons-mac.js` | `install-addons-linux.js` |
 | Launcher | `opencode-wps/launcher.js`（计划任务自启） | `launcher-mac.js`（LaunchAgent 自启） | `launcher-linux.js`（XDG autostart 自启） |
 | MCP 通信 | PowerShell COM（wps-com.ps1） | HTTP 轮询（mac-poll-server.ts:58891） | HTTP 轮询（linux-poll-server.ts:58891） |
@@ -150,7 +150,7 @@ node launcher-linux.js
 | 平台 | 插件目录 | 注册文件 | 自启清理 | MCP 配置 |
 |------|----------|----------|----------|----------|
 | **Windows** | 删除 `%APPDATA%\kingsoft\wps\jsaddons\opencode-wps_` | 从 `publish.xml`/`jsplugins.xml` 移除 `opencode-wps` 条目（安装时合并追加，需单独移除） | 计划任务：`schtasks /Delete /TN "OpenCodeLauncher" /F`（另有旧任务 `OpenCodeServer` 一并清理） | 从 `~/.config/opencode/opencode.json` 移除 wps-office MCP 条目 |
-| **macOS** | 删除 `~/Library/Containers/com.kingsoft.wpsformac/Data/Documents/jsaddons/` 下对应目录 | 无需处理（macOS 安装不写注册文件，WPS 自动扫描 jsaddons 目录） | `launchctl unload ~/Library/LaunchAgents/com.opencode.launcher.plist` 并删除 plist | 同上 |
+| **macOS** | 删除 `~/Library/Containers/com.kingsoft.wps/Data/Documents/jsaddons/` 下对应目录 | 无需处理（macOS 安装不写注册文件，WPS 自动扫描 jsaddons 目录） | `launchctl unload ~/Library/LaunchAgents/com.opencode.launcher.plist` 并删除 plist | 同上 |
 | **Linux** | 删除 `~/.local/share/Kingsoft/wps/jsaddons/opencode-wps-linux_` | 从 `publish.xml`/`jsplugins.xml` 移除 `opencode-wps-linux` 条目（安装时整文件写入） | 删除 `~/.config/autostart/opencode-wps-launcher.desktop` | 同上 |
 
 卸载后重启 WPS，功能区不再显示 **OpenCode AI** 标签页即完成。

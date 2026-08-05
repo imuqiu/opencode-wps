@@ -471,7 +471,7 @@ if (result === -1) {
 
 ### 插件不显示
 ```
-~/Library/Containers/com.kingsoft.wpsformac/Data/Documents/jsaddons/
+~/Library/Containers/com.kingsoft.wps/Data/Documents/jsaddons/
 ├── opencode-wps-assistant/
 │   ├── manifest.xml            # 必须有
 │   ├── index.html

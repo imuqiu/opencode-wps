@@ -42,7 +42,7 @@ node install-addons-mac.js
 ```
 
 **功能：**
-1. 复制插件到 `~/Library/Containers/com.kingsoft.wpsformac/Data/Documents/jsaddons/`
+1. 复制插件到 `~/Library/Containers/com.kingsoft.wps/Data/Documents/jsaddons/`
 2. 安装 Skills（5 个）到 `~/.opencode/skills/`
 3. 安装 Agents（4 个）到 `~/.config/opencode/agents/`
 4. 安装 Governance 插件到 `~/.config/opencode/plugins/`
