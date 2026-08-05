@@ -542,9 +542,10 @@ function renderCwdHistory() {
     for (var i = 0; i < CWD_HISTORY.length; i++) {
         var c = CWD_HISTORY[i]
         var sel = (c === PROJECT_DIR)
-        // 转义顺序：& 最先（避免二次转义后续实体），再 \\ ' "；
-        // onclick 属性用完整实体转义（escapeAttr），显示文本用 escapeHtml
-        html += '<div class="cwd-history-item' + (sel ? ' active' : '') + '" onclick="selectCwdHistory(\'' + c.replace(/&/g, '&amp;').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;') + '\')">' + escapeHtml(c) + '</div>'
+        // 先翻倍反斜杠（JS 字符串字面量），再 escapeAttr（& < > " '）；
+        // 顺序不能反：若先 escapeAttr 会把 ' 转成 \'，后翻倍反斜杠会把 \' 误翻成 \\' 破坏转义
+        var escC = c.replace(/\\/g, '\\\\')
+        html += '<div class="cwd-history-item' + (sel ? ' active' : '') + '" onclick="selectCwdHistory(\'' + escapeAttr(escC) + '\')">' + escapeHtml(c) + '</div>'
     }
     container.innerHTML = html
 }

@@ -37,6 +37,8 @@ cleanupOrphanedMcp();
  * @param {object} req - HTTP Request 对象
  * @param {function} callback - 回调函数，接收解析后的对象
  */
+// 模块级 Symbol 标记：外部 JSON 无法伪造（普通 JSON 字符串键无法匹配 Symbol）
+var BODY_TOO_LARGE = Symbol('bodyTooLarge');
 function parseBody(req, callback) {
     var body = '';
     var MAX_BODY = 1024 * 1024; // 1MB
@@ -48,7 +50,7 @@ function parseBody(req, callback) {
     req.on('end', function() {
         if (tooLarge) {
             console.log('[launcher] Body too large ( > 1MB), rejected');
-            callback({ _tooLarge: true });
+            callback(BODY_TOO_LARGE);
             return;
         }
         try { callback(JSON.parse(body)); }
@@ -439,9 +441,13 @@ function dockWindow(callback, data) {
     ].join('\n');
     fs.writeFileSync(scriptPath, script, 'utf8');
     exec('powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + scriptPath + '"', { timeout: 5000 }, function(err, stdout, stderr) {
+        // 延迟删除脚本：等 PowerShell 启动完成后再删，避免进程仍在读文件时被删
         setTimeout(function() { try { fs.unlinkSync(scriptPath) } catch(e) {} }, 2000)
         if (err) {
             console.error('[launcher] dockWindow exec failed: ' + (err.message || err));
+            // 超时/失败不应误报成功：告知调用方真实状态
+            callback({ success: false, error: 'dock exec failed: ' + (err.message || err) });
+            return;
         }
         callback({ success: true, pid: 0 })
     })
@@ -477,7 +483,7 @@ var server = http.createServer(function(req, res) {
         }
         stateLock = true;
         parseBody(req, function(body) {
-            if (body && body._tooLarge) {
+            if (body === BODY_TOO_LARGE) {
                 stateLock = false;
                 sendJSON(req, res, 413, { error: 'Request body too large' });
                 return;
@@ -517,7 +523,7 @@ var server = http.createServer(function(req, res) {
 
     if (req.method === 'POST' && url === '/dock') {
         parseBody(req, function(body) {
-            if (body && body._tooLarge) {
+            if (body === BODY_TOO_LARGE) {
                 sendJSON(req, res, 413, { error: 'Request body too large' });
                 return;
             }
@@ -530,7 +536,7 @@ var server = http.createServer(function(req, res) {
 
     if (req.method === 'POST' && url === '/docinfo') {
         parseBody(req, function(body) {
-            if (body && body._tooLarge) {
+            if (body === BODY_TOO_LARGE) {
                 sendJSON(req, res, 413, { error: 'Request body too large' });
                 return;
             }

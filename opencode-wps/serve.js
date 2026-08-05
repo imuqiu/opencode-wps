@@ -22,6 +22,16 @@ var server = http.createServer(function (req, res) {
     var urlPath = req.url.split('?')[0]
     if (urlPath === '/') urlPath = '/index.html'
 
+    // 先 decodeURIComponent：req.url 是原始未解码路径，%2e%2e 等编码
+    // 必须先解码成 '..' 才能被 path.join/path.relative 正确识别并拦截
+    try {
+        urlPath = decodeURIComponent(urlPath)
+    } catch (e) {
+        res.writeHead(400)
+        res.end('Bad Request')
+        return
+    }
+
     // 归一化为相对路径后用 path.relative 严格校验：
     // 旧实现用 indexOf(ROOT) 前缀匹配，理论上存在 "C:\root2\x" 绕过 "C:\root" 前缀的边界问题
     var filePath = path.join(ROOT, urlPath)
