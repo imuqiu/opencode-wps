@@ -13,6 +13,15 @@ jest.mock('../../client/mac-poll-server', () => ({
   },
 }));
 
+// Mock linux-poll-server（Linux 复用 MacPollServer 类，需一并 mock）
+jest.mock('../../client/linux-poll-server', () => ({
+  linuxPollServer: {
+    isRunning: false,
+    start: jest.fn().mockResolvedValue(undefined),
+    executeCommand: jest.fn(),
+  },
+}));
+
 jest.mock('os', () => ({
   platform: jest.fn(() => 'win32'),
 }));
@@ -73,6 +82,8 @@ import * as child_process from 'child_process';
 // 导入被 mock 的模块以操控它
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const mockMacModule = require('../../client/mac-poll-server');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const mockLinuxModule = require('../../client/linux-poll-server');
 
 // 获取 mock 函数 - 使用类型断言
 const mockedOs = os as jest.Mocked<typeof os>;
@@ -124,6 +135,8 @@ describe('WpsClient', () => {
     mockedOs.platform.mockReturnValue('win32');
     mockMacModule.macPollServer.isRunning = false;
     mockMacModule.macPollServer.executeCommand.mockReset();
+    mockLinuxModule.linuxPollServer.isRunning = false;
+    mockLinuxModule.linuxPollServer.executeCommand.mockReset();
   });
 
   describe('构造函数', () => {
@@ -311,7 +324,7 @@ describe('WpsClient', () => {
         sheet: 'Sheet1',
         row: 1,
         col: 1,
-      });
+      }, 30000);
       expect(result).toBe(42);
     });
 
@@ -319,8 +332,74 @@ describe('WpsClient', () => {
       mockMacModule.macPollServer.executeCommand.mockResolvedValue({ success: true });
       const client = new WpsClient();
       const result = await client.createDocument();
-      expect(mockMacModule.macPollServer.executeCommand).toHaveBeenCalledWith('createDocument', {});
+      expect(mockMacModule.macPollServer.executeCommand).toHaveBeenCalledWith('createDocument', {}, 30000);
       expect(result).toBe(true);
+    });
+  });
+
+  describe('Linux模式', () => {
+    beforeEach(() => {
+      mockedOs.platform.mockReturnValue('linux');
+      mockLinuxModule.linuxPollServer.isRunning = true;
+    });
+
+    it('Linux模式应该使用轮询模式（复用Mac轮询协议）', async () => {
+      mockLinuxModule.linuxPollServer.executeCommand.mockResolvedValue({
+        success: true,
+        data: { value: 42 },
+      });
+      const client = new WpsClient();
+      const result = await client.getCellValue('Sheet1', 1, 1);
+      expect(mockLinuxModule.linuxPollServer.executeCommand).toHaveBeenCalledWith('getCellValue', {
+        sheet: 'Sheet1',
+        row: 1,
+        col: 1,
+      }, 30000);
+      expect(result).toBe(42);
+    });
+
+    it('Linux模式createDocument应该调用轮询', async () => {
+      mockLinuxModule.linuxPollServer.executeCommand.mockResolvedValue({ success: true });
+      const client = new WpsClient();
+      const result = await client.createDocument();
+      expect(mockLinuxModule.linuxPollServer.executeCommand).toHaveBeenCalledWith(
+        'createDocument',
+        {},
+        30000
+      );
+      expect(result).toBe(true);
+    });
+
+    it('Linux模式下超时重试不触发 kill（isWin=false 走轮询快速失败）', async () => {
+      // 首次调用抛超时，第二次成功 -> 验证重试路径且不 spawn PowerShell
+      mockLinuxModule.linuxPollServer.executeCommand
+        .mockRejectedValueOnce(new Error('COM 调用超时（30000ms）'))
+        .mockResolvedValueOnce({ success: true, data: { value: 7 } });
+      const client = new WpsClient();
+      const result = await client.getCellValue('Sheet1', 1, 1);
+      expect(mockLinuxModule.linuxPollServer.executeCommand).toHaveBeenCalledTimes(2);
+      expect(mockedSpawn).not.toHaveBeenCalled();
+      expect(result).toBe(7);
+    });
+
+    it('Linux模式下 executeCommand 永挂起时有安全兜底超时（不无限等待）', async () => {
+      // 模拟 executeCommand 永不 resolve（WPS 加载项未连接/前置环节挂起）——
+      // 外层 Promise.race 的 180s 安全兜底必须在合理时间内 reject，避免整个调用链无限等待
+      jest.useFakeTimers();
+      mockLinuxModule.linuxPollServer.executeCommand.mockReturnValue(new Promise(() => {}));
+      const client = new WpsClient();
+      const pending = client.getCellValue('Sheet1', 1, 1);
+      // 先挂断言（避免推进 timers 时 rejection 未处理导致 unhandled rejection）
+      const assertion = expect(pending).rejects.toThrow(/轮询调用安全兜底超时/);
+      // 兜底超时 180s × 3 次重试 + 重试间隔 500ms/1000ms，全部推进后应抛错（而非无限挂起）
+      await jest.advanceTimersByTimeAsync(180000 + 500);
+      await jest.advanceTimersByTimeAsync(180000 + 1000);
+      await jest.advanceTimersByTimeAsync(180000);
+      await assertion;
+      // 重试 3 次（不 spawn PowerShell，走轮询）
+      expect(mockLinuxModule.linuxPollServer.executeCommand).toHaveBeenCalledTimes(3);
+      expect(mockedSpawn).not.toHaveBeenCalled();
+      jest.useRealTimers();
     });
   });
 });

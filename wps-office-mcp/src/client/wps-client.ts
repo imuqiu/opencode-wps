@@ -26,17 +26,24 @@ import {
 import { log, logRequest, logResponse } from '../utils/logger';
 import { errorUtils } from '../utils/error';
 import { macPollServer } from './mac-poll-server';
+import { linuxPollServer } from './linux-poll-server';
+
+// 平台通道类型：win32(PowerShell COM) / darwin(Mac 轮询桥) / linux(Linux 轮询桥)
+type WpsChannel = 'win32' | 'darwin' | 'linux';
 
 // 平台判断
-function isMacPlatform() {
-  return os.platform() === 'darwin';
+function getWpsChannel(): WpsChannel {
+  const p = os.platform();
+  if (p === 'darwin') return 'darwin';
+  if (p === 'linux') return 'linux';
+  return 'win32';
 }
 
 // PowerShell脚本路径 (Windows)
 const PS_SCRIPT_PATH = path.join(__dirname, '../../scripts/wps-com.ps1');
 
-// Mac轮询服务器端口
-const MAC_POLL_PORT = 58891;
+// 轮询服务器端口（Mac/Linux 共用同一反向轮询协议）
+const POLL_PORT = 58891;
 
 /**
  * 执行Mac轮询调用
@@ -49,11 +56,14 @@ async function execMacPoll(action: string, params: Record<string, unknown> = {})
     // 确保轮询服务器已启动
     if (!macPollServer.isRunning) {
       log.info('[Mac] Starting poll server...');
-      await macPollServer.start(MAC_POLL_PORT);
+      await macPollServer.start(POLL_PORT);
     }
 
     // 通过轮询服务器执行命令
-    const result = await macPollServer.executeCommand(action, params);
+    // 传 getTimeout(action) 与 Windows 分支的超时契约一致（findReplace=10s/getActiveDocument=10s 等），
+    // 避免同一命令 Windows 10s vs Mac/Linux 30s 的跨平台漂移（第 21 轮终审 warning）。
+    // 注意：该超时从命令入队后计时，不含切换耗时（第 11 轮修复语义）。
+    const result = await macPollServer.executeCommand(action, params, getTimeout(action));
     return result;
   } catch (error) {
     log.error('Mac Poll call failed', { action, error });
@@ -62,41 +72,74 @@ async function execMacPoll(action: string, params: Record<string, unknown> = {})
 }
 
 /**
+ * 执行Linux轮询调用（与Mac同架构，复用MacPollServer，仅注入Linux切换脚本）
+ * 通过轮询服务器发送命令，等待WPS加载项取走并返回结果
+ */
+async function execLinuxPoll(
+  action: string,
+  params: Record<string, unknown> = {}
+): Promise<unknown> {
+  log.debug('Executing Linux Poll', { action, params });
+
+  try {
+    // 确保轮询服务器已启动
+    if (!linuxPollServer.isRunning) {
+      log.info('[Linux] Starting poll server...');
+      await linuxPollServer.start(POLL_PORT);
+    }
+
+    // 通过轮询服务器执行命令（超时与 Windows 契约一致，见 execMacPoll 注释）
+    const result = await linuxPollServer.executeCommand(action, params, getTimeout(action));
+    return result;
+  } catch (error) {
+    log.error('Linux Poll call failed', { action, error });
+    throw error;
+  }
+}
+
+/**
  * 执行PowerShell命令 (Windows)
  * 返回进程引用以便调用方在超时时终止
  */
-function spawnPowerShell(action: string, params: Record<string, unknown> = {}): {
+function spawnPowerShell(
+  action: string,
+  params: Record<string, unknown> = {}
+): {
   process: import('child_process').ChildProcess;
   result: Promise<unknown>;
 } {
   const paramsJson = JSON.stringify(params);
   const args = [
-    '-ExecutionPolicy', 'Bypass',
-    '-File', PS_SCRIPT_PATH,
-    '-Action', action,
-    '-Params', paramsJson
+    '-ExecutionPolicy',
+    'Bypass',
+    '-File',
+    PS_SCRIPT_PATH,
+    '-Action',
+    action,
+    '-Params',
+    paramsJson,
   ];
 
   log.debug('Executing PowerShell', { action, params });
 
   const ps = spawn('powershell', args, {
     windowsHide: true,
-    stdio: ['pipe', 'pipe', 'pipe']
+    stdio: ['pipe', 'pipe', 'pipe'],
   });
 
   let stdout = '';
   let stderr = '';
 
-  ps.stdout.on('data', (data) => {
+  ps.stdout.on('data', data => {
     stdout += data.toString();
   });
 
-  ps.stderr.on('data', (data) => {
+  ps.stderr.on('data', data => {
     stderr += data.toString();
   });
 
   const result = new Promise<unknown>((resolve, reject) => {
-    ps.on('close', (code) => {
+    ps.on('close', code => {
       if (code !== 0) {
         if (stderr) {
           log.error('PowerShell error', { stderr, code, pid: ps.pid, action });
@@ -117,7 +160,7 @@ function spawnPowerShell(action: string, params: Record<string, unknown> = {}): 
       }
     });
 
-    ps.on('error', (err) => {
+    ps.on('error', err => {
       reject(err);
     });
   });
@@ -126,18 +169,27 @@ function spawnPowerShell(action: string, params: Record<string, unknown> = {}): 
 }
 
 /** @deprecated 保留兼容，新代码请使用 spawnPowerShell */
-async function execPowerShell(action: string, params: Record<string, unknown> = {}): Promise<unknown> {
+async function execPowerShell(
+  action: string,
+  params: Record<string, unknown> = {}
+): Promise<unknown> {
   return spawnPowerShell(action, params).result;
 }
 
 /**
  * 统一执行接口 - 根据平台选择调用方式
- * Mac: 反向轮询模式（MCP Server是服务端，WPS加载项来取命令）
  * Windows: PowerShell调用COM接口
+ * Mac/Linux: 反向轮询模式（MCP Server是服务端，WPS加载项来取命令）
  */
-async function execWpsAction(action: string, params: Record<string, unknown> = {}): Promise<unknown> {
-  if (isMacPlatform()) {
+async function execWpsAction(
+  action: string,
+  params: Record<string, unknown> = {}
+): Promise<unknown> {
+  const channel = getWpsChannel();
+  if (channel === 'darwin') {
     return execMacPoll(action, params);
+  } else if (channel === 'linux') {
+    return execLinuxPoll(action, params);
   } else {
     return execPowerShell(action, params);
   }
@@ -146,7 +198,7 @@ async function execWpsAction(action: string, params: Record<string, unknown> = {
 // 超时时间（毫秒）— 按工具类型区分
 const COM_TIMEOUT_DEFAULT = 30000;
 const COM_TIMEOUTS: Record<string, number> = {
-  getDocumentParagraphs: 30000,    // 大批段落可能耗时较长
+  getDocumentParagraphs: 30000, // 大批段落可能耗时较长
   getDocumentTextByRange: 15000,
   proofreadBasic: 15000,
   replaceInParagraph: 10000,
@@ -163,11 +215,17 @@ function getTimeout(action: string): number {
 /**
  * 带超时和重试的WPS调用
  * Windows: 超时时主动 kill PowerShell 进程并记录 PID
- * Mac: Promise.race 快速失败（无法取消 Mac 轮询）
+ * Mac/Linux: Promise.race 快速失败（无法取消轮询）
  */
-async function execWpsActionWithRetry(action: string, params: Record<string, unknown> = {}, maxRetries: number = 3): Promise<unknown> {
+async function execWpsActionWithRetry(
+  action: string,
+  params: Record<string, unknown> = {},
+  maxRetries: number = 3
+): Promise<unknown> {
   let lastError: Error | null = null;
-  const isWin = !isMacPlatform();
+  const isWin = os.platform() === 'win32';
+  // 轮询安全兜底 timer 句柄（函数级共享，命令完成后清理，避免泄漏）
+  let timeoutGuard: NodeJS.Timeout | null = null;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
@@ -178,35 +236,36 @@ async function execWpsActionWithRetry(action: string, params: Record<string, unk
         const { process: ps, result } = spawnPowerShell(action, params);
         const timeout = getTimeout(action);
         const timeoutPromise = new Promise((_, reject) => {
-          const timer = setTimeout(() => {
+          setTimeout(() => {
             ps.kill('SIGTERM');
             log.warn(`COM 调用超时，已终止 PowerShell 进程 (PID: ${ps.pid})`, { action });
             reject(new Error('COM 调用超时（' + timeout + 'ms）'));
           }, timeout);
-          // 无论 result 先完成还是定时器先触发，Promise.race 结束后
-          // 都必须清理定时器：否则每次 COM 调用即使成功也会遗留一个
-          // 最长 timeout(30s) 的挂起定时器，导致 Jest worker 无法退出
-          // （"A worker process has failed to exit gracefully"）+ 资源泄漏
-          Promise.resolve(result).then(
-            () => clearTimeout(timer),
-            () => clearTimeout(timer)
-          );
         });
         actionPromise = Promise.race([result, timeoutPromise]);
       } else {
-        // Mac: 使用已有 execMacPoll，Promise.race 快速失败
-        const timeout = getTimeout(action);
-        const macActionPromise = execWpsAction(action, params);
-        const timeoutPromise = new Promise((_, reject) => {
-          const timer = setTimeout(() => reject(new Error('COM 调用超时（' + timeout + 'ms）')), timeout);
-          // 与 Windows 分支同理：actionPromise 完成后清理定时器，防泄漏
-          // （注意：execWpsAction 只调用一次，见 macActionPromise）
-          Promise.resolve(macActionPromise).then(
-            () => clearTimeout(timer),
-            () => clearTimeout(timer)
-          );
+        // Mac/Linux: 轮询桥命令超时由 executeCommand 内部管理（从命令入队后开始计时，不含切换耗时），
+        // 因此不用短命令超时（5-15s）race——否则首次跨应用切换（最坏 22s+2s）时短超时命令在切换完成前就被 reject，
+        // 且重试 3 次每次重新切换，必然失败（第 11 轮评审 critical）。
+        // 但仍需一个宽松的**安全兜底**（远大于最坏路径：切换 60s+2s + 命令 30s ≈ 92s，故取 180s）：
+        // 防止 start()/switchApp() 等前置环节异常挂起（永不 resolve/reject）导致整个调用链无限等待。
+        // 兜底超时只防死锁，正常路径不会触发。
+        actionPromise = Promise.race([
+          execWpsAction(action, params),
+          new Promise((_, reject) => {
+            // 用可清理的 timer：命令正常 resolve 后 clearTimeout，避免每次调用都累积一个 180s 空转 timer（泄漏）
+            timeoutGuard = setTimeout(() => {
+              reject(new Error(`轮询调用安全兜底超时（180s）: ${action}`));
+            }, 180000);
+          }),
+        ]);
+        // 命令完成后清理兜底 timer（无论成功/失败），避免 timer 泄漏累积
+        actionPromise = actionPromise.finally(() => {
+          if (timeoutGuard) {
+            clearTimeout(timeoutGuard);
+            timeoutGuard = null;
+          }
         });
-        actionPromise = Promise.race([macActionPromise, timeoutPromise]);
       }
 
       return await actionPromise;
@@ -239,19 +298,28 @@ export class WpsClient {
 
   constructor(_config?: Partial<WpsEndpointConfig>) {
     this.status = { connected: false };
-    const method = isMacPlatform() ? 'HTTP (Mac Addon)' : 'PowerShell COM';
+    const channel = getWpsChannel();
+    const method =
+      channel === 'win32'
+        ? 'PowerShell COM'
+        : channel === 'darwin'
+          ? 'HTTP (Mac Addon)'
+          : 'HTTP (Linux Addon)';
     log.info('WPS Client initialized', { method, platform: os.platform() });
   }
 
   /**
    * 调用WPS接口（跨平台）
    */
-  async invokeAction<T = unknown>(action: string, params: Record<string, unknown> = {}): Promise<WpsApiResponse<T>> {
+  async invokeAction<T = unknown>(
+    action: string,
+    params: Record<string, unknown> = {}
+  ): Promise<WpsApiResponse<T>> {
     const startTime = Date.now();
     logRequest(action, params);
 
     try {
-      const result = await execWpsActionWithRetry(action, params, 3) as WpsApiResponse<T>;
+      const result = (await execWpsActionWithRetry(action, params, 3)) as WpsApiResponse<T>;
       const duration = Date.now() - startTime;
       logResponse(action, result.success, duration);
 
@@ -280,7 +348,7 @@ export class WpsClient {
       'range.getData': 'getRangeData',
       'range.setData': 'setRangeData',
       'file.save': 'save',
-      'ping': 'ping',
+      ping: 'ping',
     };
     const action = actionMap[request.method] || request.method;
     return this.invokeAction<T>(action, request.params || {});
@@ -316,17 +384,29 @@ export class WpsClient {
   }
 
   async getCellValue(sheet: string | number, row: number, col: number): Promise<unknown> {
-    const response = await this.invokeAction<{ value: unknown }>('getCellValue', { sheet, row, col });
+    const response = await this.invokeAction<{ value: unknown }>('getCellValue', {
+      sheet,
+      row,
+      col,
+    });
     return response.data?.value;
   }
 
-  async setCellValue(sheet: string | number, row: number, col: number, value: unknown): Promise<boolean> {
+  async setCellValue(
+    sheet: string | number,
+    row: number,
+    col: number,
+    value: unknown
+  ): Promise<boolean> {
     const response = await this.invokeAction('setCellValue', { sheet, row, col, value });
     return response.success;
   }
 
   async getRangeData(sheet: string | number, range: string): Promise<unknown[][]> {
-    const response = await this.invokeAction<{ data: unknown[][] }>('getRangeData', { sheet, range });
+    const response = await this.invokeAction<{ data: unknown[][] }>('getRangeData', {
+      sheet,
+      range,
+    });
     return response.data?.data || [];
   }
 
@@ -335,7 +415,12 @@ export class WpsClient {
     return response.success;
   }
 
-  async setFormula(sheet: string | number, row: number, col: number, formula: string): Promise<boolean> {
+  async setFormula(
+    sheet: string | number,
+    row: number,
+    col: number,
+    formula: string
+  ): Promise<boolean> {
     const response = await this.invokeAction('setFormula', { sheet, row, col, formula });
     return response.success;
   }
