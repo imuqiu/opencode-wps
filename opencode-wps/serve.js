@@ -22,10 +22,11 @@ var server = http.createServer(function (req, res) {
     var urlPath = req.url.split('?')[0]
     if (urlPath === '/') urlPath = '/index.html'
 
+    // 归一化为相对路径后用 path.relative 严格校验：
+    // 旧实现用 indexOf(ROOT) 前缀匹配，理论上存在 "C:\root2\x" 绕过 "C:\root" 前缀的边界问题
     var filePath = path.join(ROOT, urlPath)
-
-    // Security: prevent path traversal
-    if (filePath.indexOf(ROOT) !== 0) {
+    var rel = path.relative(ROOT, filePath)
+    if (rel.indexOf('..') === 0 || path.isAbsolute(rel)) {
         res.writeHead(403)
         res.end('Forbidden')
         return

@@ -524,7 +524,10 @@ if (fsEx.existsSync(launcherPath)) {
     const launcherVbsPath = path.join(jsaddonsDir, 'opencode-wps_', 'start-launcher.vbs');
     // VBS: "node ""path""" → 实际执行 node "path"
     // 外层 "..." 是 VBS 字符串，内层 "" 是字面引号，最后一个 " 关闭 VBS 字符串
-    const launcherVbsContent = 'CreateObject("Wscript.Shell").Run "node ""' + launcherPath + '""", 0, False';
+    // 安全：launcherPath 来自我们自己的 jsaddons 目录（含 \）不可能是用户输入，
+    // 但路径若含引号会破坏 VBS 字符串——防御性替换（实际路径不会含引号）
+    const vbsSafePath = launcherPath.replace(/"/g, '""');
+    const launcherVbsContent = 'CreateObject("Wscript.Shell").Run "node ""' + vbsSafePath + '""", 0, False';
     fs.writeFileSync(launcherVbsPath, launcherVbsContent, 'utf-8');
     console.log('  已生成 launcher VBS: ' + launcherVbsPath);
 

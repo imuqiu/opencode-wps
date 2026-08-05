@@ -40,6 +40,14 @@ var server = http.createServer(function (clientReq, clientRes) {
         clientRes.end('Proxy error: ' + err.message)
     })
 
+    // 客户端提前断开时销毁上游请求，防止悬挂连接（内存/句柄泄漏）
+    clientReq.on('error', function () {
+        proxyReq.destroy()
+    })
+    clientReq.on('close', function () {
+        if (!clientRes.writableEnded) proxyReq.destroy()
+    })
+
     // CORS preflight
     if (clientReq.method === 'OPTIONS') {
         clientRes.writeHead(200, {

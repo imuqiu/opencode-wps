@@ -178,20 +178,35 @@ async function execWpsActionWithRetry(action: string, params: Record<string, unk
         const { process: ps, result } = spawnPowerShell(action, params);
         const timeout = getTimeout(action);
         const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => {
+          const timer = setTimeout(() => {
             ps.kill('SIGTERM');
             log.warn(`COM 调用超时，已终止 PowerShell 进程 (PID: ${ps.pid})`, { action });
             reject(new Error('COM 调用超时（' + timeout + 'ms）'));
           }, timeout);
+          // 无论 result 先完成还是定时器先触发，Promise.race 结束后
+          // 都必须清理定时器：否则每次 COM 调用即使成功也会遗留一个
+          // 最长 timeout(30s) 的挂起定时器，导致 Jest worker 无法退出
+          // （"A worker process has failed to exit gracefully"）+ 资源泄漏
+          Promise.resolve(result).then(
+            () => clearTimeout(timer),
+            () => clearTimeout(timer)
+          );
         });
         actionPromise = Promise.race([result, timeoutPromise]);
       } else {
         // Mac: 使用已有 execMacPoll，Promise.race 快速失败
         const timeout = getTimeout(action);
+        const macActionPromise = execWpsAction(action, params);
         const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('COM 调用超时（' + timeout + 'ms）')), timeout);
+          const timer = setTimeout(() => reject(new Error('COM 调用超时（' + timeout + 'ms）')), timeout);
+          // 与 Windows 分支同理：actionPromise 完成后清理定时器，防泄漏
+          // （注意：execWpsAction 只调用一次，见 macActionPromise）
+          Promise.resolve(macActionPromise).then(
+            () => clearTimeout(timer),
+            () => clearTimeout(timer)
+          );
         });
-        actionPromise = Promise.race([execWpsAction(action, params), timeoutPromise]);
+        actionPromise = Promise.race([macActionPromise, timeoutPromise]);
       }
 
       return await actionPromise;

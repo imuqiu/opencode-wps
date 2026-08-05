@@ -39,8 +39,18 @@ cleanupOrphanedMcp();
  */
 function parseBody(req, callback) {
     var body = '';
-    req.on('data', function(chunk) { body += chunk; });
+    var MAX_BODY = 1024 * 1024; // 1MB
+    var tooLarge = false;
+    req.on('data', function(chunk) {
+        if (body.length + chunk.length > MAX_BODY) { tooLarge = true; return; }
+        body += chunk;
+    });
     req.on('end', function() {
+        if (tooLarge) {
+            console.log('[launcher] Body too large ( > 1MB), rejected');
+            callback({ _tooLarge: true });
+            return;
+        }
         try { callback(JSON.parse(body)); }
         catch(e) { 
             console.log('[launcher] Parse error: ' + e.message);
@@ -164,7 +174,13 @@ function startOpenCode(cwd, port) {
 }
 
 function stopOpenCodeByPort(port) {
-    port = port || 14096;
+    // 端口必须是 1-65535 的整数：body.port 可被外部控制，
+    // 未校验会拼进 netstat/findstr 命令造成命令注入（如 port="14096 & calc"）
+    port = parseInt(port, 10);
+    if (isNaN(port) || port < 1 || port > 65535) {
+        console.log('[launcher] Invalid port rejected: ' + port);
+        return { success: false, error: 'invalid port' };
+    }
     console.log('[launcher] stopOpenCodeByPort called for port: ' + port);
     
     try {
@@ -193,7 +209,9 @@ function stopOpenCodeByPort(port) {
                     var pid = parseInt(parts[parts.length - 1], 10);
                     if (pid > 0) {
                         console.log('[launcher] Found process on port ' + port + ', PID: ' + pid);
-                        // 验证进程名，避免误杀
+                        // 验证进程名，避免误杀。注意：Windows 11 已移除 wmic，
+                        // 查询失败时**不再继续 kill**（保守策略）——否则会把占用
+                        // 该端口的非 OpenCode 进程（如浏览器/其它 node 服务）误杀
                         try {
                             var nameOut = execSync('wmic process where ProcessId=' + pid + ' get Name /format:csv', { encoding: 'utf8', timeout: 3000, shell: 'cmd.exe' });
                             var procName = (nameOut.split('\n')[1] || '').trim().toLowerCase();
@@ -201,7 +219,12 @@ function stopOpenCodeByPort(port) {
                                 console.log('[launcher] Skipping non-OpenCode process: ' + procName);
                                 continue;
                             }
-                        } catch(e) { /* wmic 可能失败，继续尝试 kill */ }
+                        } catch(e) {
+                            // wmic 不可用（Windows 11 移除）或查询失败：无法确认进程身份，
+                            // 保守跳过，避免误杀非 OpenCode 进程
+                            console.log('[launcher] Cannot verify process name for PID ' + pid + ' (wmic unavailable), skipping');
+                            continue;
+                        }
                         try {
                             execSync('taskkill /F /PID ' + pid + ' 2>nul', { 
                                 shell: 'cmd.exe',
@@ -317,10 +340,12 @@ function findOpenCodeBin() {
 
 /**
  * 校验工作目录路径合法性
- * 拒绝 UNC 路径、DOS 设备路径、路径穿越
+ * 拒绝 UNC 路径、DOS 设备路径、路径穿越。
+ * 统一返回 { valid, resolved/error } 对象，绝不 throw——
+ * 调用方（startOpenCode / dockWindow）都没有 try/catch 包裹，
+ * 一旦 throw 会进入 uncaughtException 导致 launcher 进程退出。
  * @param {string} cwd - 待校验的目录路径
- * @returns {string} 校验通过后的绝对路径
- * @throws {Error} 路径不合法时抛出
+ * @returns {{valid: boolean, resolved?: string, error?: string}} 校验结果
  */
 function validateCwd(cwd) {
     if (typeof cwd !== 'string' || !cwd) {
@@ -328,7 +353,7 @@ function validateCwd(cwd) {
     }
     // 拒绝 UNC 路径和 DOS 设备路径
     if (/^\\\\[?.]/.test(cwd) || /^\\\\/.test(cwd)) {
-        throw new Error('UNC and DOS device paths are not allowed');
+        return { valid: false, error: 'UNC and DOS device paths are not allowed' };
     }
     // 防止路径遍历
     if (cwd.includes('..')) {
@@ -382,7 +407,8 @@ function dockWindow(callback, data) {
 
     console.log('[launcher] dockWindow final cwd: ' + cwd + ' session: ' + sessionId)
 
-    var scriptPath = path.join(__dirname, 'dock.ps1');
+    // 每次调用使用唯一临时脚本名，避免并发请求互相覆盖同一 dock.ps1 的竞态
+    var scriptPath = path.join(__dirname, 'dock.' + Date.now() + '.' + Math.random().toString(36).slice(2, 8) + '.ps1');
     var edgeUrl = 'http://127.0.0.1:14096'
 
     // 直接使用传入的 cwd，不做任何转换
@@ -396,6 +422,11 @@ function dockWindow(callback, data) {
         return;
     }
     console.log('[launcher] Final URL: ' + edgeUrl)
+    // PowerShell 单引号字符串包裹 URL + 单引号翻倍转义：
+    // - 单引号内不做 $ 变量插值（防 cwd 含 $ 被 PowerShell 解析）
+    // - 单引号翻倍（''）表示字面单引号（防 cwd 含 ' 破坏字符串定界）
+    // encodeURIComponent 不编码 ' 与 $，必须在此层处理
+    var psSafeUrl = edgeUrl.replace(/'/g, "''");
     var script = [
         '# Open OpenCode Web',
         '$edge = @(',
@@ -404,11 +435,14 @@ function dockWindow(callback, data) {
         '    (Get-ItemProperty -Path "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\msedge.exe" -ErrorAction SilentlyContinue)."(default)"',
         ') | Where-Object { Test-Path $_ } | Select-Object -First 1',
         'if (-not $edge) { $edge = "msedge.exe" }',
-        '& "$edge" --app=' + edgeUrl
+        '& "$edge" --app=' + "'" + psSafeUrl + "'"
     ].join('\n');
     fs.writeFileSync(scriptPath, script, 'utf8');
     exec('powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + scriptPath + '"', { timeout: 5000 }, function(err, stdout, stderr) {
         setTimeout(function() { try { fs.unlinkSync(scriptPath) } catch(e) {} }, 2000)
+        if (err) {
+            console.error('[launcher] dockWindow exec failed: ' + (err.message || err));
+        }
         callback({ success: true, pid: 0 })
     })
 }
@@ -443,6 +477,11 @@ var server = http.createServer(function(req, res) {
         }
         stateLock = true;
         parseBody(req, function(body) {
+            if (body && body._tooLarge) {
+                stateLock = false;
+                sendJSON(req, res, 413, { error: 'Request body too large' });
+                return;
+            }
             try {
                 var result = startOpenCode(body.cwd, body.port);
                 sendJSON(req, res, result.success ? 200 : 400, result);
@@ -478,6 +517,10 @@ var server = http.createServer(function(req, res) {
 
     if (req.method === 'POST' && url === '/dock') {
         parseBody(req, function(body) {
+            if (body && body._tooLarge) {
+                sendJSON(req, res, 413, { error: 'Request body too large' });
+                return;
+            }
             dockWindow(function(result) {
                 sendJSON(req, res, result.success ? 200 : 400, result);
             }, body);
@@ -487,6 +530,10 @@ var server = http.createServer(function(req, res) {
 
     if (req.method === 'POST' && url === '/docinfo') {
         parseBody(req, function(body) {
+            if (body && body._tooLarge) {
+                sendJSON(req, res, 413, { error: 'Request body too large' });
+                return;
+            }
             var docInfoPath = path.join(__dirname, 'docinfo.cache.json');
             if (body && body.closed === true) {
                 try { fs.unlinkSync(docInfoPath); } catch(e) { /* 文件不存在也视为清除成功 */ }
