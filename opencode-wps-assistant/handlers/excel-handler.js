@@ -107,6 +107,8 @@ registerHandler('getActiveWorkbook', function (params) {
 
 registerHandler('getOpenWorkbooks', function (params) {
   try {
+    // Workbooks 集合保护：无活动窗口时访问抛错（与 getOpenDocuments 第 7 轮修复对齐）
+    if (!Application.Workbooks) return ok({ workbooks: [] });
     var wbs = Application.Workbooks;
     var list = [];
     for (var i = 1; i <= wbs.Count; i++) {
@@ -115,14 +117,16 @@ registerHandler('getOpenWorkbooks', function (params) {
     }
     return ok({ workbooks: list });
   } catch (e) {
-    return fail('获取工作簿列表失败: ' + e.message);
+    return ok({ workbooks: [], error: e.message });
   }
 });
 
 registerHandler('switchWorkbook', function (params) {
   try {
     var wbs = Application.Workbooks;
-    var target = params.name || params.index;
+    var target = params.name !== undefined ? params.name : params.index;
+    if (target === undefined || target === null || target === '')
+      return invalidParam('缺少 name 或 index');
     var found = null;
     if (typeof target === 'number') {
       found = wbs.Item(target);
@@ -402,6 +406,8 @@ registerHandler('setFormula', function (params) {
     var rc = resolveRowCol(params.row, params.col);
     if (!rc)
       return fail('无效的行/列参数: row=' + params.row + ' col=' + params.col + '（必须为正整数）');
+    // formula 前置校验：Formula = undefined 直赋 COM 抛费解错误（与 evaluateFormula 语义对齐）
+    if (typeof params.formula !== 'string' || !params.formula) return invalidParam('缺少 formula');
     sheet.Cells.Item(rc.row, rc.col).Formula = params.formula;
     return ok({});
   } catch (e) {

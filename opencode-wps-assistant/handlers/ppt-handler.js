@@ -74,6 +74,8 @@ registerHandler('getActivePresentation', function (params) {
 
 registerHandler('getOpenPresentations', function (params) {
   try {
+    // Presentations 集合保护：无活动窗口时访问抛错（与 getOpenDocuments 第 7 轮修复对齐）
+    if (!Application.Presentations) return ok({ presentations: [] });
     var preses = Application.Presentations;
     var list = [];
     for (var i = 1; i <= preses.Count; i++) {
@@ -82,14 +84,16 @@ registerHandler('getOpenPresentations', function (params) {
     }
     return ok({ presentations: list });
   } catch (e) {
-    return fail('获取演示文稿列表失败: ' + e.message);
+    return ok({ presentations: [], error: e.message });
   }
 });
 
 registerHandler('switchPresentation', function (params) {
   try {
     var preses = Application.Presentations;
-    var target = params.name || params.index;
+    var target = params.name !== undefined ? params.name : params.index;
+    if (target === undefined || target === null || target === '')
+      return invalidParam('缺少 name 或 index');
     var found = null;
     if (typeof target === 'number') {
       found = preses.Item(target);
@@ -337,6 +341,8 @@ registerHandler('setSlideTitle', function (params) {
     var slide = pres.Slides.Item(idx);
     // 无标题占位符时明确 fail（与 setSlideSubtitle 语义一致），避免 AI 误以为设置成功
     if (!slide.Shapes.HasTitle) return fail('当前幻灯片无标题占位符（可能使用了空白布局）');
+    // title 前置校验：undefined 直赋 TextRange.Text 抛类型错误
+    if (params.title === undefined || params.title === null) return invalidParam('缺少 title');
     slide.Shapes.Title.TextFrame.TextRange.Text = params.title;
     return ok({});
   } catch (e) {
@@ -355,6 +361,8 @@ registerHandler('setSlideSubtitle', function (params) {
       );
     var slide = pres.Slides.Item(idx);
     // 按副标题占位符类型（ppPlaceholderSubtitle=15）定位，避免用 t.length<100 猜文本误覆盖标题/正文
+    if (params.subtitle === undefined || params.subtitle === null)
+      return invalidParam('缺少 subtitle');
     for (var j = 1; j <= slide.Shapes.Count; j++) {
       var s = slide.Shapes.Item(j);
       if (!s.HasTextFrame) continue;
@@ -685,6 +693,8 @@ registerHandler('setShapeStyle', function (params) {
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
+    // shapeName 前置校验：双参都缺时循环空转后「未找到形状」误导（与 setShapeZOrder 语义对齐）
+    if (!shapeName) return invalidParam('缺少 shapeName');
     for (var j = 1; j <= slide.Shapes.Count; j++) {
       var s = slide.Shapes.Item(j);
       if (s.Name === shapeName) {
@@ -747,6 +757,8 @@ registerHandler('setShapeShadow', function (params) {
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
+    // shapeName 前置校验（与 setShapeStyle 语义对齐）
+    if (!shapeName) return invalidParam('缺少 shapeName');
     for (var j = 1; j <= slide.Shapes.Count; j++) {
       var s = slide.Shapes.Item(j);
       if (s.Name === shapeName) {
@@ -767,6 +779,8 @@ registerHandler('setShapeTransparency', function (params) {
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
+    // shapeName 前置校验（与 setShapeStyle 语义对齐）
+    if (!shapeName) return invalidParam('缺少 shapeName');
     // 透明度显式数值校验：0~1 范围（0=不透明，1=全透明），字符串/负数/越界显式 fail，
     // 避免 '0.5' 字符串直接赋 COM 属性抛类型错误、负数静默生效
     var transparency = parseFloat(params.transparency);
@@ -1712,6 +1726,8 @@ registerHandler('setPptFooter', function (params) {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
     var hf = pres.SlideMaster.HeadersFooters;
+    // hf 保护：母版缺失时抛错（与 setPptDateTime 第 4 轮修复语义对齐）
+    if (!hf) return fail('当前演示文稿无页眉页脚（母版缺失）');
     hf.Footer.Visible = 1;
     hf.Footer.Text = params.text || '';
     return ok({});
@@ -1803,7 +1819,12 @@ registerHandler('setBackgroundColor', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    // slideIndex 显式校验（与 resolveSlideIndex 语义对齐，越界 Slides.Item 抛费解错误）
+    var idx = resolveSlideIndex(pres, params.slideIndex);
+    if (idx === null)
+      return fail(
+        '无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）'
+      );
     var slide = pres.Slides.Item(idx);
     // 非法颜色必须明确 fail（与 setSlideBackground 语义一致），不能用 || 0xFFFFFF 静默兜底——AI 传错色值会"静默变白"误导
     var bg = toRgb(params.color);
@@ -1821,7 +1842,12 @@ registerHandler('setBackgroundImage', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    // slideIndex 显式校验（与 resolveSlideIndex 语义对齐）
+    var idx = resolveSlideIndex(pres, params.slideIndex);
+    if (idx === null)
+      return fail(
+        '无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）'
+      );
     var filePath = params.path || params.imagePath;
     if (!filePath) return invalidParam('缺少 path');
     var slide = pres.Slides.Item(idx);
@@ -1837,7 +1863,12 @@ registerHandler('setBackgroundGradient', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    // slideIndex 显式校验（与 resolveSlideIndex 语义对齐）
+    var idx = resolveSlideIndex(pres, params.slideIndex);
+    if (idx === null)
+      return fail(
+        '无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）'
+      );
     var slide = pres.Slides.Item(idx);
     slide.FollowMasterBackground = 0;
     slide.Background.Fill.OneColorGradient(1, 1, 0.5);
@@ -1854,6 +1885,8 @@ registerHandler('setShapeGradient', function (params) {
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
+    // shapeName 前置校验（与 setShapeStyle 语义对齐）
+    if (!shapeName) return invalidParam('缺少 shapeName');
     for (var j = 1; j <= slide.Shapes.Count; j++) {
       var s = slide.Shapes.Item(j);
       if (s.Name === shapeName) {
