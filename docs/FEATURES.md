@@ -47,20 +47,21 @@
 
 ### 校对流程
 
-1. **生成批计划** — `getDocumentParagraphs` 获取全部段落 → 分批次（每批预期段数 × 2 为上限）
-2. **逐批校对** — `proofreadBasic` 每批独立调用，AI 逐批检查
-3. **确认修复** — `confirmBatchAiProofread` 确认本批问题
-4. **执行修复** — `replaceInParagraph` 修复本批问题 → **进入下一批**
+1. **评估文档** — `getActiveDocument` 获取文档总段落数，输出分批校对计划（P3 前置要求）
+2. **生成批计划** — `getDocumentParagraphs` 获取本批段落（每批 ≤200 段，从第 1 段起连续分批）
+3. **逐批校对** — `proofreadBasic` 每批独立调用，AI 逐批检查
+4. **确认修复** — `confirmBatchAiProofread` 确认本批问题（必须先调 `proofreadBasic`）
+5. **执行修复** — `replaceInParagraph` 修复本批问题 → **进入下一批**（本批未完成禁止下一批）
 
 ### 铁律 3.0 核心规则
 
 | 规则 | 类型 | 说明 |
 |------|------|------|
-| **P1** | before | 每批前必调 `proofreadBasic`，禁止 AI 直接调用 `getDocumentParagraphs` 跳批 |
+| **P1** | before | `getDocumentParagraphs` 首次必须从第 1 段开始，单次 ≤200 段，批次必须连续 |
 | **P2-P3** | before/after | 文本长度限制：单次 `getDocumentParagraphs` ≤200 段；`proofreadBasic` 传入文本不得超过本批预期范围 ×2（或 5 万字符兜底） |
 | **P4-P7** | after | 批次状态追踪（批数/段数/完成计数/状态设置） |
 | **P8-P10** | before | `confirmBatchAiProofread` 前必须调 `proofreadBasic`，禁止跳过基础校对 |
-| **P11** | before | 每批必须完成（proofread → confirm → fix）才能进入下一批 |
+| **P11** | before | 替换操作必须在本批 `proofreadBasic` + `confirmBatchAiProofread` 之后（修订模式已开启） |
 | **P12** | before | 当前批未完成（proofread → confirm → fix）禁止获取下一批段落 |
 | **P13** | before | `getDocumentTextByRange` 禁止拉取超出本批预期范围的多批文本（≤200 段） |
 | **P14** | before | `confirmBatchAiProofread` 必须在 `proofreadBasic` 之后调用，禁止 AI "分析"后跳过 |
