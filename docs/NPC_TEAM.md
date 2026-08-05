@@ -19,17 +19,29 @@
 
 | 组件 | 位置 | 作用 |
 |------|------|------|
-| **CodeBuddy 化身提示词** ⭐核心 | `docs/NPC_TEAM.md`（本文档） | 复制给官方 `@CodeBuddy` 即可化身 NPC Team，**不消耗积分**。**唯一能调用到平台官方 CodeBuddy 的方式** |
+| **CodeBuddy 化身提示词** ⭐核心 | `docs/NPC_TEAM.md`（本文档） | 复制给官方 `@CodeBuddy` 即可化身 NPC Team，**不消耗积分**。**任何环境均可粘贴使用（兜底路径）** |
+| **NPC_TEAM Skill** ⭐推荐 | `.codebuddy/skills/npc-team/SKILL.md` | 提示词的可自动加载版（内容与 docs 完全一致，CI 强校验双源一致）。在平台对话召唤官方 `@CodeBuddy` 后，**只需一句话**「调用 NPC_TEAM skill 完成以下需求：xxxxxx」即可化身 NPC Team，**无需再粘贴提示词** |
 
 > ⚠️ 关键边界（务必先读）：
 > 1. **官方 `@CodeBuddy` 是 CNB 平台 NPC，只能在平台对话（Issue/PR/聊天）中召唤**，本地 OpenCode / WPS 插件里调不到它 —— 这是平台能力边界，不是配置问题。
 > 2. 本方案**不新增** `.cnb/settings.yml` 中的 NPC 角色，也不提供本地 agent 复刻版（本地无法调用平台官方 CodeBuddy，复刻无意义）。新增自建 NPC 反而会继续消耗积分——那是用户明确不需要的。
+> 3. **NPC_TEAM Skill 只对能访问本仓库的 CNB 对话生效**：官方 `@CodeBuddy` 在**本仓库的 Issue/PR/对话**中召唤时会自动加载 `.codebuddy/skills/`；若在其他仓库召唤（或 Skill 未加载成功），请改用「使用方式二」粘贴提示词兜底。Skill 加载依赖平台能力，提示词粘贴是**永久有效**的兜底路径。
 
 ## 快速开始
 
-### 使用方式：召唤官方免费 @CodeBuddy（CNB 平台）
+### 使用方式一（推荐）：一句话调用 NPC_TEAM Skill
 
-在 CNB 平台任意对话（Issue / PR / 对话）中召唤官方免费的 `@CodeBuddy`，把下面的提示词原样粘贴给它，然后直接给需求：
+本仓库已内置 NPC_TEAM Skill（`.codebuddy/skills/npc-team/SKILL.md`）。CNB 平台 NPC 会自动加载项目级 `.codebuddy/skills/` 目录下的自定义 Skill（详见[官方文档](https://docs.cnb.cool/zh/develops/skills.md)）。因此在 CNB 平台**本仓库的**对话（Issue / PR / 对话）中召唤官方免费的 `@CodeBuddy` 后，**无需粘贴提示词**，直接说（其他仓库或 Skill 未加载成功时，请用下方「使用方式二」粘贴提示词兜底）：
+
+```text
+@CodeBuddy 调用 NPC_TEAM skill 完成以下需求：给仓库新增一个 xxx 功能，帮我跑完整流程。
+```
+
+CodeBuddy 会自动加载该 Skill 化身 NPC Team，行为与粘贴下方提示词完全一致（内容等价、同一套铁律/角色卡片/流水线/暂停确认/留痕门禁），全程零积分。
+
+### 使用方式二：粘贴提示词（原方式，兜底）
+
+在 CNB 平台任意对话（Issue / PR / 对话）中召唤官方免费的 `@CodeBuddy`，把下面的提示词原样粘贴给它，然后直接给需求（本方式无需依赖 Skill 加载，任何环境可用）：
 
 ```text
 # NPC_TEAM_PROMPT_START（以下为 NPC Team 提示词，本行仅供校验锚点，可忽略）
@@ -159,11 +171,13 @@
 node scripts/validate-npc-team-prompt.js
 ```
 
-自动校验：6 位专家角色卡片齐全、10 阶段编号 0/10~9/10 完整、**2 个暂停点（⏸CP1/⏸CP2）与 3 个命令词（继续/补充/停止）存在**、**真实执行留痕 / 评审-修复循环 / 测试失败跳转 / 充分复盘四要素门禁存在**、零积分红线存在、安全红线存在、角色切换卡存在。已接入 CI（见 `.cnb.yml` Validate 阶段）。
+自动校验：6 位专家角色卡片齐全、10 阶段编号 0/10~9/10 完整、**2 个暂停点（⏸CP1/⏸CP2）与 3 个命令词（继续/补充/停止）存在**、**真实执行留痕 / 评审-修复循环 / 测试失败跳转 / 充分复盘四要素门禁存在**、零积分红线存在、安全红线存在、角色切换卡存在、**NPC_TEAM Skill（`.codebuddy/skills/npc-team/SKILL.md`）存在且其 frontmatter 合法（name 为 npc-team、description 含必要触发词与调用短语）、提示词正文与 docs 提示词双源一致**。已接入 CI（见 `.cnb.yml` Validate 阶段）。
 
 ### 2. 冒烟测试（端到端，2 分钟）
 
-**方法**：在 CNB 平台任意对话召唤官方 `@CodeBuddy` → 粘贴上方提示词 → 给一个微型需求（如「帮我把 README 第 20 行改成：本项目零积分方案」），观察：
+**方法 A（Skill 方式）**：在 CNB 平台**本仓库**任意对话召唤官方 `@CodeBuddy` → 只说一句「调用 NPC_TEAM skill 完成以下需求：帮我把 README 第 20 行改成：本项目零积分方案」→ 观察是否自动加载 Skill 化身 NPC Team。
+
+**方法 B（提示词方式，兜底）**：在 CNB 平台任意对话召唤官方 `@CodeBuddy` → 粘贴上方提示词 → 给同一个微型需求，观察。
 
 | 验证点 | 通过标准 |
 |--------|----------|
@@ -184,5 +198,6 @@ node scripts/validate-npc-team-prompt.js
 ## 注意事项
 
 - 本方案的核心是**提示词**，任何 CNB 对话中召唤官方 `@CodeBuddy` 粘贴即可用，无需配置、零积分
+- **NPC_TEAM Skill** 是本仓库内的一键快捷方式（`.codebuddy/skills/npc-team/`）：在本仓库对话中召唤 `@CodeBuddy` 后只需一句「调用 NPC_TEAM skill 完成以下需求：xxxxxx」，无需粘贴；内容与提示词双源一致、由 CI 强校验，两者行为完全等价
 - 官方 `@CodeBuddy` 只能在平台对话中召唤，本地 OpenCode / WPS 插件调不到它；**不提供**本地 agent 复刻版
 - 涉及 WPS 文档实操（Word/Excel/PPT）时，请在 CNB 平台另行召唤具备 WPS 能力的 NPC / 结合 WPS 相关 skill 处理，本提示词自身不负责调用本地 WPS agent（平台 CodeBuddy 无法调用本地 OpenCode agents）

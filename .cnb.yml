@@ -18,6 +18,7 @@ main:
             node scripts/validate-versions.js
             node scripts/validate-tool-counts.js
             node scripts/validate-npc-team-prompt.js
+            node scripts/sync-npc-team-skill.js --check
             node tests/validate-npc-team-prompt.test.js
             node tests/taskpane-dock.test.js
             # Windows 侧安全/Launcher 回归测试（PR #87 评审迭代新增）

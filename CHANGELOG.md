@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **NPC_TEAM Skill：一键调用，告别粘贴提示词（Issue #76）** — 新增 `.codebuddy/skills/npc-team/SKILL.md`：将 `docs/NPC_TEAM.md` 中的提示词做成 CNB 平台可自动加载的自定义 Skill（官方文档支持项目级 `.codebuddy/skills/` 目录）。使用方式：在 CNB 平台本仓库对话中召唤官方免费 `@CodeBuddy` 后，只需一句「调用 NPC_TEAM skill 完成以下需求：xxxxxx」即可化身 NPC Team 跑完全流程，**无需再粘贴提示词**；原粘贴方式保留为兜底。配套：① `scripts/validate-npc-team-prompt.js` 新增第 11 节「Skill 双源一致性」强校验（Skill 存在 + frontmatter 合法 + name 为 npc-team + 正文与 docs 提示词归一化后完全一致），已接入 CI；② 新增 `scripts/sync-npc-team-skill.js`（含 `--check` 模式）供改提示词后一键同步；③ `tests/validate-npc-team-prompt.test.js` 新增 5 个回归用例（正向双源一致 / Skill 缺失拦截 / 正文漂移拦截 / frontmatter name 错误拦截 / 同步脚本 --check），13 用例全绿；④ `docs/NPC_TEAM.md` 新增「使用方式一（推荐）：一句话调用 Skill」、组件清单与边界说明；README 同步更新
+
 ### Changed
 
 - **修复 Issue #78 三诊：打开面板路径主动调度宿主重绘，首次打开头部不再遮挡** — 用户实测合并 PR #83 后首次打开面板头部仍被遮挡、切标签后才恢复，且「打开两个文档标签窗口后开启 opencode-wps 标签则正常」。根因：PR #83 的宿主重绘（`forceTaskPaneRedraw`）只挂在 `WindowActivate` 事件上，而首次打开面板（`btnShowTaskPane`）**不经过该事件** → 首次打开时宿主重绘永不触发；打开第二个文档标签触发 `WindowActivate` → 重绘执行 → 头部恢复，与用户全部观察吻合。修复：① `forceTaskPaneRedraw` 新增 `force` 参数（仅日志区分触发源，防抖语义不变）；② `btnShowTaskPane` 首次创建/切换显示为可见后，延迟 400ms 主动调度宿主重绘（隐藏→显示任务窗格），让 WPS 宿主重新布局 WebView 拿到正确视口；③ 关闭路径不调度；重绘窗口内用户操作仍被尊重（`lastUserTaskPaneAction` 时间戳比对不变），切换路径仅当无重绘进行中才调度（避免快速点击额外闪烁），调度前重置时间戳避免旧操作被误判为窗口内操作；`tests/taskpane-dock.test.js` 新增 12 个用例（31 → 43），全量 8 套件 + 语法门禁全绿（评审修复：抽 `scheduleTaskPaneOpenRedraw` 公共函数去重；新增「重绘窗口内用户关闭不误弹」「窗格销毁放弃恢复」安全边界用例；等待期守卫保留用户时间戳；`WINDOW_ACTIVATE_REDRAW_DELAY` 抽命名常量；可观测性增强——守卫放弃/窗格不存在/窗格不可见三条静默返回路径补日志留痕，形成 放弃/跳过/完成 三段可观测链）

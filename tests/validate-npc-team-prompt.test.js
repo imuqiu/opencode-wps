@@ -15,6 +15,7 @@ const path = require('path');
 
 const FILE = path.join(__dirname, '..', 'docs', 'NPC_TEAM.md');
 const SCRIPT = path.join(__dirname, '..', 'scripts', 'validate-npc-team-prompt.js');
+const SKILL_FILE = path.join(__dirname, '..', '.codebuddy', 'skills', 'npc-team', 'SKILL.md');
 
 // ---- 自建 mini 测试框架（与 tests/ 其他套件一致，无第三方依赖）----
 let testCount = 0;
@@ -143,6 +144,136 @@ test('负向：删铁律 7「留下可见回复/记录」句（第 7 轮 9.1 跨
     p.replace('并在对应 Issue 或 PR 上留下**可见回复/记录**（评论、评审、提交、CI 记录等）；', '；')
   );
   assertEqual(code, 1, '删铁律 7 留痕句应拦截（exit 1）');
+});
+
+// ---- Issue #76：NPC_TEAM Skill 一键调用方案回归用例 ----
+
+// 统一「临时改坏 SKILL.md → 运行 → finally 还原」的健壮模式（防中途异常污染工作区）
+function withSkillFile(content, fn) {
+  const original = fs.readFileSync(SKILL_FILE, 'utf8');
+  fs.writeFileSync(SKILL_FILE, content);
+  let ret;
+  try {
+    ret = fn();
+  } finally {
+    fs.writeFileSync(SKILL_FILE, original);
+  }
+  return ret;
+}
+
+test('正向：Skill 与 docs 提示词双源一致（exit 0）', function () {
+  const code = runValidate(p => p);
+  assertEqual(code, 0, '双源一致应 exit 0');
+});
+
+test('负向：Skill 文件缺失应拦截（exit 1）', function () {
+  const backup = SKILL_FILE + '.bak';
+  const original = fs.readFileSync(SKILL_FILE, 'utf8');
+  fs.renameSync(SKILL_FILE, backup);
+  let code;
+  try {
+    const { spawnSync } = require('child_process');
+    code = spawnSync('node', [SCRIPT], { encoding: 'utf8' }).status;
+  } finally {
+    fs.renameSync(backup, SKILL_FILE);
+  }
+  assertEqual(code, 1, '删 Skill 文件应拦截（exit 1）');
+});
+
+test('负向：Skill 正文与 docs 提示词漂移应拦截（exit 1）', function () {
+  const code = withSkillFile(
+    fs.readFileSync(SKILL_FILE, 'utf8').replace('你是「NPC Team 总指挥」', '你是「NPC Team 总指挥官」'),
+    () => {
+      const { spawnSync } = require('child_process');
+      return spawnSync('node', [SCRIPT], { encoding: 'utf8' }).status;
+    }
+  );
+  assertEqual(code, 1, 'Skill 正文漂移应拦截（exit 1）');
+});
+
+test('负向：Skill frontmatter name 非 npc-team 应拦截（exit 1）', function () {
+  const code = withSkillFile(
+    fs.readFileSync(SKILL_FILE, 'utf8').replace('name: npc-team', 'name: npc-teamx'),
+    () => {
+      const { spawnSync } = require('child_process');
+      return spawnSync('node', [SCRIPT], { encoding: 'utf8' }).status;
+    }
+  );
+  assertEqual(code, 1, 'frontmatter name 错误应拦截（exit 1）');
+});
+
+test('负向：Skill frontmatter description 缺触发词应拦截（exit 1）', function () {
+  const code = withSkillFile(
+    fs.readFileSync(SKILL_FILE, 'utf8').replace(
+      '当用户说"调用 NPC_TEAM skill"、"npc-team"、"NPC Team"',
+      '当用户提到 NPC Team 时'
+    ),
+    () => {
+      const { spawnSync } = require('child_process');
+      return spawnSync('node', [SCRIPT], { encoding: 'utf8' }).status;
+    }
+  );
+  assertEqual(code, 1, 'description 缺触发词应拦截（exit 1）');
+});
+
+test('负向：Skill description 缺调用短语「调用 NPC_TEAM skill」应拦截（exit 1）', function () {
+  const code = withSkillFile(
+    fs.readFileSync(SKILL_FILE, 'utf8').replace('当用户说"调用 NPC_TEAM skill"、', '当用户说、'),
+    () => {
+      const { spawnSync } = require('child_process');
+      return spawnSync('node', [SCRIPT], { encoding: 'utf8' }).status;
+    }
+  );
+  assertEqual(code, 1, 'description 缺调用短语应拦截（exit 1）');
+});
+
+test('负向：同步脚本 --check 对正文漂移应拦截（exit 1）', function () {
+  // 先制造正文漂移：直接改 SKILL 正文身份声明句（不经过 sync），再跑 --check
+  const code = withSkillFile(
+    fs
+      .readFileSync(SKILL_FILE, 'utf8')
+      .replace('你是「NPC Team 总指挥」，由官方免费', '你是「NPC Team 总指挥」，由官方免费（测试漂移）'),
+    () => {
+      const { spawnSync } = require('child_process');
+      const r = spawnSync(
+        'node',
+        [path.join(__dirname, '..', 'scripts', 'sync-npc-team-skill.js'), '--check'],
+        { encoding: 'utf8' }
+      );
+      return r.status;
+    }
+  );
+  assertEqual(code, 1, '正文漂移时 --check 应 exit 1');
+});
+
+test('负向：同步脚本 --check 对 description 缺触发词应拦截（exit 1）', function () {
+  const code = withSkillFile(
+    fs
+      .readFileSync(SKILL_FILE, 'utf8')
+      .replace('当用户说"调用 NPC_TEAM skill"、"npc-team"、"NPC Team"', '当用户提到 NPC Team 时'),
+    () => {
+      const { spawnSync } = require('child_process');
+      const r = spawnSync(
+        'node',
+        [path.join(__dirname, '..', 'scripts', 'sync-npc-team-skill.js'), '--check'],
+        { encoding: 'utf8' }
+      );
+      return r.status;
+    }
+  );
+  assertEqual(code, 1, 'description 缺触发词时 --check 应 exit 1');
+});
+
+test('正向：同步脚本 --check 对一致的双源返回 0', function () {
+  const { spawnSync } = require('child_process');
+  const r = spawnSync(
+    'node',
+    [path.join(__dirname, '..', 'scripts', 'sync-npc-team-skill.js'), '--check'],
+    {
+      encoding: 'utf8',
+    }
+  );
+  assertEqual(r.status, 0, '--check 一致应 exit 0');
 });
 
 // ---- 汇总 ----

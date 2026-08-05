@@ -13,6 +13,8 @@
 
 const fs = require('fs');
 const path = require('path');
+const { normalize } = require('./lib/normalize');
+const { checkDesc, checkDescAgainstDocs } = require('./lib/npc-team-triggers');
 
 const FILE = path.resolve(__dirname, '../docs/NPC_TEAM.md');
 const errors = [];
@@ -179,6 +181,80 @@ if (!m) {
 const docSections = ['关键边界', '本地', '平台'];
 for (const s of docSections) {
   if (!content.includes(s)) warnings.push(`文档缺少「${s}」相关边界说明`);
+}
+
+// ---- 11. NPC_TEAM Skill 双源一致性（Issue #76 新增：一键调用 skill 方案）----
+// 背景：docs/NPC_TEAM.md 是提示词唯一权威源，.codebuddy/skills/npc-team/SKILL.md 是可自动加载的 skill 版。
+// 若两者正文漂移（skill 改老 / 提示词改新），用户用 skill 一句话调用时行为可能与文档不一致。
+// 因此 CI 强制校验：skill 存在 + frontmatter 合法 + 提示词正文与 docs 提示词完全一致（归一化空白后）。
+const SKILL_FILE = path.resolve(__dirname, '../.codebuddy/skills/npc-team/SKILL.md');
+if (!fs.existsSync(SKILL_FILE)) {
+  errors.push(
+    '缺少 NPC_TEAM Skill（.codebuddy/skills/npc-team/SKILL.md 不存在，一键调用方案不可用）'
+  );
+} else {
+  const skillContent = fs.readFileSync(SKILL_FILE, 'utf8');
+
+  // 11.1 frontmatter 必须合法（name/description 齐全）
+  const fm = skillContent.match(/^---\r?\n(?<fm>[\s\S]*?)\r?\n---\r?\n/);
+  if (!fm || !/^name:\s*.+$/m.test(fm.groups.fm) || !/^description:\s*.+$/m.test(fm.groups.fm)) {
+    errors.push('NPC_TEAM Skill frontmatter 非法（需含 name 与 description 字段）');
+    // frontmatter 缺失时无有效锚点，跳过 11.2 正文校验（避免报错叠加与逻辑穿透）
+  } else {
+    // name 应为 npc-team
+    if (!/^name:\s*npc-team\s*$/m.test(fm.groups.fm))
+      errors.push(
+        'NPC_TEAM Skill 的 name 应为 npc-team（当前不匹配，导致无法被 @CodeBuddy 按名加载）'
+      );
+
+    // 11.1b description 触发词一致性（防静默失效：description 缺触发词 → NPC 不加载 Skill）
+    // 触发词须与 docs/NPC_TEAM.md「使用方式一」保持一致；description 是 NPC 自动加载的唯一依据，
+    // 若只更新正文而漏掉 description，用户仍无法用一句话触发，双源校验必须覆盖到 description。
+    // 规则单一源：scripts/lib/npc-team-triggers.js（validate 与 sync 共用，防两处硬编码失同步）。
+    const descLine = fm.groups.fm.match(/^description:\s*.+$/m);
+    const desc = descLine ? descLine[0] : '';
+    const { ok, missing } = checkDesc(desc);
+    if (!ok)
+      errors.push(
+        'NPC_TEAM Skill description 缺少必要触发词：' + missing.join('、') + '（NPC 可能无法自动加载）'
+      );
+
+    // 11.1c docs 触发词交集校验：docs/NPC_TEAM.md「使用方式一」明示的触发短语必须全部出现在 description 中，
+    // 防单边新增（docs 新加触发词但 description 未同步）导致用户按新文档说法无法触发。
+    // 规则单一源：scripts/lib/npc-team-triggers.js 的 DOC_DESC_TRIGGERS。
+    const { missing: missingDoc } = checkDescAgainstDocs(desc);
+    if (missingDoc.length > 0)
+      errors.push(
+        'NPC_TEAM Skill description 与 docs 触发词交集缺失：' +
+          missingDoc.join('、') +
+          '（docs 使用方式一已明示，description 未同步，用户按文档说法将无法触发）'
+      );
+
+    // 11.2 提取 skill 正文（去掉 frontmatter 与开头的说明段，起点为身份声明句）
+    // 仅在 frontmatter 合法时执行（fm 存在且 name/description 齐全），避免报错叠加与逻辑穿透
+    const skillBody = skillContent.replace(fm[0], '');
+    const bodyStart = skillBody.indexOf('你是「NPC Team 总指挥」，由官方免费');
+    if (bodyStart === -1) {
+      errors.push('NPC_TEAM Skill 缺少身份声明句（你是「NPC Team 总指挥」，由官方免费...）');
+    } else {
+      // 11.2a preamble（说明段）语义检查：说明段须明确引用 docs/NPC_TEAM.md 并声明「一致/等价」，
+      // 防止说明段与实际关系脱钩（docs 提示词大改而 SKILL 说明段仍声称“完全一致”）。
+      const preamble = skillBody.slice(0, bodyStart);
+      if (!/docs\/NPC_TEAM\.md/.test(preamble) || !/完全一致|一致|等价/.test(preamble))
+        warnings.push('NPC_TEAM Skill 说明段未明确声明“与 docs/NPC_TEAM.md 一致/等价”（建议补充，防声明与实际脱钩）');
+
+      const skillPrompt = skillBody.slice(bodyStart).trim();
+      const docPrompt = m ? m.groups.prompt.trim() : '';
+      if (!docPrompt) {
+        errors.push('无法提取 docs 提示词正文，无法进行 Skill 双源一致性校验');
+      } else if (normalize(skillPrompt) !== normalize(docPrompt)) {
+        errors.push(
+          'NPC_TEAM Skill 正文与 docs/NPC_TEAM.md 提示词不一致（改提示词须同步改 skill，或反之）。' +
+            '请运行 scripts/sync-npc-team-skill.js 自动同步，或手动保持一致'
+        );
+      }
+    }
+  }
 }
 
 // ---- 输出 ----
