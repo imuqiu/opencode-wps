@@ -83,6 +83,7 @@ WPS 插件配置分散在 **3 个文件** 中：
 ```powershell
 # 查看当前状态
 Get-Content "$env:APPDATA\kingsoft\wps\jsaddons\authaddin.json"
+```
 
 ---
 

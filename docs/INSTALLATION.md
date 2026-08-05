@@ -128,7 +128,7 @@ node install-addons-linux.js
 node launcher-linux.js
 ```
 
-> 📖 Linux 完整说明（前置条件/组件清单/应用切换/已知限制/常见问题）见 [docs/LINUX.md](./LINUX.md)。
+> 📖 Linux 完整说明（前置条件/组件清单/应用切换/已知限制/常见问题）见 [LINUX.md](./LINUX.md)。
 
 ## 平台路径速查
 
@@ -139,11 +139,23 @@ node launcher-linux.js
 | Launcher | `opencode-wps/launcher.js`（计划任务自启） | `launcher-mac.js`（LaunchAgent 自启） | `launcher-linux.js`（XDG autostart 自启） |
 | MCP 通信 | PowerShell COM（wps-com.ps1） | HTTP 轮询（mac-poll-server.ts:58891） | HTTP 轮询（linux-poll-server.ts:58891） |
 
+## 卸载
+
+> 卸载 = 移除插件 + 清理 MCP/Skills/Agents/Plugins 配置 + 移除自启。三平台均可手动删除，无官方卸载命令。
+
+| 平台 | 插件目录 | 自启清理 | MCP 配置 |
+|------|----------|----------|----------|
+| **Windows** | 删除 `%APPDATA%\kingsoft\wps\jsaddons\opencode-wps_` | 计划任务：`schtasks /Delete /TN "OpenCodeLauncher" /F`（另有旧任务 `OpenCodeServer` 一并清理） | 从 `~/.config/opencode/opencode.json` 移除 wps-office MCP 条目 |
+| **macOS** | 删除 `~/Library/Containers/com.kingsoft.wpsformac/Data/Documents/jsaddons/` 下对应目录 | `launchctl unload ~/Library/LaunchAgents/com.opencode.launcher.plist` 并删除 plist | 同上 |
+| **Linux** | 删除 `~/.local/share/Kingsoft/wps/jsaddons/opencode-wps-linux_` | 删除 `~/.config/autostart/opencode-wps-launcher.desktop` | 同上 |
+
+卸载后重启 WPS，功能区不再显示 **OpenCode AI** 标签页即完成。
+
 ## 常见问题
 
 - **插件不显示** → 检查插件目录是否存在、WPS 是否重启、`publish.xml/jsplugins.xml` 是否注册
 - **MCP 连接失败** → `cd wps-office-mcp && npm install && npm run build` 后重启 OpenCode
 - **Skills/Agents 未加载** → 重新运行安装脚本 + 重启 OpenCode 服务
-- **Linux 实机验证** → 参考 [docs/LINUX.md](./LINUX.md)「已知限制」「常见问题」章节
+- **Linux 实机验证** → 参考 [LINUX.md](./LINUX.md)「已知限制」「常见问题」章节
 
 > 📖 更多排查见 [docs/TROUBLESHOOTING.md](./TROUBLESHOOTING.md)；安装脚本实现细节见 [docs/INSTALL_SCRIPT.md](./INSTALL_SCRIPT.md)。
