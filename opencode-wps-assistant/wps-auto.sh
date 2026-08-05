@@ -154,12 +154,30 @@ switch_to() {
 
 case $1 in
     "switch")
+        # app 参数缺失时直接报错退出，避免误执行 close_all 关掉已打开文档
+        if [ -z "$2" ]; then
+            echo "[WPS-Auto] 错误: switch 需要指定应用 (excel/word/ppt)" >&2
+            exit 2
+        fi
         switch_to "$2"
         ;;
     "start")
+        if [ -z "$2" ]; then
+            echo "[WPS-Auto] 错误: start 需要指定应用 (excel/word/ppt)" >&2
+            exit 2
+        fi
         start_app "$2"
         ;;
     "stop"|"close")
+        # 幂等：先探测是否有 WPS 进程，无则直接退出（避免 pkill 空转 + 10s 轮询等待）
+        if ! pgrep -x "wpsoffice" >/dev/null 2>&1 && \
+           ! pgrep -x "wps" >/dev/null 2>&1 && \
+           ! pgrep -x "et" >/dev/null 2>&1 && \
+           ! pgrep -x "wpp" >/dev/null 2>&1 && \
+           ! pgrep -f "com.kingsoft.wpsoffice" >/dev/null 2>&1; then
+            echo "[WPS-Auto] 无 WPS 进程，跳过关闭"
+            exit 0
+        fi
         close_all
         ;;
     *)

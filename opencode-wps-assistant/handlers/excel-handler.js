@@ -298,7 +298,13 @@ registerHandler('getRangeData', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
+    // range 前置校验 + 边界上限：Range(undefined) 抛费解错误；超大范围（如 A1:XFD1048576）批量读取 OOM
+    if (!params.range) return invalidParam('缺少 range');
     var range = sheet.Range(params.range);
+    var cellCount = range.Rows.Count * range.Columns.Count;
+    var MAX_CELLS = 1000000;
+    if (cellCount > MAX_CELLS)
+      return fail('范围过大（' + cellCount + ' 单元格，上限 ' + MAX_CELLS + '），请缩小 range');
     var data = [];
     // 优先批量读取（range.Value2 返回二维数组，一次 COM 往返）；失败时降级逐格（兼容旧 WPS JSAPI）
     try {
@@ -341,6 +347,8 @@ registerHandler('setRangeData', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
+    // range 前置校验：Range(undefined) 抛费解错误
+    if (!params.range) return invalidParam('缺少 range');
     var range = sheet.Range(params.range);
     var input = params.data || [];
     // 将一行输入归一化为数组（兼容标量/null 行），供批量与逐格路径共用，避免降级时 input[r].length 抛 TypeError
@@ -462,7 +470,11 @@ registerHandler('getContext', function (params) {
 
 registerHandler('getSelection', function (params) {
   try {
-    var sel = Application.Selection;
+    // Selection 包 try/catch：无选中/无活动窗口时部分 WPS 抛错而非返回 null（与 getContext 修复模式一致）
+    var sel = null;
+    try {
+      sel = Application.Selection;
+    } catch (e) {}
     if (!sel) return fail('没有选中的区域');
     return ok({ address: sel.Address(), count: sel.Count, row: sel.Row, column: sel.Column });
   } catch (e) {
@@ -1166,9 +1178,14 @@ registerHandler('copyRange', function (params) {
   try {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
+    // 前置校验：Range(undefined) 抛费解错误；sourceRange/targetRange 两参数语义一致化
+    var srcRange = params.sourceRange || params.range;
+    var dstRange = params.targetRange;
+    if (!srcRange) return invalidParam('缺少 sourceRange');
+    if (!dstRange) return invalidParam('缺少 targetRange');
     var srcSheet = getExcelSheet(wb, params.sourceSheet || params.sheet);
     var dstSheet = getExcelSheet(wb, params.targetSheet || params.sheet);
-    srcSheet.Range(params.sourceRange || params.range).Copy(dstSheet.Range(params.targetRange));
+    srcSheet.Range(srcRange).Copy(dstSheet.Range(dstRange));
     return ok({});
   } catch (e) {
     return fail('复制区域失败: ' + e.message);

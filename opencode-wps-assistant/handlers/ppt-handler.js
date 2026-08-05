@@ -1945,7 +1945,9 @@ registerHandler('setSlideTheme', function (params) {
   try {
     var pres = Application.ActivePresentation;
     if (!pres) return fail('没有打开的演示文稿');
+    // theme 前置校验：ApplyTemplate(undefined) 抛类型错误（与 setSlideSize 校验语义对齐）
     var theme = params.theme;
+    if (typeof theme !== 'string' || !theme) return invalidParam('缺少 theme（主题/模板路径）');
     if (typeof pres.ApplyTemplate === 'function') {
       pres.ApplyTemplate(theme);
     } else if (typeof pres.ApplyTheme === 'function') {
