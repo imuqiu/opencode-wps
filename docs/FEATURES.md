@@ -13,7 +13,7 @@
 3. **定义字段** — `findInDocument` / `getBookmarks` 定位模板字段名称和位置
 4. **映射数据** — `smartFillField` 将数据源字段值与模板字段对应（支持 auto/underline/afterColon/afterLabel/placeholder 五种模式，T6/T7/T8/T9）
 5. **预览校验** — 自动检测字段格式（日期/金额/编号等），首次填写前输出「文档字段 ↔ 用户值」对照表并获用户确认（T7）
-6. **批量填值** — 分批次（每批 ≤200 段）调用 `smartFillField` / `replaceBookmarkContent` 执行填充，全程修订模式（T3），所有填值自动加下划线（T11），禁止编造数据，跳过签字/印章等不可自动填写的字段（T8）
+6. **批量填值** — 分批次（每批 ≤200 段）调用 `smartFillField` / `replaceBookmarkContent` 执行填充（填写前已开启修订模式 T3），所有填值自动加下划线（T11），禁止编造数据，跳过签字/印章等不可自动填写的字段（T8）
 7. **查漏复核** — 填写后调用 `findInDocument` 检查遗漏（T4）
 
 ### 治理规则（T1-T11）
@@ -63,7 +63,7 @@
 | **P8-P10** | before | `confirmBatchAiProofread` 前必须调 `proofreadBasic`，禁止跳过基础校对 |
 | **P11** | before | 替换操作必须在本批 `proofreadBasic` + `confirmBatchAiProofread` 之后（修订模式已开启） |
 | **P12** | before | 当前批未完成（proofread → confirm → fix）禁止获取下一批段落 |
-| **P13** | before | `getDocumentTextByRange` 禁止拉取超出本批预期范围的多批文本（≤200 段） |
+| **P13** | before | `getDocumentTextByRange` 拉取长度不得超过本批预期范围 ×2（或 5 万字符兜底），禁止一次性拉取多批文本 |
 | **P14** | before | `confirmBatchAiProofread` 必须在 `proofreadBasic` 之后调用，禁止 AI "分析"后跳过 |
 | **P15** | before | 当 `proofreadHadIssues=false`（基础校对无问题）时，最多允许 1 次 AI 自定修复，超限需 `_force_ai_fix` |
 | **P16** | before | `replaceInParagraph` 的 `findText` 必须与至少一条 `proofreadIssueOriginals` 原文匹配 |
@@ -86,3 +86,5 @@ before 钩子拦截违规 → 工具执行 → after 钩子更新状态 → befo
 - 批量校对 + 批量修正（铁律 3.0 确保每批严格闭环）
 
 > 📖 校对技术设计细节见 [proofread-fluency-conciseness-design.md](./proofread-fluency-conciseness-design.md)；治理插件实现见 [AGENTS.md](../AGENTS.md) 与 `.opencode/plugins/governance.js`。
+
+> ℹ️ P1-P16 共 16 条规则，表格中 P2-P3/P4-P7/P8-P10 为编号合并展示，实际每条规则均独立在 `governance.js` 实现。
