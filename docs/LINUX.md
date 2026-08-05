@@ -40,8 +40,8 @@ OpenCode MCP 客户端
 ## 安装步骤
 
 ```bash
-# 1. 克隆仓库
-git clone https://cnb.cool/lnxsun/opencode-wps.git
+# 1. 克隆仓库（CNB 镜像：https://cnb.cool/lnxsun/opencode-wps.git）
+git clone https://github.com/lnxsun/opencode-wps.git
 cd opencode-wps
 
 # 2. 运行 Linux 安装脚本（等价于 Windows 的 install-addons.js / Mac 的 install-addons-mac.js）
