@@ -337,7 +337,7 @@ Draft ──push──> Open ──> Changes Requested ──> Open ──> Appr
 
 #### 意见分类与跟踪
 
-每条评论使用 GitHub **Suggestion block**（` ```suggestion `）给出可直接应用的代码片段。
+每条评论使用 GitHub **Suggestion block**（`\`\`\`suggestion` 代码块）给出可直接应用的代码片段。
 - 主审查给 🔴 → 作者必须修 → 二次确认 ✅
 - 主审查给 🟡 → 作者二选一：修 / 在 PR 描述回复"留作后续 issue #N"
 - 主审查给 💭 → 作者可一键 Apply，可忽略（但要回复 resolved）
