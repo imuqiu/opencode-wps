@@ -357,8 +357,9 @@ function validateCwd(cwd) {
     if (/^\\\\[?.]/.test(cwd) || /^\\\\/.test(cwd)) {
         return { valid: false, error: 'UNC and DOS device paths are not allowed' };
     }
-    // 防止路径遍历
-    if (cwd.includes('..')) {
+    // 防止路径遍历：只拒绝 `..` 作为完整路径段的形态（`C:\a\..\b`），
+    // 允许 `C:\my..folder` 等合法目录名（旧实现 includes('..') 误拒合法路径）
+    if (/(^|[\\/])\.\.($|[\\/])/.test(cwd)) {
         return { valid: false, error: '无效的工作目录：不允许路径遍历' };
     }
     // 检查非法字符
@@ -469,6 +470,23 @@ process.on('unhandledRejection', function(reason) {
 });
 
 var server = http.createServer(function(req, res) {
+    // CSRF 防护：仅允许本机来源（WPS 侧边栏/本地页面）访问
+    // 浏览器任意网页可向 127.0.0.1 发跨站 POST（表单），无校验会触发停服务/dock/写缓存副作用
+    var origin = req.headers.origin || '';
+    var referer = req.headers.referer || '';
+    var host = req.headers.host || '';
+    var isLocal = function(h) {
+        h = (h || '').toLowerCase();
+        // 'null' 是 file:// 页面/iframe sandbox 的 Origin（WPS 侧边栏可能是 file:// 协议）
+        if (h === 'null' || h === '') return true;
+        return h.indexOf('127.0.0.1') !== -1 || h.indexOf('localhost') !== -1;
+    };
+    // Origin/Referer 为空（同源 curl/脚本）或为本地来源才放行；Host 必须本地
+    if (!isLocal(host) || (origin && !isLocal(origin)) || (referer && !isLocal(referer))) {
+        sendJSON(req, res, 403, { error: 'Forbidden: non-local origin' });
+        return;
+    }
+
     if (req.method === 'OPTIONS') {
         sendJSON(req, res, 200, {});
         return;
@@ -538,6 +556,11 @@ var server = http.createServer(function(req, res) {
         parseBody(req, function(body) {
             if (body === BODY_TOO_LARGE) {
                 sendJSON(req, res, 413, { error: 'Request body too large' });
+                return;
+            }
+            // 校验 body 必须是普通对象（非数组/非标量），避免写入非法缓存内容
+            if (!body || typeof body !== 'object' || Array.isArray(body)) {
+                sendJSON(req, res, 400, { error: 'Invalid body: expected object' });
                 return;
             }
             var docInfoPath = path.join(__dirname, 'docinfo.cache.json');

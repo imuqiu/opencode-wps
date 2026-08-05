@@ -8,6 +8,18 @@ var TARGET_PORT = 14096
 var PROXY_PORT = 14098
 
 var server = http.createServer(function (clientReq, clientRes) {
+    // CORS preflight 优先处理：不触碰上游，避免 OPTIONS 白白建立连接
+    if (clientReq.method === 'OPTIONS') {
+        clientRes.writeHead(200, {
+            'access-control-allow-origin': 'http://127.0.0.1:14096',
+            'access-control-allow-methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+            'access-control-allow-headers': 'Content-Type, x-opencode-directory',
+            'access-control-max-age': '86400'
+        })
+        clientRes.end()
+        return
+    }
+
     var options = {
         hostname: TARGET_HOST,
         port: TARGET_PORT,
@@ -19,12 +31,14 @@ var server = http.createServer(function (clientReq, clientRes) {
     }
 
     var proxyReq = http.request(options, function (proxyRes) {
-        // 复制响应头，但去掉 CSP
+        // 复制响应头，但去掉 CSP 与 hop-by-hop 头（connection/transfer-encoding 等
+        // 应由 Node 自动管理，转发会导致分块冲突/连接悬挂）
+        var HOP_BY_HOP = ['connection', 'transfer-encoding', 'keep-alive', 'upgrade', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer']
         var headers = {}
         for (var key in proxyRes.headers) {
-            if (key.toLowerCase() !== 'content-security-policy') {
-                headers[key] = proxyRes.headers[key]
-            }
+            var lk = key.toLowerCase()
+            if (lk === 'content-security-policy' || HOP_BY_HOP.indexOf(lk) !== -1) continue
+            headers[key] = proxyRes.headers[key]
         }
         // 允许所有来源的 CORS
         headers['access-control-allow-origin'] = 'http://127.0.0.1:14096'
@@ -47,18 +61,6 @@ var server = http.createServer(function (clientReq, clientRes) {
     clientReq.on('close', function () {
         if (!clientRes.writableEnded) proxyReq.destroy()
     })
-
-    // CORS preflight
-    if (clientReq.method === 'OPTIONS') {
-        clientRes.writeHead(200, {
-            'access-control-allow-origin': 'http://127.0.0.1:14096',
-            'access-control-allow-methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-            'access-control-allow-headers': 'Content-Type, x-opencode-directory',
-            'access-control-max-age': '86400'
-        })
-        clientRes.end()
-        return
-    }
 
     clientReq.pipe(proxyReq, { end: true })
 })
