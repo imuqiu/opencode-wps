@@ -785,7 +785,7 @@ function toggleProviderDropdown(e) {
             var p = AVAILABLE_PROVIDERS[i]
             var sel = (p.id === CURRENT_PROVIDER)
             html += '<div class="dd-item' + (sel ? ' selected' : '') + '" onclick="selectProvider(\'' + escapeAttr(p.id) + '\')">'
-            html += '<span>' + p.name + '</span>'
+            html += '<span>' + escapeHtml(p.name) + '</span>'
             if (sel) html += '<span class="dd-check">&#10003;</span>'
             html += '</div>'
         }
@@ -1012,7 +1012,7 @@ function renameSession() {
     var renameBox = document.createElement('div')
     renameBox.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.2);z-index:100;padding:20px;width:260px'
     renameBox.innerHTML = '<div style="font-size:15px;font-weight:600;margin-bottom:12px">重命名会话</div>' +
-        '<input id="rename-input" type="text" value="' + escapeHtml($sessionTitle.textContent) + '" style="width:100%;border:1px solid #e5e5e5;border-radius:8px;padding:8px 12px;font-size:14px;outline:none;font-family:inherit" />'
+        '<input id="rename-input" type="text" value="' + escapeAttr($sessionTitle.textContent) + '" style="width:100%;border:1px solid #e5e5e5;border-radius:8px;padding:8px 12px;font-size:14px;outline:none;font-family:inherit" />'
     var btnRow = document.createElement('div'); btnRow.style.cssText = 'display:flex;gap:8px;margin-top:14px;justify-content:flex-end'
     var cancelBtn = document.createElement('button'); cancelBtn.textContent = '取消'; cancelBtn.style.cssText = 'padding:6px 16px;border:1px solid #e0e0e0;border-radius:8px;background:#fff;cursor:pointer;font-size:13px'
     var confirmBtn = document.createElement('button'); confirmBtn.textContent = '重命名'; confirmBtn.style.cssText = 'padding:6px 16px;border:none;border-radius:8px;background:#1a1a1a;color:#fff;cursor:pointer;font-size:13px'

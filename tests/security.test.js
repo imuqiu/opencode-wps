@@ -21,6 +21,16 @@ function escapeHtml(s) {
 }
 
 /**
+ * 属性值转义（与 taskpane.html 中 escapeAttr 保持一致）
+ * onclick 属性 = HTML 属性值 + JS 代码双层解析：
+ * 单引号用 \'（JS 字符串转义，HTML 不解析反斜杠），双引号用 &quot; 等
+ */
+function escapeAttr(s) {
+  if (typeof s !== 'string') return '';
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, "\\'");
+}
+
+/**
  * 解码 HTML 实体为原始字符（与 taskpane.html 中 decodeHtmlEntities 保持一致）
  */
 function decodeHtmlEntities(s) {
@@ -155,6 +165,33 @@ test('escapeHtml: 正常文本不过滤', function() {
 
 test('escapeHtml: 混合内容', function() {
   assertEqual(escapeHtml('Hello <script>x</script> & "test"'), 'Hello &lt;script&gt;x&lt;/script&gt; &amp; &quot;test&quot;');
+});
+
+test('escapeAttr: 单引号用反斜杠转义（onclick 双层解析安全）', function() {
+  assertEqual(escapeAttr("x' onmouseover=alert(1)"), "x\\' onmouseover=alert(1)");
+});
+
+test('escapeAttr: 双引号用实体转义（防属性定界符闭合）', function() {
+  assertEqual(escapeAttr('a"b'), 'a&quot;b');
+});
+
+test('escapeAttr: & < > 均转义防实体/标签注入', function() {
+  assertEqual(escapeAttr('a&b<c>d'), 'a&amp;b&lt;c&gt;d');
+});
+
+test('escapeAttr: 空值/非字符串处理', function() {
+  assertEqual(escapeAttr(null), '');
+  assertEqual(escapeAttr(undefined), '');
+  assertEqual(escapeAttr(123), '');
+});
+
+test('escapeAttr: onclick 完整注入攻击向量被中和', function() {
+  // 模拟 provider id 含恶意 payload（来自服务端配置）
+  var payload = "x' onmouseover='alert(document.cookie)' '";
+  var escaped = escapeAttr(payload);
+  // 单引号必须被反斜杠转义，不能出现裸 ' 破坏 JS 字符串定界
+  assertEqual(escaped.indexOf("\\'"), 1);
+  assertEqual(escaped.indexOf("' onmouseover='"), -1);
 });
 
 // --- 2. HTML 实体解码测试（decodeHtmlEntities）---
