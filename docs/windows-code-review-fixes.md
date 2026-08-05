@@ -155,3 +155,23 @@
 | 🟡 | proxy 未监听 `clientRes` error（EPIPE/ECONNRESET → 未捕获异常） | 补 `clientRes.on('error')` → destroy 上游 |
 | ℹ️ | `x-opencode-directory` 请求头原样转发上游，可伪造目录访问 | 转发前 delete（连同 x-forwarded-*） |
 | ℹ️ | 上游 5xx 响应头含 `x-powered-by`/`server` 泄露 | 过滤 LEAK_HEADERS 4 项 |
+
+### 第 10 轮（终审，提交 `647ca84`）
+**结论：通过 ✅**（前 9 轮共 34 条问题全部整改，终审全量复查未发现新阻塞问题）
+
+| 验证项 | 结果 |
+|--------|------|
+| 4 个修改文件 `node --check` | ✅ 全部通过 |
+| `tests/security.test.js` | ✅ 31/31 |
+| `tests/launcher.test.js` | ✅ 14/14 |
+| `tests/taskpane-dock.test.js` | ✅ 31/31 |
+| 校验脚本（versions/tool-counts/npc-team） | ✅ 全部通过 |
+| `.cnb.yml` YAML | ✅ 合法 |
+
+### 冲突解决（提交 `4111f60`）
+| 级别 | 问题 | 修复 |
+|------|------|------|
+| ⚠️ | PR 与 main（Mac 评审 #86 合入）在 `.cnb.yml` 冲突 | 合并 main，Windows 与 Mac 回归测试共存；PR 恢复 mergeable |
+
+## 10 轮累计修复 34 条问题
+覆盖：XSS（4 处）、命令注入（2 处）、路径穿越（2 处）、CSRF/来源校验（2 处）、资源泄漏（3 处）、进程管理（3 处）、CI 覆盖（2 处）、文档同步（2 处）等。
