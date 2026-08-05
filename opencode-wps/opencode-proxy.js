@@ -47,11 +47,20 @@ var server = http.createServer(function (clientReq, clientRes) {
 
         clientRes.writeHead(proxyRes.statusCode, headers)
         proxyRes.pipe(clientRes, { end: true })
+        // 上游响应流出错时销毁客户端连接，避免悬挂
+        proxyRes.on('error', function () {
+            clientRes.destroy()
+        })
     })
 
     proxyReq.on('error', function (err) {
-        clientRes.writeHead(502)
-        clientRes.end('Proxy error: ' + err.message)
+        // 若响应头已发送（clientRes.headersSent），不能再 writeHead，直接销毁
+        if (clientRes.headersSent) {
+            clientRes.destroy()
+        } else {
+            clientRes.writeHead(502)
+            clientRes.end('Proxy error: ' + err.message)
+        }
     })
 
     // 客户端提前断开时销毁上游请求，防止悬挂连接（内存/句柄泄漏）

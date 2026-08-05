@@ -110,6 +110,12 @@ function startOpenCode(cwd, port) {
     if (!cwd) {
         return { success: false, error: 'cwd is undefined' };
     }
+    // 端口校验（与 stopOpenCodeByPort 同一套规则）：body.port 可被外部控制，
+    // 非法值（非数字/越界/含 shell 元字符）直接拒绝，防止污染 --port 启动参数
+    var parsedPort = parseInt(port, 10);
+    if (port !== undefined && port !== null && (isNaN(parsedPort) || parsedPort < 1 || parsedPort > 65535)) {
+        return { success: false, error: 'invalid port' };
+    }
     // 验证工作目录安全性
     var validation = validateCwd(cwd);
     if (!validation.valid) {
@@ -125,7 +131,8 @@ function startOpenCode(cwd, port) {
 
     var isPs1 = opencodeBin.endsWith('.ps1');
     var isExe = /\.exe$/i.test(opencodeBin);
-    var opencodeArgs = ['serve', '--port', String(port || 14096), '--hostname', '127.0.0.1', '--cors', 'file://'];
+    var finalPort = parsedPort || 14096;
+    var opencodeArgs = ['serve', '--port', String(finalPort), '--hostname', '127.0.0.1', '--cors', 'file://'];
     // .ps1 用 powershell.exe 直接执行、.exe 直接 CreateProcess，均无需 shell；
     // 无扩展名（如 PATH 中的 'opencode'，npm 全局安装实为 .cmd 脚本）时，
     // spawn 不带 shell 无法启动 .cmd 文件，必须保留 shell。
@@ -398,7 +405,7 @@ function dockWindow(callback, data) {
         cwd = opencodeCwd
     }
 
-    // 验证 cwd
+    // 验证 cwd：与 startOpenCode 同一套规则，通过后用 resolved 规范路径拼 query
     if (cwd) {
         var validation = validateCwd(cwd);
         if (!validation.valid) {
@@ -406,6 +413,7 @@ function dockWindow(callback, data) {
             callback({ success: false, error: validation.error });
             return;
         }
+        cwd = validation.resolved;
     }
 
     console.log('[launcher] dockWindow final cwd: ' + cwd + ' session: ' + sessionId)
@@ -470,19 +478,11 @@ process.on('unhandledRejection', function(reason) {
 });
 
 var server = http.createServer(function(req, res) {
-    // CSRF 防护：仅允许本机来源（WPS 侧边栏/本地页面）访问
-    // 浏览器任意网页可向 127.0.0.1 发跨站 POST（表单），无校验会触发停服务/dock/写缓存副作用
-    var origin = req.headers.origin || '';
-    var referer = req.headers.referer || '';
-    var host = req.headers.host || '';
-    var isLocal = function(h) {
-        h = (h || '').toLowerCase();
-        // 'null' 是 file:// 页面/iframe sandbox 的 Origin（WPS 侧边栏可能是 file:// 协议）
-        if (h === 'null' || h === '') return true;
-        return h.indexOf('127.0.0.1') !== -1 || h.indexOf('localhost') !== -1;
-    };
-    // Origin/Referer 为空（同源 curl/脚本）或为本地来源才放行；Host 必须本地
-    if (!isLocal(host) || (origin && !isLocal(origin)) || (referer && !isLocal(referer))) {
+    // 来源校验统一走 getAllowedOrigin（已覆盖：无 Origin / null / file:// 放行、
+    // 白名单 127.0.0.1/localhost 放行、其余拒绝）；非白名单 Origin 直接 403。
+    // 不再单独做 isLocal 判断——两套逻辑并存曾导致 file:// 面板被误拦截。
+    var origin = req.headers.origin;
+    if (origin && getAllowedOrigin(req) === null) {
         sendJSON(req, res, 403, { error: 'Forbidden: non-local origin' });
         return;
     }
