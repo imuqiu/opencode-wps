@@ -517,7 +517,10 @@ registerHandler('setLineSpacing', function (params) {
     var doc = Application.ActiveDocument;
     if (!doc) return fail('没有打开的文档');
     var lineSpacing = params.lineSpacing;
-    if (lineSpacing === undefined || lineSpacing <= 0) return fail('行距值必须为正数');
+    // 显式数值校验：字符串行距（'1.5'）直赋 COM 抛类型错误；0/负数/字符串显式 fail（原实现 '1.5' <= 0 为 false 被放行）
+    if (lineSpacing === undefined || lineSpacing === null) return fail('行距值必须为正数');
+    var ls = parseFloat(lineSpacing);
+    if (isNaN(ls) || ls <= 0) return fail('行距值必须为正数，当前值: ' + lineSpacing);
     var range;
     if (params.paragraphIndex !== undefined) {
       var paraIdx = parseInt(params.paragraphIndex);
@@ -529,7 +532,7 @@ registerHandler('setLineSpacing', function (params) {
       if (!range) return fail('请先在文档中选中文本或设置光标');
     }
     range.ParagraphFormat.LineSpacingRule = 5;
-    range.ParagraphFormat.LineSpacing = lineSpacing;
+    range.ParagraphFormat.LineSpacing = ls;
     return ok({});
   } catch (e) {
     return fail('设置行距失败: ' + e.message);

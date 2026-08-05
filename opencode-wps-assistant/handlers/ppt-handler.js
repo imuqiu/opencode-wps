@@ -735,6 +735,8 @@ registerHandler('setShapeZOrder', function (params) {
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
+    // shapeName 前置校验：循环空转后「未找到形状」误导（实际是参数问题）
+    if (!shapeName) return invalidParam('缺少 shapeName');
     for (var j = 1; j <= slide.Shapes.Count; j++) {
       var s = slide.Shapes.Item(j);
       if (s.Name === shapeName) {
@@ -743,6 +745,9 @@ registerHandler('setShapeZOrder', function (params) {
         else if (cmd === 'backward' || cmd === 'down') s.ZOrder(2);
         else if (cmd === 'front' || cmd === 'top') s.ZOrder(0);
         else if (cmd === 'bottom' || cmd === 'back') s.ZOrder(3);
+        else
+          // 未知 command 显式 fail：四个分支全不命中时原实现 return ok 假成功
+          return fail('无效的层级命令: ' + cmd + '（支持 forward/backward/front/bottom）');
         return ok({});
       }
     }
@@ -1660,9 +1665,15 @@ registerHandler('setPptDateTime', function (params) {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
     var hf = pres.SlideMaster.HeadersFooters;
+    if (!hf) return fail('当前演示文稿无页眉页脚（母版缺失）');
     hf.DateAndTime.Visible = 1;
-    if (params.format === 'auto') hf.DateAndTime.UseFormat = true;
-    else hf.DateAndTime.Text = params.text || '';
+    // 修复逻辑矛盾：auto 模式只设 UseFormat；非 auto 只设 Text（原实现两个都设，UseFormat 后仍覆盖 Text）
+    if (params.format === 'auto') {
+      hf.DateAndTime.UseFormat = true;
+      return ok({ format: 'auto' });
+    }
+    hf.DateAndTime.UseFormat = false;
+    hf.DateAndTime.Text = params.text || '';
     return ok({});
   } catch (e) {
     return fail('设置日期时间失败: ' + e.message);

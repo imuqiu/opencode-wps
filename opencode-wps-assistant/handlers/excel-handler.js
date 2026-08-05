@@ -648,8 +648,12 @@ registerHandler('setNumberFormat', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
+    // range/format 前置校验：Range(undefined)/NumberFormat=undefined 抛费解错误
+    if (!params.range) return invalidParam('缺少 range');
+    var format = params.format || params.numberFormat;
+    if (format === undefined || format === null) return invalidParam('缺少 format');
     var range = sheet.Range(params.range);
-    range.NumberFormat = params.format || params.numberFormat;
+    range.NumberFormat = format;
     return ok({});
   } catch (e) {
     return fail('设置数字格式失败: ' + e.message);
@@ -693,7 +697,10 @@ registerHandler('setRowHeight', function (params) {
 registerHandler('autoFitColumn', function (params) {
   try {
     var sheet = Application.ActiveSheet;
-    sheet.Columns(params.column).AutoFit();
+    // column 显式校验：Columns(undefined) 抛费解错误（与 setColumnWidth 第 3 轮修复对齐）
+    var colLetter = resolveColumnLetter(params.column);
+    if (!colLetter) return fail('无效的列参数: ' + params.column);
+    sheet.Columns(colLetter).AutoFit();
     return ok({});
   } catch (e) {
     return fail('自动调整列宽失败: ' + e.message);
@@ -703,7 +710,10 @@ registerHandler('autoFitColumn', function (params) {
 registerHandler('autoFitRow', function (params) {
   try {
     var sheet = Application.ActiveSheet;
-    sheet.Rows(params.row).AutoFit();
+    // row 显式校验：Rows(undefined) 抛费解错误（与 setRowHeight 第 3 轮修复对齐）
+    var row = parseInt(params.row, 10);
+    if (isNaN(row) || row < 1) return fail('无效的行参数: ' + params.row + '（必须为正整数）');
+    sheet.Rows(row).AutoFit();
     return ok({});
   } catch (e) {
     return fail('自动调整行高失败: ' + e.message);
@@ -870,7 +880,12 @@ registerHandler('freezePanes', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
-    var cell = sheet.Cells.Item(params.row || 2, params.col || 2);
+    // row/col 显式校验：0/'0'/字符串被 || 兜底为 2 是静默错误（与 resolveRowCol 语义对齐）
+    var row = parseInt(params.row, 10);
+    if (isNaN(row) || row < 1) return fail('无效的行参数: ' + params.row + '（必须为正整数）');
+    var col = parseInt(params.col, 10);
+    if (isNaN(col) || col < 1) return fail('无效的列参数: ' + params.col + '（必须为正整数）');
+    var cell = sheet.Cells.Item(row, col);
     sheet.Activate();
     cell.Activate();
     Application.ActiveWindow.FreezePanes = true;
@@ -1252,8 +1267,12 @@ registerHandler('createPivotTable', function (params) {
 
 registerHandler('updatePivotTable', function (params) {
   try {
-    var sheet = Application.ActiveSheet;
-    var pt = sheet.PivotTables(params.name || sheet.PivotTables(1).Name);
+    var wb = Application.ActiveWorkbook;
+    if (!wb) return fail('没有打开的工作簿');
+    var sheet = getExcelSheet(wb, params.sheet);
+    // name 显式校验：PivotTables(undefined) 抛费解错误（与周边 handler 校验语义对齐）
+    if (!params.name) return invalidParam('缺少 name');
+    var pt = sheet.PivotTables(params.name);
     pt.RefreshTable();
     return ok({});
   } catch (e) {
