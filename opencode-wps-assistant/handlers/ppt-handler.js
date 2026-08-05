@@ -23,6 +23,16 @@ function resolveSlideIndex(pres, idx) {
   return n;
 }
 
+// 宽松 slideIndex 归一化（供大量「缺省默认第 1 张」的 handler 统一使用）：
+// - 缺省/非法 -> 1（保持兼容语义）
+// - 越界 -> -1（调用方显式 fail）
+function safeSlideIndex(pres, slideIndex) {
+  var n = parseInt(slideIndex, 10);
+  if (isNaN(n) || n < 1) return 1;
+  if (n > pres.Slides.Count) return -1;
+  return n;
+}
+
 // 将颜色参数解析为整型 RGB：支持 #RRGGBB、RRGGBB、RGB 简写；数字直接返回；非法返回 null
 // （与 excel-handler 的 toExcelColor 语义对称，供 PPT COM 的 ForeColor.RGB 赋值使用）
 function toRgb(color) {
@@ -43,8 +53,15 @@ registerHandler('getActivePresentation', function (params) {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
 
+    // 性能边界：全量遍历所有幻灯片/形状读取文本，大演示文稿（100+ 张×50 形状）数千次 COM 往返会超时
+    // （与 unifyFont 的 maxShapes 上限语义对齐）；默认 200，达到后返回 truncated 标记
+    var maxShapes = params.maxShapes !== undefined ? parseInt(params.maxShapes, 10) : 200;
+    if (isNaN(maxShapes) || maxShapes < 1)
+      return fail('无效的 maxShapes: ' + params.maxShapes + '（必须为正整数）');
+    var totalShapes = 0;
+    var truncated = false;
     var slides = [];
-    for (var i = 1; i <= pres.Slides.Count; i++) {
+    outer: for (var i = 1; i <= pres.Slides.Count; i++) {
       var slide = pres.Slides.Item(i);
       var shapes = [];
       for (var j = 1; j <= slide.Shapes.Count; j++) {
@@ -57,6 +74,11 @@ registerHandler('getActivePresentation', function (params) {
           }
         } catch (e) {}
         shapes.push({ name: shape.Name, type: shape.Type, text: text });
+        totalShapes++;
+        if (totalShapes >= maxShapes) {
+          truncated = true;
+          break outer;
+        }
       }
       slides.push({ index: i, shapeCount: slide.Shapes.Count, shapes: shapes });
     }
@@ -66,6 +88,8 @@ registerHandler('getActivePresentation', function (params) {
       path: pres.FullName,
       slideCount: pres.Slides.Count,
       slides: slides,
+      truncated: truncated,
+      maxShapes: maxShapes,
     });
   } catch (e) {
     return fail('获取演示文稿信息失败: ' + e.message);
@@ -195,11 +219,13 @@ registerHandler('deleteSlide', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = resolveSlideIndex(pres, params.slideIndex || params.index || 1);
+    // slideIndex=0 时 || 会静默兜底为 1——改为显式优先 slideIndex，0 传给 resolveSlideIndex 显式 fail
+    var rawIdx = params.slideIndex !== undefined ? params.slideIndex : (params.index || 1);
+    var idx = resolveSlideIndex(pres, rawIdx);
     if (idx === null)
       return fail(
         '无效的幻灯片索引: ' +
-          (params.slideIndex || params.index) +
+          rawIdx +
           '（合法范围 1~' +
           pres.Slides.Count +
           '）'
@@ -264,11 +290,13 @@ registerHandler('getSlideInfo', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = resolveSlideIndex(pres, params.slideIndex || params.index || 1);
+    // slideIndex=0 时 || 会静默兜底为 1——改为显式优先 slideIndex，0 传给 resolveSlideIndex 显式 fail
+    var rawIdx = params.slideIndex !== undefined ? params.slideIndex : (params.index || 1);
+    var idx = resolveSlideIndex(pres, rawIdx);
     if (idx === null)
       return fail(
         '无效的幻灯片索引: ' +
-          (params.slideIndex || params.index) +
+          rawIdx +
           '（合法范围 1~' +
           pres.Slides.Count +
           '）'
@@ -296,11 +324,13 @@ registerHandler('switchSlide', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = resolveSlideIndex(pres, params.slideIndex || params.index || 1);
+    // slideIndex=0 时 || 会静默兜底为 1——改为显式优先 slideIndex，0 传给 resolveSlideIndex 显式 fail
+    var rawIdx = params.slideIndex !== undefined ? params.slideIndex : (params.index || 1);
+    var idx = resolveSlideIndex(pres, rawIdx);
     if (idx === null)
       return fail(
         '无效的幻灯片索引: ' +
-          (params.slideIndex || params.index) +
+          rawIdx +
           '（合法范围 1~' +
           pres.Slides.Count +
           '）'
@@ -455,7 +485,9 @@ registerHandler('addTextBox', function (params) {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
     // 无选中/无活动窗口时安全兜底到第 1 张（与周边 handler 的 slideIndex || 1 语义一致），避免 Selection 抛错
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     var geom = checkShapeGeom(params);
     if (!geom) return fail('无效的坐标/尺寸参数（left/top/width/height 必须为数值）');
@@ -479,7 +511,9 @@ registerHandler('deleteTextBox', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var shapeName = params.shapeName || params.name;
     // shapeName 前置校验：双参都缺时循环空转后「未找到形状」误导（与 setShapeZOrder 语义对齐）
     if (!shapeName) return invalidParam('缺少 shapeName');
@@ -500,7 +534,9 @@ registerHandler('getTextBoxes', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     var boxes = [];
     for (var j = 1; j <= slide.Shapes.Count; j++) {
@@ -519,7 +555,9 @@ registerHandler('setTextBoxText', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
     // shapeName 前置校验：双参都缺时循环空转后「未找到形状」误导（与 setShapeZOrder 语义对齐）
@@ -540,7 +578,9 @@ registerHandler('setTextBoxStyle', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
     if (!shapeName) return invalidParam('缺少 shapeName');
@@ -568,7 +608,9 @@ registerHandler('addShape', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     var shapeTypes = { rectangle: 1, oval: 9, line: 6, arrow: 13, diamond: 4, triangle: 5 };
     var st = shapeTypes[params.shapeType] || 1;
@@ -594,7 +636,9 @@ registerHandler('deleteShape', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
     // shapeName 前置校验：双参都缺时循环空转后「未找到形状」误导（与 setShapeZOrder 语义对齐）
@@ -615,7 +659,9 @@ registerHandler('getShapes', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     var shapes = [];
     for (var j = 1; j <= slide.Shapes.Count; j++) {
@@ -639,7 +685,9 @@ registerHandler('setShapeText', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
     // shapeName 前置校验：双参都缺时循环空转后「未找到形状」误导（与 setShapeZOrder 语义对齐）
@@ -660,7 +708,9 @@ registerHandler('setShapePosition', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
     if (!shapeName) return invalidParam('缺少 shapeName');
@@ -701,7 +751,9 @@ registerHandler('setShapeStyle', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
     // shapeName 前置校验：双参都缺时循环空转后「未找到形状」误导（与 setShapeZOrder 语义对齐）
@@ -733,7 +785,9 @@ registerHandler('setShapeBorder', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
     if (!shapeName) return invalidParam('缺少 shapeName');
@@ -765,7 +819,9 @@ registerHandler('setShapeShadow', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
     // shapeName 前置校验（与 setShapeStyle 语义对齐）
@@ -787,7 +843,9 @@ registerHandler('setShapeTransparency', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
     // shapeName 前置校验（与 setShapeStyle 语义对齐）
@@ -814,7 +872,9 @@ registerHandler('setShapeZOrder', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
     // shapeName 前置校验：循环空转后「未找到形状」误导（实际是参数问题）
@@ -843,7 +903,9 @@ registerHandler('groupShapes', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     // shapeNames 显式数组校验：字符串/'abc' 传 Shapes.Range 抛类型错误
     var names = params.shapeNames;
@@ -860,7 +922,9 @@ registerHandler('duplicateShape', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
     // shapeName 前置校验：双参都缺时循环空转后「未找到形状」误导（与 setShapeZOrder 语义对齐）
@@ -881,7 +945,9 @@ registerHandler('alignShapes', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     // shapeNames 显式数组校验：字符串/'abc' 传 Shapes.Range 抛类型错误
     var names = params.shapeNames;
@@ -900,7 +966,9 @@ registerHandler('distributeShapes', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     // shapeNames 显式数组校验：字符串/'abc' 传 Shapes.Range 抛类型错误
     var names = params.shapeNames;
@@ -918,7 +986,9 @@ registerHandler('smartDistribute', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     // shapeNames 显式数组校验：字符串/'abc' 传 Shapes.Range 抛类型错误
     var names = params.shapeNames;
@@ -936,7 +1006,9 @@ registerHandler('setSlideBackground', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     if (params.color !== undefined) {
       slide.FollowMasterBackground = 0;
@@ -1066,7 +1138,9 @@ registerHandler('addAnimation', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
     // shapeName 前置校验：循环空转后「未找到形状」误导（与 setShapeZOrder 语义对齐）
@@ -1094,7 +1168,9 @@ registerHandler('removeAnimation', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     // 循环上限防死循环：若 Item(1).Delete() 不减少 Count（部分 WPS 语义异常）会无限循环
     var maxIter = 1000;
@@ -1140,7 +1216,9 @@ registerHandler('insertPptImage', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     var filePath = params.path || params.imagePath;
     if (!filePath) return invalidParam('缺少 path');
@@ -1168,7 +1246,9 @@ registerHandler('deletePptImage', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
     // shapeName 前置校验：双参都缺时循环空转后「未找到形状」误导（与 setShapeZOrder 语义对齐）
@@ -1189,7 +1269,9 @@ registerHandler('insertPptTable', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     var rows = params.rows || 3;
     var cols = params.cols || 3;
@@ -1356,7 +1438,9 @@ registerHandler('beautifySlide', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     var scheme = COLOR_SCHEMES[params.style] || COLOR_SCHEMES.business;
     var count = 0;
@@ -1411,7 +1495,9 @@ function beautifySlideImpl(params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     var scheme = COLOR_SCHEMES[params.style] || COLOR_SCHEMES.business;
     var count = 0;
@@ -1436,7 +1522,9 @@ registerHandler('autoLayout', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     var totalW = 0,
       count = 0;
@@ -1472,7 +1560,9 @@ registerHandler('addArrow', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     // 坐标/宽高显式数值校验（复用顶部全局 toNum）：字符串坐标直赋 AddShape 抛类型错误（与 setSlideSize 语义对齐）
     var startX = toNum(params.startX, 100);
@@ -1500,7 +1590,9 @@ registerHandler('addConnector', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     // 坐标显式数值化：字符串坐标直赋 AddConnector 抛类型错误（与 addArrow 第 3 轮修复语义对齐）
     var startX = toNum(params.startX, 100);
@@ -1520,7 +1612,9 @@ registerHandler('addPptHyperlink', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
     // url/shapeName 前置校验：Address=undefined 抛类型错误、缺 shapeName 循环空转后误导（与 addPptHyperlink 语义对齐）
@@ -1542,7 +1636,9 @@ registerHandler('removePptHyperlink', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
     // shapeName 前置校验：双参都缺时循环空转后「未找到形状」误导（与 setShapeZOrder 语义对齐）
@@ -1803,7 +1899,9 @@ registerHandler('setImageStyle', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
     if (!shapeName) return invalidParam('缺少 shapeName');
@@ -1925,7 +2023,9 @@ registerHandler('setShapeGradient', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
     // shapeName 前置校验（与 setShapeStyle 语义对齐）
@@ -1947,7 +2047,9 @@ registerHandler('setShapeFullStyle', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
     if (!shapeName) return invalidParam('缺少 shapeName');
@@ -1989,7 +2091,9 @@ registerHandler('setShapeRoundness', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
-    var idx = params.slideIndex || 1;
+    var idx = safeSlideIndex(pres, params.slideIndex);
+    if (idx === -1)
+      return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
     // shapeName 前置校验：双参都缺时循环空转后「未找到形状」误导（与 setShapeZOrder 语义对齐）

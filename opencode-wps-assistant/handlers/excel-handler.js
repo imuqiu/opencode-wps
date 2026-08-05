@@ -287,7 +287,12 @@ registerHandler('getCellValue', function (params) {
     if (!rc)
       return fail('无效的行/列参数: row=' + params.row + ' col=' + params.col + '（必须为正整数）');
     var cell = sheet.Cells.Item(rc.row, rc.col);
-    return ok({ value: cell.Value2, text: cell.Text, formula: cell.Formula });
+    // cell.Text 包 try/catch：部分 WPS 对日期/公式单元格访问 .Text 抛错，Value2/Formula 已拿到不应丢弃
+    var textVal = '';
+    try {
+      textVal = cell.Text;
+    } catch (e) {}
+    return ok({ value: cell.Value2, text: textVal, formula: cell.Formula });
   } catch (e) {
     return fail('读取单元格失败: ' + e.message);
   }

@@ -112,10 +112,8 @@ function selfStartOpenCode() {
   xhr.onload = function () {
     if (xhr.status === 200) {
       alert('OpenCode 服务已启动，正在打开Web...');
-      // 稍等 opencode 端口就绪后重试打开
-      setTimeout(function () {
-        dockOpen('');
-      }, 1500);
+      // 轮询探测 opencode 端口就绪（最多 5s，替代固定 1.5s 等待——慢速机器上端口可能未就绪）
+      waitOpenCodeReady(0);
     } else {
       // 400 可能是 "already running"（服务其实已运行）——主动探测确认，避免误导用户
       var resp = null;
@@ -124,9 +122,7 @@ function selfStartOpenCode() {
       } catch (e) {}
       if (resp && resp.error && resp.error.indexOf('already running') !== -1) {
         alert('OpenCode 服务已在运行，正在打开Web...');
-        setTimeout(function () {
-          dockOpen('');
-        }, 800);
+        waitOpenCodeReady(0);
       } else {
         alert(
           '打开Web失败：opencode 启动失败（' + xhr.status + '），请手动运行 node launcher-mac.js'
@@ -145,6 +141,38 @@ function selfStartOpenCode() {
     xhr.send(JSON.stringify({}));
   } catch (e) {
     alert('打开Web失败：' + e.message);
+  }
+}
+
+// 轮询探测 opencode 端口就绪（最多 5s，每次间隔 500ms），就绪后 dock
+function waitOpenCodeReady(attempt) {
+  if (attempt >= 10) {
+    alert('OpenCode 服务端口未在预期时间内就绪，请稍后手动打开');
+    return;
+  }
+  var probe = new XMLHttpRequest();
+  probe.open('GET', CONFIG.OPENCODE_URL + '/', true);
+  probe.timeout = 2000;
+  probe.onload = function () {
+    // 任何 HTTP 响应都说明端口已监听
+    dockOpen('');
+  };
+  probe.onerror = function () {
+    setTimeout(function () {
+      waitOpenCodeReady(attempt + 1);
+    }, 500);
+  };
+  probe.ontimeout = function () {
+    setTimeout(function () {
+      waitOpenCodeReady(attempt + 1);
+    }, 500);
+  };
+  try {
+    probe.send();
+  } catch (e) {
+    setTimeout(function () {
+      waitOpenCodeReady(attempt + 1);
+    }, 500);
   }
 }
 

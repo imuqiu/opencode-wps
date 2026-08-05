@@ -109,7 +109,11 @@ registerHandler('getDocumentText', function (params) {
   try {
     var doc = Application.ActiveDocument;
     if (!doc) return fail('没有打开的文档');
-    var text = doc.Content.Text;
+    // Content.Text 包 try/catch：空文档（无段落）时部分 WPS 访问抛错（与 getActiveDocument 的 Count 保护一致）
+    var text = '';
+    try {
+      text = doc.Content.Text;
+    } catch (e) {}
     var length = text.length;
     // maxLength 显式校验：非法字符串/负数显式 fail（NaN > 0 为 false 会静默不截断，NaN 传入 substring 产生乱码）
     var maxLength = params.maxLength !== undefined ? parseInt(params.maxLength, 10) : 10000;
