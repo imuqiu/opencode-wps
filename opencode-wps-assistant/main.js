@@ -22,6 +22,7 @@ var _isPaused = false;
 var _failCount = 0; // 连续失败计数（退避用）
 var _lastError = ''; // 最近一次轮询错误
 var _lastRequestId = ''; // 最近一次已执行的命令 requestId（去重用，防止 poll 重复取同一命令重复执行）
+var _busy = false; // 命令执行中标志：防止轮询在耗时命令执行期间拉取新命令并发交错
 
 // 退避间隔：500ms -> 1s -> 2s -> 5s 封顶（MCP 不可用时避免 CPU 空转）
 var _backoffBase = 500;
@@ -240,6 +241,13 @@ function poll() {
         try {
           var response = JSON.parse(xhr.responseText);
           if (response.command) {
+            // 执行中保护：前一个命令尚未执行完（dispatchCommand 同步执行中）时跳过本轮新命令，
+            // 避免耗时命令（大范围 getRangeData）与后续命令的 XHR 回调时序交错
+            if (_busy) {
+              console.log('命令执行中，跳过: ' + response.command.requestId);
+              scheduleNext();
+              return;
+            }
             // 去重：同一 requestId 不重复执行（MCP 侧 handlePoll 在命令未完成时会重复返回同一命令，
             // 无去重会导致非幂等操作（setCellValue/deleteSlide/insertColumns）重复执行）
             if (response.command.requestId && response.command.requestId === _lastRequestId) {
@@ -250,7 +258,12 @@ function poll() {
               _lastRequestId = response.command.requestId || '';
               // 先排下一轮轮询再执行命令，避免耗时命令（如大范围 getRangeData）同步阻塞轮询节奏
               scheduleNext();
-              dispatchCommand(response.command);
+              _busy = true;
+              try {
+                dispatchCommand(response.command);
+              } finally {
+                _busy = false;
+              }
             }
           } else {
             scheduleNext();

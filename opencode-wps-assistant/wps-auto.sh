@@ -127,7 +127,8 @@ switch_to() {
     close_all
     # close_all 已内置退出确认（最多 10s），此处不再额外 sleep
     if ! start_app "$target"; then
-        echo "[WPS-Auto] 切换失败: 未知应用 $target" >&2
+        # close_all 已关闭原应用——切换失败后用户处于无应用状态，必须给出明确恢复指引
+        echo "[WPS-Auto] 切换失败: 未知应用 $target，原应用已关闭，请手动重新打开 WPS" >&2
         return 1
     fi
     # 就绪确认：轮询等待目标应用进程存活（最多 10s），避免固定 sleep 3 在慢速机器上

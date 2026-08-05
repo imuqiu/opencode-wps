@@ -290,9 +290,16 @@ function dockWindow(callback, data) {
   var tried = [];
   var done = false;
   var startedFallback = false;
+  // 整体超时兜底：open 进程极端情况下（LaunchServices 无响应）可能长时间不退出，
+  // finish 永不调用导致 HTTP 挂起（第 5 轮已修双失败路径但未覆盖「open 进程挂起」）
+  var watchdog = setTimeout(function () {
+    console.log('[launcher] dock open 超时（10s），强制完成');
+    finish();
+  }, 10000);
   function finish() {
     if (done) return;
     done = true;
+    clearTimeout(watchdog);
     callback({ success: true, pid: 0 });
   }
   function tryOpen(bundleId) {

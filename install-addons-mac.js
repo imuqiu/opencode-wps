@@ -107,7 +107,8 @@ if (fsEx.existsSync(mcpServer.src)) {
 
   try {
     console.log('  正在安装依赖 (npm install)...');
-    execSync('npm install', { cwd: mcpServer.src, stdio: 'pipe' });
+    // 显式 timeout：网络异常/依赖下载慢时避免 npm install 挂起整机安装（与 launcher-mac 的 execSync timeout 语义对齐）
+    execSync('npm install', { cwd: mcpServer.src, stdio: 'pipe', timeout: 120000 });
     console.log('  依赖安装完成');
   } catch (e) {
     console.log('  [警告] npm install 失败，请手动运行: cd ' + mcpServer.src + ' && npm install');
@@ -115,7 +116,7 @@ if (fsEx.existsSync(mcpServer.src)) {
 
   try {
     console.log('  正在编译 (npm run build)...');
-    execSync('npm run build', { cwd: mcpServer.src, stdio: 'pipe' });
+    execSync('npm run build', { cwd: mcpServer.src, stdio: 'pipe', timeout: 120000 });
     console.log('  编译完成');
   } catch (e) {
     console.log(
@@ -433,9 +434,15 @@ if (
   try {
     // 先卸载旧注册（bootout 忽略不存在错误），再用 bootstrap 注册（launchctl load 在 macOS 10.10+ 已废弃）
     try {
-      execSync('launchctl bootout gui/' + process.getuid() + ' ' + plistPath, { stdio: 'pipe' });
+      execSync('launchctl bootout gui/' + process.getuid() + ' ' + plistPath, {
+        stdio: 'pipe',
+        timeout: 10000,
+      });
     } catch (e) {}
-    execSync('launchctl bootstrap gui/' + process.getuid() + ' ' + plistPath, { stdio: 'pipe' });
+    execSync('launchctl bootstrap gui/' + process.getuid() + ' ' + plistPath, {
+      stdio: 'pipe',
+      timeout: 10000,
+    });
     console.log('  已注册开机自启: com.opencode.launcher');
   } catch (e) {
     console.log('  [警告] launchctl bootstrap 失败，请手动运行:');
