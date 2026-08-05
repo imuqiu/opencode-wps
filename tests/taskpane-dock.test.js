@@ -490,7 +490,166 @@ test('停靠校正失败但窗格可用：留痕说明窗格仍可用，仍返�
   assertTrue(hasUsable, '应输出「窗格仍可用」增强留痕，实际错误日志: ' + JSON.stringify(sandbox.__errorLogs));
 });
 
-// ==================== 头部遮挡自愈（Issue #78 复诊）====================
+// ==================== 打开面板主动调度宿主重绘（Issue #78 三诊）====================
+// 用户实测：合并 PR #83 后首次打开面板头部仍被遮挡，切标签后才恢复。
+// 根因：PR #83 的宿主重绘只挂在 WindowActivate 事件上，首次打开面板（btnShowTaskPane）
+// 不经过该事件 → 重绘永不触发。修复：btnShowTaskPane 创建/置可见后主动调度
+// forceTaskPaneRedraw(true)（延迟 TASKPANE_OPEN_REDRAW_DELAY=400ms），与切标签同源。
+
+function makeOpenPaneApp(pane, opts) {
+  opts = opts || {};
+  var getCalls = 0;
+  return {
+    CreateTaskPane: function () { return pane; },
+    GetTaskPane: function () {
+      getCalls++;
+      // 默认始终返回 pane；opts.getPaneAfter 可注入指定次数后的返回值
+      if (opts.getPaneAfter && getCalls > opts.getPaneAfter.calls) return opts.getPaneAfter.value;
+      return pane;
+    },
+    PluginStorage: {
+      getItem: function () { return opts.storedId || ''; },
+      setItem: function () {}
+    }
+  };
+}
+
+test('btnShowTaskPane 首次创建：延迟 400ms 后主动调度宿主重绘（Issue #78 三诊）', function () {
+  var pane = { ID: 'tp-open1', DockPosition: undefined, _visible: false };
+  var visibleLog = [];
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return pane._visible; },
+    set: function (v) { pane._visible = v; visibleLog.push(v); }
+  });
+  var sandbox = loadMainJs(makeOpenPaneApp(pane));
+  sandbox.OnAction({ Id: 'btnShowTaskPane' });
+  // 首次创建：createTaskPane 内置可见 → pane._visible = true（visibleLog[0]）
+  assertEqual(pane._visible, true, '首次创建后窗格应可见');
+  assertEqual(visibleLog.length, 1, '创建路径应置可见一次');
+  // flush 全部定时器：调度宿主重绘（隐藏 visibleLog[1] → 恢复 visibleLog[2]）
+  sandbox.__flushTimeouts();
+  assertEqual(pane._visible, true, '宿主重绘完成后应恢复可见');
+  assertEqual(visibleLog.length, 3, '应有 创建置可见+重绘隐藏+重绘恢复 共 3 次置位，实际: ' + JSON.stringify(visibleLog));
+  assertEqual(pane.DockPosition, 2, '重绘时应校正停靠为 Right(2)');
+});
+
+test('btnShowTaskPane 首次创建：窗格不可见时不误调度重绘（可见置位失败）', function () {
+  var pane = { ID: 'tp-open2', DockPosition: undefined, _visible: false };
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return pane._visible; },
+    set: function (v) { throw new Error('Visible 只读'); } // createTaskPane 内置可见失败
+  });
+  var sandbox = loadMainJs(makeOpenPaneApp(pane));
+  sandbox.OnAction({ Id: 'btnShowTaskPane' });
+  // 创建路径仍调度了定时器（代码无条件调度，但 forceTaskPaneRedraw 会因 !tp.Visible 直接返回）
+  sandbox.__flushTimeouts();
+  sandbox.__flushTimeouts();
+  assertEqual(pane._visible, false, '窗格不可见时不应被误置可见');
+  var hasError = sandbox.__errorLogs.some(function (l) { return l.indexOf('置任务窗格可见失败') >= 0; });
+  assertTrue(hasError, '应输出可见置位失败留痕，实际: ' + JSON.stringify(sandbox.__errorLogs));
+});
+
+test('btnShowTaskPane 切换打开（已存在窗格）：延迟 400ms 后主动调度宿主重绘', function () {
+  var pane = { ID: 'tp-open3', DockPosition: 0, _visible: false };
+  var visibleLog = [];
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return pane._visible; },
+    set: function (v) { pane._visible = v; visibleLog.push(v); }
+  });
+  var sandbox = loadMainJs(makeOpenPaneApp(pane, { storedId: 'tp-open3' }));
+  // 第一次点击：从隐藏 → 打开，应调度宿主重绘
+  sandbox.OnAction({ Id: 'btnShowTaskPane' });
+  assertEqual(pane._visible, true, '切换后窗格应可见');
+  assertEqual(pane.DockPosition, 2, '切换时应重新校正停靠为 Right(2)');
+  assertEqual(visibleLog.length, 1, '切换打开应置可见一次');
+  // flush：执行调度定时器（隐藏）与恢复定时器（显示）
+  sandbox.__flushTimeouts();
+  assertEqual(pane._visible, true, '宿主重绘完成后应恢复可见');
+  assertEqual(visibleLog.length, 3, '应有 切换置可见+重绘隐藏+重绘恢复 共 3 次置位，实际: ' + JSON.stringify(visibleLog));
+});
+
+test('btnShowTaskPane 切换关闭（窗格变隐藏）：不调度宿主重绘', function () {
+  var pane = { ID: 'tp-open4', DockPosition: 0, _visible: true };
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return pane._visible; },
+    set: function (v) { pane._visible = v; }
+  });
+  var sandbox = loadMainJs(makeOpenPaneApp(pane, { storedId: 'tp-open4' }));
+  sandbox.OnAction({ Id: 'btnShowTaskPane' });
+  assertEqual(pane._visible, false, '切换后窗格应隐藏');
+  // 关闭路径不应调度宿主重绘：flush 全部定时器后窗格保持隐藏
+  sandbox.__flushTimeouts();
+  assertEqual(pane._visible, false, '关闭路径不应触发任何重绘置位');
+});
+
+test('btnShowTaskPane 切换打开：读取 Visible 抛异常时保守不调度重绘', function () {
+  var pane = { ID: 'tp-open5', DockPosition: 0 };
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { throw new Error('Visible 读取失败'); },
+    set: function (v) {}
+  });
+  var sandbox = loadMainJs(makeOpenPaneApp(pane, { storedId: 'tp-open5' }));
+  sandbox.OnAction({ Id: 'btnShowTaskPane' }); // 不应抛异常
+  // tp.Visible = !tp.Visible 在求值阶段读取 Visible 即抛异常 → 切换失败留痕，不调度重绘
+  var hasError = sandbox.__errorLogs.some(function (l) { return l.indexOf('切换任务窗格可见性失败') >= 0; });
+  assertTrue(hasError, 'Visible 读取抛异常应走切换失败留痕，实际: ' + JSON.stringify(sandbox.__errorLogs));
+  // flush 定时器：不应有任何重绘置位（调度分支因读取失败未执行）
+  sandbox.__flushTimeouts();
+  var visibleSet = sandbox.__visibleSet || 0;
+  assertEqual(visibleSet, 0, 'Visible 读取失败不应触发任何额外置位');
+});
+
+test('forceTaskPaneRedraw(force=true)：不受 taskPaneRedrawPending 首次防抖影响前重绘可执行', function () {
+  var pane = { ID: 'tp-open6', DockPosition: 0, _visible: true };
+  var visibleLog = [];
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return pane._visible; },
+    set: function (v) { pane._visible = v; visibleLog.push(v); }
+  });
+  var appMock = {
+    GetTaskPane: function () { return pane; },
+    PluginStorage: {
+      getItem: function () { return 'tp-open6'; },
+      setItem: function () {}
+    }
+  };
+  var sandbox = loadMainJs(appMock);
+  // force=true（用户主动打开面板后调度）：应正常执行隐藏→显示
+  sandbox.forceTaskPaneRedraw(true);
+  assertEqual(visibleLog.length, 1, 'force=true 应先隐藏一次');
+  sandbox.__flushTimeouts();
+  assertEqual(visibleLog.length, 2, 'flush 后应恢复显示');
+});
+
+test('forceTaskPaneRedraw(true) 与 WindowActivate 触发共享防抖：pending 期间跳过', function () {
+  var pane = { ID: 'tp-open7', DockPosition: 0, _visible: true };
+  var visibleLog = [];
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return pane._visible; },
+    set: function (v) { pane._visible = v; visibleLog.push(v); }
+  });
+  var appMock = {
+    GetTaskPane: function () { return pane; },
+    PluginStorage: {
+      getItem: function () { return 'tp-open7'; },
+      setItem: function () {}
+    }
+  };
+  var sandbox = loadMainJs(appMock);
+  // 第一次 force=true：进入 pending
+  sandbox.forceTaskPaneRedraw(true);
+  assertEqual(visibleLog.length, 1, '第一次隐藏一次');
+  // pending 期间 force=false（WindowActivate 触发）应被防抖跳过
+  sandbox.forceTaskPaneRedraw(false);
+  assertEqual(visibleLog.length, 1, 'pending 期间 WindowActivate 触发应跳过');
+  // flush 完成第一次重绘
+  sandbox.__flushTimeouts();
+  assertEqual(visibleLog.length, 2, 'flush 后恢复显示');
+  // pending 清除后 force=true 可再次执行
+  sandbox.forceTaskPaneRedraw(true);
+  assertEqual(visibleLog.length, 3, 'pending 清除后应允许再次隐藏');
+});
+
 // 用户实测：PR #79 的 DockPosition 修复后头部仍被遮挡；新建 WPS 标签页再切回即恢复。
 // 像素分析结论：任务窗格 WebView 首次渲染时 topbar/session-header 区域为空白（flex 布局
 // 因视口高度计算错误把头部挤出可视区），切换窗口触发宿主重绘后才恢复。

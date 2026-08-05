@@ -317,7 +317,22 @@ var taskPaneRedrawPending = false
 // forceTaskPaneRedraw 异步恢复前比对，若重绘期间用户手动关闭过窗格则放弃恢复，
 // 避免把用户刚关闭的窗格重新弹出来（尊重用户意图）
 var lastUserTaskPaneAction = 0
-function forceTaskPaneRedraw() {
+// 用户主动打开面板后调度宿主重绘的延迟：等 WPS 宿主完成新窗格首次布局后再重绘，
+// 避免重绘过早（宿主尚未完成初始布局）导致无效。
+// 该值小于 forceTaskPaneRedraw 内部异步两步的 150ms 恢复延迟：
+// 用户主动打开（tp.Visible=true）→ 400ms 后调度隐藏→显示，全程约 550ms 完成自愈。
+var TASKPANE_OPEN_REDRAW_DELAY = 400
+function forceTaskPaneRedraw(force) {
+    // 用户主动打开面板路径（btnShowTaskPane 创建/置可见后）主动调度重绘：
+    // WPS TaskPane WebView 首次渲染视口高度计算错误（宿主 bug），只有宿主重新布局
+    // （隐藏→显示任务窗格）才能让 WebView 拿到正确视口；而 PR #83 的宿主重绘
+    // 只挂在 WindowActivate 事件上，首次打开面板不经过该事件 → 重绘永不触发，
+    // 与用户实测「合并 #83 后首次打开仍遮挡、切标签后恢复」完全吻合（Issue #78）。
+    // force=true：用户主动打开面板后调度（首次创建/切换显示）；
+    // force=false：WindowActivate 被动触发。两者均受下方 taskPaneRedrawPending
+    // 防抖保护——若恰有重绘在进行中（如用户刚切标签）则跳过本次，避免两次重绘交错
+    // 导致 Visible 状态错乱；force 仅用于日志区分触发源，不改变防抖语义。
+    var redrawSource = force ? '用户主动打开面板' : 'WindowActivate 切换窗口'
     var tsId = ""
     // 重绘开始时间戳提前到函数开头：确保读取窗格期间及之后任何用户操作都被捕获
     var redrawStartTime = Date.now()
@@ -356,7 +371,7 @@ function forceTaskPaneRedraw() {
                 if (!cur) return          // 窗格已销毁：放弃恢复
                 if (cur.Visible) return   // 已被外部恢复（用户重新打开等）：不重复置位
                 cur.Visible = true
-                console.log('[WPS] 任务窗格已强制重绘（WindowActivate 触发布局修复）')
+                console.log('[WPS] 任务窗格已强制重绘（' + redrawSource + '触发布局修复）')
             } catch (e) {
                 console.error('[WPS] 恢复任务窗格可见失败: ' + errMsg(e))
             }
@@ -420,6 +435,20 @@ function OnAction(control) {
                     // 创建也失败（如 taskpane.html 路径无效）：已留痕，直接返回，避免后续空指针
                     return
                 }
+                // 首次创建路径：窗格已置可见。WPS TaskPane WebView 首次渲染视口高度
+                // 计算错误（宿主 bug），PR #83 的宿主重绘只挂在 WindowActivate 事件上，
+                // 首次打开面板不经过该事件 → 重绘永不触发，与用户实测「合并 #83 后首次
+                // 打开仍遮挡、切标签后恢复」吻合。这里主动调度一次宿主重绘修复（Issue #78）。
+                // createTaskPane 内 Visible 置位失败（窗格不可见）时 forceTaskPaneRedraw
+                // 会因 !tp.Visible 直接返回，天然安全，不误弹。
+                setTimeout(function() {
+                    // 重置用户操作时间戳：本次调度是「重绘开始前」的自愈操作，
+                    // 不应被旧操作时间戳误判为「重绘窗口内用户操作」而放弃恢复
+                    // （调度时已确认 taskPaneRedrawPending=false，无进行中重绘依赖该时间戳，
+                    // 重置安全；此后 150ms 重绘窗口内的新用户操作会重新设置时间戳被尊重）。
+                    lastUserTaskPaneAction = 0
+                    forceTaskPaneRedraw(true)
+                }, TASKPANE_OPEN_REDRAW_DELAY)
             } else {
                 // 每次打开时重新校正停靠位置（右侧），防止位置漂移再次遮挡顶栏；
                 // 与 createTaskPane 内保持一致：停靠校正失败（内部已留痕）但窗格仍可用，
@@ -434,6 +463,24 @@ function OnAction(control) {
                     // 记录用户主动操作时间戳：forceTaskPaneRedraw 异步恢复前比对，
                     // 重绘期间用户手动关闭过窗格则放弃恢复（不把用户刚关闭的窗格弹回来）
                     lastUserTaskPaneAction = Date.now()
+                    // 切换后窗格可见（本次是打开）：主动调度宿主重绘，与首次创建路径同源——
+                    // 首次打开的 WebView 渲染 bug 在切换显示时同样可能触发（宿主重新布局时机
+                    // 因版本/场景而异），统一在打开后补一次宿主重绘（Issue #78）。
+                    // 仅当无重绘进行中（taskPaneRedrawPending=false）时调度：
+                    // 若恰在 forceTaskPaneRedraw 的隐藏→显示窗口内（如用户快速点按钮），
+                    // 窗格已可见且原重绘的恢复回调会处理状态，此时再调度会造成额外闪烁；
+                    // 由原重绘的 lastUserTaskPaneAction 比对统一收口（放弃恢复）。
+                    // 读取 Visible 失败（COM 属性异常）时保守不调度，避免误判状态。
+                    var nowVisible = false
+                    try { nowVisible = !!tp.Visible } catch (e) { nowVisible = false }
+                    if (nowVisible && !taskPaneRedrawPending) {
+                        setTimeout(function() {
+                            // 同首次创建路径：重置用户操作时间戳后再调度重绘，
+                            // 避免 toggle 时设置的时间戳被新重绘误判为窗口内操作而放弃恢复。
+                            lastUserTaskPaneAction = 0
+                            forceTaskPaneRedraw(true)
+                        }, TASKPANE_OPEN_REDRAW_DELAY)
+                    }
                 } catch (e) {
                     console.error('[WPS] 切换任务窗格可见性失败: ' + errMsg(e))
                 }
