@@ -481,6 +481,8 @@ registerHandler('deleteTextBox', function (params) {
     if (!pres) return fail('没有打开的演示文稿');
     var idx = params.slideIndex || 1;
     var shapeName = params.shapeName || params.name;
+    // shapeName 前置校验：双参都缺时循环空转后「未找到形状」误导（与 setShapeZOrder 语义对齐）
+    if (!shapeName) return invalidParam('缺少 shapeName');
     var slide = pres.Slides.Item(idx);
     for (var j = 1; j <= slide.Shapes.Count; j++) {
       if (slide.Shapes.Item(j).Name === shapeName) {
@@ -520,6 +522,8 @@ registerHandler('setTextBoxText', function (params) {
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
+    // shapeName 前置校验：双参都缺时循环空转后「未找到形状」误导（与 setShapeZOrder 语义对齐）
+    if (!shapeName) return invalidParam('缺少 shapeName');
     for (var j = 1; j <= slide.Shapes.Count; j++) {
       if (slide.Shapes.Item(j).Name === shapeName) {
         slide.Shapes.Item(j).TextFrame.TextRange.Text = params.text || '';
@@ -593,6 +597,8 @@ registerHandler('deleteShape', function (params) {
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
+    // shapeName 前置校验：双参都缺时循环空转后「未找到形状」误导（与 setShapeZOrder 语义对齐）
+    if (!shapeName) return invalidParam('缺少 shapeName');
     for (var j = 1; j <= slide.Shapes.Count; j++) {
       if (slide.Shapes.Item(j).Name === shapeName) {
         slide.Shapes.Item(j).Delete();
@@ -636,6 +642,8 @@ registerHandler('setShapeText', function (params) {
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
+    // shapeName 前置校验：双参都缺时循环空转后「未找到形状」误导（与 setShapeZOrder 语义对齐）
+    if (!shapeName) return invalidParam('缺少 shapeName');
     for (var j = 1; j <= slide.Shapes.Count; j++) {
       if (slide.Shapes.Item(j).Name === shapeName) {
         slide.Shapes.Item(j).TextFrame.TextRange.Text = params.text || '';
@@ -855,6 +863,8 @@ registerHandler('duplicateShape', function (params) {
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
+    // shapeName 前置校验：双参都缺时循环空转后「未找到形状」误导（与 setShapeZOrder 语义对齐）
+    if (!shapeName) return invalidParam('缺少 shapeName');
     for (var j = 1; j <= slide.Shapes.Count; j++) {
       if (slide.Shapes.Item(j).Name === shapeName) {
         var dup = slide.Shapes.Item(j).Duplicate();
@@ -1105,6 +1115,8 @@ registerHandler('startSlideShow', function (params) {
   try {
     var pres = getPPT();
     if (!pres) return fail('没有打开的演示文稿');
+    // 前置校验：无幻灯片时放映抛费解错误（与 endSlideShow 幂等保护语义对齐）
+    if (pres.Slides.Count < 1) return fail('演示文稿没有幻灯片，无法放映');
     pres.SlideShowSettings.Run();
     return ok({});
   } catch (e) {
@@ -1159,6 +1171,8 @@ registerHandler('deletePptImage', function (params) {
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
+    // shapeName 前置校验：双参都缺时循环空转后「未找到形状」误导（与 setShapeZOrder 语义对齐）
+    if (!shapeName) return invalidParam('缺少 shapeName');
     for (var j = 1; j <= slide.Shapes.Count; j++) {
       if (slide.Shapes.Item(j).Name === shapeName) {
         slide.Shapes.Item(j).Delete();
@@ -1218,6 +1232,10 @@ registerHandler('insertPptTable', function (params) {
 
 // 在指定幻灯片中按名称或序号（第 N 个表格）定位表格形状；非表格返回 null
 function findPptTable(slide, tableNameOrIndex) {
+  // 数字字符串（'1'/'2'）归一化为数字：否则走名称分支按 '1' 查找找不到（与 resolveSlideIndex 语义对齐）
+  if (typeof tableNameOrIndex === 'string' && /^\d+$/.test(tableNameOrIndex.trim())) {
+    tableNameOrIndex = parseInt(tableNameOrIndex, 10);
+  }
   if (typeof tableNameOrIndex === 'number') {
     // 按"第 N 个表格"定位
     var n = 0;
@@ -1527,6 +1545,8 @@ registerHandler('removePptHyperlink', function (params) {
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
+    // shapeName 前置校验：双参都缺时循环空转后「未找到形状」误导（与 setShapeZOrder 语义对齐）
+    if (!shapeName) return invalidParam('缺少 shapeName');
     for (var j = 1; j <= slide.Shapes.Count; j++) {
       if (slide.Shapes.Item(j).Name === shapeName) {
         slide.Shapes.Item(j).ActionSettings.Item(1).Hyperlink.Delete();
@@ -1972,6 +1992,8 @@ registerHandler('setShapeRoundness', function (params) {
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
+    // shapeName 前置校验：双参都缺时循环空转后「未找到形状」误导（与 setShapeZOrder 语义对齐）
+    if (!shapeName) return invalidParam('缺少 shapeName');
     for (var j = 1; j <= slide.Shapes.Count; j++) {
       var s = slide.Shapes.Item(j);
       if (s.Name === shapeName) {

@@ -170,7 +170,8 @@ registerHandler('closeWorkbook', function (params) {
   try {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
-    var save = params.save !== undefined ? params.save : true;
+    // save 显式布尔化：'false' 字符串不能被真值判断放行（布尔参数语义）
+    var save = params.save === undefined ? true : !!params.save;
     wb.Close(save);
     return ok({});
   } catch (e) {
@@ -1433,8 +1434,10 @@ registerHandler('addDataValidation', function (params) {
     if (!params.range) return invalidParam('缺少 range');
     var range = sheet.Range(params.range);
     var dv = range.Validation;
+    // formula1 前置校验：空串传给 Validation.Add 抛费解错误（数据验证必须指定列表/公式）
+    if (!params.formula1) return invalidParam('缺少 formula1');
     dv.Delete();
-    dv.Add(3, 1, 1, params.formula1 || '', params.formula2 || '');
+    dv.Add(3, 1, 1, params.formula1, params.formula2 || '');
     return ok({});
   } catch (e) {
     return fail('添加数据验证失败: ' + e.message);
@@ -1459,6 +1462,8 @@ registerHandler('setPrintArea', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
+    // range 前置校验：PrintArea = undefined 直赋抛类型错误（与 setNumberFormat 语义对齐）
+    if (!params.range) return invalidParam('缺少 range');
     sheet.PageSetup.PrintArea = params.range;
     return ok({});
   } catch (e) {

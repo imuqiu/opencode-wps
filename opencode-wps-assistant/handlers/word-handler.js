@@ -279,7 +279,10 @@ registerHandler('insertPageBreak', function (params) {
   try {
     var doc = Application.ActiveDocument;
     if (!doc) return fail('没有打开的文档');
-    doc.Content.InsertBreak(7);
+    // 基于光标/选中插入（与 insertSectionBreak 修复模式一致），避免无选中时在文档末尾插入或空文档 Content 异常
+    var range = getSelectionRange();
+    if (!range) return fail('请先在文档中选中文本或设置光标');
+    range.InsertBreak(7);
     return ok({});
   } catch (e) {
     return fail('插入分页符失败: ' + e.message);
