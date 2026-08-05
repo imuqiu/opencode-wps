@@ -8,12 +8,13 @@
 
 ### 工作流程
 
-1. **评估文档** — `getDocumentTextByRange` 全文读取 → `analyzeDocStructure` 评估段落数量和结构
-2. **定义字段** — `step2LabelFields` 逐个标注需要填写的字段名称和位置
-3. **映射数据** — `step3MapFields` 将数据源字段与模板字段对应
-4. **预览校验** — 自动检测字段格式（日期/金额/编号等），发现异常立即提示
-5. **批量填值** — 分批次（每批 ≤200 段）调用 `replaceInParagraph` 执行填充，禁止 AI 编造数据，跳过签字/印章等不可自动填写的字段
-6. **修订记录** — 全程开启 `TrackRevisions` 模式，所有修改自动标记修订，用户可逐个接受/拒绝
+1. **评估文档** — `getActiveDocument` 获取文档总段落数与结构，输出分批计划（T1）
+2. **分批拉取** — `getDocumentParagraphs` 分批次获取段落（每批 ≤200 段，T2/T5）
+3. **定义字段** — `findInDocument` / `getBookmarks` 定位模板字段名称和位置
+4. **映射数据** — `smartFillField` 将数据源字段值与模板字段对应（支持 auto/underline/afterColon/afterLabel/placeholder 五种模式，T6/T7/T8/T9）
+5. **预览校验** — 自动检测字段格式（日期/金额/编号等），首次填写前输出「文档字段 ↔ 用户值」对照表并获用户确认（T7）
+6. **批量填值** — 分批次（每批 ≤200 段）调用 `smartFillField` / `replaceBookmarkContent` 执行填充，全程修订模式（T3），所有填值自动加下划线（T11），禁止编造数据，跳过签字/印章等不可自动填写的字段（T8）
+7. **查漏复核** — 填写后调用 `findInDocument` 检查遗漏（T4）
 
 ### 治理规则（T1-T11）
 
@@ -56,7 +57,7 @@
 | 规则 | 类型 | 说明 |
 |------|------|------|
 | **P1** | before | 每批前必调 `proofreadBasic`，禁止 AI 直接调用 `getDocumentParagraphs` 跳批 |
-| **P2-P3** | before/after | `proofreadBasic` 文本长度限制（段落 × 行 × 200 字符） |
+| **P2-P3** | before/after | 文本长度限制：单次 `getDocumentParagraphs` ≤200 段；`proofreadBasic` 传入文本不得超过本批预期范围 ×2（或 5 万字符兜底） |
 | **P4-P7** | after | 批次状态追踪（批数/段数/完成计数/状态设置） |
 | **P8-P10** | before | `confirmBatchAiProofread` 前必须调 `proofreadBasic`，禁止跳过基础校对 |
 | **P11** | before | 每批必须完成（proofread → confirm → fix）才能进入下一批 |
