@@ -115,7 +115,10 @@ node launcher-mac.js
 git clone https://cnb.cool/lnxsun/opencode-wps.git
 cd opencode-wps
 
-# 2. 运行 Linux 安装脚本
+# 2. 安装项目依赖（install-addons-linux.js 依赖根目录 node_modules，如 fs-extra）
+npm install
+
+# 3. 运行 Linux 安装脚本
 node install-addons-linux.js
 ```
 

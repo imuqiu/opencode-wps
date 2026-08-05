@@ -76,4 +76,4 @@ before 钩子拦截违规 → 工具执行 → after 钩子更新状态 → befo
 - 合同/公文/学术文档的格式一致性校对
 - 批量校对 + 批量修正（铁律 3.0 确保每批严格闭环）
 
-> 📖 校对技术设计细节见 [docs/proofread-fluency-conciseness-design.md](./proofread-fluency-conciseness-design.md)；治理插件实现见 [docs/../AGENTS.md](../AGENTS.md) 与 `.opencode/plugins/governance.js`。
+> 📖 校对技术设计细节见 [proofread-fluency-conciseness-design.md](./proofread-fluency-conciseness-design.md)；治理插件实现见 [AGENTS.md](../AGENTS.md) 与 `.opencode/plugins/governance.js`。

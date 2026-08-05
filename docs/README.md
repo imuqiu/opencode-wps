@@ -14,7 +14,6 @@
 | [USAGE.md](./USAGE.md) | 使用指南（对话操作、Agents 调用、服务管理） |
 | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | 问题排查与避坑指南 |
 | [FEATURES.md](./FEATURES.md) | 特色功能详解（模板填值 + 校对铁律 3.0） |
-| [LINUX.md](./LINUX.md) | Linux 平台专题（前置条件/安装/使用/限制） |
 
 ## 🔧 开发贡献（面向开发者/贡献者）
 
@@ -54,12 +53,7 @@
 
 ## 平台路径参考
 
-| 资源 | Windows | macOS | Linux |
-|------|---------|-------|-------|
-| WPS 插件目录 | `%APPDATA%\kingsoft\wps\jsaddons\opencode-wps_` | `~/Library/Containers/com.kingsoft.wpsformac/Data/Documents/jsaddons/` | `~/.local/share/Kingsoft/wps/jsaddons/` |
-| 安装脚本 | `install-addons.js` | `install-addons-mac.js` | `install-addons-linux.js` |
-| Launcher | `opencode-wps/launcher.js`（计划任务自启） | `launcher-mac.js`（LaunchAgent 自启） | `launcher-linux.js`（XDG autostart 自启） |
-| MCP 通信 | PowerShell COM（wps-com.ps1） | HTTP 轮询（mac-poll-server.ts:58891） | HTTP 轮询（linux-poll-server.ts:58891） |
+> 📖 三平台安装目录、Launcher 与 MCP 通信方式的完整对照见 [INSTALLATION.md](./INSTALLATION.md)「平台路径速查」表。
 
 ## 仓库根目录文档
 
