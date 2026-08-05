@@ -319,9 +319,22 @@ var taskPaneRedrawPending = false
 var lastUserTaskPaneAction = 0
 // 用户主动打开面板后调度宿主重绘的延迟：等 WPS 宿主完成新窗格首次布局后再重绘，
 // 避免重绘过早（宿主尚未完成初始布局）导致无效。
-// 该值小于 forceTaskPaneRedraw 内部异步两步的 150ms 恢复延迟：
-// 用户主动打开（tp.Visible=true）→ 400ms 后调度隐藏→显示，全程约 550ms 完成自愈。
+// 该值远大于 forceTaskPaneRedraw 内部的 150ms 恢复窗口：
+// 用户主动打开（tp.Visible=true）→ 等 400ms 宿主完成首次布局 → 再走 150ms
+// 隐藏→显示重绘，全程约 550ms 完成自愈。
 var TASKPANE_OPEN_REDRAW_DELAY = 400
+// 打开面板后主动调度一次宿主重绘（Issue #78 三诊）——首次创建与切换显示两路共用：
+// 等宿主完成首次布局后，重置用户操作时间戳并触发 forceTaskPaneRedraw(true)。
+// 注意：真实保护链是 forceTaskPaneRedraw 内的可见性检查（!tp.Visible return 不误弹），
+// 时间戳清零仅用于清理调度等待期（400ms 内）残留的旧操作时间戳，避免语义混乱——
+// 后续 150ms 重绘窗口内的新用户操作仍会重新设置时间戳而被尊重。
+// 依赖关系：若未来移除可见性检查，本清零将失效，必须同步保留可见性防线。
+function scheduleTaskPaneOpenRedraw() {
+    setTimeout(function() {
+        lastUserTaskPaneAction = 0
+        forceTaskPaneRedraw(true)
+    }, TASKPANE_OPEN_REDRAW_DELAY)
+}
 function forceTaskPaneRedraw(force) {
     // 用户主动打开面板路径（btnShowTaskPane 创建/置可见后）主动调度重绘：
     // WPS TaskPane WebView 首次渲染视口高度计算错误（宿主 bug），只有宿主重新布局
@@ -441,14 +454,7 @@ function OnAction(control) {
                 // 打开仍遮挡、切标签后恢复」吻合。这里主动调度一次宿主重绘修复（Issue #78）。
                 // createTaskPane 内 Visible 置位失败（窗格不可见）时 forceTaskPaneRedraw
                 // 会因 !tp.Visible 直接返回，天然安全，不误弹。
-                setTimeout(function() {
-                    // 重置用户操作时间戳：本次调度是「重绘开始前」的自愈操作，
-                    // 不应被旧操作时间戳误判为「重绘窗口内用户操作」而放弃恢复
-                    // （调度时已确认 taskPaneRedrawPending=false，无进行中重绘依赖该时间戳，
-                    // 重置安全；此后 150ms 重绘窗口内的新用户操作会重新设置时间戳被尊重）。
-                    lastUserTaskPaneAction = 0
-                    forceTaskPaneRedraw(true)
-                }, TASKPANE_OPEN_REDRAW_DELAY)
+                scheduleTaskPaneOpenRedraw()
             } else {
                 // 每次打开时重新校正停靠位置（右侧），防止位置漂移再次遮挡顶栏；
                 // 与 createTaskPane 内保持一致：停靠校正失败（内部已留痕）但窗格仍可用，
@@ -474,15 +480,13 @@ function OnAction(control) {
                     // 已知竞态：tp.Visible = !tp.Visible 与下方 nowVisible 读取为两次 COM 属性访问，
                     // 但 WPS 宿主不会在同步代码块内异步改变窗格状态，读到的即切换后的状态，
                     // 竞态窗口可接受（即使极端场景误判，最坏只是多做一次无害重绘）。
+                    // 另一面取舍：读取失败（nowVisible=false）时保守不调度 → 本次打开可能不自愈
+                    // （头部仍遮挡），但下次切换/WindowActivate 仍会触发重绘兜底，代价可接受。
                     var nowVisible = false
                     try { nowVisible = !!tp.Visible } catch (e) { nowVisible = false }
                     if (nowVisible && !taskPaneRedrawPending) {
-                        setTimeout(function() {
-                            // 同首次创建路径：重置用户操作时间戳后再调度重绘，
-                            // 避免 toggle 时设置的时间戳被新重绘误判为窗口内操作而放弃恢复。
-                            lastUserTaskPaneAction = 0
-                            forceTaskPaneRedraw(true)
-                        }, TASKPANE_OPEN_REDRAW_DELAY)
+                        // 与首次创建路径同源：打开后 400ms 主动调度宿主重绘（见函数上方注释）
+                        scheduleTaskPaneOpenRedraw()
                     }
                 } catch (e) {
                     console.error('[WPS] 切换任务窗格可见性失败: ' + errMsg(e))

@@ -656,6 +656,52 @@ test('forceTaskPaneRedraw(true) 与 WindowActivate 触发共享防抖：pending 
   assertEqual(visibleLog.length, 3, 'pending 清除后应允许再次隐藏');
 });
 
+test('forceTaskPaneRedraw 重绘窗口内用户关闭：放弃恢复不误弹（Issue #78 安全边界）', function () {
+  var pane = { ID: 'tp-open8', DockPosition: 0, _visible: true };
+  var visibleLog = [];
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return pane._visible; },
+    set: function (v) { pane._visible = v; visibleLog.push(v); }
+  });
+  var appMock = {
+    GetTaskPane: function () { return pane; },
+    PluginStorage: {
+      getItem: function () { return 'tp-open8'; },
+      setItem: function () {}
+    }
+  };
+  var sandbox = loadMainJs(appMock);
+  // 重绘开始：先隐藏
+  sandbox.forceTaskPaneRedraw(true);
+  assertEqual(pane._visible, false, '重绘第一步应隐藏窗格');
+  // 150ms 恢复窗口内用户主动关闭（等价 OnAction toggle 分支，时间戳晚于重绘开始）
+  sandbox.lastUserTaskPaneAction = Date.now();
+  // flush 执行恢复回调：应放弃恢复（不把用户关闭的窗格弹回来）
+  sandbox.__flushTimeouts();
+  assertEqual(pane._visible, false, '重绘窗口内用户关闭后不应被误弹恢复');
+  assertEqual(visibleLog.length, 1, '应仅隐藏一次（无恢复置位），实际: ' + JSON.stringify(visibleLog));
+});
+
+test('forceTaskPaneRedraw 恢复回调 GetTaskPane 返回 null（窗格销毁）：放弃恢复（Issue #78 安全边界）', function () {
+  var pane = { ID: 'tp-open9', DockPosition: 0, _visible: true };
+  var visibleLog = [];
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return pane._visible; },
+    set: function (v) { pane._visible = v; visibleLog.push(v); }
+  });
+  // getPaneAfter 注入：第 1 次 GetTaskPane（重绘开始取 tp）返回 pane，
+  // 第 2 次及以后（恢复回调取 cur）返回 null，模拟恢复窗口内窗格被销毁
+  var sandbox = loadMainJs(makeOpenPaneApp(pane, {
+    storedId: 'tp-open9',
+    getPaneAfter: { calls: 1, value: null }
+  }));
+  sandbox.forceTaskPaneRedraw(true);
+  assertEqual(pane._visible, false, '重绘第一步应隐藏窗格');
+  sandbox.__flushTimeouts();
+  assertEqual(pane._visible, false, '窗格销毁后不应被恢复弹回');
+  assertEqual(visibleLog.length, 1, '应仅隐藏一次（无恢复置位），实际: ' + JSON.stringify(visibleLog));
+});
+
 // 用户实测：PR #79 的 DockPosition 修复后头部仍被遮挡；新建 WPS 标签页再切回即恢复。
 // 像素分析结论：任务窗格 WebView 首次渲染时 topbar/session-header 区域为空白（flex 布局
 // 因视口高度计算错误把头部挤出可视区），切换窗口触发宿主重绘后才恢复。
