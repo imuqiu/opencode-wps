@@ -661,7 +661,12 @@ registerHandler('setColumnWidth', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
-    sheet.Columns(params.column).ColumnWidth = params.width;
+    // column/width 显式校验：Columns(undefined) 抛费解错误、字符串宽直赋 COM 抛类型错误
+    var colLetter = resolveColumnLetter(params.column);
+    if (!colLetter) return fail('无效的列参数: ' + params.column);
+    var width = parseFloat(params.width);
+    if (isNaN(width) || width <= 0) return fail('无效的列宽: ' + params.width + '（必须为正数）');
+    sheet.Columns(colLetter).ColumnWidth = width;
     return ok({});
   } catch (e) {
     return fail('设置列宽失败: ' + e.message);
@@ -673,7 +678,12 @@ registerHandler('setRowHeight', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
-    sheet.Rows(params.row).RowHeight = params.height;
+    // row/height 显式校验（与 setColumnWidth 语义对齐）
+    var row = parseInt(params.row, 10);
+    if (isNaN(row) || row < 1) return fail('无效的行参数: ' + params.row + '（必须为正整数）');
+    var height = parseFloat(params.height);
+    if (isNaN(height) || height <= 0) return fail('无效的行高: ' + params.height + '（必须为正数）');
+    sheet.Rows(row).RowHeight = height;
     return ok({});
   } catch (e) {
     return fail('设置行高失败: ' + e.message);
@@ -1224,6 +1234,8 @@ registerHandler('createPivotTable', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
+    // sourceRange 前置校验：Range(undefined) 抛费解错误（与 copyRange 语义对齐）
+    if (!params.sourceRange) return invalidParam('缺少 sourceRange');
     var pc = wb.PivotCaches().Create(1, sheet.Range(params.sourceRange));
     var ptSheet = wb.Sheets.Add();
     var pt = pc.CreatePivotTable(ptSheet.Range('A1'), params.name || 'PivotTable1');

@@ -502,7 +502,10 @@ registerHandler('insertSectionBreak', function (params) {
     var breakType = params.breakType || 'nextPage';
     var typeMap = { nextPage: 2, continuous: 3, evenPage: 4, oddPage: 5 };
     var type = typeMap[breakType] || 2;
-    Application.Selection.InsertBreak(type);
+    // 无选中/无活动窗口时 Selection 抛错——前置保护给明确提示（与 insertHyperlink/insertTable 修复模式一致）
+    var range = getSelectionRange();
+    if (!range) return fail('请先在文档中选中文本或设置光标');
+    range.InsertBreak(type);
     return ok({});
   } catch (e) {
     return fail('插入分节符失败: ' + e.message);

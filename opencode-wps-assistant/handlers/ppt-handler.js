@@ -1403,6 +1403,9 @@ registerHandler('addPptHyperlink', function (params) {
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
+    // url/shapeName 前置校验：Address=undefined 抛类型错误、缺 shapeName 循环空转后误导（与 addPptHyperlink 语义对齐）
+    if (!params.url) return invalidParam('缺少 url');
+    if (!shapeName) return invalidParam('缺少 shapeName');
     for (var j = 1; j <= slide.Shapes.Count; j++) {
       if (slide.Shapes.Item(j).Name === shapeName) {
         slide.Shapes.Item(j).ActionSettings.Item(1).Hyperlink.Address = params.url;
@@ -1904,13 +1907,23 @@ registerHandler('setShapeFill', function (params) {
         return fail('无效的填充颜色: ' + params.fillColor + '，支持 #RRGGBB/RRGGBB/数字');
       shape.Fill.ForeColor.RGB = color;
     }
-    if (params.transparency !== undefined) shape.Fill.Transparency = params.transparency;
-    if (params.gradient !== undefined)
-      shape.Fill.OneColorGradient(
-        params.gradient.style,
-        params.gradient.variant || 1,
-        params.gradient.degree || 1
-      );
+    if (params.transparency !== undefined) {
+      // 透明度显式校验：0~1 范围（与 setShapeTransparency 第 1 轮修复对齐），字符串/越界显式 fail
+      var tp = parseFloat(params.transparency);
+      if (isNaN(tp) || tp < 0 || tp > 1)
+        return fail('无效的透明度: ' + params.transparency + '（必须在 0~1 之间）');
+      shape.Fill.Transparency = tp;
+    }
+    if (params.gradient !== undefined) {
+      // gradient 对象必须含 style（OneColorGradient(undefined) 抛费解错误），variant/degree 数值化
+      var gstyle = params.gradient.style !== undefined ? parseFloat(params.gradient.style) : NaN;
+      if (isNaN(gstyle) || gstyle < 1) return fail('无效的渐变 style: ' + params.gradient.style);
+      var gvariant = params.gradient.variant !== undefined ? parseFloat(params.gradient.variant) : 1;
+      if (isNaN(gvariant) || gvariant < 1) return fail('无效的渐变 variant: ' + params.gradient.variant);
+      var gdegree = params.gradient.degree !== undefined ? parseFloat(params.gradient.degree) : 1;
+      if (isNaN(gdegree) || gdegree < 0) return fail('无效的渐变 degree: ' + params.gradient.degree);
+      shape.Fill.OneColorGradient(gstyle, gvariant, gdegree);
+    }
     return ok({});
   } catch (e) {
     return fail('设置形状填充失败: ' + e.message);
