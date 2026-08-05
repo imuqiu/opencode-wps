@@ -412,11 +412,25 @@ registerHandler('getContext', function (params) {
     if (!wb) return fail('没有打开的工作簿');
     var sheet = Application.ActiveSheet;
     var headers = [];
+    var headerRow = 0;
     try {
       var used = sheet.UsedRange;
       if (used.Rows.Count > 0) {
-        for (var i = 1; i <= Math.min(used.Columns.Count, 26); i++) {
-          headers.push(String.fromCharCode(64 + i));
+        // 读取首行真实值作为表头候选（若首行是数据而非表头，则 headerRow 标记为 0）
+        var colCount = Math.min(used.Columns.Count, 26);
+        var firstRowValues = [];
+        var textCount = 0;
+        for (var i = 1; i <= colCount; i++) {
+          var hv = used.Cells.Item(1, i).Value2;
+          var s = hv !== null && hv !== undefined ? String(hv) : '';
+          firstRowValues.push(s);
+          // 表头通常是文本：非空且非纯数字才算文本候选（过滤纯数字数据行误判）
+          if (s !== '' && isNaN(Number(s))) textCount++;
+        }
+        // 首行大部分单元格为文本时视为表头
+        if (textCount >= Math.ceil(colCount / 2)) {
+          headers = firstRowValues;
+          headerRow = 1;
         }
       }
     } catch (e) {}
@@ -426,12 +440,20 @@ registerHandler('getContext', function (params) {
       sheets.push(wb.Sheets.Item(i).Name);
     }
 
+    // selectedCell 包 try/catch：部分 WPS 版本在无选中/无活动窗口时访问 Application.Selection 抛错（而非返回 null），
+    // 三元判断捕获不了异常会导致 getContext 整体 fail
+    var selectedCell = '';
+    try {
+      if (Application.Selection) selectedCell = Application.Selection.Address();
+    } catch (e) {}
+
     return ok({
       workbookName: wb.Name,
       currentSheet: sheet.Name,
       allSheets: sheets,
-      selectedCell: Application.Selection ? Application.Selection.Address() : '',
+      selectedCell: selectedCell,
       headers: headers,
+      headerRow: headerRow,
     });
   } catch (e) {
     return fail('获取上下文失败: ' + e.message);
@@ -452,8 +474,18 @@ registerHandler('sortRange', function (params) {
   try {
     var sheet = Application.ActiveSheet;
     var range = sheet.Range(params.range);
-    var key = params.keyColumn ? sheet.Range(params.keyColumn) : range.Columns.Item(1);
-    var order = params.order === 'desc' ? 2 : 1;
+    // keyColumn 支持列字母（'A'）或完整地址（'A1'/'$A$1'）：纯字母补行号，避免 Range('A') 抛费解错误
+    var key = null;
+    if (params.keyColumn) {
+      var kc = String(params.keyColumn).trim();
+      if (/^[A-Za-z]+$/.test(kc)) kc = kc.toUpperCase() + '1';
+      key = sheet.Range(kc);
+    } else {
+      key = range.Columns.Item(1);
+    }
+    // order 大小写不敏感：'DESC'/'Desc' 都识别为降序，避免 AI 传大写静默变升序
+    var orderStr = String(params.order || '').toLowerCase();
+    var order = orderStr === 'desc' ? 2 : 1;
     range.Sort(key, order);
     return ok({});
   } catch (e) {
@@ -466,6 +498,9 @@ registerHandler('autoFilter', function (params) {
     var sheet = Application.ActiveSheet;
     var range = sheet.Range(params.range);
     if (params.criteria) {
+      // field 前置校验：criteria 存在但 field 缺失时 AutoFilter(undefined, ...) 抛费解错误
+      if (params.field === undefined || params.field === null)
+        return fail('缺少 field（筛选条件列）');
       range.AutoFilter(params.field, params.criteria);
     } else {
       range.AutoFilter();
@@ -539,8 +574,12 @@ registerHandler('setBorder', function (params) {
       }
     }
     if (params.color !== undefined) {
+      // 颜色统一走 toExcelColor 转换（支持 #RRGGBB/RRGGBB/数字），避免字符串色值抛类型错误
+      var bc = toExcelColor(params.color);
+      if (bc === null)
+        return fail('无效的边框颜色: ' + params.color + '，支持 #RRGGBB/RRGGBB/数字');
       for (var i = 1; i <= 6; i++) {
-        borders.Item(i).Color = params.color;
+        borders.Item(i).Color = bc;
       }
     }
     return ok({});
@@ -671,8 +710,12 @@ registerHandler('autoFitAll', function (params) {
 registerHandler('insertRows', function (params) {
   try {
     var sheet = Application.ActiveSheet;
-    var row = params.row || 1;
-    var count = params.count || 1;
+    // 行参数校验：row 必须为正整数，count 默认 1 且非负（与列侧 resolveColumnLetter 校验语义对齐）
+    var row = parseInt(params.row, 10);
+    if (isNaN(row) || row < 1)
+      return fail('无效的行参数: ' + params.row + '（必须为正整数）');
+    var count = parseInt(params.count, 10) || 1;
+    if (count < 1) return fail('无效的插入行数: ' + params.count);
     sheet.Rows(row + ':' + (row + count - 1)).Insert();
     return ok({});
   } catch (e) {
@@ -683,8 +726,11 @@ registerHandler('insertRows', function (params) {
 registerHandler('deleteRows', function (params) {
   try {
     var sheet = Application.ActiveSheet;
-    var row = params.row || 1;
-    var count = params.count || 1;
+    var row = parseInt(params.row, 10);
+    if (isNaN(row) || row < 1)
+      return fail('无效的行参数: ' + params.row + '（必须为正整数）');
+    var count = parseInt(params.count, 10) || 1;
+    if (count < 1) return fail('无效的删除行数: ' + params.count);
     sheet.Rows(row + ':' + (row + count - 1)).Delete();
     return ok({});
   } catch (e) {
@@ -730,7 +776,12 @@ registerHandler('deleteColumns', function (params) {
 registerHandler('hideRows', function (params) {
   try {
     var sheet = Application.ActiveSheet;
-    sheet.Rows(params.row + ':' + (params.row + (params.count || 1) - 1)).Hidden = true;
+    var row = parseInt(params.row, 10);
+    if (isNaN(row) || row < 1)
+      return fail('无效的行参数: ' + params.row + '（必须为正整数）');
+    var count = parseInt(params.count, 10) || 1;
+    if (count < 1) return fail('无效的行数: ' + params.count);
+    sheet.Rows(row + ':' + (row + count - 1)).Hidden = true;
     return ok({});
   } catch (e) {
     return fail('隐藏行失败: ' + e.message);
@@ -752,7 +803,12 @@ registerHandler('hideColumns', function (params) {
 registerHandler('showRows', function (params) {
   try {
     var sheet = Application.ActiveSheet;
-    sheet.Rows(params.row + ':' + (params.row + (params.count || 1) - 1)).Hidden = false;
+    var row = parseInt(params.row, 10);
+    if (isNaN(row) || row < 1)
+      return fail('无效的行参数: ' + params.row + '（必须为正整数）');
+    var count = parseInt(params.count, 10) || 1;
+    if (count < 1) return fail('无效的行数: ' + params.count);
+    sheet.Rows(row + ':' + (row + count - 1)).Hidden = false;
     return ok({});
   } catch (e) {
     return fail('显示行失败: ' + e.message);
@@ -876,6 +932,8 @@ registerHandler('getCellComments', function (params) {
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
     var comments = [];
+    // 无批注保护：部分 WPS 版本 Comments 为 null 或访问 .Count 抛错，显式返回空列表
+    if (!sheet.Comments || !sheet.Comments.Count) return ok({ comments: [] });
     for (var i = 1; i <= sheet.Comments.Count; i++) {
       var c = sheet.Comments.Item(i);
       comments.push({ cell: c.Parent.Address(), text: c.Text, author: c.Author || '' });
@@ -905,8 +963,17 @@ registerHandler('addConditionalFormat', function (params) {
   try {
     var sheet = Application.ActiveSheet;
     var range = sheet.Range(params.range);
+    // 前置校验：条件格式公式必填，避免 undefined 传参抛费解错误
+    if (!params.formula) return fail('缺少 formula（条件格式判断公式）');
+    // FormatConditions.Add(Type=1 xlExpression, Operator=2 xlBetween, Formula1=1?, Formula2=formula)
     var fc = range.FormatConditions.Add(1, 2, 1, params.formula);
-    fc.Interior.Color = params.color || 0xff0000;
+    // 颜色统一走 toExcelColor 转换（支持 #RRGGBB/RRGGBB/数字）
+    if (params.color !== undefined) {
+      var cc = toExcelColor(params.color);
+      if (cc === null)
+        return fail('无效的条件格式颜色: ' + params.color + '，支持 #RRGGBB/RRGGBB/数字');
+      fc.Interior.Color = cc;
+    }
     return ok({});
   } catch (e) {
     return fail('添加条件格式失败: ' + e.message);
@@ -957,6 +1024,8 @@ registerHandler('replaceInSheet', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
+    // findText 前置校验：避免 undefined 传给 Cells.Replace 抛费解错误
+    if (!params.findText) return fail('缺少 findText');
     sheet.Cells.Replace(params.findText, params.replaceText);
     return ok({});
   } catch (e) {
@@ -990,9 +1059,20 @@ registerHandler('setCellStyle', function (params) {
     if (params.fontName) range.Font.Name = params.fontName;
     if (params.fontSize) range.Font.Size = params.fontSize;
     if (params.bold !== undefined) range.Font.Bold = params.bold;
-    if (params.fontColor) range.Font.Color = params.fontColor;
-    if (params.backgroundColor) range.Interior.Color = params.backgroundColor;
-    if (params.horizontalAlignment) range.HorizontalAlignment = params.horizontalAlignment;
+    // 颜色统一走 toExcelColor 转换（支持 #RRGGBB/RRGGBB/数字），避免字符串色值抛类型错误
+    if (params.fontColor !== undefined) {
+      var fc = toExcelColor(params.fontColor);
+      if (fc !== null) range.Font.Color = fc;
+    }
+    if (params.backgroundColor !== undefined) {
+      var bg = toExcelColor(params.backgroundColor);
+      if (bg !== null) range.Interior.Color = bg;
+    }
+    // 对齐值统一走 resolveAlignment 转换（支持 "left"/"center"/"right" 字符串与数字常量）
+    if (params.horizontalAlignment !== undefined) {
+      var hv = resolveAlignment(params.horizontalAlignment, H_ALIGN_MAP);
+      if (hv !== null) range.HorizontalAlignment = hv;
+    }
     return ok({});
   } catch (e) {
     return fail('设置单元格样式失败: ' + e.message);
@@ -1077,7 +1157,9 @@ registerHandler('transpose', function (params) {
     var src = sheet.Range(params.range);
     src.Copy();
     var dst = sheet.Range(params.targetRange);
-    dst.PasteSpecial(-4104);
+    // xlPasteAll=-4104 是「粘贴全部」不是转置；转置需 PasteSpecial 第 4 参 Transpose=true（xlTranspose），
+    // 否则输出的是普通复制并覆盖目标区域，转置功能语义错误
+    dst.PasteSpecial(-4104, false, false, true);
     Application.CutCopyMode = false;
     return ok({});
   } catch (e) {
@@ -1089,7 +1171,9 @@ registerHandler('textToColumns', function (params) {
   try {
     var sheet = Application.ActiveSheet;
     var range = sheet.Range(params.range);
-    range.TextToColumns(range, 1, 1, true);
+    // TextToColumns(Destination, DataType, TextQualifier, ConsecutiveDelimiter, Tab, Semicolon, Comma, Space, Other, OtherChar)
+    // DataType=xlDelimited=1，TextQualifier=xlTextQualifierDoubleQuote=1，ConsecutiveDelimiter=false，Tab=true
+    range.TextToColumns(range, 1, 1, false, true);
     return ok({});
   } catch (e) {
     return fail('分列失败: ' + e.message);
@@ -1111,7 +1195,13 @@ registerHandler('consolidate', function (params) {
   try {
     var sheet = Application.ActiveSheet;
     var range = sheet.Range(params.range);
-    range.Consolidate(params.sources || [], params.function || 4);
+    var sources = params.sources || [];
+    if (!Array.isArray(sources) || sources.length === 0)
+      return fail('缺少 sources（待合并的区域列表）');
+    // function 显式校验（xlSum=4 默认），0/字符串非法显式 fail（避免 || 4 真值判断静默兜底）
+    var func = params.function !== undefined ? parseInt(params.function, 10) : 4;
+    if (isNaN(func) || func < 0) return fail('无效的合并函数: ' + params.function);
+    range.Consolidate(sources, func);
     return ok({});
   } catch (e) {
     return fail('合并计算失败: ' + e.message);
@@ -1187,7 +1277,12 @@ registerHandler('deleteNamedRange', function (params) {
 registerHandler('groupRows', function (params) {
   try {
     var sheet = Application.ActiveSheet;
-    var range = sheet.Range(params.row + ':' + (params.row + (params.count || 1) - 1));
+    var row = parseInt(params.row, 10);
+    if (isNaN(row) || row < 1)
+      return fail('无效的行参数: ' + params.row + '（必须为正整数）');
+    var count = parseInt(params.count, 10) || 1;
+    if (count < 1) return fail('无效的行数: ' + params.count);
+    var range = sheet.Range(row + ':' + (row + count - 1));
     range.Group();
     return ok({});
   } catch (e) {
@@ -1327,9 +1422,50 @@ registerHandler('cleanData', function (params) {
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
     var range = sheet.Range(params.range);
-    range.Replace(' ', '', 2);
-    range.Replace('\t', '', 2);
-    return ok({});
+    // 清洗模式：trim=去首尾空白（默认，安全）；collapse=连续多空格折叠为单个；all=删除所有空白（激进，谨慎）
+    var mode = params.mode || 'trim';
+    var replaced = 0;
+    // 三模式统一用单元格级正则处理，不依赖 Range.Replace 的平台差异行为
+    // 注意两点：
+    // 1. 判断用**非全局正则**（.test 无 lastIndex）——带 g 的全局正则 .test() 会因 lastIndex 状态
+    //    导致相邻单元格交替漏判（经典 bug）
+    // 2. 替换用**每次新建的全局正则**——非全局正则 .replace 只替换第一处匹配，会漏掉同一单元格的后续匹配
+    var pattern = null;
+    var replacePattern = null;
+    if (mode === 'all') {
+      pattern = /[\s\u00a0]+/;
+      replacePattern = /[\s\u00a0]+/g;
+    } else if (mode === 'collapse') {
+      pattern = /[\t\n ]{2,}/;
+      replacePattern = /[\t\n ]{2,}/g;
+    } else {
+      // trim：仅去首尾空白
+      for (var i = 1; i <= range.Rows.Count; i++) {
+        for (var j = 1; j <= range.Columns.Count; j++) {
+          var cell = range.Cells.Item(i, j);
+          var v = cell.Value2;
+          if (typeof v === 'string') {
+            var trimmed = v.replace(/^[\s\u00a0]+|[\s\u00a0]+$/g, '');
+            if (trimmed !== v) {
+              cell.Value2 = trimmed;
+              replaced++;
+            }
+          }
+        }
+      }
+      return ok({ mode: mode, replaced: replaced });
+    }
+    for (var i = 1; i <= range.Rows.Count; i++) {
+      for (var j = 1; j <= range.Columns.Count; j++) {
+        var cell = range.Cells.Item(i, j);
+        var v = cell.Value2;
+        if (typeof v === 'string' && pattern.test(v)) {
+          cell.Value2 = v.replace(replacePattern, mode === 'all' ? '' : ' ');
+          replaced++;
+        }
+      }
+    }
+    return ok({ mode: mode, replaced: replaced });
   } catch (e) {
     return fail('清洗数据失败: ' + e.message);
   }
@@ -1400,8 +1536,9 @@ registerHandler('setZoom', function (params) {
   try {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
-    var percent = params.percent;
-    if (percent < 10 || percent > 400) return fail('缩放比例必须在10-400之间');
+    var percent = parseInt(params.percent, 10);
+    if (isNaN(percent) || percent < 10 || percent > 400)
+      return fail('缩放比例必须在10-400之间，当前值: ' + params.percent);
     Application.ActiveWindow.Zoom = percent;
     return ok({});
   } catch (e) {

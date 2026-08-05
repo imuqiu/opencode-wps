@@ -49,16 +49,23 @@ var MAX_BODY = 64 * 1024;
 function parseBody(req, callback) {
   var body = '';
   var size = 0;
+  var aborted = false;
   req.on('data', function (chunk) {
+    if (aborted) return;
     size += chunk.length;
     if (size > MAX_BODY) {
-      req.destroy();
+      aborted = true;
+      console.log('[launcher] Body too large, rejecting');
+      try {
+        req.destroy();
+      } catch (e) {}
       callback({ error: 'body too large' });
       return;
     }
     body += chunk;
   });
   req.on('end', function () {
+    if (aborted) return;
     try {
       callback(JSON.parse(body));
     } catch (e) {
@@ -191,8 +198,10 @@ function startOpenCode(cwd, port) {
   if (opencodeProcess) {
     return { success: false, error: 'already running' };
   }
+  // cwd 为空时使用用户主目录（自愈/默认启动场景），避免空 cwd 导致启动失败（与 Linux 版对齐）
   if (!cwd) {
-    return { success: false, error: 'cwd is undefined' };
+    cwd = os.homedir();
+    console.log('[launcher] cwd 为空，使用用户主目录: ' + cwd);
   }
   if (!fs.existsSync(cwd)) {
     try {

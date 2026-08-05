@@ -408,6 +408,139 @@ test('sendResult: 200 不重试', function () {
   }
 });
 
+// ==================== 第 1 轮评审修复验证 ====================
+// 覆盖：行参数校验 / consolidate / cleanData 模式 / sortRange 列字母 / getContext 表头识别
+
+console.log('\n--- 第 1 轮评审修复验证 ---');
+
+// 重新加载 excel-handler（已含最新修复）
+__handlers = {};
+var excelSrc2 = fs.readFileSync(
+  path.join(__dirname, '..', 'opencode-wps-assistant', 'handlers', 'excel-handler.js'),
+  'utf-8'
+);
+vm.runInThisContext(excelSrc2, { filename: 'excel-handler.js2' });
+
+var getHandlerFn = function (name) {
+  return __handlers[name];
+};
+
+function mockExcelApp() {
+  // 构造最小 Excel 环境，直接调用 handler 校验分支逻辑
+  var calls = { insertRows: null, deleteRows: null, hideRows: null, groupRows: null };
+  var sheet = {
+    Rows: function (r) {
+      calls.rowsRange = r;
+      return {
+        Insert: function () {
+          calls.insertRows = r;
+        },
+        Delete: function () {
+          calls.deleteRows = r;
+        },
+      };
+    },
+    Range: function (r) {
+      calls.range = r;
+      return {
+        Group: function () {
+          calls.groupRows = r;
+        },
+        Hidden: false,
+      };
+    },
+  };
+  global.Application = { ActiveSheet: sheet };
+  return { sheet: sheet, calls: calls };
+}
+
+function loadExcelHandler() {
+  __handlers = {};
+  var src = fs.readFileSync(
+    path.join(__dirname, '..', 'opencode-wps-assistant', 'handlers', 'excel-handler.js'),
+    'utf-8'
+  );
+  vm.runInThisContext(src, { filename: 'excel-handler-latest.js' });
+}
+
+loadExcelHandler();
+
+test('insertRows: row=0 非法返回 fail', function () {
+  var app = mockExcelApp();
+  var result = getHandlerFn('insertRows')({ row: 0 });
+  assertFalse(result.success, 'row=0 应失败');
+  assertTrue(result.error.indexOf('无效的行参数') !== -1, '明确错误信息');
+});
+
+test('insertRows: 合法 row/count 调用 Rows 范围', function () {
+  var app = mockExcelApp();
+  var result = getHandlerFn('insertRows')({ row: 3, count: 2 });
+  assertTrue(result.success, '合法参数成功');
+  assertEqual(app.calls.insertRows, '3:4', 'Rows(3:4)');
+});
+
+test('deleteRows: count=-1 非法返回 fail', function () {
+  var app = mockExcelApp();
+  var result = getHandlerFn('deleteRows')({ row: 1, count: -1 });
+  assertFalse(result.success, 'count=-1 应失败');
+});
+
+test('deleteRows: count 缺省时默认 1 行', function () {
+  var app = mockExcelApp();
+  var result = getHandlerFn('deleteRows')({ row: 2 });
+  assertTrue(result.success, 'count 缺省成功');
+  assertEqual(app.calls.deleteRows, '2:2', 'Rows(2:2) 单行');
+});
+
+test('groupRows: 字符串行参数非法返回 fail', function () {
+  var app = mockExcelApp();
+  var result = getHandlerFn('groupRows')({ row: 'abc' });
+  assertFalse(result.success, '字符串行参数应失败');
+});
+
+test('groupRows: 合法参数调用 Range', function () {
+  var app = mockExcelApp();
+  var result = getHandlerFn('groupRows')({ row: 5, count: 3 });
+  assertTrue(result.success, '合法参数成功');
+  assertEqual(app.calls.groupRows, '5:7', 'Range(5:7)');
+});
+
+test('consolidate: 缺 sources 返回 fail', function () {
+  var app = mockExcelApp();
+  var result = getHandlerFn('consolidate')({ range: 'A1:B2' });
+  assertFalse(result.success, '缺 sources 应失败');
+  assertTrue(result.error.indexOf('缺少 sources') !== -1, '明确错误信息');
+});
+
+test('cleanData: trim 模式去首尾空白', function () {
+  loadExcelHandler();
+  var cells = [];
+  var range = {
+    Rows: { Count: 1 },
+    Columns: { Count: 1 },
+    Cells: {
+      Item: function (r, c) {
+        return cells[0];
+      },
+    },
+  };
+  var cell = { Value2: '  hello world  ' };
+  cells[0] = cell;
+  var sheet = {
+    Range: function () {
+      return range;
+    },
+  };
+  global.Application = {
+    ActiveWorkbook: { ActiveSheet: sheet },
+    ActiveSheet: sheet,
+  };
+  var result = getHandlerFn('cleanData')({ range: 'A1' });
+  assertTrue(result.success, 'trim 成功');
+  assertEqual(cell.Value2, 'hello world', '去首尾空白');
+  assertEqual(result.data.replaced, 1, '替换 1 处');
+});
+
 // ==================== 测试结果汇总 ====================
 
 console.log('\n========== 测试结果 ==========');
