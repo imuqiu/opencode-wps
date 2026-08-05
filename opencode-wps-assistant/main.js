@@ -177,7 +177,12 @@ function dockOpen(cwd) {
 }
 
 function startPolling() {
-  if (_pollTimer) return;
+  // 先清旧 timer 再置标志：快速 暂停→恢复 时 _pollTimer 可能残留（in-flight XHR 回调的 scheduleNext 会重建 timer），
+  // 若直接 if (_pollTimer) return 会误判为已在轮询而拒绝恢复
+  if (_pollTimer) {
+    clearTimeout(_pollTimer);
+    _pollTimer = null;
+  }
   _isPolling = true;
   console.log('开始轮询: ' + CONFIG.SERVER_URL);
   poll();

@@ -23,20 +23,21 @@ var opencodeCwd = '';
 function cleanupOrphanedMcp() {
   try {
     var execSync = require('child_process').execSync;
-    var out = execSync(
-      "ps aux | grep 'wps-office-mcp/dist/index.js' | grep -v grep | awk '{print $2}'",
-      {
-        encoding: 'utf8',
-        timeout: 5000,
-      }
-    );
+    // 参数数组形式 + 显式 timeout：避免 shell 拼接，且 ps 慢时不会无限阻塞 launcher 启动
+    var out = execSync('ps -axo pid=,command=', {
+      encoding: 'utf8',
+      timeout: 5000,
+    });
     var lines = out.split('\n');
     for (var i = 0; i < lines.length; i++) {
-      var pid = parseInt(lines[i].trim(), 10);
-      if (pid > 0 && !isNaN(pid)) {
-        try {
-          execSync('kill ' + pid, { timeout: 3000 });
-        } catch (e) {}
+      var m = /^(\d+)\s+.*wps-office-mcp\/dist\/index\.js/.exec(lines[i]);
+      if (m) {
+        var pid = parseInt(m[1], 10);
+        if (pid > 0 && !isNaN(pid)) {
+          try {
+            execSync('kill ' + pid, { timeout: 3000 });
+          } catch (e) {}
+        }
       }
     }
   } catch (e) {}

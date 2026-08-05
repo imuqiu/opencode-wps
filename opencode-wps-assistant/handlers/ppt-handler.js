@@ -416,6 +416,29 @@ registerHandler('setSlideContent', function (params) {
   }
 });
 
+// 坐标/尺寸参数显式数值化：undefined/null 取默认，非法字符串返回 null（供 AddTextbox/AddShape/AddTable/AddConnector 统一使用，
+// 避免 left=0 被 || 兜底成 100、字符串坐标直赋 COM 抛类型错误）
+function toNum(v, def) {
+  if (v === undefined || v === null) return def;
+  var n = parseFloat(v);
+  return isNaN(n) ? null : n;
+}
+
+// 校验并归一化一组坐标/尺寸参数：全部必须为数值；返回 null 表示非法
+function checkShapeGeom(params) {
+  var geom = {};
+  var keys = ['left', 'top', 'width', 'height', 'startX', 'startY', 'endX', 'endY'];
+  for (var i = 0; i < keys.length; i++) {
+    var k = keys[i];
+    if (params[k] !== undefined) {
+      var n = parseFloat(params[k]);
+      if (isNaN(n)) return null;
+      geom[k] = n;
+    }
+  }
+  return geom;
+}
+
 registerHandler('addTextBox', function (params) {
   try {
     var pres = getPPT();
@@ -423,12 +446,14 @@ registerHandler('addTextBox', function (params) {
     // 无选中/无活动窗口时安全兜底到第 1 张（与周边 handler 的 slideIndex || 1 语义一致），避免 Selection 抛错
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
+    var geom = checkShapeGeom(params);
+    if (!geom) return fail('无效的坐标/尺寸参数（left/top/width/height 必须为数值）');
     var shape = slide.Shapes.AddTextbox(
       1,
-      params.left || 100,
-      params.top || 100,
-      params.width || 400,
-      params.height || 50
+      geom.left !== undefined ? geom.left : 100,
+      geom.top !== undefined ? geom.top : 100,
+      geom.width !== undefined ? geom.width : 400,
+      geom.height !== undefined ? geom.height : 50
     );
     shape.TextFrame.TextRange.Text = params.text || '';
     if (params.fontSize) shape.TextFrame.TextRange.Font.Size = params.fontSize;
@@ -526,12 +551,14 @@ registerHandler('addShape', function (params) {
     var slide = pres.Slides.Item(idx);
     var shapeTypes = { rectangle: 1, oval: 9, line: 6, arrow: 13, diamond: 4, triangle: 5 };
     var st = shapeTypes[params.shapeType] || 1;
+    var geom = checkShapeGeom(params);
+    if (!geom) return fail('无效的坐标/尺寸参数（left/top/width/height 必须为数值）');
     var shape = slide.Shapes.AddShape(
       st,
-      params.left || 100,
-      params.top || 100,
-      params.width || 100,
-      params.height || 100
+      geom.left !== undefined ? geom.left : 100,
+      geom.top !== undefined ? geom.top : 100,
+      geom.width !== undefined ? geom.width : 100,
+      geom.height !== undefined ? geom.height : 100
     );
     if (params.text) {
       shape.TextFrame.TextRange.Text = params.text;
@@ -611,13 +638,31 @@ registerHandler('setShapePosition', function (params) {
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
     var shapeName = params.shapeName || params.name;
+    if (!shapeName) return invalidParam('缺少 shapeName');
     for (var j = 1; j <= slide.Shapes.Count; j++) {
       var s = slide.Shapes.Item(j);
       if (s.Name === shapeName) {
-        if (params.left !== undefined) s.Left = params.left;
-        if (params.top !== undefined) s.Top = params.top;
-        if (params.width !== undefined) s.Width = params.width;
-        if (params.height !== undefined) s.Height = params.height;
+        // 数值显式校验：字符串坐标直赋 COM 抛类型错误（与 addArrow/addConnector 语义对齐）
+        if (params.left !== undefined) {
+          var lv = parseFloat(params.left);
+          if (isNaN(lv)) return fail('无效的 left: ' + params.left);
+          s.Left = lv;
+        }
+        if (params.top !== undefined) {
+          var tv = parseFloat(params.top);
+          if (isNaN(tv)) return fail('无效的 top: ' + params.top);
+          s.Top = tv;
+        }
+        if (params.width !== undefined) {
+          var wv = parseFloat(params.width);
+          if (isNaN(wv) || wv <= 0) return fail('无效的 width: ' + params.width + '（必须为正数）');
+          s.Width = wv;
+        }
+        if (params.height !== undefined) {
+          var hv = parseFloat(params.height);
+          if (isNaN(hv) || hv <= 0) return fail('无效的 height: ' + params.height + '（必须为正数）');
+          s.Height = hv;
+        }
         return ok({});
       }
     }
@@ -1088,13 +1133,15 @@ registerHandler('insertPptTable', function (params) {
     if (isNaN(colsNum) || colsNum < 1) return fail('无效的列数: ' + cols + '（必须为正整数）');
     rows = rowsNum;
     cols = colsNum;
+    var geom = checkShapeGeom(params);
+    if (!geom) return fail('无效的坐标/尺寸参数（left/top/width/height 必须为数值）');
     var table = slide.Shapes.AddTable(
       rows,
       cols,
-      params.left || 100,
-      params.top || 100,
-      params.width || 400,
-      params.height || 200
+      geom.left !== undefined ? geom.left : 100,
+      geom.top !== undefined ? geom.top : 100,
+      geom.width !== undefined ? geom.width : 400,
+      geom.height !== undefined ? geom.height : 200
     );
     if (params.data) {
       for (var r = 0; r < Math.min(params.data.length, rows); r++) {
@@ -1355,12 +1402,7 @@ registerHandler('addArrow', function (params) {
     if (!pres) return fail('没有打开的演示文稿');
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
-    // 坐标/宽高显式数值校验：字符串坐标直赋 AddShape 抛类型错误（与 setSlideSize 语义对齐）
-    function toNum(v, def) {
-      if (v === undefined || v === null) return def;
-      var n = parseFloat(v);
-      return isNaN(n) ? null : n;
-    }
+    // 坐标/宽高显式数值校验（复用顶部全局 toNum）：字符串坐标直赋 AddShape 抛类型错误（与 setSlideSize 语义对齐）
     var startX = toNum(params.startX, 100);
     var startY = toNum(params.startY, 100);
     var endX = toNum(params.endX, 200);
@@ -1388,13 +1430,14 @@ registerHandler('addConnector', function (params) {
     if (!pres) return fail('没有打开的演示文稿');
     var idx = params.slideIndex || 1;
     var slide = pres.Slides.Item(idx);
-    var shape = slide.Shapes.AddConnector(
-      1,
-      params.startX || 100,
-      params.startY || 100,
-      params.endX || 300,
-      params.endY || 100
-    );
+    // 坐标显式数值化：字符串坐标直赋 AddConnector 抛类型错误（与 addArrow 第 3 轮修复语义对齐）
+    var startX = toNum(params.startX, 100);
+    var startY = toNum(params.startY, 100);
+    var endX = toNum(params.endX, 300);
+    var endY = toNum(params.endY, 100);
+    if (startX === null || startY === null || endX === null || endY === null)
+      return fail('无效的坐标参数（startX/startY/endX/endY 必须为数值）');
+    var shape = slide.Shapes.AddConnector(1, startX, startY, endX, endY);
     return ok({ shapeName: shape.Name });
   } catch (e) {
     return fail('添加连接线失败: ' + e.message);

@@ -430,10 +430,28 @@ registerHandler('setParagraph', function (params) {
         );
       para.Alignment = align;
     }
-    if (params.lineSpacing) para.LineSpacing = params.lineSpacing;
-    if (params.spaceBefore !== undefined) para.SpaceBefore = params.spaceBefore;
-    if (params.spaceAfter !== undefined) para.SpaceAfter = params.spaceAfter;
-    if (params.firstLineIndent !== undefined) para.FirstLineIndent = params.firstLineIndent;
+    // 显式数值校验（与 setLineSpacing 第 4 轮修复语义对齐）：字符串/'12pt' 直赋 COM 抛类型错误
+    if (params.lineSpacing !== undefined) {
+      var ls = parseFloat(params.lineSpacing);
+      if (isNaN(ls) || ls <= 0) return fail('无效的行距: ' + params.lineSpacing + '（必须为正数）');
+      para.LineSpacing = ls;
+    }
+    if (params.spaceBefore !== undefined) {
+      var sb = parseFloat(params.spaceBefore);
+      if (isNaN(sb) || sb < 0) return fail('无效的段前距: ' + params.spaceBefore + '（必须为非负数）');
+      para.SpaceBefore = sb;
+    }
+    if (params.spaceAfter !== undefined) {
+      var sa = parseFloat(params.spaceAfter);
+      if (isNaN(sa) || sa < 0) return fail('无效的段后距: ' + params.spaceAfter + '（必须为非负数）');
+      para.SpaceAfter = sa;
+    }
+    if (params.firstLineIndent !== undefined) {
+      var fli = parseFloat(params.firstLineIndent);
+      if (isNaN(fli) || fli < 0)
+        return fail('无效的首行缩进: ' + params.firstLineIndent + '（必须为非负数）');
+      para.FirstLineIndent = fli;
+    }
     return ok({});
   } catch (e) {
     return fail('设置段落格式失败: ' + e.message);
