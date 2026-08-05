@@ -42,6 +42,12 @@ checkFile(
   JSON.parse(fs.readFileSync(path.join(rootDir, 'opencode-wps/package.json'), 'utf8')).version
 );
 
+checkFile(
+  'opencode-wps-linux/package.json',
+  'opencode-wps-linux/package.json',
+  JSON.parse(fs.readFileSync(path.join(rootDir, 'opencode-wps-linux/package.json'), 'utf8')).version
+);
+
 const mcpPkg = JSON.parse(
   fs.readFileSync(path.join(rootDir, 'wps-office-mcp/package.json'), 'utf8')
 );
@@ -77,6 +83,20 @@ if (!verMatch) {
 // manifest.xml 不应再有冗余的小写 <version> 字段（历史遗留）
 if (/<version>\s*\d/.test(manifestSrc)) {
   errors.push('opencode-wps/manifest.xml 中存在冗余的小写 <version> 字段，请删除（只保留 <Version>）');
+}
+
+// ---- 3b. Linux manifest.xml（<Version> 大写字段）----
+const linuxManifestSrc = fs.readFileSync(path.join(rootDir, 'opencode-wps-linux/manifest.xml'), 'utf8');
+const linuxVerMatch = linuxManifestSrc.match(/<Version>\s*(\d+\.\d+\.\d+)\s*<\/Version>/);
+if (!linuxVerMatch) {
+  errors.push('opencode-wps-linux/manifest.xml 中未找到 <Version>x.y.z</Version>');
+} else {
+  checkFile('opencode-wps-linux/manifest.xml (<Version>)', 'opencode-wps-linux/manifest.xml', linuxVerMatch[1]);
+}
+
+// Linux manifest.xml 不应再有冗余的小写 <version> 字段
+if (/<version>\s*\d/.test(linuxManifestSrc)) {
+  errors.push('opencode-wps-linux/manifest.xml 中存在冗余的小写 <version> 字段，请删除（只保留 <Version>）');
 }
 
 // ---- 4. 汇总 ----

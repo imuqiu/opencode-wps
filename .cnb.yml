@@ -21,6 +21,20 @@ main:
             node tests/taskpane-dock.test.js
             node tests/mac-bridge.test.js
             node tests/setcellformat-mac.test.js
+            # Linux 支持：新增脚本语法门禁（循环全量扫描，避免漏检 handler）
+            node --check launcher-linux.js
+            node --check install-addons-linux.js
+            node --check opencode-wps-linux/main.js
+            node --check opencode-wps-linux/utils/response.js
+            for f in opencode-wps-linux/handlers/*.js; do node --check "$f" || exit 1; done
+            bash -n opencode-wps-linux/wps-auto.sh
+            # Mac 彻底评审：补充 Mac 脚本语法门禁（与 Linux 对齐）
+            node --check launcher-mac.js
+            node --check install-addons-mac.js
+            node --check opencode-wps-assistant/main.js
+            node --check opencode-wps-assistant/utils/response.js
+            for f in opencode-wps-assistant/handlers/*.js; do node --check "$f" || exit 1; done
+            bash -n opencode-wps-assistant/wps-auto.sh
             cd wps-office-mcp && npm ci && npm run test:unit
         - name: Docker build
           script: |
