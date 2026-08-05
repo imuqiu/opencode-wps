@@ -199,6 +199,8 @@ function setTaskPaneDockPosition(tskpane) {
 
     **补 DEV 增量 2（2026-08-05，PR #83 第 5~8 轮评审）**：⑤ 强制重排前检查 `#input-box` 是否聚焦，聚焦时跳过重排（避免 `display:none` 移除再恢复输入框导致输入框失焦丢光标）；⑥ 重排**前**保存 `.messages` 滚动位置、重排后恢复（`display:none` 会重置 `scrollTop`，不保存会把用户消息列表滚回顶部）；⑦ 强制重排最小间隔 300ms（`lastForceReflowAt`），多个入口（rAF/load/定时器/resize/showChat）同一时间窗内只执行一次；⑧ chat 视图隐藏（`view-chat` 含 `hidden`）时跳过无效重排；⑨ 自愈注册晚于视图切换的时序倒挂补触发（IIFE 挂载后若 chat 已先行显示则补 `scheduleReflowFix()`）；⑩ `visibilitychange` 隐藏时复位 `reflowFixed`（切走标签 WebView 可能重建，回显必须重新检查）；⑪ 300ms/1000ms 定时器兜底统一走 `scheduleReflowFix`（最小间隔检查先于状态位重置，避免状态位与事实不符）。
 
+    **补 DEV 增量 3（2026-08-05，Issue #78 三诊）**：⑫ **打开面板路径主动调度宿主重绘**——用户实测合并 PR #83 后首次打开面板头部仍被遮挡，切标签后才恢复，且「打开两个文档标签窗口后开启 opencode-wps 标签则正常」。根因：③ 的宿主重绘只挂在 `WindowActivate` 事件上，而首次打开面板（`btnShowTaskPane`）不经过该事件 → 首次打开时宿主重绘永不触发；打开第二个文档标签触发 `WindowActivate` → 重绘执行 → 头部恢复，与用户全部观察吻合。修复：`forceTaskPaneRedraw` 新增 `force` 参数（仅日志区分触发源「用户主动打开面板」/「WindowActivate 切换窗口」，防抖语义不变）；`btnShowTaskPane` 首次创建/切换显示为可见后，延迟 `TASKPANE_OPEN_REDRAW_DELAY=400ms` 主动调度宿主重绘（隐藏→显示任务窗格）；关闭路径不调度（切换路径仅在 `nowVisible && !taskPaneRedrawPending` 时调度，避免快速点击额外闪烁）；调度回调先重置 `lastUserTaskPaneAction=0` 再执行重绘——避免 toggle 时设置的时间戳被新重绘误判为「重绘窗口内用户操作」而放弃恢复（调度时已确认无进行中重绘，重置安全，此后 150ms 重绘窗口内新用户操作仍被尊重）；测试 31 → 38 个全通过（新增 7 个用例：首次创建调度/可见置位失败不误调/切换打开调度/切换关闭不调度/Visible 读取异常不调度/force 重绘可执行/force 与 WindowActivate 共享防抖）。
+
 16. **`forceTaskPaneRedraw` 异步恢复的已知限制——原生关闭语义**：`forceTaskPaneRedraw` 用 `lastUserTaskPaneAction`（`OnAction` toggle 分支记录）+ `redrawStartTime` 比对，重绘期间用户操作过窗格则放弃恢复。但 **WPS TaskPane 原生右上角 X 关闭不经过 `OnAction`**，该时间戳不会更新——若原生关闭为「销毁」语义（`GetTaskPane` 返回 null）则异步回调的 `!cur` 判空已覆盖；若个别版本为「隐藏」语义（`Visible=false` 保留对象）则异步恢复可能把用户刚关闭的窗格误弹回来。实测 WPS 多为销毁语义，但维护时需知晓该限制（对应 `main.js` 内注释）。
 
 ---
