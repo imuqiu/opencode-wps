@@ -12,6 +12,8 @@
  * - 调用 NPC_TEAM skill：docs 示例调用短语（用户按文档说法必须能触发）
  * - 接力 / 每步独立调用：接力模式语义（每次 @CodeBuddy 调用只执行一个步骤，用户逐步召唤）
  * - 评审-修复接力：评审-修复循环同样逐轮接力（每轮评审/修复各为独立召唤）
+ * - PR 合并 / 合并确认 / 发布 / Release Notes：合并与发布阶段语义（8/12 合并前 ⏸CP3 暂停待用户确认；
+ *   9/12 发布真实执行版本号/CHANGELOG/发布产物/Release Notes 四要素并留痕）
  */
 
 /** description 必须包含的触发词（每项为正则，全部命中才算合法） */
@@ -20,11 +22,17 @@ const DESC_TRIGGERS = [
   { label: '「NPC_TEAM skill / NPC Team」', re: /NPC_TEAM skill|NPC Team/ },
   {
     label: '「全流程触发语义」',
-    re: /跑完整流程|全流程|拆解→分析→设计→开发→评审→修复→测试→文档→汇报→复盘/,
+    re: /跑完整流程|全流程|拆解→分析→设计→开发→评审→修复→测试→文档→PR合并→发布→汇报→复盘/,
   },
   { label: '「调用短语：调用 NPC_TEAM skill」', re: /调用 NPC_TEAM skill/ },
   { label: '「接力模式：接力/每步独立执行」', re: /接力|每步|逐步/ },
   { label: '「评审-修复接力」', re: /评审-修复接力|评审接力/ },
+  {
+    label: '「合并/发布触发语义」',
+    // 发布为高频动词（发布公告/发布评论），须与合并/发布语境组合命中才有效；
+    // 单独出现「发布」不视为触发（避免 description 无关句子误触发 skill 加载）
+    re: /PR 合并|合并确认|发布(?:四要素|产物|Release|版本|CHANGELOG)|Release Notes/,
+  },
 ];
 
 /**
@@ -40,6 +48,10 @@ const DOC_DESC_TRIGGERS = [
   '接力',
   '每步',
   '评审-修复接力',
+  'PR 合并',
+  '合并确认',
+  '发布',
+  'Release Notes',
 ];
 
 /**
