@@ -14,6 +14,7 @@
 const fs = require('fs');
 const path = require('path');
 const { normalize } = require('./lib/normalize');
+const { formatDiff } = require('./lib/format-compare');
 const { checkDesc, checkDescAgainstDocs } = require('./lib/npc-team-triggers');
 
 const FILE = path.resolve(__dirname, '../docs/NPC_TEAM.md');
@@ -175,15 +176,189 @@ if (!m) {
   if (!/避免.*再发生|避免类似问题|预防/.test(prompt))
     errors.push('缺少复盘要素③「后续如何避免类似问题（预防机制）」');
   if (!/措施|加固/.test(prompt)) errors.push('缺少复盘要素④「采取什么措施（加固动作）」');
+
+  // ---- 10. 接力模式（每步独立调用 @CodeBuddy，Issue #76 最新补充）----
+  // 背景：用户要求"每一步都独立调一次 @CodeBuddy NPC，而不是调一次 @CodeBuddy 跑完全部步骤"。
+  // 因此提示词默认改为「接力模式」：每次召唤只执行一个步骤，输出【接力卡】后停下，用户逐步召唤下一棒。
+  // 全程模式（一次跑完全部步骤）仅在用户明确要求时可用。
+  // 本节强校验：若「每步独立调用/接力」核心要素被删，CI 拦截（防回退为"一次跑完"旧行为）。
+  // 通用段化工具：截取 startFrag 到 endFrag（或文件尾）之间的文本。
+  // 第 7 轮评审 W1：区间不可达（endFrag ≤ startFrag / 锚点缺失）时显式报错并返回 null，
+  // 禁止静默返回空串跳过段化校验（防锚点被删后段化校验静默失效）。
+  const sliceSection = (startFrag, endFrag) => {
+    const s = prompt.indexOf(startFrag);
+    if (s === -1) {
+      errors.push(`段化校验锚点缺失：「${startFrag}」不存在（段化校验无法定位，疑似该段被删）`);
+      return null;
+    }
+    const e = endFrag ? prompt.indexOf(endFrag, s) : prompt.length;
+    if (e === -1 || e <= s) {
+      errors.push(
+        `段化校验区间不可达：「${endFrag}」未出现在「${startFrag}」之后（疑似段落顺序错乱或锚点被删）`
+      );
+      return null;
+    }
+    return prompt.slice(s, e);
+  };
+  const RELAY_CORE = [
+    '【运行模式（每次调用必须先自检）】',
+    '接力模式（默认、推荐）',
+    '只执行流水线中的一个步骤',
+    '绝不自行继续后续步骤',
+    '11. 接力只执行一步（接力模式铁律）',
+    '绝不代替用户召唤下一棒',
+    '12. 接力卡必含召唤话术',
+    '下一步召唤话术',
+    '【任务书（接力模式第一棒 0/10 创建，随接力卡逐棒传递）】',
+    '【接力卡（接力模式每步结束时必须输出）】',
+    '【接力卡·N/10 阶段名】',
+  ];
+  let relayLastIdx = -1;
+  for (const frag of RELAY_CORE) {
+    const idx = prompt.indexOf(frag);
+    if (idx === -1)
+      errors.push(
+        `接力模式缺少完整句式「${frag}」（每次召唤必须只执行一步并输出接力卡，防回退为一次跑完全部步骤）`
+      );
+    else if (idx < relayLastIdx)
+      errors.push(
+        `接力模式句式顺序错乱：「${frag}」出现在其声明顺序之前（疑似插入干扰文本拆解语义）`
+      );
+    else relayLastIdx = idx;
+  }
+  // 接力卡必含「下一步召唤话术」内容格式（用户原样复制即可触发下一棒独立执行）
+  // 注意：必须限定在【接力卡】段范围内校验（截取「【接力卡（接力模式每步结束时必须输出）】」
+  // 到「【评审接力卡」之间的文本），否则评审/修复接力卡段（10b）的相同句式会造成跨段假阳性——
+  // 实测【接力卡】段话术示例被删（评审/修复接力卡段保留）时全局 indexOf 仍命中，校验放行（exit 0）。
+  // （第 1 轮评审 C1：校验盲区）同时要求「下一步召唤话术」标签与示例句都在段内（C2：原用例删的是标签行，
+  // 仅校验示例句会漏）。
+  // 第 7 轮评审 W1/W2：统一改用 sliceSection 工具（区间不可达时显式报错，不再静默跳过），
+  // 并消除【接力卡】段与 10b 段两套段截取实现重复。
+  const relayCardSection = sliceSection(
+    '【接力卡（接力模式每步结束时必须输出）】',
+    '【评审接力卡（5/10 评审每轮评审结束时输出）】'
+  );
+  if (
+    relayCardSection !== null &&
+    (!relayCardSection.includes('- 下一步召唤话术（用户原样复制即可）：') ||
+      !/@CodeBuddy 接力 NPC_TEAM skill，执行下一步 N\+1\/10 <阶段名>：/.test(relayCardSection))
+  )
+    errors.push(
+      '接力卡缺少「下一步召唤话术」（含标签与示例 @CodeBuddy 接力 NPC_TEAM skill，执行下一步 N+1/10 <阶段名>：）'
+    );
+  // 全程模式仅为可选（默认必须为接力模式）：若提示词缺失「接力模式（默认、推荐）」已在上方强校验，
+  // 再校验「全程模式」声明存在（防只剩接力没有全程，或两者都丢）
+  if (!/全程模式/.test(prompt))
+    warnings.push('提示词未声明「全程模式」（可选：用户明确要求一次跑完时使用）');
+
+  // ---- 10b. 评审-修复循环接力（Issue #76 最新补充：PR review 与修复循环也使用接力模式）----
+  // 背景：用户要求"其中的 PR review 与 修复循环也建议使用接力模式"。
+  // 因此 5/10 评审-修复循环在接力模式下逐轮接力：每轮评审与每次修复各是独立一次 @CodeBuddy 召唤，
+  // 评审棒输出【评审接力卡】、修复棒输出【修复接力卡】，禁止在一次召唤内连跑多轮评审-修复。
+  // 本节强校验：若「评审-修复接力」核心要素被删，CI 拦截（防评审-修复假装进行/偷偷连跑）。
+  const RELAY_REVIEW_CORE = [
+    '8. 评审-修复循环（10 轮彻底循环，接力模式）',
+    '评审-修复循环同样逐轮接力',
+    '每轮评审与每次修复各是独立一次 @CodeBuddy 召唤',
+    '评审棒输出【评审接力卡】',
+    '修复棒输出【修复接力卡】',
+    '禁止在一次召唤内偷偷连跑多轮评审-修复',
+    '【评审接力卡（5/10 评审每轮评审结束时输出）】',
+    '【修复接力卡（5/10 评审每轮修复结束时输出）】',
+    '【复评接力卡（5/10 评审每轮复评结束时输出）】',
+    '复评结论：🔴仍需修复（问题未清零，转下轮评审） / 🟢通过（问题清零，转 6/10 测试）',
+    '已累计轮次：R/10（未清零则继续；清零且已达至少 10 轮则进下一阶段）',
+    '执行第 R+1/10 轮评审（复评仍有问题，继续 review-修复循环）',
+    '执行 6/10 测试（评审问题已清零，进入测试阶段）',
+  ];
+  // 第 9 轮评审 W1：前 6 句是铁律 8 专属约束，但「每轮评审与每次修复各是独立一次 @CodeBuddy 召唤」/
+  // 「评审棒输出【评审接力卡】」/「修复棒输出【修复接力卡】」在 CR 卡片段也有相同句式（出现 2 次），
+  // 全局 indexOf 会命中 CR 卡片段同句 → 删铁律 8 中这三句时顺序校验不破坏（逃生口）。
+  // 修复：前 6 句限定在铁律 8 段（8. 至 9. 测试失败跳转之间）内校验，CR 卡片段句式不参与 indexOf。
+  const rule8Start = prompt.indexOf('8. 评审-修复循环（10 轮彻底循环，接力模式）');
+  const rule8End = prompt.indexOf('9. 测试失败跳转');
+  const rule8Section =
+    rule8Start !== -1 && rule8End !== -1 && rule8End > rule8Start
+      ? prompt.slice(rule8Start, rule8End)
+      : null;
+  const coreSearchTarget = rule8Section !== null ? rule8Section : prompt;
+  let relayReviewLastIdx = -1;
+  const coreFrags = RELAY_REVIEW_CORE.slice(0, 6); // 铁律 8 专属
+  const cardFrags = RELAY_REVIEW_CORE.slice(6); // 三段卡标题与复评句式（全局唯一，用 prompt）
+  const searchTargets = [...coreFrags.map(f => ({ f, scope: coreSearchTarget })), ...cardFrags.map(f => ({ f, scope: prompt }))];
+  for (const { f, scope } of searchTargets) {
+    const idx = scope.indexOf(f);
+    if (idx === -1)
+      errors.push(
+        `评审-修复接力缺少完整句式「${f}」（5/10 评审-修复循环须逐轮接力，每轮评审/修复各为独立召唤，防假装进行）`
+      );
+    else if (idx < relayReviewLastIdx)
+      errors.push(
+        `评审-修复接力句式顺序错乱：「${f}」出现在其声明顺序之前（疑似插入干扰文本拆解语义）`
+      );
+    else relayReviewLastIdx = idx;
+  }
+  // 评审接力卡/修复接力卡/复评接力卡必须含「下一步召唤话术」标签与示例句（用户原样复制即可触发下一棒独立执行）
+  // 第 6 轮评审 W1：仿照 10 节【接力卡】段化做法，将三段卡的标签与示例句校验限定在各自段区间内，
+  // 消除跨段假阳性与漏检（此前全局 indexOf 校验，双源同步删掉三段卡标签行后校验仍 exit 0）。
+  // 第 7 轮评审 W2：统一使用 10 节上移的 sliceSection（区间不可达时已显式报错并返回 null）。
+  // 【评审接力卡】段：起点到【修复接力卡】段标题
+  const reviewCardSection = sliceSection(
+    '【评审接力卡（5/10 评审每轮评审结束时输出）】',
+    '【修复接力卡（5/10 评审每轮修复结束时输出）】'
+  );
+  if (
+    reviewCardSection !== null &&
+    (!reviewCardSection.includes('- 下一步召唤话术（用户原样复制即可）：') ||
+      !/@CodeBuddy 接力 NPC_TEAM skill，执行第 R\+1\/10 轮评审修复（修复本轮评审问题）：/.test(
+        reviewCardSection
+      ))
+  )
+    errors.push(
+      '评审接力卡缺少「下一步召唤话术」（含标签与示例 @CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮评审修复（修复本轮评审问题）：）'
+    );
+  // 【修复接力卡】段：起点到【复评接力卡】段标题
+  const fixCardSection = sliceSection(
+    '【修复接力卡（5/10 评审每轮修复结束时输出）】',
+    '【复评接力卡（5/10 评审每轮复评结束时输出）】'
+  );
+  if (
+    fixCardSection !== null &&
+    (!fixCardSection.includes('- 下一步召唤话术（用户原样复制即可）：') ||
+      !/@CodeBuddy 接力 NPC_TEAM skill，执行第 R\+1\/10 轮复评（评审上轮修复）：/.test(
+        fixCardSection
+      ))
+  )
+    errors.push(
+      '修复接力卡缺少「下一步召唤话术」（含标签与示例 @CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮复评（评审上轮修复）：）'
+    );
+  // 【复评接力卡】段：起点到【暂停确认】段标题，须含标签 + 未清零/已清零两个示例句
+  const reReviewCardSection = sliceSection(
+    '【复评接力卡（5/10 评审每轮复评结束时输出）】',
+    '【暂停确认】'
+  );
+  if (
+    reReviewCardSection !== null &&
+    (!reReviewCardSection.includes('- 下一步召唤话术（用户原样复制即可）：') ||
+      !/@CodeBuddy 接力 NPC_TEAM skill，执行第 R\+1\/10 轮评审（复评仍有问题，继续 review-修复循环）：/.test(
+        reReviewCardSection
+      ) ||
+      !/@CodeBuddy 接力 NPC_TEAM skill，执行 6\/10 测试（评审问题已清零，进入测试阶段）：/.test(
+        reReviewCardSection
+      ))
+  )
+    errors.push(
+      '复评接力卡缺少「下一步召唤话术」（含标签与示例：执行第 R+1/10 轮评审（复评仍有问题）/ 执行 6/10 测试（问题已清零））'
+    );
 }
 
-// ---- 10. 文档级边界声明 ----
+// ---- 11. 文档级边界声明 ----
 const docSections = ['关键边界', '本地', '平台'];
 for (const s of docSections) {
   if (!content.includes(s)) warnings.push(`文档缺少「${s}」相关边界说明`);
 }
 
-// ---- 11. NPC_TEAM Skill 双源一致性（Issue #76 新增：一键调用 skill 方案）----
+// ---- 12. NPC_TEAM Skill 双源一致性（Issue #76 新增：一键调用 skill 方案）----
 // 背景：docs/NPC_TEAM.md 是提示词唯一权威源，.codebuddy/skills/npc-team/SKILL.md 是可自动加载的 skill 版。
 // 若两者正文漂移（skill 改老 / 提示词改新），用户用 skill 一句话调用时行为可能与文档不一致。
 // 因此 CI 强制校验：skill 存在 + frontmatter 合法 + 提示词正文与 docs 提示词完全一致（归一化空白后）。
@@ -216,7 +391,9 @@ if (!fs.existsSync(SKILL_FILE)) {
     const { ok, missing } = checkDesc(desc);
     if (!ok)
       errors.push(
-        'NPC_TEAM Skill description 缺少必要触发词：' + missing.join('、') + '（NPC 可能无法自动加载）'
+        'NPC_TEAM Skill description 缺少必要触发词：' +
+          missing.join('、') +
+          '（NPC 可能无法自动加载）'
       );
 
     // 11.1c docs 触发词交集校验：docs/NPC_TEAM.md「使用方式一」明示的触发短语必须全部出现在 description 中，
@@ -241,7 +418,9 @@ if (!fs.existsSync(SKILL_FILE)) {
       // 防止说明段与实际关系脱钩（docs 提示词大改而 SKILL 说明段仍声称“完全一致”）。
       const preamble = skillBody.slice(0, bodyStart);
       if (!/docs\/NPC_TEAM\.md/.test(preamble) || !/完全一致|一致|等价/.test(preamble))
-        warnings.push('NPC_TEAM Skill 说明段未明确声明“与 docs/NPC_TEAM.md 一致/等价”（建议补充，防声明与实际脱钩）');
+        warnings.push(
+          'NPC_TEAM Skill 说明段未明确声明“与 docs/NPC_TEAM.md 一致/等价”（建议补充，防声明与实际脱钩）'
+        );
 
       const skillPrompt = skillBody.slice(bodyStart).trim();
       const docPrompt = m ? m.groups.prompt.trim() : '';
@@ -252,6 +431,18 @@ if (!fs.existsSync(SKILL_FILE)) {
           'NPC_TEAM Skill 正文与 docs/NPC_TEAM.md 提示词不一致（改提示词须同步改 skill，或反之）。' +
             '请运行 scripts/sync-npc-team-skill.js 自动同步，或手动保持一致'
         );
+      } else {
+        // 第 10 轮评审 W2：normalize 去空白比较会忽略「行首缩进」等纯格式差异，
+        // 导致第 5 轮 I1 类修复（docs 缩进统一、SKILL 未重新生成）静默失同步。
+        // 增加格式级比较：按行比较「行首缩进 + 行内内容（去行尾空白）」，缩进差异直接拦截。
+        const fmtDiff = formatDiff(skillPrompt, docPrompt);
+        if (fmtDiff.length > 0) {
+          errors.push(
+            'NPC_TEAM Skill 正文与 docs/NPC_TEAM.md 提示词存在格式级差异（行首缩进不一致）：' +
+              fmtDiff.slice(0, 3).join('； ') +
+              '。请运行 scripts/sync-npc-team-skill.js 自动同步'
+          );
+        }
       }
     }
   }
