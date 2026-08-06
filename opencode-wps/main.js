@@ -73,7 +73,7 @@ function setTaskPaneDockRestrict(tskpane) {
     if (!tskpane) return false
     try {
         // 探测宿主是否支持：只读属性，读成功说明存在（部分版本无此属性会抛异常）
-        var cur = tskpane.DockPositionRestrict
+        void tskpane.DockPositionRestrict
         tskpane.DockPositionRestrict = TASKPANE_DOCK_RESTRICT
         return true
     } catch (e) {
