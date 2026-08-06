@@ -52,6 +52,12 @@ function readPrompt() {
 
 // ---- 在临时副本上改写提示词并运行校验脚本，返回退出码 ----
 function runValidate(rewriteFn) {
+  return runValidateCapture(rewriteFn).code;
+}
+
+// 在临时副本上改写提示词并运行校验脚本，返回 { code, output }（第 1 轮评审 C2：
+// 部分用例需要断言拦截路径，区分「接力校验错误」与「双源一致性错误」假阳性）
+function runValidateCapture(rewriteFn) {
   const { content, prompt } = readPrompt();
   const rewritten = content.replace(prompt, rewriteFn(prompt));
   // 备份并写入临时改写
@@ -61,10 +67,12 @@ function runValidate(rewriteFn) {
   fs.renameSync(FILE, backup);
   fs.renameSync(tmp, FILE);
   let code;
+  let output = '';
   try {
     const { spawnSync } = require('child_process');
     const r = spawnSync('node', [SCRIPT], { encoding: 'utf8' });
     code = r.status;
+    output = (r.stdout || '') + (r.stderr || '');
   } finally {
     // 无论成功失败都还原，并清理临时文件（第 8 轮评审：防工作区残留 .tmp/.bak）
     fs.renameSync(FILE, tmp);
@@ -80,7 +88,7 @@ function runValidate(rewriteFn) {
       /* 已不存在则忽略 */
     }
   }
-  return code;
+  return { code, output };
 }
 
 // ---- 用例 ----
@@ -189,8 +197,17 @@ test('负向：删【接力卡】段应拦截（exit 1）', function () {
 });
 
 test('负向：删「下一步召唤话术」应拦截（exit 1）', function () {
-  const code = runValidate(p => p.replace('- 下一步召唤话术（用户原样复制即可）：', '- 下一步：'));
+  // 第 1 轮评审 C2 修复：原用例用 String.replace 只替换第一个匹配，实际删的是【接力卡】段句子，
+  // 评审/修复接力卡段仍含相同句式 → 接力校验未真正失效，exit=1 靠「双源一致性」假阳性拦截。
+  // 现改用全量替换（split/join 删除所有出现处），并断言拦截路径为接力校验错误。
+  const { code, output } = runValidateCapture(p =>
+    p.split('- 下一步召唤话术（用户原样复制即可）：').join('- 下一步：')
+  );
   assertEqual(code, 1, '删下一步召唤话术应拦截（exit 1）');
+  assertTrue(
+    /接力卡缺少「下一步召唤话术」/.test(output),
+    '应命中接力校验错误（而非双源一致性假阳性），实际输出：' + output
+  );
 });
 
 test('负向：删「绝不自行继续后续步骤」应拦截（exit 1）', function () {
@@ -211,13 +228,27 @@ test('负向：删【任务书】段应拦截（exit 1）', function () {
 });
 
 test('负向：删接力卡召唤话术示例「@CodeBuddy 接力 NPC_TEAM skill」应拦截（exit 1）', function () {
-  const code = runValidate(p =>
-    p.replace(
-      '@CodeBuddy 接力 NPC_TEAM skill，执行下一步 N+1/10 <阶段名>：',
-      '@CodeBuddy 执行下一步：'
-    )
-  );
+  // 第 1 轮评审 C2 修复：原用例只替换第一个匹配（删的是【接力卡】段），评审/修复接力卡段仍含
+  // 相同句式 → 接力校验未真正失效，exit=1 靠「双源一致性」假阳性拦截。
+  // 现改为：仅删除【接力卡】段内的召唤话术示例（定位到该段再替换），并断言命中接力校验错误。
+  const { code, output } = runValidateCapture(p => {
+    const sectionStart = p.indexOf('【接力卡（接力模式每步结束时必须输出）】');
+    const sectionEnd = p.indexOf('【评审接力卡（5/10 评审每轮评审结束时输出）】');
+    const head = p.slice(0, sectionStart);
+    const section = p
+      .slice(sectionStart, sectionEnd)
+      .replace(
+        '@CodeBuddy 接力 NPC_TEAM skill，执行下一步 N+1/10 <阶段名>：',
+        '@CodeBuddy 执行下一步：'
+      );
+    const tail = p.slice(sectionEnd);
+    return head + section + tail;
+  });
   assertEqual(code, 1, '删接力召唤话术示例应拦截（exit 1）');
+  assertTrue(
+    /接力卡缺少「下一步召唤话术」/.test(output),
+    '应命中接力校验错误（而非双源一致性假阳性），实际输出：' + output
+  );
 });
 
 // ---- Issue #76：评审-修复循环接力（PR review 与修复循环也使用接力模式）回归用例 ----

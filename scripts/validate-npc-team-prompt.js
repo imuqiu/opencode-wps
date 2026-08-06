@@ -208,9 +208,24 @@ if (!m) {
     else relayLastIdx = idx;
   }
   // 接力卡必含「下一步召唤话术」内容格式（用户原样复制即可触发下一棒独立执行）
-  if (!/@CodeBuddy 接力 NPC_TEAM skill/.test(prompt))
+  // 注意：必须限定在【接力卡】段范围内校验（截取「【接力卡（接力模式每步结束时必须输出）】」
+  // 到「【评审接力卡」之间的文本），否则评审/修复接力卡段（10b）的相同句式会造成跨段假阳性——
+  // 实测【接力卡】段话术示例被删（评审/修复接力卡段保留）时全局 indexOf 仍命中，校验放行（exit 0）。
+  // （第 1 轮评审 C1：校验盲区）同时要求「下一步召唤话术」标签与示例句都在段内（C2：原用例删的是标签行，
+  // 仅校验示例句会漏）。
+  const relayCardStart = prompt.indexOf('【接力卡（接力模式每步结束时必须输出）】');
+  const relayReviewStart = prompt.indexOf('【评审接力卡（5/10 评审每轮评审结束时输出）】');
+  const relayCardSection =
+    relayCardStart !== -1 && relayReviewStart !== -1 && relayReviewStart > relayCardStart
+      ? prompt.slice(relayCardStart, relayReviewStart)
+      : '';
+  if (
+    relayCardSection &&
+    (!relayCardSection.includes('- 下一步召唤话术（用户原样复制即可）：') ||
+      !/@CodeBuddy 接力 NPC_TEAM skill，执行下一步 N\+1\/10 <阶段名>：/.test(relayCardSection))
+  )
     errors.push(
-      '接力卡缺少「下一步召唤话术」示例（@CodeBuddy 接力 NPC_TEAM skill，执行下一步 N/10 ...）'
+      '接力卡缺少「下一步召唤话术」（含标签与示例 @CodeBuddy 接力 NPC_TEAM skill，执行下一步 N+1/10 <阶段名>：）'
     );
   // 全程模式仅为可选（默认必须为接力模式）：若提示词缺失「接力模式（默认、推荐）」已在上方强校验，
   // 再校验「全程模式」声明存在（防只剩接力没有全程，或两者都丢）
