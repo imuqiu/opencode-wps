@@ -14,7 +14,7 @@
 - **WPS 专用 Agents** — wps-expert / wps-word / wps-excel / wps-ppt，通过 Agent 选择实现功能聚焦
 - **特色功能** — 模板自动填值（修订追踪）+ 长文档分批校对（铁律 3.0，16 条规则代码层强制执行）
 - **执行治理** — governance.js Hooks 拦截所有 MCP 调用（G1-G7 + P1-P16 + T1-T11 共 34 条规则），防 AI 作弊
-- **NPC Team 总指挥（零积分）** — 召唤官方免费 `@CodeBuddy` 一句「调用 NPC_TEAM skill」，6 位专家**接力**跑完研发全流程（默认接力模式：每次召唤只执行一步、独立留痕，含评审-修复循环接力；**合并前暂停待用户确认 ⏸CP3 + 发布三要素**），零平台积分
+- **NPC Team 总指挥（零积分）** — 召唤官方免费 `@CodeBuddy` 一句「调用 NPC_TEAM skill」，6 位专家**接力**跑完研发全流程（默认接力模式：每次召唤只执行一步、独立留痕，含评审-修复循环接力），零平台积分
 - **一键安装** — `node install-addons.js` 自动完成全部组件安装，开机自启
 
 > 💡 **NPC Team（零积分）与 CNB Skills 不是 WPS 插件功能**：`@CodeBuddy`、NPC_TEAM 提示词、`.codebuddy/skills/` 等属于 **cnb.cool 平台的开发辅助工具**，用于在 CNB 平台（Issue/PR/对话）辅助研发，与 WPS 插件本体无关。详见 [docs/NPC_TEAM.md](./docs/NPC_TEAM.md)。
@@ -86,6 +86,7 @@ Win: PowerShell COM 桥接  /  Mac·Linux: HTTP 轮询 (反向轮询插件)
 | 🔧 **开发**     | [开发指南](./docs/DEVELOPMENT_GUIDE.md) · [代码审查](./docs/CODE_REVIEW_GUIDE.md) · [WPS JS 开发](./docs/WPSJS_DEVELOPMENT.md) · [安装脚本说明](./docs/INSTALL_SCRIPT.md) · [Skills](./docs/SKILLS.md) |
 | 🖥️ **平台专题** | [Windows 支持](./docs/WINDOWS.md) · [macOS 支持](./docs/MAC.md) · [Linux 支持](./docs/LINUX.md)                                                                                                        |
 | 📚 **内部参考** | [架构](./docs/ARCHITECTURE.md) · [MCP](./docs/MCP.md) · [API 参考](./docs/OPENCODE_API.md) · [安全](./docs/SECURITY.md) · [NPC Team](./docs/NPC_TEAM.md)                                               |
+
 > 📚 完整文档中心（含全部 24 份顶层文档 + 2 份设计规格的索引）见 [docs/README.md](./docs/README.md)。
 
 ## NPC 研发助手（CNB 平台开发辅助工具，与 WPS 插件无关）
@@ -98,9 +99,9 @@ Win: PowerShell COM 桥接  /  Mac·Linux: HTTP 轮询 (反向轮询插件)
 调用 NPC_TEAM skill 完成以下需求：<你的需求>
 ```
 
-本仓库内置 NPC_TEAM Skill，`@CodeBuddy` 自动化身 6 位专家（PM/产品/架构/开发/评审/测试），**默认接力模式**：每次召唤只执行拆解→开发→评审→测试→文档→**合并→发布**→汇报→复盘流水线中的一个步骤，输出【接力卡】后停下，用户逐步召唤下一棒续跑，**零平台 NPC 积分**。
+本仓库内置 NPC_TEAM Skill，`@CodeBuddy` 自动化身 6 位专家（PM/产品/架构/开发/评审/测试），**默认接力模式**：每次召唤只执行拆解→分析→设计→开发→评审→修复→测试→文档→PR 合并→发布→汇报→复盘流水线中的一个步骤，输出【接力卡】后停下，用户逐步召唤下一棒续跑，**零平台 NPC 积分**。
 
-> ⚡ **默认接力模式（每步独立调用 @CodeBuddy）**：每次召唤只执行流水线中一个步骤，输出【接力卡】（含任务书 + 下一步召唤话术）后立即停下，用户逐步召唤下一棒续跑——每步独立调用、独立留痕、独立可见，步间天然可确认/纠正/停止，彻底杜绝"单会话闷头跑完 + 编造全绿"；**评审-修复循环同样采用接力模式**（5/11 评审每轮独立召唤执行，评审/修复各自留痕，禁止假装进行）。**合并 PR 前必须暂停待用户确认（⏸CP3）**：评审清零 + 测试通过后输出【合并确认卡】，用户回复「继续合并」才执行合并，禁止未经确认自行合并；**9/11 发布真实执行三要素**：更新版本号 + 形成/更新 CHANGELOG + 发布产物（tag/release/制品），禁止假装发布。也支持用户明确要求时的全程模式（一次跑完，保留 ⏸CP1/⏸CP2/⏸CP3 暂停确认）。
+> ⚡ **默认接力模式（每步独立调用 @CodeBuddy）**：每次召唤只执行流水线中一个步骤，输出【接力卡】（含任务书 + 下一步召唤话术）后立即停下，用户逐步召唤下一棒续跑——每步独立调用、独立留痕、独立可见，步间天然可确认/纠正/停止，彻底杜绝"单会话闷头跑完 + 编造全绿"；**评审-修复循环同样采用接力模式**（5/12 评审每轮独立召唤执行，评审/修复各自留痕，禁止假装进行）；**8/12 PR 合并前经 ⏸CP3 暂停待用户确认**（输出【合并确认卡】，只有用户确认才合并，禁止未确认就合并/假装已合并）；**9/12 发布真实执行（四要素）**（更新版本号 / 形成 CHANGELOG / 发布产物 / 形成 Release Notes）并留痕。也支持用户明确要求时的全程模式（一次跑完，保留 ⏸CP1/⏸CP2/⏸CP3 暂停确认）。
 
 > 📖 使用方式与提示词见 [docs/NPC_TEAM.md](./docs/NPC_TEAM.md)。
 
