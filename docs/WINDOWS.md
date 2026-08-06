@@ -11,9 +11,9 @@ OpenCode WPS 的 Windows 版支持，为 Windows 桌面环境下的 WPS Office �
 Windows 版走 **PowerShell COM 桥接**：WPS 加载项运行在 WPS 内置 Chromium 103 中，通过 REST + SSE 直连 OpenCode 服务，文档操作经 MCP 服务器调用 PowerShell 脚本操作 WPS COM API（同步、强类型）：
 
 ```
-OpenCode AI (opencode serve :14096)
+OpenCode AI (系统浏览器 / WPS 侧边栏 Chat UI，REST + SSE 客户端)
     ↑ SSE / HTTP
-WPS 插件 (opencode-wps，taskpane.html + main.js，REST + SSE 客户端)
+WPS 插件 (opencode-wps，taskpane.html + main.js)
     ↑ REST + SSE（launcher 以 --cors file:// 放行）
 OpenCode 中央调度 (opencode serve :14096)
     ↑ stdio / MCP
@@ -22,7 +22,7 @@ MCP Server (wps-office-mcp)
 wps-com.ps1 → WPS COM API（wps/et/wpp）
 ```
 
-> 💡 侧边栏 Chat UI 与浏览器（14096）均为 REST + SSE 客户端，直连 OpenCode 服务；另保留 `opencode-proxy.js`（:14098，剥离 CSP 头）作为备用通讯层，当前 launcher 已用 `--cors file://` 放行，运行时调用链不再经过它。
+> 💡 侧边栏 Chat UI 与系统浏览器均为 REST + SSE 客户端，直连 opencode serve（14096）；另保留 `opencode-proxy.js`（:14098，剥离 CSP 头）作为备用通讯层，当前 launcher 已用 `--cors file://` 放行，运行时调用链不再经过它。
 
 ## 组件清单
 
