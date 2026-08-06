@@ -17,6 +17,8 @@
 
 ## install-addons.js（Windows 安装脚本）
 
+> 📖 Windows 平台专题（架构/前置条件/已知限制/常见问题）见 [WINDOWS.md](./WINDOWS.md)。
+
 ```bash
 node install-addons.js
 ```
@@ -39,6 +41,8 @@ node install-addons.js
 ---
 
 ## install-addons-mac.js（macOS 安装脚本）
+
+> 📖 macOS 平台专题（架构/前置条件/已知限制/常见问题）见 [MAC.md](./MAC.md)。
 
 ```bash
 node install-addons-mac.js

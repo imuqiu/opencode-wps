@@ -277,4 +277,4 @@ MCP 服务器采用三层工具体系，AI 通过不同的方式发现和调用�
 3. **三平台差异化桥接** — Win 走 PowerShell COM（同步、强类型），Mac/Linux 走 HTTP 反向轮询（500ms 拉取、异步），三者共用同一 MCP 层和工具集
 4. **治理横切进调用链** — governance.js 的 34 条规则（G1-G7 + P1-P16 + T1-T11）不改变调用链结构，而是通过 Plugin Hooks 在⑤层拦截所有工具调用，before/after 形成状态闭环
 
-> 📖 Linux 详细说明见 [LINUX.md](./LINUX.md)；MCP 协议见 [MCP.md](./MCP.md)；PowerShell COM 桥接见 [POWERSHELL_COM.md](./POWERSHELL_COM.md) 与 [WPS_COM_PS1.md](./WPS_COM_PS1.md)。
+> 📖 Windows 详细说明见 [WINDOWS.md](./WINDOWS.md)；macOS 详细说明见 [MAC.md](./MAC.md)；Linux 详细说明见 [LINUX.md](./LINUX.md)；MCP 协议见 [MCP.md](./MCP.md)；PowerShell COM 桥接见 [POWERSHELL_COM.md](./POWERSHELL_COM.md) 与 [WPS_COM_PS1.md](./WPS_COM_PS1.md)。

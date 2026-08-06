@@ -16,7 +16,7 @@ node install-addons-linux.js    # Linux
 | **WPS Office** | Windows：个人版 12.1.0+ 或企业版；macOS：WPS Office for Mac 最新版；Linux：12.1.x（[linux.wps.cn](https://linux.wps.cn)，deb/rpm） |
 | **Node.js** | 18.0.0+（或 Bun 1.0+） |
 | **OpenCode** | 已全局安装 opencode-ai（`npm install -g opencode-ai`） |
-| **Python 3** | 仅 Linux 需要（`wps-auto.sh` 生成空白 OOXML 用，缺失时回退无参启动） |
+| **Python 3** | Mac/Linux 需要（`wps-auto.sh` 生成空白 OOXML 用，缺失时回退无参启动）；Windows 不需要 |
 
 ## Windows 安装
 
@@ -57,6 +57,8 @@ node install-addons.js
 ### 4. 重启 WPS Office
 
 安装完成后重启 WPS，功能区会出现 **OpenCode AI** 标签页。
+
+> 📖 Windows 完整说明（架构/组件清单/应用切换/已知限制/常见问题）见 [WINDOWS.md](./WINDOWS.md)。
 
 ## macOS 安装
 
@@ -110,9 +112,13 @@ node launcher-mac.js
 
 重启 WPS Office for Mac，功能区会出现 **OpenCode AI** 标签页。
 
+> 📖 macOS 完整说明（架构/组件清单/应用切换/已知限制/常见问题）见 [MAC.md](./MAC.md)。
+
 ## Linux 安装
 
 > Linux 版与 macOS 版同架构（反向轮询桥），插件独立目录 `opencode-wps-linux/`。状态：✅ 开发完成；⚠️ 尚未在真实 Linux + WPS 环境实测（需要实机验证）。
+
+> 📖 Linux 完整说明（架构/组件清单/应用切换/已知限制/常见问题）见 [LINUX.md](./LINUX.md)。
 
 ### 1. 克隆仓库
 
