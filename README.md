@@ -14,7 +14,7 @@
 - **WPS 专用 Agents** — wps-expert / wps-word / wps-excel / wps-ppt，通过 Agent 选择实现功能聚焦
 - **特色功能** — 模板自动填值（修订追踪）+ 长文档分批校对（铁律 3.0，16 条规则代码层强制执行）
 - **执行治理** — governance.js Hooks 拦截所有 MCP 调用（G1-G7 + P1-P16 + T1-T11 共 34 条规则），防 AI 作弊
-- **NPC Team 总指挥（零积分）** — 召唤官方免费 `@CodeBuddy` 一句「调用 NPC_TEAM skill」，6 位专家自动跑完研发全流程，零平台积分；**默认接力模式**（每步独立调用、独立留痕，含评审-修复循环接力）
+- **NPC Team 总指挥（零积分）** — 召唤官方免费 `@CodeBuddy` 一句「调用 NPC_TEAM skill」，6 位专家**接力**跑完研发全流程（默认接力模式：每次召唤只执行一步、独立留痕，含评审-修复循环接力），零平台积分
 - **一键安装** — `node install-addons.js` 自动完成全部组件安装，开机自启
 
 > 📖 详细功能说明见 [docs/FEATURES.md](./docs/FEATURES.md)。
