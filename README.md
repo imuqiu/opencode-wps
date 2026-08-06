@@ -23,8 +23,8 @@
 
 ### 环境要求
 
-- **操作系统**：Windows 10/11、macOS 12+ 或 Linux（Debian/Ubuntu/Arch 等）
-- **WPS Office**：Windows 个人版 12.1.0+ / Mac 最新版 / Linux 12.1.x（[linux.wps.cn](https://linux.wps.cn)）
+- **操作系统**：Windows 10/11、macOS 12+ 或 Linux（Debian/Ubuntu/Arch 等，x86_64 / aarch64）
+- **WPS Office**：Windows 个人版 12.1.0+ 或企业版 / Mac 最新版 / Linux 12.1.x（[linux.wps.cn](https://linux.wps.cn)）
 - **Node.js**：18.0.0+（或 Bun 1.0+）
 - **OpenCode**：`npm install -g opencode-ai`
 - **Python 3**：仅 Linux 需要（`wps-auto.sh` 生成空白 OOXML 用，缺失时回退无参启动）
@@ -41,7 +41,7 @@ npm install
 # 按平台执行安装脚本
 node install-addons.js          # Windows（8 步自动安装）
 node install-addons-mac.js      # macOS（7 步自动安装）
-node install-addons-linux.js    # Linux
+node install-addons-linux.js    # Linux（8 步自动安装）
 ```
 
 安装完成后重启 WPS，功能区出现 **OpenCode AI** 标签页：Windows 点击 **打开面板** 即可开始对话；macOS / Linux 点击 **打开Web** 在浏览器中对话。
