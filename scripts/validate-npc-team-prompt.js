@@ -68,20 +68,67 @@ if (!m) {
     errors.push('缺少零积分红线声明（全程不召唤自建 NPC）');
   }
 
-  // ---- 5. 阶段流水线一致性（10 阶段，0/10 ~ 9/10）----
-  if (prompt.includes('0/10') || prompt.includes('9/10')) {
-    // 若使用 0/10 编号，则必须 0..9 全部出现
-    for (let i = 0; i <= 9; i++) {
-      if (!prompt.includes(`${i}/10`)) errors.push(`阶段编号 ${i}/10 缺失（10 阶段流水线不完整）`);
-    }
-  } else if (prompt.includes('阶段 1/') || prompt.includes('阶段 0/')) {
-    errors.push('阶段编号分母不是 10（历史 bug：9 阶段/0/9 分母错误）');
+  // ---- 5. 阶段流水线一致性（12 阶段，0/12 ~ 11/12）----
+  // CR 第 11 轮修复（追加 9 轮循环 R1）：原 includes 子串校验存在双重逃生口——
+  // ① includes('0/12') 命中 10/12、includes('1/12') 命中 11/12 的子串；
+  // ② 即便改词边界正则，删除【流水线】段节点后仍会被暂停确认卡等其它段的引用字面量（已完成：0/12 需求接收 → 1/12 拆解分派）掩盖。
+  // 因此改为：限定在【流水线】段内做 0..11 **全序出现**校验（词边界正则 + indexOf 递增），
+  // 只有流水线主链完整且有序才通过，跨段引用不参与阶段完整性判定。
+  const stageIdRe = i => new RegExp(`(?:^|[^0-9/])${i}\\/12(?:[^0-9]|$)`);
+  // 提取【流水线】段（sliceSection 定义为 const 在后不提升，此处内联定位）
+  const pipelineSectionStart = prompt.indexOf('【流水线（12 阶段 + 3 暂停点');
+  if (pipelineSectionStart === -1) {
+    errors.push('提示词缺少「【流水线】段」（12 阶段流水线定义缺失）');
   } else {
-    warnings.push('未检测到 0/10~9/10 阶段编号（若已改为其他计数方式请确认一致性）');
+    const pipelineSectionEnd = prompt.indexOf('【任务书', pipelineSectionStart);
+    if (pipelineSectionEnd === -1 || pipelineSectionEnd <= pipelineSectionStart) {
+      errors.push('提示词【流水线】段区间不可达（【任务书】未出现在其后，疑似段落顺序错乱）');
+    } else {
+      const pipelineSection = prompt.slice(pipelineSectionStart, pipelineSectionEnd);
+      // 若使用 0/12 编号，则必须在流水线段内 0..11 全部出现且按序递增
+      // CR 第 20 轮修复（追加 12 轮循环 R1）：去掉「边界标记进入条件」逃生口——
+      // 原 if (stageIdRe(0) || stageIdRe(11)) 在 0/12 与 11/12 同时被删时条件不成立，
+      // 走 else 只发 warning，12 阶段流水线删掉首尾两阶段仍放行（实测 exit 0）。
+      // 改为无条件执行 0..11 全序校验：缺失任何阶段（含首尾）都报 error。
+      {
+        let lastIdx = -1;
+        for (let i = 0; i <= 11; i++) {
+          const mm = stageIdRe(i).exec(pipelineSection);
+          if (!mm) {
+            errors.push(`阶段编号 ${i}/12 缺失（12 阶段流水线不完整，【流水线】段未包含该节点）`);
+            break;
+          }
+          if (mm.index < lastIdx) {
+            errors.push(`阶段编号 ${i}/12 顺序错乱（【流水线】段节点未按 0/12→11/12 递增排列）`);
+            break;
+          }
+          lastIdx = mm.index;
+        }
+      }
+    }
+  }
+  // 历史 10 阶段编号（0/10~9/10）不应残留（先剔除评审轮次计轮 R/10、R+1/10 的合法用法，再检查）
+  const withoutReviewRounds = prompt.replace(/R\+1\/10/g, '').replace(/R\/10/g, '');
+  for (let i = 0; i <= 9; i++) {
+    if (new RegExp(`(?:^|[^0-9/])${i}\\/10(?:[^0-9]|$)`).test(withoutReviewRounds))
+      errors.push(`阶段编号 ${i}/10 残留（已迁移为 ${i}/12 或 ${i + 2}/12，历史编号未清理）`);
   }
 
   // 流水线关键阶段覆盖
-  const stages = ['需求', '拆解', '分析', '设计', '开发', '评审', '测试', '文档', '汇报', '复盘'];
+  const stages = [
+    '需求',
+    '拆解',
+    '分析',
+    '设计',
+    '开发',
+    '评审',
+    '测试',
+    '文档',
+    '合并',
+    '发布',
+    '汇报',
+    '复盘',
+  ];
   for (const s of stages) {
     if (!prompt.includes(s)) warnings.push(`流水线可能缺少「${s}」阶段`);
   }
@@ -96,13 +143,34 @@ if (!m) {
   if (!/省 Token|不重复/.test(prompt)) warnings.push('缺少省 Token/增量输出规则');
   if (!/语言/.test(prompt)) warnings.push('缺少语言匹配规则');
 
-  // ---- 8. 暂停确认机制（Issue #76 补充：人工确认防跑偏）----
-  // 两个暂停点必须以完整定义存在：⏸CP1 计划确认 / ⏸CP2 开发确认
+  // ---- 8. 暂停确认机制（Issue #76 补充：人工确认防跑偏）+ 合并确认（⏸CP3）----
+  // 两个开发暂停点必须以完整定义存在：⏸CP1 计划确认 / ⏸CP2 开发确认
   // （用完整词而非子串，避免「到 ⏸CP1/⏸CP2 时输出暂停卡」这类引用句被误算为暂停点声明）
   if (!prompt.includes('⏸CP1 计划确认'))
     errors.push('缺少暂停点「⏸CP1 计划确认」（人工确认防跑偏机制缺失）');
   if (!prompt.includes('⏸CP2 开发确认'))
     errors.push('缺少暂停点「⏸CP2 开发确认」（人工确认防跑偏机制缺失）');
+  // CR 第 13 轮修复（追加 9 轮循环 R3）：仅校验「⏸CP2 开发确认」字样可被流水线段引用命中，
+  // 但【暂停确认】段的【暂停·CP2 开发确认】模板被删时 CI 不拦截。故强校验模板段存在。
+  if (!/【暂停·CP2 开发确认】\n已完成：0\/12→4\/12 开发（PR 已建）/.test(prompt))
+    errors.push('缺少暂停卡模板「【暂停·CP2 开发确认】」（全程模式第二个强制暂停点须有输出模板）');
+  // CR 第 14 轮修复（追加 9 轮循环 R4）：
+  // ① 暂停确认引导语须明确 CP1/CP2 → 暂停卡、CP3 → 合并确认卡（此前「⏸CP1/⏸CP2/⏸CP3 时输出暂停卡」
+  //    把 CP3 也归为暂停卡，与铁律 13/合并确认卡模板矛盾，CodeBuddy 可能输出通用暂停卡而非合并确认卡）；
+  // ② CP2 模板内容强校验（命令三选一完整 + 已完成行），防模板与暂停确认表/工作流程漂移。
+  if (!/到 ⏸CP1\/⏸CP2 时输出暂停卡并停下；到 ⏸CP3 时输出【合并确认卡】/.test(prompt))
+    errors.push('暂停确认引导语未区分 CP3 输出（须为：到 ⏸CP1/⏸CP2 时输出暂停卡；到 ⏸CP3 时输出【合并确认卡】）');
+  const cp2Section = prompt.match(/【暂停·CP2 开发确认】\n([\s\S]*?)(?=\n【合并确认卡|$)/);
+  if (
+    cp2Section !== null &&
+    (!cp2Section[1].includes('「继续」→ 确认实现方向正确') ||
+      !cp2Section[1].includes('「补充：<意见>」→ 结合意见修正当前产物后继续') ||
+      !cp2Section[1].includes('「停止」→ 终止后续阶段'))
+  )
+    errors.push('暂停卡模板【暂停·CP2 开发确认】命令三选一不完整（须含：继续→确认实现方向正确 / 补充：<意见>→修正后继续 / 停止→终止）');
+  // ⏸CP3 合并确认：合并前必须暂停待用户确认（铁律 13）
+  if (!prompt.includes('⏸CP3 合并确认'))
+    errors.push('缺少暂停点「⏸CP3 合并确认」（PR 合并前须暂停待用户确认，禁止未确认就合并）');
   // 三个命令词必须以完整形式存在（「继续」「补充：<意见>」「停止」），防止子串误放行
   const cmds = [
     { name: '「继续」', re: /「继续」/ },
@@ -149,8 +217,10 @@ if (!m) {
     '每轮 review 必须在 PR 中回复',
     '每次修复也必须在 PR 中回复',
     '绝不允许跳过轮次假装进行',
-    '每轮留痕规则不变',
-    '不得因裁剪而跳轮假装',
+    // CR 第 28 轮修复：用户明确要求「不要简单可缩裁剪，至少 10 轮保留」，删除「简单改动可缩减」语义——
+    // 评审轮数无条件硬性下限，不得以简单为由缩减（防 NPC 以简单为名偷懒跳轮）。
+    '评审轮数不得以简单为由缩减',
+    '不得以简单可缩为名跳轮偷懒',
   ];
   let lastIdx = -1;
   for (const frag of RULE8_CORE) {
@@ -177,12 +247,7 @@ if (!m) {
     errors.push('缺少复盘要素③「后续如何避免类似问题（预防机制）」');
   if (!/措施|加固/.test(prompt)) errors.push('缺少复盘要素④「采取什么措施（加固动作）」');
 
-  // ---- 10. 接力模式（每步独立调用 @CodeBuddy，Issue #76 最新补充）----
-  // 背景：用户要求"每一步都独立调一次 @CodeBuddy NPC，而不是调一次 @CodeBuddy 跑完全部步骤"。
-  // 因此提示词默认改为「接力模式」：每次召唤只执行一个步骤，输出【接力卡】后停下，用户逐步召唤下一棒。
-  // 全程模式（一次跑完全部步骤）仅在用户明确要求时可用。
-  // 本节强校验：若「每步独立调用/接力」核心要素被删，CI 拦截（防回退为"一次跑完"旧行为）。
-  // 通用段化工具：截取 startFrag 到 endFrag（或文件尾）之间的文本。
+  // ---- 通用段化工具：截取 startFrag 到 endFrag（或文件尾）之间的文本 ----
   // 第 7 轮评审 W1：区间不可达（endFrag ≤ startFrag / 锚点缺失）时显式报错并返回 null，
   // 禁止静默返回空串跳过段化校验（防锚点被删后段化校验静默失效）。
   const sliceSection = (startFrag, endFrag) => {
@@ -200,6 +265,131 @@ if (!m) {
     }
     return prompt.slice(s, e);
   };
+
+  // 文档级区间定位（CR 第 4 轮评审新增）：与 sliceSection 语义一致，但作用于整个文档 content
+  // （提示词代码块外的文档结构：工作流程/门禁表/暂停确认表等）。锚点缺失/区间不可达时显式报错，
+  // 禁止静默返回 null 跳过校验（防删章节标题绕过文档级覆盖校验）。
+  const sliceContentSection = (startFrag, endFrag) => {
+    const s = content.indexOf(startFrag);
+    if (s === -1) {
+      errors.push(`文档级校验锚点缺失：「${startFrag}」不存在（文档级校验无法定位，疑似该章节被删/改名）`);
+      return null;
+    }
+    const e = endFrag ? content.indexOf(endFrag, s) : content.length;
+    if (e === -1 || e <= s) {
+      errors.push(
+        `文档级校验区间不可达：「${endFrag}」未出现在「${startFrag}」之后（疑似章节顺序错乱或锚点被删）`
+      );
+      return null;
+    }
+    return content.slice(s, e);
+  };
+
+  // ---- 9.5 PR 合并门禁（Issue #76 最新补充：合并前暂停待用户确认，防未确认/假装合并）----
+  // 用户要求"再加上PR合并（在合并前需暂停待用户确认）"。因此 8/12 PR 合并前必须停到 ⏸CP3：
+  // 输出【合并确认卡】（待合并 PR + 前置状态记录位置），只有用户本人回复「确认合并/继续」才放行合并；
+  // 禁止代替用户确认、禁止未获确认就合并、禁止假装已合并（未真实 merge-pull 不得宣称已合并）。
+  // 铁律 13 声明（全局唯一）与【合并确认卡】段内要素（段内唯一，避免与铁律 13 重复句式干扰顺序校验）
+  const RELAY_MERGE_CORE = [
+    '13. 合并前暂停确认',
+    '【合并确认卡（⏸CP3：7/12 文档完成后、8/12 PR 合并前暂停，待用户确认合并）】',
+  ];
+  let mergeLastIdx = -1;
+  for (const frag of RELAY_MERGE_CORE) {
+    const idx = prompt.indexOf(frag);
+    if (idx === -1)
+      errors.push(
+        `合并确认缺少完整句式「${frag}」（8/12 PR 合并前必须暂停待用户确认，防未确认就合并/假装已合并）`
+      );
+    else if (idx < mergeLastIdx)
+      errors.push(
+        `合并确认句式顺序错乱：「${frag}」出现在其声明顺序之前（疑似插入干扰文本拆解语义）`
+      );
+    else mergeLastIdx = idx;
+  }
+  // 合并确认卡必须含「合并前置状态」字段（评审清零/测试通过/CI success 的可核实记录位置）
+  // 以及「确认合并/继续」放行句、禁止未确认就合并/假装已合并句、8/12 合并召唤话术示例（段内强校验）
+  // CR 第 2 轮修复：补齐段内要素校验盲区——「收到确认前不得执行合并」硬约束句、
+  // 「确认合并/继续→放行」映射句、用户命令三选一完整性（继续/补充/停止三行齐全），
+  // 并补铁律 13 段内禁止细节校验（与合并确认卡段内校验双保险）。
+  const mergeCardSection = sliceSection(
+    '【合并确认卡（⏸CP3：7/12 文档完成后、8/12 PR 合并前暂停，待用户确认合并）】',
+    '【角色切换】'
+  );
+  // 铁律 13 段：从铁律 13 声明到铁律 14 声明之间
+  const rule13Start = prompt.indexOf('13. 合并前暂停确认');
+  const rule13End = prompt.indexOf('14. 发布真实执行');
+  const rule13Section =
+    rule13Start !== -1 && rule13End !== -1 && rule13End > rule13Start
+      ? prompt.slice(rule13Start, rule13End)
+      : null;
+  if (
+    mergeCardSection !== null &&
+    (!mergeCardSection.includes('合并前置状态') ||
+      !/评审.{0,30}清零.{0,60}测试.{0,30}通过.{0,60}CI.{0,20}success/.test(mergeCardSection) ||
+      !mergeCardSection.includes('只有用户本人回复「确认合并/继续」才放行执行 8/12 PR 合并') ||
+      !mergeCardSection.includes('禁止代替用户确认、禁止未获确认就合并、禁止假装已合并') ||
+      !mergeCardSection.includes('收到确认前不得执行合并，不得输出 8/12 内容') ||
+      !mergeCardSection.includes('「确认合并/继续」→ 放行 8/12 PR 合并') ||
+      !mergeCardSection.includes('「补充：<意见>」→ 结合意见修正 PR 后重新确认') ||
+      !mergeCardSection.includes('「停止」→ 终止后续阶段，按用户意见处理') ||
+      !/待合并 PR：#<编号>（commit <sha>）/.test(mergeCardSection) ||
+      !mergeCardSection.includes('用户已确认合并，见：<位置>') ||
+      !/@CodeBuddy 接力 NPC_TEAM skill，执行 8\/12 PR 合并：/.test(mergeCardSection))
+  )
+    errors.push(
+      '合并确认卡缺少必要要素（须含合并前置状态：评审清零/测试通过/CI success、用户确认才放行、收到确认前不得执行合并、确认合并/继续→放行映射、用户命令三选一完整（继续/补充/停止）、禁止未确认就合并/假装已合并、8/12 合并召唤话术示例）'
+    );
+  // CR 第 18 轮修复（追加 9 轮循环 R8）：合并确认卡段内补「8/12 → 9/12 接力衔接」强校验——
+  // 此前 9.5 只校验 8/12 合并召唤话术，合并棒完成后如何进入 9/12 发布（独立发布棒召唤）无校验，
+  // 若该链路描述被删/改 CI 不拦截，接力模式下合并后无法规范进入发布阶段。
+  if (
+    mergeCardSection !== null &&
+    (!/@CodeBuddy 接力 NPC_TEAM skill，执行 9\/12 发布：/.test(mergeCardSection) ||
+      !/8\/12 合并棒完成后/.test(mergeCardSection) ||
+      !/9\/12 发布棒由 DEV 执行四要素/.test(mergeCardSection))
+  )
+    errors.push('合并确认卡缺少 8/12→9/12 接力衔接（须含：8/12 合并棒完成后输出【接力卡·8/12】、9/12 发布召唤话术 @CodeBuddy 接力 NPC_TEAM skill，执行 9/12 发布：、9/12 发布棒由 DEV 执行四要素）');
+  // 铁律 13 禁止细节强校验（CR 第 2 轮修复：防铁律 13 被删空壳仍通过）
+  if (
+    rule13Section !== null &&
+    (!rule13Section.includes('只有用户本人回复「确认合并/继续」才放行执行 8/12 合并') ||
+      !rule13Section.includes('禁止代替用户确认、禁止未获确认就合并、禁止假装已合并') ||
+      !rule13Section.includes('未真实 merge-pull 不得宣称已合并'))
+  )
+    errors.push('铁律 13 缺少禁止细节（须含：只有用户回复「确认合并/继续」才放行 8/12 合并、禁止代替用户确认/未获确认就合并/假装已合并、未真实 merge-pull 不得宣称已合并）');
+
+  // ---- 9.6 发布真实执行（Issue #76 最新补充：发布形成四要素）----
+  // 用户要求"发布（更新版本号、发布形成changelog、发布产物）" + "补充：发布（补充形成Release Notes）"。
+  // 因此 9/12 发布必须真实执行四要素并留痕：① 更新版本号 ② 形成 CHANGELOG ③ 发布产物 ④ 形成 Release Notes；
+  // 禁止只输出"已发布"却缺任一要素（防发布造假）。
+  const RELAY_RELEASE_CORE = [
+    '14. 发布真实执行',
+    '① 更新版本号（package.json 等）',
+    '② 形成 CHANGELOG（含本次变更记录）',
+    '③ 发布产物（构建/制品/标签，真实产出）',
+    '④ 形成 Release Notes（发布说明，发布到 Release/对应页面）',
+    '禁止只输出"已发布"却无版本号变更、无 CHANGELOG、无发布产物、无 Release Notes 的任何一项',
+  ];
+  let releaseLastIdx = -1;
+  for (const frag of RELAY_RELEASE_CORE) {
+    const idx = prompt.indexOf(frag);
+    if (idx === -1)
+      errors.push(
+        `发布四要素缺少完整句式「${frag}」（9/12 发布必须真实执行版本号/CHANGELOG/发布产物/Release Notes 四要素并留痕）`
+      );
+    else if (idx < releaseLastIdx)
+      errors.push(
+        `发布四要素句式顺序错乱：「${frag}」出现在其声明顺序之前（疑似插入干扰文本拆解语义）`
+      );
+    else releaseLastIdx = idx;
+  }
+
+  // ---- 10. 接力模式（每步独立调用 @CodeBuddy，Issue #76 最新补充）----
+  // 背景：用户要求"每一步都独立调一次 @CodeBuddy NPC，而不是调一次 @CodeBuddy 跑完全部步骤"。
+  // 因此提示词默认改为「接力模式」：每次召唤只执行一个步骤，输出【接力卡】后停下，用户逐步召唤下一棒。
+  // 全程模式（一次跑完全部步骤）仅在用户明确要求时可用。
+  // 本节强校验：若「每步独立调用/接力」核心要素被删，CI 拦截（防回退为"一次跑完"旧行为）。
   const RELAY_CORE = [
     '【运行模式（每次调用必须先自检）】',
     '接力模式（默认、推荐）',
@@ -209,10 +399,32 @@ if (!m) {
     '绝不代替用户召唤下一棒',
     '12. 接力卡必含召唤话术',
     '下一步召唤话术',
-    '【任务书（接力模式第一棒 0/10 创建，随接力卡逐棒传递）】',
+    '【任务书（接力模式第一棒 0/12 创建，随接力卡逐棒传递）】',
+    '用户命令记录（继续/补充/停止，CP3 含确认合并）',
     '【接力卡（接力模式每步结束时必须输出）】',
-    '【接力卡·N/10 阶段名】',
+    '【接力卡·N/12 阶段名】',
   ];
+  // CR 第 17 轮修复（追加 9 轮循环 R7）：RELAY_CORE 补充运行模式判断逻辑句式——
+  // 判断逻辑是每次调用先自检的入口，此前仅校验模式声明，判断逻辑被删/改（如删全程模式触发分支、
+  // 改默认模式）时 CI 不拦截，接力/全程切换契约可能被静默破坏。
+  const RELAY_JUDGE_CORE = [
+    '判断：① 若用户**明确要求**「一次跑完全部步骤/一次跑完」→ 全程模式（保留 ⏸CP1/⏸CP2/⏸CP3 暂停确认）',
+    '若消息带上一棒【接力卡】/任务书 → 接力模式续棒',
+    '若为新需求 → 默认接力模式',
+  ];
+  let relayJudgeLastIdx = -1;
+  for (const frag of RELAY_JUDGE_CORE) {
+    const idx = prompt.indexOf(frag);
+    if (idx === -1)
+      errors.push(
+        `运行模式判断缺少完整句式「${frag}」（每次调用须先自检：明确要求一次跑完→全程模式；带接力卡/任务书→接力续棒；新需求→默认接力）`
+      );
+    else if (idx < relayJudgeLastIdx)
+      errors.push(
+        `运行模式判断句式顺序错乱：「${frag}」出现在其声明顺序之前（疑似插入干扰文本拆解语义）`
+      );
+    else relayJudgeLastIdx = idx;
+  }
   let relayLastIdx = -1;
   for (const frag of RELAY_CORE) {
     const idx = prompt.indexOf(frag);
@@ -236,16 +448,28 @@ if (!m) {
   // 并消除【接力卡】段与 10b 段两套段截取实现重复。
   const relayCardSection = sliceSection(
     '【接力卡（接力模式每步结束时必须输出）】',
-    '【评审接力卡（5/10 评审每轮评审结束时输出）】'
+    '【评审接力卡（5/12 评审每轮评审结束时输出）】'
   );
   if (
     relayCardSection !== null &&
     (!relayCardSection.includes('- 下一步召唤话术（用户原样复制即可）：') ||
-      !/@CodeBuddy 接力 NPC_TEAM skill，执行下一步 N\+1\/10 <阶段名>：/.test(relayCardSection))
+      !/@CodeBuddy 接力 NPC_TEAM skill，执行下一步 N\+1\/12 <阶段名>：/.test(relayCardSection))
   )
     errors.push(
-      '接力卡缺少「下一步召唤话术」（含标签与示例 @CodeBuddy 接力 NPC_TEAM skill，执行下一步 N+1/10 <阶段名>：）'
+      '接力卡缺少「下一步召唤话术」（含标签与示例 @CodeBuddy 接力 NPC_TEAM skill，执行下一步 N+1/12 <阶段名>：）'
     );
+  // CR 第 16 轮修复（追加 9 轮循环 R6）：【接力卡】段首引导语强校验——
+  // 此前仅校验召唤话术，引导语「全程模式不输出接力卡、改为 ⏸CP1/⏸CP2 暂停卡 + ⏸CP3【合并确认卡】」
+  // 被删/改（如改成全程模式也输出接力卡）时 CI 不拦截，全程/接力模式输出契约可能被静默破坏；
+  // 且第 4 轮修复只改了【暂停确认】段引导语，本段残留旧口径「⏸CP1/⏸CP2/⏸CP3 暂停卡」未被发现（漏网之鱼）。
+  if (
+    relayCardSection !== null &&
+    (!relayCardSection.includes('仅接力模式需输出') ||
+      !/全程模式（用户明确要求一次跑完）不输出接力卡，改为 ⏸CP1\/⏸CP2 暂停卡 \+ ⏸CP3【合并确认卡】/.test(
+        relayCardSection
+      ))
+  )
+    errors.push('接力卡段首引导语不符合全程/接力输出契约（须含：仅接力模式需输出；全程模式不输出接力卡，改为 ⏸CP1/⏸CP2 暂停卡 + ⏸CP3【合并确认卡】）');
   // 全程模式仅为可选（默认必须为接力模式）：若提示词缺失「接力模式（默认、推荐）」已在上方强校验，
   // 再校验「全程模式」声明存在（防只剩接力没有全程，或两者都丢）
   if (!/全程模式/.test(prompt))
@@ -253,7 +477,7 @@ if (!m) {
 
   // ---- 10b. 评审-修复循环接力（Issue #76 最新补充：PR review 与修复循环也使用接力模式）----
   // 背景：用户要求"其中的 PR review 与 修复循环也建议使用接力模式"。
-  // 因此 5/10 评审-修复循环在接力模式下逐轮接力：每轮评审与每次修复各是独立一次 @CodeBuddy 召唤，
+  // 因此 5/12 评审-修复循环在接力模式下逐轮接力：每轮评审与每次修复各是独立一次 @CodeBuddy 召唤，
   // 评审棒输出【评审接力卡】、修复棒输出【修复接力卡】，禁止在一次召唤内连跑多轮评审-修复。
   // 本节强校验：若「评审-修复接力」核心要素被删，CI 拦截（防评审-修复假装进行/偷偷连跑）。
   const RELAY_REVIEW_CORE = [
@@ -263,13 +487,25 @@ if (!m) {
     '评审棒输出【评审接力卡】',
     '修复棒输出【修复接力卡】',
     '禁止在一次召唤内偷偷连跑多轮评审-修复',
-    '【评审接力卡（5/10 评审每轮评审结束时输出）】',
-    '【修复接力卡（5/10 评审每轮修复结束时输出）】',
-    '【复评接力卡（5/10 评审每轮复评结束时输出）】',
-    '复评结论：🔴仍需修复（问题未清零，转下轮评审） / 🟢通过（问题清零，转 6/10 测试）',
-    '已累计轮次：R/10（未清零则继续；清零且已达至少 10 轮则进下一阶段）',
-    '执行第 R+1/10 轮评审（复评仍有问题，继续 review-修复循环）',
-    '执行 6/10 测试（评审问题已清零，进入测试阶段）',
+    '【评审接力卡（5/12 评审每轮评审结束时输出）】',
+    '【修复接力卡（5/12 评审每轮修复结束时输出）】',
+    '【复评接力卡（5/12 评审每轮复评结束时输出）】',
+  ];
+  // CR 第 22 轮修复（追加 12 轮循环 R3）：复评卡专属字段（复评结论/已累计轮次/下一步话术分支）
+  // 限定在【复评接力卡】段内校验——第 21 轮把「已累计轮次：…至少 10 轮」同步到评审/修复卡后，
+  // 全局 indexOf 命中评审卡（位置靠前）导致顺序校验误报；复评卡字段必须段内定位。
+  const RELAY_REREVIEW_CORE = [
+    '复评结论：🔴仍需修复（问题未清零，转下轮评审） / 🟢通过（问题清零，转 6/12 测试）',
+    // CR 第 28 轮修复：用户明确要求「至少 10 轮 保留」，三卡已累计轮次行不再含「简单可缩」后缀，
+    // 强制完整句式（未清零则继续；清零且已达至少 10 轮则进下一阶段）。
+    '已累计轮次：第 R 轮（未清零则继续；清零且已达至少 10 轮则进下一阶段）',
+    '执行第 R+1 轮评审（复评仍有问题，继续 review-修复循环）',
+    // CR 第 21 轮修复（追加 12 轮循环 R2）：已清零分支必须重申「至少 10 轮」下限——
+    // 此前仅「已累计轮次」行有「清零且已达至少 10 轮」约束，已清零分支直接写「已清零 → 转 6/12 测试」，
+    // 按字面执行时 CodeBuddy 第 1 轮清零即可能放行，与门禁表「至少 10 轮 review-修复循环至清零才进下一阶段」矛盾。
+    // CR 第 28 轮修复：不再容忍简单可缩后缀，硬性要求完整句（已清零（**且已达至少 10 轮**，转 6/12 测试，独立召唤））。
+    '已清零（**且已达至少 10 轮**，转 6/12 测试，独立召唤）',
+    '执行 6/12 测试（评审问题已清零，进入测试阶段）',
   ];
   // 第 9 轮评审 W1：前 6 句是铁律 8 专属约束，但「每轮评审与每次修复各是独立一次 @CodeBuddy 召唤」/
   // 「评审棒输出【评审接力卡】」/「修复棒输出【修复接力卡】」在 CR 卡片段也有相同句式（出现 2 次），
@@ -284,13 +520,16 @@ if (!m) {
   const coreSearchTarget = rule8Section !== null ? rule8Section : prompt;
   let relayReviewLastIdx = -1;
   const coreFrags = RELAY_REVIEW_CORE.slice(0, 6); // 铁律 8 专属
-  const cardFrags = RELAY_REVIEW_CORE.slice(6); // 三段卡标题与复评句式（全局唯一，用 prompt）
-  const searchTargets = [...coreFrags.map(f => ({ f, scope: coreSearchTarget })), ...cardFrags.map(f => ({ f, scope: prompt }))];
+  const cardFrags = RELAY_REVIEW_CORE.slice(6); // 三段卡标题（全局唯一，用 prompt）
+  const searchTargets = [
+    ...coreFrags.map(f => ({ f, scope: coreSearchTarget })),
+    ...cardFrags.map(f => ({ f, scope: prompt })),
+  ];
   for (const { f, scope } of searchTargets) {
     const idx = scope.indexOf(f);
     if (idx === -1)
       errors.push(
-        `评审-修复接力缺少完整句式「${f}」（5/10 评审-修复循环须逐轮接力，每轮评审/修复各为独立召唤，防假装进行）`
+        `评审-修复接力缺少完整句式「${f}」（5/12 评审-修复循环须逐轮接力，每轮评审/修复各为独立召唤，防假装进行）`
       );
     else if (idx < relayReviewLastIdx)
       errors.push(
@@ -298,58 +537,254 @@ if (!m) {
       );
     else relayReviewLastIdx = idx;
   }
+  // CR 第 22 轮修复（追加 12 轮循环 R3）：复评卡专属字段段内顺序校验（与全局卡片顺序衔接）
+  // 注意：sliceSection 返回的是子串（index 从 0 起），不能直接与全局 relayReviewLastIdx 比较；
+  // 段内校验用独立的段内 lastIdx（仅保证复评卡字段在段内递增出现）。
+  const reReviewSection = sliceSection(
+    '【复评接力卡（5/12 评审每轮复评结束时输出）】',
+    '【暂停确认】'
+  );
+  if (reReviewSection !== null) {
+    let reReviewLastIdx = -1;
+    for (const f of RELAY_REREVIEW_CORE) {
+      const idx = reReviewSection.indexOf(f);
+      if (idx === -1)
+        errors.push(
+          `复评接力卡缺少完整句式「${f}」（5/12 复评棒须输出复评结论/已累计轮次/下一步话术分支，防提前放行）`
+        );
+      else if (idx < reReviewLastIdx)
+        errors.push(
+          `复评接力卡句式顺序错乱：「${f}」出现在其声明顺序之前（疑似插入干扰文本拆解语义）`
+        );
+      else reReviewLastIdx = idx;
+    }
+  }
   // 评审接力卡/修复接力卡/复评接力卡必须含「下一步召唤话术」标签与示例句（用户原样复制即可触发下一棒独立执行）
   // 第 6 轮评审 W1：仿照 10 节【接力卡】段化做法，将三段卡的标签与示例句校验限定在各自段区间内，
   // 消除跨段假阳性与漏检（此前全局 indexOf 校验，双源同步删掉三段卡标签行后校验仍 exit 0）。
   // 第 7 轮评审 W2：统一使用 10 节上移的 sliceSection（区间不可达时已显式报错并返回 null）。
   // 【评审接力卡】段：起点到【修复接力卡】段标题
   const reviewCardSection = sliceSection(
-    '【评审接力卡（5/10 评审每轮评审结束时输出）】',
-    '【修复接力卡（5/10 评审每轮修复结束时输出）】'
+    '【评审接力卡（5/12 评审每轮评审结束时输出）】',
+    '【修复接力卡（5/12 评审每轮修复结束时输出）】'
   );
   if (
     reviewCardSection !== null &&
     (!reviewCardSection.includes('- 下一步召唤话术（用户原样复制即可）：') ||
-      !/@CodeBuddy 接力 NPC_TEAM skill，执行第 R\+1\/10 轮评审修复（修复本轮评审问题）：/.test(
+      !/@CodeBuddy 接力 NPC_TEAM skill，执行第 R 轮评审修复（修复本轮评审问题）：/.test(
         reviewCardSection
       ))
   )
     errors.push(
-      '评审接力卡缺少「下一步召唤话术」（含标签与示例 @CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮评审修复（修复本轮评审问题）：）'
+      '评审接力卡缺少「下一步召唤话术」（含标签与示例 @CodeBuddy 接力 NPC_TEAM skill，执行第 R 轮评审修复（修复本轮评审问题）：）'
+    );
+  // CR 第 22 轮修复（追加 12 轮循环 R3）：评审/修复/复评三卡「已累计轮次」口径一致化——
+  // 三卡均须含「清零且已达至少 10 轮则进下一阶段」（前两棒缺该条件会让 CodeBuddy
+  // 对何时结束评审循环预期不完整）；此前仅复评卡有 RELAY_REREVIEW_CORE 强校验，
+  // 评审/修复卡被删时靠双源一致性假阳性拦截（非真校验）。
+  // CR 第 28 轮修复：移除简单可缩豁免后缀要求——「至少 10 轮」为无条件硬性下限，
+  // 三卡已累计轮次行只允许完整句式（未清零则继续；清零且已达至少 10 轮则进下一阶段）。
+  if (
+    reviewCardSection !== null &&
+    !/已累计轮次：第 R 轮（未清零则继续；清零且已达至少 10 轮则进下一阶段）/.test(reviewCardSection)
+  )
+    errors.push(
+      '评审接力卡缺少「已累计轮次」10 轮下限句（须含：第 R 轮（未清零则继续；清零且已达至少 10 轮则进下一阶段））'
     );
   // 【修复接力卡】段：起点到【复评接力卡】段标题
   const fixCardSection = sliceSection(
-    '【修复接力卡（5/10 评审每轮修复结束时输出）】',
-    '【复评接力卡（5/10 评审每轮复评结束时输出）】'
+    '【修复接力卡（5/12 评审每轮修复结束时输出）】',
+    '【复评接力卡（5/12 评审每轮复评结束时输出）】'
   );
   if (
     fixCardSection !== null &&
     (!fixCardSection.includes('- 下一步召唤话术（用户原样复制即可）：') ||
-      !/@CodeBuddy 接力 NPC_TEAM skill，执行第 R\+1\/10 轮复评（评审上轮修复）：/.test(
+      !/@CodeBuddy 接力 NPC_TEAM skill，执行第 R 轮复评（评审上轮修复）：/.test(
         fixCardSection
       ))
   )
     errors.push(
-      '修复接力卡缺少「下一步召唤话术」（含标签与示例 @CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮复评（评审上轮修复）：）'
+      '修复接力卡缺少「下一步召唤话术」（含标签与示例 @CodeBuddy 接力 NPC_TEAM skill，执行第 R 轮复评（评审上轮修复）：）'
+    );
+  // CR 第 22 轮修复（追加 12 轮循环 R3）：修复接力卡「已累计轮次」10 轮下限句强校验（与评审卡一致）
+  // CR 第 28 轮修复：移除简单可缩豁免后缀要求，与评审卡同规则——完整句式（无条件至少 10 轮）
+  if (
+    fixCardSection !== null &&
+    !/已累计轮次：第 R 轮（未清零则继续；清零且已达至少 10 轮则进下一阶段）/.test(fixCardSection)
+  )
+    errors.push(
+      '修复接力卡缺少「已累计轮次」10 轮下限句（须含：第 R 轮（未清零则继续；清零且已达至少 10 轮则进下一阶段））'
     );
   // 【复评接力卡】段：起点到【暂停确认】段标题，须含标签 + 未清零/已清零两个示例句
   const reReviewCardSection = sliceSection(
-    '【复评接力卡（5/10 评审每轮复评结束时输出）】',
+    '【复评接力卡（5/12 评审每轮复评结束时输出）】',
     '【暂停确认】'
   );
   if (
     reReviewCardSection !== null &&
     (!reReviewCardSection.includes('- 下一步召唤话术（用户原样复制即可）：') ||
-      !/@CodeBuddy 接力 NPC_TEAM skill，执行第 R\+1\/10 轮评审（复评仍有问题，继续 review-修复循环）：/.test(
+      !/@CodeBuddy 接力 NPC_TEAM skill，执行第 R\+1 轮评审（复评仍有问题，继续 review-修复循环）：/.test(
         reReviewCardSection
       ) ||
-      !/@CodeBuddy 接力 NPC_TEAM skill，执行 6\/10 测试（评审问题已清零，进入测试阶段）：/.test(
+      !/@CodeBuddy 接力 NPC_TEAM skill，执行 6\/12 测试（评审问题已清零，进入测试阶段）：/.test(
         reReviewCardSection
       ))
   )
     errors.push(
-      '复评接力卡缺少「下一步召唤话术」（含标签与示例：执行第 R+1/10 轮评审（复评仍有问题）/ 执行 6/10 测试（问题已清零））'
+      '复评接力卡缺少「下一步召唤话术」（含标签与示例：执行第 R+1 轮评审（复评仍有问题）/ 执行 6/12 测试（问题已清零））'
     );
+
+  // ---- 9.7 文档级合并/发布覆盖（CR 第 3 轮评审：9.5/9.6 只校验提示词铁律与模板卡段，
+  // 但提示词【流水线】主链、工作流程、门禁表、暂停确认表、角色卡片中的合并/发布声明被删仍漏检）----
+  // 实测盲区（双源同步后删除均 exit 0）：
+  // ① 提示词【流水线】段 ⏸CP3 合并确认→8/12 PR 合并→9/12 发布 整段被删；
+  // ② 工作流程 ⏸ CP3 合并确认 / 阶段 8/12 PR 合并 / 阶段 9/12 发布 三行被删；
+  // ③ 门禁表 合并前暂停确认（⏸CP3）/ 发布真实执行（四要素）两行被删；
+  // ④ 暂停确认表 ⏸ CP3 合并确认 行被删；⑤ 角色卡片 PM 合并职责 / DEV 发布职责被删。
+  // 修复：对这些文档结构进行存在性强校验（不校验语义细节，只保证关键声明未被整删）。
+
+  // ① 提示词【流水线】段主链（段内定位，防其他段落同词命中）
+  // CR 第 6 轮修复：三节点除存在性校验外增加顺序校验（⏸CP3 合并确认 → 8/12 PR 合并 → 9/12 发布 递增 indexOf）
+  const pipelineSection = sliceSection('【流水线（12 阶段 + 3 暂停点', '【任务书');
+  if (pipelineSection !== null) {
+    const pipelineFrags = ['⏸CP3 合并确认', '8/12 PR 合并', '9/12 发布'];
+    let pipelineLastIdx = -1;
+    let pipelineBroken = false;
+    for (const frag of pipelineFrags) {
+      const idx = pipelineSection.indexOf(frag);
+      if (idx === -1) {
+        pipelineBroken = true;
+        break;
+      }
+      if (idx < pipelineLastIdx) pipelineBroken = true;
+      pipelineLastIdx = idx;
+    }
+    if (pipelineBroken)
+      errors.push(
+        '提示词【流水线】段缺少合并/发布节点或顺序错乱（须含 ⏸CP3 合并确认 → 8/12 PR 合并 → 9/12 发布 完整主链，防主流程丢失合并/发布阶段）'
+      );
+  }
+
+  // ② 工作流程三行（文档级）——CR 第 4 轮修复：改用 sliceContentSection 统一区间定位，
+  // 锚点缺失时显式报错（此前 indexOf 失败静默返回 null，删标题即可绕过校验）
+  // CR 第 6 轮修复：三行除存在性校验外增加关键语义强校验（防行保留但语义被删）
+  const workflowSection = sliceContentSection(
+    '## 工作流程（12 阶段流水线）',
+    '### 两种执行方式'
+  );
+  if (
+    workflowSection !== null &&
+    (!workflowSection.includes('⏸ CP3 合并确认') ||
+      !workflowSection.includes('阶段 8/12 PR 合并') ||
+      !workflowSection.includes('阶段 9/12 发布'))
+  )
+    errors.push(
+      '工作流程缺少合并/发布阶段行（须含 ⏸ CP3 合并确认 / 阶段 8/12 PR 合并 / 阶段 9/12 发布，防执行细化丢失合并/发布）'
+    );
+  // CR 第 6 轮修复：行内关键语义强校验（合并行须真实 merge-pull + CI success + 留痕；发布行须四要素）
+  // CR 第 7 轮修复：正则放宽空白（防行内加空格/文本重排误拦），并补「留痕合并结果」语义强校验（防漏检）
+  // CR 第 9 轮修复：评审行「每轮分别回复留痕」句式强校验（防工作流程评审行丢留痕纪律）
+  if (
+    workflowSection !== null &&
+    (!/阶段 8\/12 PR 合并（PM）→ \*\*真实 merge-pull\*\*/.test(workflowSection) ||
+      !/合并前 CI 须 success/.test(workflowSection) ||
+      !/留痕合并结果/.test(workflowSection) ||
+      !/阶段 9\/12 发布（DEV）→ \*\*四要素\*\*/.test(workflowSection) ||
+      !/每轮 review 与每次修复均须在 PR 中分别回复留痕/.test(workflowSection))
+  )
+    errors.push('工作流程合并/发布/评审行语义不完整（合并行须含：真实 merge-pull、合并前 CI 须 success、留痕合并结果；发布行须含：**四要素**；评审行须含：每轮 review 与每次修复均须在 PR 中分别回复留痕）');
+
+  // ③ 门禁表两行（文档级）
+  const gateSection = sliceContentSection('### 真实执行与循环门禁', '## 与"逐个召唤自建 NPC"的对比');
+  if (
+    gateSection !== null &&
+    (!gateSection.includes('合并前暂停确认（⏸CP3）') || !gateSection.includes('发布真实执行（四要素）'))
+  )
+    errors.push('门禁表缺少合并/发布门禁行（须含「合并前暂停确认（⏸CP3）」与「发布真实执行（四要素）」，防防幻觉清单缺失）');
+  // CR 第 6 轮修复：门禁表行内关键语义强校验（防行保留但禁止细节/四要素被删）
+  // CR 第 7 轮修复：正则放宽空白分隔（防行内加空格/重排误拦）
+  if (
+    gateSection !== null &&
+    (!/只有\s*用户\s*本人\s*回复「确认合并\/继续」\s*才\s*放行合并/.test(gateSection) ||
+      !/禁止代替确认、禁止未获确认就合并、禁止假装已合并/.test(gateSection) ||
+      !/① 更新版本号（package\.json 等）/.test(gateSection) ||
+      !/④ 形成 Release Notes/.test(gateSection))
+  )
+    errors.push('门禁表合并/发布行语义不完整（合并行须含：只有用户确认才放行、禁止代替确认/未获确认就合并/假装已合并；发布行须含四要素 ① 更新版本号 ② CHANGELOG ③ 发布产物 ④ Release Notes）');
+
+  // ④ 暂停确认表 CP3 行（文档级）
+  const pauseSection = sliceContentSection('### 暂停确认机制', '### 真实执行与循环门禁');
+  if (pauseSection !== null && !pauseSection.includes('⏸ CP3 合并确认'))
+    errors.push('暂停确认表缺少「⏸ CP3 合并确认」行（3 暂停点体系不完整）');
+  // CR 第 6 轮修复：CP3 行前置状态可核实性强校验（评审清零/测试通过/CI success 关键词）
+  // CR 第 7 轮修复：正则放宽空白（防文本重排误拦），改为宽松的关键词组合校验
+  if (
+    pauseSection !== null &&
+    (!/评审\s*清零/.test(pauseSection) || !/测试\s*通过/.test(pauseSection) || !/CI\s*success/.test(pauseSection))
+  )
+    errors.push('暂停确认表 CP3 行缺少前置状态可核实性（须含：评审清零/测试通过/CI success）');
+
+  // ⑤ 角色卡片职责（提示词内）
+  const cardSection2 = prompt.match(/【角色卡片】\n([\s\S]*?)(?=\n【流水线|\n【角色切换|$)/);
+  if (cardSection2) {
+    const cards = cardSection2[1];
+    if (!/PM.*⏸CP3 合并确认.*8\/12 PR 合并/s.test(cards))
+      errors.push('角色卡片 PM 缺少合并职责（须含 主持 ⏸CP3 合并确认、执行 8/12 PR 合并）');
+    if (!/DEV.*9\/12 发布执行/s.test(cards))
+      errors.push('角色卡片 DEV 缺少发布职责（须含 9/12 发布执行）');
+    // CR 第 9 轮修复：CR 卡「每轮 review 与每次修复均须在 PR 中分别回复留痕」强校验
+    // （铁律 8 留痕纪律在 CR 角色行为契约中的落点，删除后评审角色可能只循环不留痕）
+    if (!/CR.*每轮 review 与每次修复均须在 PR 中分别回复留痕/s.test(cards))
+      errors.push('角色卡片 CR 缺少留痕纪律（须含 每轮 review 与每次修复均须在 PR 中分别回复留痕）');
+  }
+
+  // ⑥ 冒烟测试方法 C 段落（文档级）——CR 第 12 轮修复（追加 9 轮循环 R2）新增：
+  // 第 11 轮将 R 计轮口径统一为「三棒同轮、复评未清零转第 R+1 轮、清零独立召唤 6/12」，
+  // 但方法 C 段落（评审-修复接力的端到端验收标准）若残留旧口径（R+1/12、已清零直接转），
+  // 用户按文档验收会得到错误预期。该段此前不在 9.7 文档级覆盖范围，删改后 CI 不拦截。
+  const smokeCSection = sliceContentSection('**方法 C（评审-修复接力）**', '**方法 D（合并确认接力）**');
+  // CR 第 28 轮修复：移除简单可缩豁免后缀（用户明确要求「至少 10 轮 保留」）——
+  // 已清零分支硬性要求完整句（已清零（且已达至少 10 轮）→ 独立召唤 6/12 测试）。
+  // CR 第 25 轮修复（本轮 5 轮循环 R3/W1）：方法 C 除计轮口径外，还须保留「每轮评审/修复/复评各为独立一次
+  // @CodeBuddy 召唤，禁止一次召唤内连跑多轮」——该句是接力模式在冒烟测试层的关键验收标准，
+  // 删除/改写后此前实测 exit 0 漏检（铁律 8 与 CR 卡段的同句校验不覆盖文档冒烟测试段）。
+  // CR 第 27 轮修复（本轮 5 轮循环 R4/W2）：方法 C 还须含「复评棒停下，等待用户召唤下一棒」——
+  // 铁律 11「接力只执行一步」在冒烟测试层的落点，删后此前实测 exit 0 漏检（已清零分支缺停棒声明）。
+  if (
+    smokeCSection !== null &&
+    (!smokeCSection.includes('复评结论未清零 → 转第 R+1 轮评审继续循环') ||
+      smokeCSection.includes('R+1/12') ||
+      !/已清零（且已达至少 10 轮）→ 独立召唤 6\/12 测试/.test(smokeCSection) ||
+      !/每轮评审\/修复\/复评各为独立一次 @CodeBuddy 召唤，禁止一次召唤内连跑多轮/.test(smokeCSection) ||
+      !/复评棒停下，等待用户召唤下一棒/.test(smokeCSection))
+  )
+    errors.push('冒烟测试方法 C 未同步新计轮口径（须含：未清零 → 转第 R+1 轮评审继续循环；已清零（且已达至少 10 轮）→ 独立召唤 6/12 测试；不得残留 R+1/12 旧分母）');
+
+  // ⑦ 冒烟测试方法 E（全程模式回退验证）——CR 第 13 轮修复（追加 9 轮循环 R3）新增：
+  // 方法 E 声明「一次跑完全部步骤 → 单次会话跑完，但 ⏸CP1/⏸CP2/⏸CP3 暂停确认与留痕门禁仍生效」，
+  // 是全程模式与接力模式边界约束的验收标准；此前无文档级覆盖，删改后 CI 不拦截。
+  const smokeESection = sliceContentSection('**方法 E（全程模式回退验证）**', '### 2. 冒烟测试（端到端，2 分钟）');
+  if (
+    smokeESection !== null &&
+    !/⏸CP1\/⏸CP2\/⏸CP3 暂停确认与留痕门禁仍生效/.test(smokeESection)
+  )
+    errors.push('冒烟测试方法 E 缺少全程模式边界约束（须含：一次跑完全部步骤时 ⏸CP1/⏸CP2/⏸CP3 暂停确认与留痕门禁仍生效）');
+
+  // ⑧ 冒烟测试方法 D（合并确认接力）——CR 第 25 轮修复（本轮 5 轮循环 R3/W2）新增：
+  // 方法 D 是 ⏸CP3 合并确认的端到端验收标准：
+  // ① 未获用户回复「确认合并/继续」绝不执行 8/12 合并（铁律 13 在冒烟测试层的落点）；
+  // ② 用户确认后把合并召唤话术发给下一次召唤 → 8/12 棒真实 merge-pull 并留痕（接力模式独立召唤语义）。
+  // 此前无文档级覆盖，删改后 CI 不拦截（实测删「未获用户回复绝不执行」/删「把合并召唤话术发给下一次召唤」均 exit 0）。
+  const smokeDSection = sliceContentSection('**方法 D（合并确认接力）**', '**方法 E（全程模式回退验证）**');
+  // CR 第 27 轮修复（本轮 5 轮循环 R4/W1）：方法 D 除确认前暂停外，还须含「真实 merge-pull 并留痕」
+  // ——删「真实」/删「8/12 棒真实 merge-pull 并留痕合并结果」整句此前实测 exit 0 漏检（防假装合并）。
+  if (
+    smokeDSection !== null &&
+    (!/未获用户回复「确认合并\/继续」绝不执行 8\/12 合并/.test(smokeDSection) ||
+      !/把合并召唤话术发给下一次召唤/.test(smokeDSection) ||
+      !/真实 merge-pull 并留痕/.test(smokeDSection))
+  )
+    errors.push('冒烟测试方法 D 缺少合并确认接力语义（须含：未获用户回复「确认合并/继续」绝不执行 8/12 合并；用户确认后把合并召唤话术发给下一次召唤 → 8/12 棒真实 merge-pull 并留痕合并结果）');
 }
 
 // ---- 11. 文档级边界声明 ----

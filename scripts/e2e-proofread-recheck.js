@@ -5,6 +5,9 @@
  * 量化 TC-03/04/05/06 检出率/误报率，并验证 T1/T2/T3 端到端行为。
  *
  * 运行：node scripts/e2e-proofread-recheck.js
+ *
+ * 注：验收语料集（tests/e2e-proofread/）已于 #25 验收完成后删除，
+ *     本脚本正/负样本全部硬编码内联，不再依赖语料文件。
  */
 const fs = require('fs');
 const path = require('path');
@@ -23,12 +26,6 @@ const {
   inferTypeFromContent,
   normalizeIssueType,
 } = require(distReport);
-
-const corpus = fs
-  .readFileSync(path.resolve(__dirname, '../tests/e2e-proofread/验收语料集.txt'), 'utf-8')
-  .split(/\r?\n/)
-  .map(l => l.trim())
-  .filter(Boolean);
 
 // ---- TC-03/04 正样本（15 通顺 + 17 简洁）----
 const fluencyPos = [

@@ -6,10 +6,7 @@
 <title>OpenCode</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-/* 视口容器：部分 WPS 版本 TaskPane WebView 首次渲染时高度计算异常（100% 失效），
-   会把 flex 布局的头部（topbar/session-header）挤出可视区导致「头部被遮挡」；
-   position:fixed + inset:0 直接锚定视口四边，规避该版本级布局 bug。 */
-html,body{position:fixed;top:0;left:0;right:0;bottom:0;width:100%;height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;font-size:14px;color:#1a1a1a;background:#fff}
+html,body{width:100%;height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;font-size:14px;color:#1a1a1a;background:#fff}
 
 /* CSS-only icons for WPS Chromium 104 compatibility */
 .icon-play{display:inline-block;width:0;height:0;border-style:solid;border-width:7px 0 7px 12px;border-color:transparent transparent transparent #fff;margin-right:6px;vertical-align:middle}
@@ -491,11 +488,6 @@ function showChat() {
     // 更新 topbar cwd 显示
     var cwd = PROJECT_DIR || getPS('opencode_cwd') || ''
     $topbarCwd.textContent = cwd || '点击选择工作目录'
-    // setup→chat 切换后主动调度头部自愈：旧 WebView 内核不保证在
-    // display:none→block 时派发 resize，这里显式触发一次；
-    // 若本函数先于自愈 IIFE 执行（时序倒挂），由 IIFE 挂载时的
-    // 「chat 已先行显示则补触发」兜底，两层机制互补
-    if (window.__scheduleReflowFix) window.__scheduleReflowFix()
 }
 
 // --- CWD Modal ---
@@ -1570,168 +1562,6 @@ function scrollToBottom() { setTimeout(function() { if ($messages) $messages.scr
         updateConnectionStatus();
     });
 
-    // ===== 头部遮挡自愈（WPS TaskPane WebView 首次渲染布局 bug）=====
-    // 现象：任务窗格刚打开时，topbar/session-header 所在区域为空白（flex 布局
-    // 因视口高度计算错误把头部挤出可视区）；新建 WPS 标签页/切换窗口触发重排后恢复。
-    // 对策：监听 resize / visibilitychange / 容器尺寸变化，强制触发 reflow 修复。
-    var reflowTimer = null;
-    var reflowRafQueued = false;
-    // 上次真正执行强制重排的时间戳：多个入口（rAF/load/定时器/resize/showChat）
-    // 可能密集触发，最小间隔 300ms 内只执行一次强制重排，避免昂贵布局反复跑
-    var lastForceReflowAt = 0;
-    // 重排修复状态位：布局已正常后不再重复强制重排（避免 300ms/1000ms 定时器对
-    // 正常布局反复闪屏）；仅当头部可能被挤出可视区时才执行修复。
-    var reflowFixed = false;
-    // rAF 链式重试上限：.app 缺失时最多重试 10 次（≈166ms）后放弃，
-    // 避免 HTML 结构异常时每帧空转无限占 CPU。
-    var reflowRetryMax = 10;
-    var reflowRetryCount = 0;
-    // 兼容旧 WebView 内核：requestAnimationFrame 缺失时用 setTimeout 兜底
-    var raf = (typeof requestAnimationFrame === 'function')
-        ? requestAnimationFrame
-        : function(cb) { setTimeout(cb, 16); };
-    function rafOnce(cb) {
-        raf(function() { cb(); });
-    }
-    function forceReflowFix() {
-        // 已确认布局正常（此前修复过且容器尺寸未再变化）→ 跳过，避免闪屏
-        if (reflowFixed) return;
-        // 强制重排最小间隔 300ms 提前到所有 DOM 访问之前：
-        // 被拦截时零 DOM 触碰（getBoundingClientRect 是同步布局读取，成本高）；
-        // 同时防多个入口（rAF/load/定时器/resize/showChat）同一时间窗内排队
-        var now = Date.now();
-        if (now - lastForceReflowAt < 300) return;
-        lastForceReflowAt = now;
-        var app = document.querySelector('.app');
-        if (!app) {
-            // .app 尚未挂载（首次渲染早期）：由 rAF 链式重试，避免丢兜底；
-            // 超过重试上限后放弃（防止 HTML 结构异常时无限空转）
-            if (!reflowRafQueued && reflowRetryCount < reflowRetryMax) {
-                reflowRafQueued = true;
-                reflowRetryCount++;
-                rafOnce(function() {
-                    reflowRafQueued = false;
-                    forceReflowFix();
-                });
-            }
-            return;
-        }
-        // .app 成功找到：连续失败计数清零（重试上限语义=「连续」失败上限）
-        reflowRetryCount = 0;
-        // chat 视图未显示（还在 setup 视图）时无头部可修：直接跳过，
-        // 避免在 display:none 的父级上做无效重排（offsetHeight 为 0）
-        var viewChat = document.getElementById('view-chat');
-        if (viewChat && viewChat.classList.contains('hidden')) return;
-        // 廉价预检：头部（topbar + session-header）都在视口内可见 → 布局正常，
-        // 跳过强制重排防闪屏。
-        // 注意：不能用 documentElement.scrollHeight（html,body 是 position:fixed，
-        // 不产生滚动、scrollHeight 恒等于视口，无法反映头部是否被挤出）
-        var heads = document.querySelectorAll('.topbar, .session-header');
-        // 找不到头部元素时（HTML 结构变动）不置 reflowFixed：保守保持可重试，
-        // 交由 300ms/1000ms 定时器继续兜底；避免空数组导致 allInView 恒真误判
-        if (heads.length > 0) {
-            var allInView = true;
-            for (var i = 0; i < heads.length; i++) {
-                var r = heads[i].getBoundingClientRect();
-                if (!(r.width > 0 && r.top >= 0 && r.bottom <= window.innerHeight)) {
-                    allInView = false;
-                    break;
-                }
-            }
-            if (allInView) {
-                reflowFixed = true;
-                return;
-            }
-        }
-        // 用户在输入时不做强制重排：display:none 会移除再恢复输入框，
-        // WPS Chromium（103）下导致输入框失焦、光标丢失，打断正在输入的内容
-        var inputBox = document.getElementById('input-box');
-        if (inputBox && document.activeElement === inputBox) return;
-        var oldDisplay = app.style.display;
-        // 重排前记录消息列表滚动位置：display:none 会重置滚动容器的 scrollTop，
-        // 必须在重排前保存，重排后恢复（否则用户消息列表被滚回顶部）
-        var messagesEl = $messages;
-        var savedScrollTop = messagesEl ? messagesEl.scrollTop : 0;
-        app.style.display = 'none';
-        // 强制同步 reflow
-        void app.offsetHeight;
-        app.style.display = oldDisplay || '';
-        // 复查：重排后头部是否已回到视口内。仍越界时不置 reflowFixed，
-        // 保留后续重试机会（WebView 布局 bug 顽固时一次重排可能不够）。
-        // heads 为空（结构变动）时视为未修复（reflowOk=false），维持持续可重试语义
-        var reflowOk = heads.length > 0;
-        for (var j = 0; j < heads.length; j++) {
-            var rr = heads[j].getBoundingClientRect();
-            if (!(rr.width > 0 && rr.top >= 0 && rr.bottom <= window.innerHeight)) {
-                reflowOk = false;
-                break;
-            }
-        }
-        reflowFixed = reflowOk;
-        // 重排后恢复消息列表滚动位置：
-        // - 用户原本在底部（看新消息）→ 滚动到底部
-        // - 用户原本在历史位置（查看旧消息）→ 精确恢复原 scrollTop，不打断阅读
-        if (CONNECTED && reflowOk && messagesEl) {
-            var wasNearBottom = (savedScrollTop + messagesEl.clientHeight >= messagesEl.scrollHeight - 50);
-            if (wasNearBottom) scrollToBottom();
-            else messagesEl.scrollTop = savedScrollTop;
-        }
-    }
-    function scheduleReflowFix() {
-        // 节流：resize 事件高频触发时只重排最后一次；容器尺寸变化时
-        // 重置已修复状态，允许再次自愈（切窗口后视口可能变化）
-        if (reflowTimer) clearTimeout(reflowTimer);
-        reflowTimer = setTimeout(function() {
-            reflowTimer = null;
-            // 距上次强制重排不足 300ms：跳过且不重置 reflowFixed（避免状态位
-            // 被置 false 但实际未执行重排的「空转」——状态与事实保持一致）
-            if (Date.now() - lastForceReflowAt < 300) return;
-            reflowFixed = false;
-            forceReflowFix();
-        }, 100);
-    }
-    // 暴露给 showChat() 等视图切换函数：setup→chat 切换后主动调度自愈，
-    // 不依赖旧 WebView 内核是否在 display:none→block 时派发 resize 事件
-    window.__scheduleReflowFix = scheduleReflowFix;
-    // 视口诊断探针（Issue #78 四诊）：记录首次渲染时的视口/元素几何数据，
-    // 定位「头部被挤出」发生在哪个环节：视口本身错误（宿主） vs 布局计算错误（页面）。
-    // 写入 PluginStorage('taskpane_probe_page') + window.__probePage，供按钮弹窗汇总。
-    try {
-        var heads2 = document.querySelectorAll('.topbar, .session-header');
-        var probeLines = [];
-        probeLines.push('[P6] innerHeight=' + window.innerHeight + ' clientHeight=' + (document.documentElement ? document.documentElement.clientHeight : '?'));
-        probeLines.push('[P6] dpr=' + (window.devicePixelRatio || 1));
-        for (var pi = 0; pi < heads2.length; pi++) {
-            var pr = heads2[pi].getBoundingClientRect();
-            probeLines.push('[P6] ' + (heads2[pi].className || heads2[pi].tagName) + ': top=' + pr.top + ' bottom=' + pr.bottom + ' h=' + pr.height);
-        }
-        var probePage = probeLines.join('\n');
-        window.__probePage = probePage;
-        setPS('taskpane_probe_page', probePage);
-    } catch (e) {}
-    // 若 chat 已先行显示（showChat 早于本 IIFE 执行，如 init 异步回调先切视图）：
-    // 补触发一次自愈，覆盖「自愈注册晚于视图切换」的时序倒挂场景
-    var vc = document.getElementById('view-chat');
-    if (vc && !vc.classList.contains('hidden')) scheduleReflowFix();
-    window.addEventListener('resize', scheduleReflowFix);
-    document.addEventListener('visibilitychange', function() {
-        // 隐藏时复位已修复状态：WPS 切走标签时 WebView 可能被销毁重建，
-        // 回显时必须重新检查布局（不能沿用隐藏前的「已修复」状态）
-        if (document.hidden) { reflowFixed = false; return; }
-        scheduleReflowFix();
-    });
-    // 首次渲染兜底（多时机覆盖 WebView 视口高度计算时序）:
-    // 1) 下一帧（rAF）— 首个可绘制帧前重排；
-    // 2) load 事件 — 资源加载完成后重排；
-    // 3) 定时器 300ms/1000ms — 慢速渲染内核的最终兜底。
-    rafOnce(forceReflowFix);
-    if (document.readyState === 'loading') {
-        window.addEventListener('load', function() { rafOnce(forceReflowFix); });
-    } else {
-        rafOnce(forceReflowFix);
-    }
-    setTimeout(function() { scheduleReflowFix(); }, 300);
-    setTimeout(function() { scheduleReflowFix(); }, 1000);
 })()
 </script>
 </body>

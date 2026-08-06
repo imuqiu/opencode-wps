@@ -45,7 +45,7 @@
 | [WPS_COM_PS1.md](./WPS_COM_PS1.md) | wps-com.ps1 实现原理解析 |
 | [POWERSHELL_COM.md](./POWERSHELL_COM.md) | PowerShell COM 桥接技术 |
 | [SECURITY.md](./SECURITY.md) | 安全模型与注意事项 |
-| [NPC_TEAM.md](./NPC_TEAM.md) | NPC Team 总指挥（**CNB 平台开发辅助工具**，零积分全流程，⚠️ 与 WPS 插件无关） |
+| [NPC_TEAM.md](./NPC_TEAM.md) | NPC Team 总指挥（**CNB 平台开发辅助工具**，零积分全流程，12 阶段含 PR 合并⏸CP3 确认 + 发布四要素，⚠️ 与 WPS 插件无关） |
 | [I18N_PLAN.md](./I18N_PLAN.md) | 国际化 (i18n) 支持规划（未来规划） |
 | [proofread-fluency-conciseness-design.md](./proofread-fluency-conciseness-design.md) | Word 校对通顺度/简洁度技术设计文档 |
 | [HISTORY.md](./HISTORY.md) | 演进历史与致谢 |
