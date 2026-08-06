@@ -22,6 +22,9 @@ var WPS_Enum = {
 // 说明：停靠方向值直接取 WPS_Enum.msoCTPDockPositionRight（=2），
 // 不新增 Top/Bottom 枚举 —— 其值（1/3）会与已有 msoFileDialogOpen(1) 冲突埋雷
 var TASKPANE_DOCK_POSITION = WPS_Enum.msoCTPDockPositionRight
+// 任务窗格停靠限制（可选）：msoCTPDockPositionRestrictNoChange=1 锁定停靠方向，
+// 防止用户/宿主把窗格拖成浮动状态覆盖 WPS 功能区；仅当宿主支持该属性时设置（Issue #78 五诊）
+var TASKPANE_DOCK_RESTRICT = 1
 
 // 内存 ID 兜底：PluginStorage.setItem 持久化失败（如插件初始化未完成）时，
 // 本次会话内仍能避免再次点击重复 CreateTaskPane 造成多窗格叠加；
@@ -54,6 +57,27 @@ function setTaskPaneDockPosition(tskpane) {
         return true
     } catch (e) {
         console.error('[WPS] 设置任务窗格停靠位置失败: ' + errMsg(e))
+        return false
+    }
+}
+
+/**
+ * 锁定任务窗格停靠方向（防浮动）：DockPositionRestrict=msoCTPDockPositionRestrictNoChange(1)
+ * 防止用户/宿主将窗格拖成浮动（Floating）状态后覆盖 WPS 功能区（Issue #78 五诊：
+ * 像素级分析发现首次打开时窗格整体上移 ~42px 盖住功能区，疑似浮动/停靠未生效）。
+ * 宿主不支持该属性时静默降级（不影响既有功能）。
+ * @param {object} tskpane - 任务窗格对象
+ * @returns {boolean} true=设置成功；false=宿主不支持/设置失败（已 console 留痕）
+ */
+function setTaskPaneDockRestrict(tskpane) {
+    if (!tskpane) return false
+    try {
+        // 探测宿主是否支持：只读属性，读成功说明存在（部分版本无此属性会抛异常）
+        var cur = tskpane.DockPositionRestrict
+        tskpane.DockPositionRestrict = TASKPANE_DOCK_RESTRICT
+        return true
+    } catch (e) {
+        // 宿主不支持：静默降级，不影响既有功能（仅 debug 留痕）
         return false
     }
 }
@@ -95,6 +119,8 @@ function createTaskPane() {
         if (!setTaskPaneDockPosition(tskpane)) {
             console.error('[WPS] 任务窗格停靠校正失败（窗格仍可用，下次点击将重新校正）')
         }
+        // 锁定停靠方向（防浮动覆盖功能区；宿主不支持时静默降级，不影响既有功能）
+        setTaskPaneDockRestrict(tskpane)
         // Visible 置位单独 try/catch：窗格已创建、ID 已兜底，失败时留痕后仍返回窗格对象，
         // 保留下次点击自愈机会（GetTaskPane 能找回 → 重新校正 + 切换可见性）；
         // 若在此处 return null 会触发调用处误判「创建失败」，且无自愈路径
@@ -389,6 +415,8 @@ function forceTaskPaneRedraw(force) {
         }
         // 停靠位置重新校正（防漂移）
         setTaskPaneDockPosition(tp)
+        // 锁定停靠方向（防浮动覆盖功能区；宿主不支持时静默降级）
+        setTaskPaneDockRestrict(tp)
         // 先隐藏再显示，强制 WebView 重新布局；两步间让出宿主事件循环，
         // 确保 WPS 宿主真的执行隐藏→重排→显示流程（而非合并两次属性写入）。
         // 恢复延迟 150ms：慢速环境宿主完成隐藏→重排耗时不定，80ms 可能过早
@@ -407,6 +435,20 @@ function forceTaskPaneRedraw(force) {
                 var cur = window.Application.GetTaskPane(tsId)
                 if (!cur) return          // 窗格已销毁：放弃恢复
                 if (cur.Visible) return   // 已被外部恢复（用户重新打开等）：不重复置位
+                // 恢复可见前再次校正停靠 + 锁定（隐藏→显示过程中宿主可能重新布局窗格，
+                // 补一次确保窗格复位右侧、不覆盖功能区 —— Issue #78 五诊：像素级证据显示
+                // 首次打开时窗格上移 42px 盖住功能区，仅靠创建时校正会被宿主忽略）
+                // 强制重新停靠：先切 Left(0) 再切回 Right(2)，触发宿主重新计算任务窗格
+                // 窗口位置（切标签后头部恢复说明宿主在窗口切换时会重新布局，这里主动复现
+                // 该行为——同步连续赋值即使被宿主合并，最终值仍为 Right，零风险尝试）
+                try {
+                    cur.DockPosition = 0
+                    cur.DockPosition = TASKPANE_DOCK_POSITION
+                } catch (e2) {
+                    console.error('[WPS] 强制重新停靠失败: ' + errMsg(e2))
+                }
+                setTaskPaneDockPosition(cur)
+                setTaskPaneDockRestrict(cur)
                 cur.Visible = true
                 console.log('[WPS] 任务窗格已强制重绘（' + redrawSource + '触发布局修复）')
             } catch (e) {
@@ -603,6 +645,13 @@ function probeTaskPane(tp) {
         } catch (e) { lines.push('[P4] 强制复位 Right 失败: ' + errMsg(e)) }
         // P4b: DockPositionRestrict 可用性（msoCTPDockPositionRestrictNoChange=1，只读不写）
         try { lines.push('[P4b] DockPositionRestrict=' + tp.DockPositionRestrict + (tp.DockPositionRestrict === 1 ? ' (已锁定停靠)' : '')) } catch (e) { lines.push('[P4b] DockPositionRestrict 不可用: ' + errMsg(e)) }
+        // P4c: 尝试锁定停靠方向并读回验证（宿主是否支持 Restrict 控制）
+        try {
+            var restPrev = tp.DockPositionRestrict
+            tp.DockPositionRestrict = 1
+            var restAfter = tp.DockPositionRestrict
+            lines.push('[P4c] 锁定停靠 Restrict: ' + restPrev + '→' + restAfter + (restAfter === 1 ? ' (宿主接受锁定)' : ' (宿主忽略!)'))
+        } catch (e) { lines.push('[P4c] 锁定停靠 Restrict 失败: ' + errMsg(e)) }
         // P5: 残留 id 检测（id 有值但 GetTaskPane 找不到 → 旧实例残留，将走重建路径）
         var exists = true
         if (tsId) {

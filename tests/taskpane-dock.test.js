@@ -1055,7 +1055,10 @@ test('探针 P1-P5：宿主忽略停靠设置（Floating=4 拒绝复位）时完
   assertTrue(probe.indexOf('[P2] Width=300 Height=600') >= 0, 'P2 应记录尺寸，实际: ' + probe);
   assertTrue(probe.indexOf('[P3] Window=') >= 0, 'P3 应记录 Window，实际: ' + probe);
   assertTrue(probe.indexOf('[P4] 强制复位 Right: 4→4 (宿主拒绝/忽略!)') >= 0, 'P4 应记录 4→4 宿主拒绝，实际: ' + probe);
-  assertTrue(probe.indexOf('[P4b] DockPositionRestrict=0') >= 0, 'P4b 应记录 Restrict，实际: ' + probe);
+  // P4b 读到 1（已锁定停靠）：createTaskPane 修复动作已先执行 setTaskPaneDockRestrict，
+  // 探针采集到的正是修复后的锁定状态（宿主接受 Restrict 控制）——修复生效的直接证据
+  assertTrue(probe.indexOf('[P4b] DockPositionRestrict=1 (已锁定停靠)') >= 0, 'P4b 应记录 Restrict=1 已锁定（修复已生效），实际: ' + probe);
+  assertTrue(probe.indexOf('[P4c] 锁定停靠 Restrict:') >= 0, 'P4c 应记录锁定读回，实际: ' + probe);
   assertTrue(probe.indexOf('[P5] GetTaskPane 找回=正常') >= 0, 'P5 应记录找回正常，实际: ' + probe);
   assertEqual(pane.DockPosition, 4, '宿主拒绝时 DockPosition 应保持 4（探针不应强改）');
 });
@@ -1196,6 +1199,76 @@ test('taskpane.html 视口探针：P6 关键结构存在（innerHeight/几何采
   assertTrue(/taskpane_probe_page/.test(html), '应写入 taskpane_probe_page');
   // ④ 暴露给 window.__probePage
   assertTrue(/window\.__probePage/.test(html), '应暴露 __probePage');
+});
+
+// ==================== 五诊修复测试（Issue #78：窗格上移盖功能区 → 强制重新停靠 + 锁定） ====================
+
+test('五诊：createTaskPane 首次创建后锁定停靠方向（DockPositionRestrict=1）', function () {
+  var pane = { ID: 'tp-r1', DockPosition: 2, DockPositionRestrict: 0, Width: 300, Height: 600 };
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return true; },
+    set: function (v) {}
+  });
+  var sandbox = loadMainJs(makeOpenPaneApp(pane));
+  sandbox.OnAction({ Id: 'btnShowTaskPane' });
+  assertEqual(pane.DockPositionRestrict, 1, 'createTaskPane 后 DockPositionRestrict 应锁定为 1');
+});
+
+test('五诊：setTaskPaneDockRestrict 宿主不支持时静默降级（不影响既有功能）', function () {
+  var pane = { ID: 'tp-r2', DockPosition: 2, Width: 300, Height: 600 };
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return true; },
+    set: function (v) {}
+  });
+  // DockPositionRestrict 读抛异常（宿主不支持）
+  Object.defineProperty(pane, 'DockPositionRestrict', {
+    get: function () { throw new Error('不支持'); },
+    set: function (v) { throw new Error('不支持'); }
+  });
+  var sandbox = loadMainJs(makeOpenPaneApp(pane));
+  // 直接调用：应返回 false（静默降级），不抛异常
+  assertEqual(sandbox.setTaskPaneDockRestrict(pane), false, '宿主不支持时 setTaskPaneDockRestrict 应返回 false');
+  assertEqual(sandbox.setTaskPaneDockRestrict(null), false, 'null 应返回 false');
+  assertEqual(sandbox.setTaskPaneDockRestrict(undefined), false, 'undefined 应返回 false');
+});
+
+test('五诊：forceTaskPaneRedraw 恢复回调执行强制重新停靠（Left→Right 触发宿主重布局）', function () {
+  var dockLog = [];
+  var pane = {
+    ID: 'tp-r3',
+    DockPosition: 2,
+    DockPositionRestrict: 1,
+    Visible: true
+  };
+  // 记录 DockPosition 赋值序列：应出现 0（Left）→ 2（Right）的强制重新停靠
+  Object.defineProperty(pane, 'DockPosition', {
+    get: function () { return pane._dp; },
+    set: function (v) { pane._dp = v; dockLog.push(v); }
+  });
+  pane._dp = 2;
+  var sandbox = loadMainJs(makeOpenPaneApp(pane, { storedId: 'tp-r3' }));
+  sandbox.forceTaskPaneRedraw(true);
+  sandbox.__flushTimeouts();
+  // 恢复回调中：先切 Left(0) 再切回 Right(2) → 触发宿主重新计算窗格窗口位置
+  // 序列应为 ...→0→2（强制重新停靠）→2（最终校正）；检查包含 0→2 子序列即可
+  var foundRedock = false;
+  for (var di = 1; di < dockLog.length; di++) {
+    if (dockLog[di - 1] === 0 && dockLog[di] === 2) { foundRedock = true; break; }
+  }
+  assertTrue(foundRedock, '应出现 0→2 强制重新停靠序列，实际: ' + dockLog.join(','));
+  assertEqual(pane.Visible, true, '恢复回调应置窗格可见');
+});
+
+test('五诊：探针 P4c 记录 DockPositionRestrict 锁定读回结果', function () {
+  var pane = { ID: 'tp-r4', DockPosition: 2, DockPositionRestrict: 0, Width: 300, Height: 600 };
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return true; },
+    set: function (v) {}
+  });
+  var sandbox = loadMainJs(makeOpenPaneApp(pane));
+  sandbox.OnAction({ Id: 'btnShowTaskPane' });
+  var probe = sandbox.lastTaskPaneProbe;
+  assertTrue(probe.indexOf('[P4c] 锁定停靠 Restrict:') >= 0, 'P4c 应记录锁定读回，实际: ' + probe);
 });
 
 // ==================== 测试结果汇总 ====================
