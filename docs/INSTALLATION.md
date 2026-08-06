@@ -114,19 +114,41 @@ node launcher-mac.js
 
 > Linux 版与 macOS 版同架构（反向轮询桥），插件独立目录 `opencode-wps-linux/`。状态：✅ 开发完成；⚠️ 尚未在真实 Linux + WPS 环境实测（需要实机验证）。
 
+### 1. 克隆仓库
+
 ```bash
-# 1. 克隆仓库（二选一：
-#    国内 CNB 镜像：git clone https://cnb.cool/lnxsun/opencode-wps.git
-#    国外 GitHub：  git clone https://github.com/lnxsun/opencode-wps.git）
+# 国内（CNB 镜像）：git clone https://cnb.cool/lnxsun/opencode-wps.git
+# 国外（GitHub）：git clone https://github.com/lnxsun/opencode-wps.git
 git clone https://github.com/lnxsun/opencode-wps.git
 cd opencode-wps
+```
 
-# 2. 安装项目依赖
+### 2. 安装项目依赖
+
+```bash
 npm install
+```
 
-# 3. 运行 Linux 安装脚本
+### 3. 一键安装
+
+```bash
 node install-addons-linux.js
 ```
+
+安装脚本自动完成以下 **8 个步骤**：
+
+| 步骤 | 操作 | 说明 |
+|------|------|------|
+| 1 | 安装 WPS 插件 | 复制 `opencode-wps-linux/` 到 `~/.local/share/Kingsoft/wps/jsaddons/opencode-wps-linux_` |
+| 2 | 写入注册文件 | 写 `publish.xml` / `jsplugins.xml` / `authwebsite.xml` |
+| 3 | 安装并编译 MCP 服务器 | 在 wps-office-mcp 目录执行 `npm install` + `npm run build` |
+| 4 | 配置 OpenCode MCP | 修改 `~/.config/opencode/opencode.json`，添加 wps-office MCP 服务器 |
+| 5 | 安装 Skills | 复制 5 个技能到 `~/.opencode/skills/` |
+| 6 | 安装 Agents | 复制 agents 到 `~/.config/opencode/agents/` 和 `~/.opencode/agents/` |
+| 7 | 安装 Plugins | 复制治理插件到 `~/.config/opencode/plugins/` |
+| 8 | 配置自启 | 生成 XDG autostart（`~/.config/autostart/opencode-wps-launcher.desktop`） |
+
+### 4. 启动服务
 
 安装后手动启动 launcher（或依赖 XDG autostart 开机自启）：
 
@@ -134,7 +156,7 @@ node install-addons-linux.js
 node launcher-linux.js
 ```
 
-### 4. 重启 WPS Office
+### 5. 重启 WPS Office
 
 重启 WPS，功能区出现 **OpenCode AI** 标签页，点击 **打开Web** 即可在浏览器中对话。
 

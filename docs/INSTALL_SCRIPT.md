@@ -2,7 +2,7 @@
 
 ## 概述
 
-项目提供四个安装脚本，分别服务于 Windows、macOS、Linux 和官方发布场景：
+项目提供三个安装脚本（分别服务于 Windows、macOS、Linux）与一个官方发布工具（wpsjs publish，跨平台）：
 
 | 脚本 | 平台 | 用途 | 场景 |
 |------|------|------|------|
@@ -121,9 +121,9 @@ WPS 加载项从 HTTP 地址加载插件
 
 ## 使用场景
 
-| 场景 | Windows 推荐 | macOS 推荐 |
-|------|-------------|------------|
-| 本地开发调试 | `node install-addons.js` | `npm install && cd wps-office-mcp && npm run build && node ../install-addons-mac.js` |
-| 日常使用 | `node install-addons.js` | `node install-addons-mac.js` |
-| 分发给其他用户 | `wpsjs publish` | `wpsjs publish` |
-| 离线部署 | `wpsjs publish` 离线模式 | `wpsjs publish` 离线模式 |
+| 场景 | Windows 推荐 | macOS 推荐 | Linux 推荐 |
+|------|-------------|------------|------------|
+| 本地开发调试 | `node install-addons.js` | `node install-addons-mac.js` | `node install-addons-linux.js` |
+| 日常使用 | `node install-addons.js` | `node install-addons-mac.js` | `node install-addons-linux.js` |
+| 分发给其他用户 | `wpsjs publish` | `wpsjs publish` | 手动分发（`wpsjs` 不支持 Linux） |
+| 离线部署 | `wpsjs publish` 离线模式 | `wpsjs publish` 离线模式 | 手动复制插件目录（`wpsjs` 不支持 Linux） |
