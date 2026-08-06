@@ -172,7 +172,7 @@ MCP 服务器采用三层工具体系，AI 通过不同的方式发现和调用�
 | 层 | 职责 | 平台差异 |
 |----|------|----------|
 | ① WPS 宿主 | 承载插件运行环境，提供文档对象模型 | 三平台相同，但 COM 与 JS API 两套对象模型 |
-| ② WPS JS 插件 | Win：前台 Chat UI（UI/会话/Agent 选择）；Mac/Linux：命令轮询桥（无 Chat 界面） | Win：taskpane.html（SSE 直连 :14096）；Mac/Linux：index.html（轮询 :58891 拉取命令） |
+| ② WPS JS 插件 | Win：前台 Chat UI（UI/会话/Agent 选择）；Mac/Linux：命令轮询桥（无 Chat 界面） | Win：taskpane.html（SSE 直连 :14096）；Mac：index.html（轮询 :58891 拉取命令）；Linux：manifest.xml 直载 main.js（轮询 :58891 拉取命令，无 index.html） |
 | ③ 通讯协议 | 浏览器与 OpenCode 服务之间的 REST + SSE（仅 Win）；Mac/Linux 为插件↔MCP 的 HTTP 轮询 | 仅 Win：REST + SSE 直连 :14096（launcher 以 `--cors file://` 放行）；Mac/Linux：插件↔MCP :58891 HTTP 轮询，不直连 OpenCode |
 | ④ 自建通讯层 | opencode-proxy.js（:14098）剥离 CSP 头，解决 WPS 内置 Chromium 103 不兼容现代 Web（官方 web 版需 Chrome 130+）的根因 | 备用方案：当前 launcher 已用 `--cors file://` 放行，运行时调用链不再经过它；Mac/Linux 无需 CORS 代理 |
 | ⑤ OpenCode 调度 | 会话管理、Agent 路由、模型调度（config.js 支持 Ollama 回退模型） | 跨平台一致 |
@@ -239,9 +239,8 @@ MCP 服务器采用三层工具体系，AI 通过不同的方式发现和调用�
 │         WPS Office for Mac / Linux         │
 │  ┌──────────┐  ┌──────────────────────┐   │
 │  │  Ribbon  │  │  main.js (轮询循环)  │   │
-│  │  打开Web │─▶│  index.html          │   │
-│  └──────────┘  │  handlers/*.js 执行 │   │
-│                └──────────▲───────────┘   │
+│  │  打开Web │─▶│  handlers/*.js 执行 │   │
+│  └──────────┘  └──────────▲───────────┘   │
 │                           │ GET /poll      │
 │                           │ 每 500ms       │
 └───────────────────────────┼────────────────┘
@@ -255,6 +254,8 @@ MCP 服务器采用三层工具体系，AI 通过不同的方式发现和调用�
                 │  isMacPlatform()      │
                 │  → execMacPoll()      │
                 └───────────────────────┘
+
+> 注：入口文件平台差异——Mac 插件有 `index.html`（加载全部 scripts 后执行 main.js）；Linux 插件无 index.html，由 `manifest.xml` `<scripts>` 直接加载 main.js。
 
 ┌────────────────────────────────────────────┐
 │  launcher-mac/linux (port 14097, 自启)      │
