@@ -75,3 +75,4 @@
 - **OpenCode 配置**: `~/.config/opencode/opencode.json`
 - **Launcher**: http://127.0.0.1:14097
 - **OpenCode 服务**: http://127.0.0.1:14096
+- **CORS 代理**: http://127.0.0.1:14098（备用，opencode-proxy.js 剥离 CSP 头）

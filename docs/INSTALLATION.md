@@ -166,7 +166,7 @@ node launcher-linux.js
 
 | 资源 | Windows | macOS | Linux |
 |------|---------|-------|-------|
-| WPS 插件目录 | `%APPDATA%\kingsoft\wps\jsaddons\opencode-wps_` | `~/Library/Containers/com.kingsoft.wps/Data/Documents/jsaddons/` | `~/.local/share/Kingsoft/wps/jsaddons/` |
+| WPS 插件目录 | `%APPDATA%\kingsoft\wps\jsaddons\opencode-wps_` | `~/Library/Containers/com.kingsoft.wps/Data/Documents/jsaddons/opencode-wps-assistant_` | `~/.local/share/Kingsoft/wps/jsaddons/opencode-wps-linux_` |
 | 安装脚本 | `install-addons.js` | `install-addons-mac.js` | `install-addons-linux.js` |
 | Launcher | `opencode-wps/launcher.js`（计划任务自启） | `launcher-mac.js`（LaunchAgent 自启） | `launcher-linux.js`（XDG autostart 自启） |
 | MCP 通信 | PowerShell COM（wps-com.ps1） | HTTP 轮询（mac-poll-server.ts:58891） | HTTP 轮询（linux-poll-server.ts:58891） |
