@@ -1,5 +1,7 @@
 # 安装脚本说明
 
+> 📖 用户视角的三平台安装步骤（环境要求/路径速查/卸载）见 [INSTALLATION.md](./INSTALLATION.md)；本文档从实现角度解析安装脚本。
+
 ## 概述
 
 项目提供三个安装脚本（分别服务于 Windows、macOS、Linux）与一个官方发布工具（wpsjs publish，跨平台）：
@@ -66,6 +68,8 @@ node install-addons-mac.js
 ---
 
 ## install-addons-linux.js（Linux 安装脚本）
+
+> 📖 Linux 平台专题（架构/前置条件/已知限制/常见问题）见 [LINUX.md](./LINUX.md)。
 
 ```bash
 npm install
