@@ -478,6 +478,7 @@ function OnAction(control) {
                 // 打开仍遮挡、切标签后恢复」吻合。这里主动调度一次宿主重绘修复（Issue #78）。
                 // createTaskPane 内 Visible 置位失败（窗格不可见）时 forceTaskPaneRedraw
                 // 会因 !tp.Visible 直接返回，天然安全，不误弹。
+                probeTaskPane(tp)  // 四诊探针：首次创建后采集 DockPosition/尺寸/宿主控制（Issue #78）
                 scheduleTaskPaneOpenRedraw()
             } else {
                 // 每次打开时重新校正停靠位置（右侧），防止位置漂移再次遮挡顶栏；
@@ -508,6 +509,10 @@ function OnAction(control) {
                     // （头部仍遮挡），但下次切换/WindowActivate 仍会触发重绘兜底，代价可接受。
                     var nowVisible = false
                     try { nowVisible = !!tp.Visible } catch (e) { nowVisible = false }
+                    if (nowVisible) {
+                        // 四诊探针：切换打开后采集（含 P4 强制复位验证宿主是否接受停靠控制）
+                        probeTaskPane(tp)
+                    }
                     if (nowVisible && !taskPaneRedrawPending) {
                         // 与首次创建路径同源：打开后 400ms 主动调度宿主重绘（见函数上方注释）
                         scheduleTaskPaneOpenRedraw()
@@ -558,6 +563,62 @@ function OnGetEnabled(control) {
 function OnGetVisible(control) { return true }
 function OnGetLabel(control) { return "" }
 
+// ============ 任务窗格诊断探针（Issue #78 四诊：先定位清楚再动手） ============
+// 背景：前 3 轮修复（#79 DockPosition / #83 三层防御 / #90 打开面板重绘）均未解决
+// 「头部被遮挡 + 顶栏标签被压扁」，用户关键线索：新建 WPS 标签后切回即恢复。
+// 本轮不改修复行为，先采集可观测数据区分「插件停靠问题」与「WPS 宿主 bug」：
+//   P1 DockPosition 实际值（Right=2 / Floating=4 是关键判据）
+//   P2 窗格 Width/Height（尺寸异常 → 宿主布局异常）
+//   P3 Window 属性（宿主窗口句柄存在性，只读）
+//   P4 强制复位 Right 并读回验证（宿主是否允许程序控制停靠）
+//   P5 残留 id 检测（id 有值但 GetTaskPane 找不到 → 旧实例残留，走重建路径）
+// 采集点：打开面板（首次创建 / 切换打开）后自动执行，结果写入
+//   PluginStorage('taskpane_probe') + 内存 lastTaskPaneProbe + console 留痕；
+// 展示：点「连接状态」按钮（btnCheckStatus）弹窗末尾汇总展示，用户截图反馈即可。
+var lastTaskPaneProbe = ''
+
+function probeTaskPane(tp) {
+    var lines = []
+    var tsId = ''
+    try { tsId = window.Application.PluginStorage.getItem('taskpane_id') || taskpaneIdCache || '' } catch (e) {}
+    lines.push('[探针] taskpane_id=' + (tsId || '(空)'))
+    lines.push('[探针] 内存缓存=' + (taskpaneIdCache || '(空)'))
+    if (tp) {
+        // P1: 停靠位置实际值（Right=2 / Floating=4 是关键判据）
+        try {
+            var dp = tp.DockPosition
+            var dpLabel = dp === 0 ? 'Left' : dp === 1 ? 'Top' : dp === 2 ? 'Right' : dp === 3 ? 'Bottom' : dp === 4 ? 'Floating!' : '未知(' + dp + ')'
+            lines.push('[P1] DockPosition=' + dp + ' (' + dpLabel + ')')
+        } catch (e) { lines.push('[P1] DockPosition 读取失败: ' + errMsg(e)) }
+        // P2: 窗格尺寸（异常尺寸 → 宿主布局异常）
+        try { lines.push('[P2] Width=' + tp.Width + ' Height=' + tp.Height) } catch (e) { lines.push('[P2] 尺寸读取失败: ' + errMsg(e)) }
+        // P3: 宿主窗口句柄（只读属性，个别版本不存在）
+        try { lines.push('[P3] Window=' + (tp.Window ? String(tp.Window) : '(空/无)')) } catch (e) { lines.push('[P3] Window 读取失败: ' + errMsg(e)) }
+        // P4: 强制复位 Right(=2) 并读回验证宿主是否接受程序控制（不接受 → 宿主霸占停靠状态）
+        try {
+            var prev = tp.DockPosition
+            tp.DockPosition = 2
+            var after = tp.DockPosition
+            lines.push('[P4] 强制复位 Right: ' + prev + '→' + after + (after === 2 ? ' (宿主接受控制)' : ' (宿主拒绝/忽略!)'))
+        } catch (e) { lines.push('[P4] 强制复位 Right 失败: ' + errMsg(e)) }
+        // P4b: DockPositionRestrict 可用性（msoCTPDockPositionRestrictNoChange=1，只读不写）
+        try { lines.push('[P4b] DockPositionRestrict=' + tp.DockPositionRestrict + (tp.DockPositionRestrict === 1 ? ' (已锁定停靠)' : '')) } catch (e) { lines.push('[P4b] DockPositionRestrict 不可用: ' + errMsg(e)) }
+        // P5: 残留 id 检测（id 有值但 GetTaskPane 找不到 → 旧实例残留，将走重建路径）
+        var exists = true
+        if (tsId) {
+            try { exists = !!window.Application.GetTaskPane(tsId) } catch (e) { exists = false }
+        }
+        lines.push('[P5] GetTaskPane 找回=' + (exists ? '正常' : '失败(残留id，将走重建)'))
+    } else {
+        lines.push('[P5] 窗格不存在（GetTaskPane 返回空，走重建路径）')
+    }
+    var result = lines.join('\n')
+    lastTaskPaneProbe = result
+    try { window.Application.PluginStorage.setItem('taskpane_probe', result) } catch (e) {}
+    console.log('[WPS 任务窗格探针]\n' + result)
+    return result
+}
+
 function checkStatus() {
     var cwd = ''
     try { cwd = window.Application.PluginStorage.getItem('opencode_cwd') || '' } catch (e) {}
@@ -577,6 +638,17 @@ function checkStatus() {
             else if (window.Application.ActivePresentation) statusText += '文档: ' + window.Application.ActivePresentation.Name + ' (PPT)\n'
         }
     } catch (e) { statusText += '\nWPS 信息获取失败: ' + errMsg(e) }
+
+    // 探针结果汇总（Issue #78 四诊）：有内存结果优先展示，否则读持久化值
+    var probeText = lastTaskPaneProbe || ''
+    if (!probeText) {
+        try { probeText = window.Application.PluginStorage.getItem('taskpane_probe') || '' } catch (e) { probeText = '' }
+    }
+    if (probeText) statusText += '\n=== 任务窗格探针 ===\n' + probeText + '\n'
+    // 页面侧视口诊断（taskpane.html 写入的 P6 数据）
+    var probePageText = ''
+    try { probePageText = window.Application.PluginStorage.getItem('taskpane_probe_page') || '' } catch (e) { probePageText = '' }
+    if (probePageText) statusText += '\n=== 页面视口探针 ===\n' + probePageText + '\n'
     alert(statusText)
 }
 

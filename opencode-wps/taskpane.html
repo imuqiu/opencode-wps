@@ -1693,6 +1693,22 @@ function scrollToBottom() { setTimeout(function() { if ($messages) $messages.scr
     // 暴露给 showChat() 等视图切换函数：setup→chat 切换后主动调度自愈，
     // 不依赖旧 WebView 内核是否在 display:none→block 时派发 resize 事件
     window.__scheduleReflowFix = scheduleReflowFix;
+    // 视口诊断探针（Issue #78 四诊）：记录首次渲染时的视口/元素几何数据，
+    // 定位「头部被挤出」发生在哪个环节：视口本身错误（宿主） vs 布局计算错误（页面）。
+    // 写入 PluginStorage('taskpane_probe_page') + window.__probePage，供按钮弹窗汇总。
+    try {
+        var heads2 = document.querySelectorAll('.topbar, .session-header');
+        var probeLines = [];
+        probeLines.push('[P6] innerHeight=' + window.innerHeight + ' clientHeight=' + (document.documentElement ? document.documentElement.clientHeight : '?'));
+        probeLines.push('[P6] dpr=' + (window.devicePixelRatio || 1));
+        for (var pi = 0; pi < heads2.length; pi++) {
+            var pr = heads2[pi].getBoundingClientRect();
+            probeLines.push('[P6] ' + (heads2[pi].className || heads2[pi].tagName) + ': top=' + pr.top + ' bottom=' + pr.bottom + ' h=' + pr.height);
+        }
+        var probePage = probeLines.join('\n');
+        window.__probePage = probePage;
+        setPS('taskpane_probe_page', probePage);
+    } catch (e) {}
     // 若 chat 已先行显示（showChat 早于本 IIFE 执行，如 init 异步回调先切视图）：
     // 补触发一次自愈，覆盖「自愈注册晚于视图切换」的时序倒挂场景
     var vc = document.getElementById('view-chat');

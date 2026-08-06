@@ -508,7 +508,11 @@ function makeOpenPaneApp(pane, opts) {
       return pane;
     },
     PluginStorage: {
-      getItem: function () { return opts.storedId || ''; },
+      getItem: function (k) {
+        if (k === 'taskpane_probe') return '';
+        if (k === 'taskpane_probe_page') return '';
+        return opts.storedId || '';
+      },
       setItem: function () {}
     }
   };
@@ -1022,6 +1026,176 @@ test('taskpane.html 自愈骨架：position:fixed 锚定 + forceReflowFix 关键
   assertTrue(/document\.hidden\s*\)\s*\{\s*reflowFixed\s*=\s*false/.test(html), 'visibilitychange 隐藏时应复位已修复状态');
   // ⑲ showChat 无条件调用（typeof 检查移除，由 IIFE 补触发兜底时序倒挂）
   assertTrue(/if\s*\(window\.__scheduleReflowFix\)\s*window\.__scheduleReflowFix\(\)/.test(html), 'showChat 应直接调用（IIFE 补触发兜底）');
+});
+
+// ==================== 四诊探针测试（Issue #78：先定位清楚再动手） ====================
+
+test('探针 P1-P5：宿主忽略停靠设置（Floating=4 拒绝复位）时完整采集并标记', function () {
+  var pane = {
+    ID: 'tp-probe1',
+    DockPositionRestrict: 0,
+    Width: 300,
+    Height: 600,
+    Window: { hwnd: '0x1234' }
+  };
+  // 模拟宿主霸占停靠：getter 恒 4（Floating），setter 无效（拒绝程序控制）
+  Object.defineProperty(pane, 'DockPosition', {
+    get: function () { return 4; },
+    set: function (v) {}
+  });
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return true; },
+    set: function (v) {}
+  });
+  var sandbox = loadMainJs(makeOpenPaneApp(pane));
+  sandbox.OnAction({ Id: 'btnShowTaskPane' });
+  var probe = sandbox.lastTaskPaneProbe;
+  assertTrue(probe, '首次创建后应产生探针结果，实际为空');
+  assertTrue(probe.indexOf('[P1] DockPosition=4 (Floating!)') >= 0, 'P1 应记录 Floating=4，实际: ' + probe);
+  assertTrue(probe.indexOf('[P2] Width=300 Height=600') >= 0, 'P2 应记录尺寸，实际: ' + probe);
+  assertTrue(probe.indexOf('[P3] Window=') >= 0, 'P3 应记录 Window，实际: ' + probe);
+  assertTrue(probe.indexOf('[P4] 强制复位 Right: 4→4 (宿主拒绝/忽略!)') >= 0, 'P4 应记录 4→4 宿主拒绝，实际: ' + probe);
+  assertTrue(probe.indexOf('[P4b] DockPositionRestrict=0') >= 0, 'P4b 应记录 Restrict，实际: ' + probe);
+  assertTrue(probe.indexOf('[P5] GetTaskPane 找回=正常') >= 0, 'P5 应记录找回正常，实际: ' + probe);
+  assertEqual(pane.DockPosition, 4, '宿主拒绝时 DockPosition 应保持 4（探针不应强改）');
+});
+
+test('探针 P1：DockPosition 为 Right(2) 时标记正常', function () {
+  var pane = { ID: 'tp-probe2', DockPosition: 2, DockPositionRestrict: 1, Width: 300, Height: 600 };
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return true; },
+    set: function (v) {}
+  });
+  var sandbox = loadMainJs(makeOpenPaneApp(pane));
+  sandbox.OnAction({ Id: 'btnShowTaskPane' });
+  var probe = sandbox.lastTaskPaneProbe;
+  assertTrue(probe.indexOf('[P1] DockPosition=2 (Right)') >= 0, 'P1 应记录 Right，实际: ' + probe);
+  assertTrue(probe.indexOf('[P4b] DockPositionRestrict=1 (已锁定停靠)') >= 0, 'P4b 应标注已锁定，实际: ' + probe);
+});
+
+test('探针容错：DockPosition/Width/Window 读抛出异常时逐项留痕不中断', function () {
+  var pane = { ID: 'tp-probe3' };
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return true; },
+    set: function (v) {}
+  });
+  // DockPosition 读抛异常
+  Object.defineProperty(pane, 'DockPosition', {
+    get: function () { throw new Error('COM 读失败'); },
+    set: function (v) {}
+  });
+  Object.defineProperty(pane, 'Width', { get: function () { throw new Error('COM 读失败'); }, set: function (v) {} });
+  Object.defineProperty(pane, 'Window', { get: function () { throw new Error('COM 读失败'); }, set: function (v) {} });
+  var sandbox = loadMainJs(makeOpenPaneApp(pane));
+  sandbox.OnAction({ Id: 'btnShowTaskPane' });
+  var probe = sandbox.lastTaskPaneProbe;
+  assertTrue(probe.indexOf('[P1] DockPosition 读取失败') >= 0, 'P1 读取失败应留痕，实际: ' + probe);
+  assertTrue(probe.indexOf('[P2] 尺寸读取失败') >= 0, 'P2 读取失败应留痕，实际: ' + probe);
+  assertTrue(probe.indexOf('[P3] Window 读取失败') >= 0, 'P3 读取失败应留痕，实际: ' + probe);
+  assertTrue(probe.indexOf('[P5]') >= 0, 'P5 仍应输出，实际: ' + probe);
+});
+
+test('探针：GetTaskPane 找不到窗格时标记残留id走重建（不误报正常）', function () {
+  var pane = { ID: 'tp-probe4', DockPosition: 2 };
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return true; },
+    set: function (v) {}
+  });
+  // GetTaskPane 始终返回 null → 走重建路径，探针拿到新创建的窗格
+  var appMock = {
+    CreateTaskPane: function () { return pane; },
+    GetTaskPane: function () { return null; },
+    PluginStorage: {
+      getItem: function (k) {
+        if (k === 'taskpane_probe') return '';
+        if (k === 'taskpane_probe_page') return '';
+        return ''; // 无 storedId → 触发重建
+      },
+      setItem: function () {}
+    }
+  };
+  var sandbox = loadMainJs(appMock);
+  sandbox.OnAction({ Id: 'btnShowTaskPane' });
+  var probe = sandbox.lastTaskPaneProbe;
+  assertTrue(probe.indexOf('[探针] taskpane_id=tp-probe4') >= 0, '探针应记录新创建窗格的 id，实际: ' + probe);
+  assertTrue(probe.indexOf('[P5] GetTaskPane 找回=失败(残留id，将走重建)') >= 0, 'P5 应标注残留id走重建，实际: ' + probe);
+});
+
+test('探针：切换打开路径也采集（宿主接受复位时 P4 2→2 且 DockPosition=2）', function () {
+  var pane = { ID: 'tp-probe5', DockPosition: 4, Width: 280, Height: 500 };
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return pane._v; },
+    set: function (v) { pane._v = v; }
+  });
+  pane._v = false;
+  var sandbox = loadMainJs(makeOpenPaneApp(pane, { storedId: 'tp-probe5' }));
+  sandbox.OnAction({ Id: 'btnShowTaskPane' });
+  var probe = sandbox.lastTaskPaneProbe;
+  // 切换路径先 setTaskPaneDockPosition 校正为 2（宿主接受）→ 探针 P1 读到 Right
+  assertTrue(probe.indexOf('[P1] DockPosition=2 (Right)') >= 0, '切换打开后探针应读到校正后的 Right，实际: ' + probe);
+  assertTrue(probe.indexOf('[P4] 强制复位 Right: 2→2 (宿主接受控制)') >= 0, 'P4 应记录 2→2 宿主接受，实际: ' + probe);
+  assertEqual(pane.DockPosition, 2, '切换打开后 DockPosition 应复位为 2');
+});
+
+test('探针：checkStatus 弹窗汇总含任务窗格探针与页面视口探针（无结果时不输出区块）', function () {
+  var pane = { ID: 'tp-probe6', DockPosition: 2, Width: 300, Height: 600 };
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return true; },
+    set: function (v) {}
+  });
+  var alerts = [];
+  var stored = { taskpane_probe: '[P1] DockPosition=2 (Right)', taskpane_probe_page: '[P6] innerHeight=600' };
+  var appMock = {
+    CreateTaskPane: function () { return pane; },
+    GetTaskPane: function () { return pane; },
+    PluginStorage: {
+      getItem: function (k) { return stored[k] || ''; },
+      setItem: function (k, v) { stored[k] = v; }
+    },
+    ActiveDocument: { Name: 'test.docx' }
+  };
+  var sandbox = loadMainJs(appMock);
+  sandbox.alert = function (text) { alerts.push(text); };
+  sandbox.OnAction({ Id: 'btnShowTaskPane' });
+  sandbox.checkStatus();
+  assertEqual(alerts.length, 1, 'checkStatus 应弹窗一次');
+  assertTrue(alerts[0].indexOf('=== 任务窗格探针 ===') >= 0, '弹窗应含任务窗格探针区块，实际: ' + alerts[0]);
+  assertTrue(alerts[0].indexOf('[P1] DockPosition=2 (Right)') >= 0, '弹窗应含 P1 数据，实际: ' + alerts[0]);
+  assertTrue(alerts[0].indexOf('=== 页面视口探针 ===') >= 0, '弹窗应含页面视口探针区块，实际: ' + alerts[0]);
+  assertTrue(alerts[0].indexOf('[P6] innerHeight=600') >= 0, '弹窗应含 P6 数据，实际: ' + alerts[0]);
+});
+
+test('探针：checkStatus 无探针数据时不输出探针区块（保持原弹窗）', function () {
+  var alerts = [];
+  var appMock = {
+    PluginStorage: {
+      getItem: function (k) {
+        if (k === 'taskpane_probe') return '';
+        if (k === 'taskpane_probe_page') return '';
+        return '';
+      },
+      setItem: function () {}
+    },
+    ActiveDocument: { Name: 'test.docx' }
+  };
+  var sandbox = loadMainJs(appMock);
+  sandbox.alert = function (text) { alerts.push(text); };
+  sandbox.checkStatus();
+  assertEqual(alerts.length, 1, 'checkStatus 应弹窗一次');
+  assertTrue(alerts[0].indexOf('=== 任务窗格探针 ===') < 0, '无探针数据时不应输出任务窗格探针区块');
+  assertTrue(alerts[0].indexOf('=== 页面视口探针 ===') < 0, '无探针数据时不应输出页面视口探针区块');
+});
+
+test('taskpane.html 视口探针：P6 关键结构存在（innerHeight/几何采集/持久化）', function () {
+  var html = fs.readFileSync(path.join(__dirname, '..', 'opencode-wps', 'taskpane.html'), 'utf-8');
+  // ① P6 视口高度采集
+  assertTrue(/\[P6\] innerHeight=/.test(html), '应采集 innerHeight');
+  // ② 元素几何采集（top/bottom/height）
+  assertTrue(/getBoundingClientRect/.test(html) && /top=/.test(html), '应采集头部元素几何');
+  // ③ 持久化到 PluginStorage（taskpane_probe_page）
+  assertTrue(/taskpane_probe_page/.test(html), '应写入 taskpane_probe_page');
+  // ④ 暴露给 window.__probePage
+  assertTrue(/window\.__probePage/.test(html), '应暴露 __probePage');
 });
 
 // ==================== 测试结果汇总 ====================
