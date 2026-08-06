@@ -223,7 +223,7 @@ test('负向：删「绝不自行继续后续步骤」应拦截（exit 1）', fu
 
 test('负向：删【任务书】段应拦截（exit 1）', function () {
   const code = runValidate(p =>
-    p.replace('【任务书（接力模式第一棒 0/10 创建，随接力卡逐棒传递）】\n', '')
+    p.replace('【任务书（接力模式第一棒 0/11 创建，随接力卡逐棒传递）】\n', '')
   );
   assertEqual(code, 1, '删任务书段应拦截（exit 1）');
 });
@@ -234,12 +234,12 @@ test('负向：删接力卡召唤话术示例「@CodeBuddy 接力 NPC_TEAM skill
   // 现改为：仅删除【接力卡】段内的召唤话术示例（定位到该段再替换），并断言命中接力校验错误。
   const { code, output } = runValidateCapture(p => {
     const sectionStart = p.indexOf('【接力卡（接力模式每步结束时必须输出）】');
-    const sectionEnd = p.indexOf('【评审接力卡（5/10 评审每轮评审结束时输出）】');
+    const sectionEnd = p.indexOf('【评审接力卡（5/11 评审每轮评审结束时输出）】');
     const head = p.slice(0, sectionStart);
     const section = p
       .slice(sectionStart, sectionEnd)
       .replace(
-        '@CodeBuddy 接力 NPC_TEAM skill，执行下一步 N+1/10 <阶段名>：',
+        '@CodeBuddy 接力 NPC_TEAM skill，执行下一步 N+1/11 <阶段名>：',
         '@CodeBuddy 执行下一步：'
       );
     const tail = p.slice(sectionEnd);
@@ -254,7 +254,7 @@ test('负向：删接力卡召唤话术示例「@CodeBuddy 接力 NPC_TEAM skill
 
 // ---- Issue #76：评审-修复循环接力（PR review 与修复循环也使用接力模式）回归用例 ----
 // 背景：用户要求"其中的 PR review 与 修复循环也建议使用接力模式"。
-// 因此 5/10 评审-修复循环在接力模式下逐轮接力：每轮评审与每次修复各是独立一次 @CodeBuddy 召唤，
+// 因此 5/11 评审-修复循环在接力模式下逐轮接力：每轮评审与每次修复各是独立一次 @CodeBuddy 召唤，
 // 评审棒输出【评审接力卡】、修复棒输出【修复接力卡】，禁止在一次召唤内连跑多轮评审-修复。
 // 若评审-修复接力核心要素被删（回退为一次召唤内连跑多轮），CI 必须拦截。
 
@@ -331,7 +331,9 @@ test('负向：删「每轮评审与每次修复各是独立一次 @CodeBuddy �
     const start = p.indexOf('8. 评审-修复循环（10 轮彻底循环，接力模式）');
     const end = p.indexOf('9. 测试失败跳转');
     const head = p.slice(0, start);
-    const rule8 = p.slice(start, end).replace('每轮评审与每次修复各是独立一次 @CodeBuddy 召唤，', '');
+    const rule8 = p
+      .slice(start, end)
+      .replace('每轮评审与每次修复各是独立一次 @CodeBuddy 召唤，', '');
     const tail = p.slice(end);
     return head + rule8 + tail;
   });
@@ -343,12 +345,12 @@ test('负向：删「每轮评审与每次修复各是独立一次 @CodeBuddy �
 });
 
 test('负向：删【评审接力卡】段应拦截（exit 1）', function () {
-  const code = runValidate(p => p.replace('【评审接力卡（5/10 评审每轮评审结束时输出）】\n', ''));
+  const code = runValidate(p => p.replace('【评审接力卡（5/11 评审每轮评审结束时输出）】\n', ''));
   assertEqual(code, 1, '删评审接力卡段应拦截（exit 1）');
 });
 
 test('负向：删【修复接力卡】段应拦截（exit 1）', function () {
-  const code = runValidate(p => p.replace('【修复接力卡（5/10 评审每轮修复结束时输出）】\n', ''));
+  const code = runValidate(p => p.replace('【修复接力卡（5/11 评审每轮修复结束时输出）】\n', ''));
   assertEqual(code, 1, '删修复接力卡段应拦截（exit 1）');
 });
 
@@ -356,8 +358,8 @@ test('负向：删评审接力卡召唤话术示例应拦截（exit 1）', funct
   // 第 6 轮评审 W2：原用例用 replace 只替换第一个匹配，实际命中【接力卡】段内相同句式，
   // 拦截靠接力校验（假阳性）而非目标段校验；改为段内定位替换 + 断言拦截路径。
   const { code, output } = runValidateCapture(p => {
-    const sectionStart = p.indexOf('【评审接力卡（5/10 评审每轮评审结束时输出）】');
-    const sectionEnd = p.indexOf('【修复接力卡（5/10 评审每轮修复结束时输出）】');
+    const sectionStart = p.indexOf('【评审接力卡（5/11 评审每轮评审结束时输出）】');
+    const sectionEnd = p.indexOf('【修复接力卡（5/11 评审每轮修复结束时输出）】');
     const head = p.slice(0, sectionStart);
     const section = p
       .slice(sectionStart, sectionEnd)
@@ -378,8 +380,8 @@ test('负向：删评审接力卡召唤话术示例应拦截（exit 1）', funct
 test('负向：删修复接力卡召唤话术示例应拦截（exit 1）', function () {
   // 第 6 轮评审 W2：同评审卡用例，改为段内定位替换 + 断言拦截路径。
   const { code, output } = runValidateCapture(p => {
-    const sectionStart = p.indexOf('【修复接力卡（5/10 评审每轮修复结束时输出）】');
-    const sectionEnd = p.indexOf('【复评接力卡（5/10 评审每轮复评结束时输出）】');
+    const sectionStart = p.indexOf('【修复接力卡（5/11 评审每轮修复结束时输出）】');
+    const sectionEnd = p.indexOf('【复评接力卡（5/11 评审每轮复评结束时输出）】');
     const head = p.slice(0, sectionStart);
     const section = p
       .slice(sectionStart, sectionEnd)
@@ -400,7 +402,7 @@ test('负向：删修复接力卡召唤话术示例应拦截（exit 1）', funct
 test('负向：删复评接力卡召唤话术标签应拦截（exit 1）', function () {
   // 第 6 轮评审 W1/W2 新增：此前复评卡话术无段化校验，删标签行（保留【接力卡】段同句式）仍 exit 0。
   const { code, output } = runValidateCapture(p => {
-    const sectionStart = p.indexOf('【复评接力卡（5/10 评审每轮复评结束时输出）】');
+    const sectionStart = p.indexOf('【复评接力卡（5/11 评审每轮复评结束时输出）】');
     const sectionEnd = p.indexOf('【暂停确认】');
     const head = p.slice(0, sectionStart);
     const section = p
@@ -419,7 +421,7 @@ test('负向：删复评接力卡召唤话术标签应拦截（exit 1）', funct
 test('负向：删复评卡「未清零」示例句应拦截（exit 1）', function () {
   // 第 6 轮评审 W1 新增：复评卡未清零示例句此前无独立校验，删除后须段内拦截。
   const { code, output } = runValidateCapture(p => {
-    const sectionStart = p.indexOf('【复评接力卡（5/10 评审每轮复评结束时输出）】');
+    const sectionStart = p.indexOf('【复评接力卡（5/11 评审每轮复评结束时输出）】');
     const sectionEnd = p.indexOf('【暂停确认】');
     const head = p.slice(0, sectionStart);
     const section = p
@@ -439,15 +441,15 @@ test('负向：删复评卡「未清零」示例句应拦截（exit 1）', funct
 });
 
 test('负向：删复评卡「已清零」示例句应拦截（exit 1）', function () {
-  // 第 6 轮评审 W1 新增：复评卡已清零示例句（转 6/10 测试）此前无独立校验，删除后须段内拦截。
+  // 第 6 轮评审 W1 新增：复评卡已清零示例句（转 6/11 测试）此前无独立校验，删除后须段内拦截。
   const { code, output } = runValidateCapture(p => {
-    const sectionStart = p.indexOf('【复评接力卡（5/10 评审每轮复评结束时输出）】');
+    const sectionStart = p.indexOf('【复评接力卡（5/11 评审每轮复评结束时输出）】');
     const sectionEnd = p.indexOf('【暂停确认】');
     const head = p.slice(0, sectionStart);
     const section = p
       .slice(sectionStart, sectionEnd)
       .replace(
-        '@CodeBuddy 接力 NPC_TEAM skill，执行 6/10 测试（评审问题已清零，进入测试阶段）：',
+        '@CodeBuddy 接力 NPC_TEAM skill，执行 6/11 测试（评审问题已清零，进入测试阶段）：',
         '@CodeBuddy 执行测试：'
       );
     const tail = p.slice(sectionEnd);
@@ -464,7 +466,7 @@ test('负向：删【暂停确认】锚点应报「段化校验区间不可达�
   // 第 7 轮评审 W1 新增：sliceSection 区间不可达（锚点被删）时须显式报错，而非静默跳过段化校验。
   const { code, output } = runValidateCapture(p =>
     p.replace(
-      '【暂停确认】到 ⏸CP1/⏸CP2 时输出暂停卡并停下',
+      '【暂停确认】到 ⏸CP1/⏸CP2/⏸CP3 时输出暂停卡并停下',
       '【暂停点】到 ⏸CP1/⏸CP2 时输出暂停卡并停下'
     )
   );
@@ -478,47 +480,44 @@ test('负向：删【暂停确认】锚点应报「段化校验区间不可达�
 test('负向：双源同步删三段接力卡话术标签应拦截（exit 1）', function () {
   // 第 6 轮评审 W1 新增：模拟用户改 docs 提示词（删三段卡标签行）未同步 skill，
   // 段化校验应拦截（此前全局 indexOf 校验漏检 exit 0）。
-  const code = withSkillFile(
-    fs.readFileSync(SKILL_FILE, 'utf8'),
-    () => {
-      const { content, prompt } = readPrompt();
-      const stripThree = p => {
-        const lines = p.split('\n');
-        const titles = [
-          '【评审接力卡（5/10 评审每轮评审结束时输出）】',
-          '【修复接力卡（5/10 评审每轮修复结束时输出）】',
-          '【复评接力卡（5/10 评审每轮复评结束时输出）】',
-        ];
-        let inSection = false;
-        const out = [];
-        for (const line of lines) {
-          if (titles.some(t => line.includes(t))) inSection = true;
-          if (inSection && line.trim() === '- 下一步召唤话术（用户原样复制即可）：') continue;
-          out.push(line);
-        }
-        return out.join('\n');
-      };
-      const rewritten = content.replace(prompt, stripThree(prompt));
-      // 与 runValidateCapture 相同的临时副本机制
-      const tmp = FILE + '.tmp';
-      const backup = FILE + '.bak';
-      fs.writeFileSync(tmp, rewritten);
-      fs.renameSync(FILE, backup);
-      fs.renameSync(tmp, FILE);
-      try {
-        const { spawnSync } = require('child_process');
-        const r = spawnSync('node', [SCRIPT], { encoding: 'utf8' });
-        return { code: r.status, output: (r.stdout || '') + (r.stderr || '') };
-      } finally {
-        fs.renameSync(FILE, tmp);
-        fs.renameSync(backup, FILE);
-        try {
-          fs.unlinkSync(tmp);
-          fs.unlinkSync(backup);
-        } catch (_) {}
+  const code = withSkillFile(fs.readFileSync(SKILL_FILE, 'utf8'), () => {
+    const { content, prompt } = readPrompt();
+    const stripThree = p => {
+      const lines = p.split('\n');
+      const titles = [
+        '【评审接力卡（5/11 评审每轮评审结束时输出）】',
+        '【修复接力卡（5/11 评审每轮修复结束时输出）】',
+        '【复评接力卡（5/11 评审每轮复评结束时输出）】',
+      ];
+      let inSection = false;
+      const out = [];
+      for (const line of lines) {
+        if (titles.some(t => line.includes(t))) inSection = true;
+        if (inSection && line.trim() === '- 下一步召唤话术（用户原样复制即可）：') continue;
+        out.push(line);
       }
+      return out.join('\n');
+    };
+    const rewritten = content.replace(prompt, stripThree(prompt));
+    // 与 runValidateCapture 相同的临时副本机制
+    const tmp = FILE + '.tmp';
+    const backup = FILE + '.bak';
+    fs.writeFileSync(tmp, rewritten);
+    fs.renameSync(FILE, backup);
+    fs.renameSync(tmp, FILE);
+    try {
+      const { spawnSync } = require('child_process');
+      const r = spawnSync('node', [SCRIPT], { encoding: 'utf8' });
+      return { code: r.status, output: (r.stdout || '') + (r.stderr || '') };
+    } finally {
+      fs.renameSync(FILE, tmp);
+      fs.renameSync(backup, FILE);
+      try {
+        fs.unlinkSync(tmp);
+        fs.unlinkSync(backup);
+      } catch (_) {}
     }
-  );
+  });
   assertEqual(code.code, 1, '双源删三段卡话术标签应拦截（exit 1）');
   assertTrue(
     /评审接力卡缺少「下一步召唤话术」|修复接力卡缺少「下一步召唤话术」|复评接力卡缺少「下一步召唤话术」/.test(
@@ -543,14 +542,14 @@ test('正向：复评接力卡要素完整（exit 0）', function () {
 });
 
 test('负向：删【复评接力卡】段应拦截（exit 1）', function () {
-  const code = runValidate(p => p.replace('【复评接力卡（5/10 评审每轮复评结束时输出）】\n', ''));
+  const code = runValidate(p => p.replace('【复评接力卡（5/11 评审每轮复评结束时输出）】\n', ''));
   assertEqual(code, 1, '删复评接力卡段应拦截（exit 1）');
 });
 
 test('负向：删复评结论双分支应拦截（exit 1）', function () {
   const code = runValidate(p =>
     p.replace(
-      '- 复评结论：🔴仍需修复（问题未清零，转下轮评审） / 🟢通过（问题清零，转 6/10 测试）',
+      '- 复评结论：🔴仍需修复（问题未清零，转下轮评审） / 🟢通过（问题清零，转 6/11 测试）',
       '- 复评结论：🟢通过'
     )
   );
@@ -567,10 +566,10 @@ test('负向：删复评未清零续下轮评审话术应拦截（exit 1）', fu
   assertEqual(code, 1, '删复评未清零续轮话术应拦截（exit 1）');
 });
 
-test('负向：删复评清零转 6/10 测试话术应拦截（exit 1）', function () {
+test('负向：删复评清零转 6/11 测试话术应拦截（exit 1）', function () {
   const code = runValidate(p =>
     p.replace(
-      '@CodeBuddy 接力 NPC_TEAM skill，执行 6/10 测试（评审问题已清零，进入测试阶段）：',
+      '@CodeBuddy 接力 NPC_TEAM skill，执行 6/11 测试（评审问题已清零，进入测试阶段）：',
       '@CodeBuddy 执行测试：'
     )
   );
@@ -579,11 +578,11 @@ test('负向：删复评清零转 6/10 测试话术应拦截（exit 1）', funct
 
 test('负向：复评句式插入干扰句打乱顺序应拦截（exit 1）', function () {
   // 第 3 轮评审 W3：RELAY_REVIEW_CORE 顺序校验缺复评句式的回归用例。
-  // 在【复评接力卡】段声明前插入「执行 6/10 测试」句，打乱 12 句式声明顺序 → 应报顺序错乱。
+  // 在【复评接力卡】段声明前插入「执行 6/11 测试」句，打乱 12 句式声明顺序 → 应报顺序错乱。
   const code = runValidate(p =>
     p.replace(
-      '【复评接力卡（5/10 评审每轮复评结束时输出）】',
-      '执行 6/10 测试（评审问题已清零，进入测试阶段），【复评接力卡（5/10 评审每轮复评结束时输出）】'
+      '【复评接力卡（5/11 评审每轮复评结束时输出）】',
+      '执行 6/11 测试（评审问题已清零，进入测试阶段），【复评接力卡（5/11 评审每轮复评结束时输出）】'
     )
   );
   assertEqual(code, 1, '复评句式打乱顺序应拦截（exit 1）');
@@ -598,6 +597,75 @@ test('负向：删复评卡「已累计轮次」句应拦截（exit 1）', funct
     )
   );
   assertEqual(code, 1, '删复评卡已累计轮次句应拦截（exit 1）');
+});
+
+// ---- Issue #76：PR 合并前暂停确认（⏸CP3）+ 发布三要素（9/11）回归用例 ----
+// 背景：用户要求"再加上PR合并（在合并前需暂停待用户确认）、发布（更新版本号、发布形成changelog、发布产物）"。
+// 因此提示词新增铁律 13（合并确认 ⏸CP3：合并 PR 前暂停等用户「继续合并」）+ 铁律 14（发布三要素：更新版本号+CHANGELOG+发布产物）。
+// 若合并前暂停/发布三要素被删，CI 必须拦截（防偷偷合并/假装发布）。
+
+test('正向：合并确认（⏸CP3）要素完整（exit 0）', function () {
+  const code = runValidate(p => p);
+  assertEqual(code, 0, '合并确认要素完整应 exit 0');
+});
+
+test('负向：删铁律 13「合并 PR 前必须暂停」应拦截（exit 1）', function () {
+  const code = runValidate(p =>
+    p.replace('**合并 PR 前必须暂停**输出【合并确认卡】', '直接合并 PR')
+  );
+  assertEqual(code, 1, '删合并前暂停应拦截（exit 1）');
+});
+
+test('负向：删「禁止未经确认自行合并 PR」应拦截（exit 1）', function () {
+  const code = runValidate(p => p.replace('禁止代替用户确认、禁止未经确认自行合并 PR。', ''));
+  assertEqual(code, 1, '删禁止未确认合并应拦截（exit 1）');
+});
+
+test('负向：删【合并确认卡】段应拦截（exit 1）', function () {
+  const code = runValidate(p =>
+    p.replace('【合并确认卡（⏸CP3，5/11 评审清零 + 6/11 测试通过后、8/11 合并 PR 前输出）】\n', '')
+  );
+  assertEqual(code, 1, '删合并确认卡段应拦截（exit 1）');
+});
+
+test('负向：删「继续合并」命令词应拦截（exit 1）', function () {
+  const code = runValidate(p =>
+    p.replace('「继续合并」→ 确认可合并，执行 8/11 合并 PR', '「继续」→ 执行合并')
+  );
+  assertEqual(code, 1, '删继续合并命令应拦截（exit 1）');
+});
+
+test('正向：发布三要素完整（exit 0）', function () {
+  const code = runValidate(p => p);
+  assertEqual(code, 0, '发布三要素完整应 exit 0');
+});
+
+test('负向：删铁律 14「更新版本号」应拦截（exit 1）', function () {
+  const code = runValidate(p =>
+    p.replace('① 更新版本号（按 semver 语义递增，patch/minor/major 视变更定）', '')
+  );
+  assertEqual(code, 1, '删更新版本号应拦截（exit 1）');
+});
+
+test('负向：删「形成/更新 CHANGELOG」应拦截（exit 1）', function () {
+  const code = runValidate(p =>
+    p.replace('② 形成/更新 CHANGELOG（记录本次变更，Keep a Changelog 格式）', '')
+  );
+  assertEqual(code, 1, '删CHANGELOG要素应拦截（exit 1）');
+});
+
+test('负向：删「发布产物」应拦截（exit 1）', function () {
+  const code = runValidate(p =>
+    p.replace('③ 发布产物（打 tag / 推送 release / 发布制品，按仓库实际发布机制执行）', '')
+  );
+  assertEqual(code, 1, '删发布产物应拦截（exit 1）');
+});
+
+test('负向：删「禁止假装发布」应拦截（exit 1）', function () {
+  const code = runValidate(p =>
+    p.replace('；**禁止假装发布**（不更新版本号、不写 changelog、不产出发布产物却宣称已发布）', '')
+  );
+  assertEqual(code, 1, '删禁止假装发布应拦截（exit 1）');
 });
 
 // ---- Issue #76：NPC_TEAM Skill 一键调用方案回归用例 ----
@@ -739,7 +807,10 @@ test('负向：SKILL 缩进漂移应被 validate formatDiff 拦截（exit 1）',
   const code = withSkillFile(
     fs
       .readFileSync(SKILL_FILE, 'utf8')
-      .replace('\n- 未清零：\n@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮评审', '\n  - 未清零：\n@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮评审'),
+      .replace(
+        '\n- 未清零：\n@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮评审',
+        '\n  - 未清零：\n@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮评审'
+      ),
     () => {
       const { spawnSync } = require('child_process');
       return spawnSync('node', [SCRIPT], { encoding: 'utf8' }).status;
@@ -753,12 +824,19 @@ test('负向：sync --check 对 SKILL 缩进漂移应拦截（exit 1）', functi
   const code = withSkillFile(
     fs
       .readFileSync(SKILL_FILE, 'utf8')
-      .replace('\n- 未清零：\n@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮评审', '\n  - 未清零：\n@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮评审'),
+      .replace(
+        '\n- 未清零：\n@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮评审',
+        '\n  - 未清零：\n@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮评审'
+      ),
     () => {
       const { spawnSync } = require('child_process');
-      return spawnSync('node', [path.join(__dirname, '..', 'scripts', 'sync-npc-team-skill.js'), '--check'], {
-        encoding: 'utf8',
-      }).status;
+      return spawnSync(
+        'node',
+        [path.join(__dirname, '..', 'scripts', 'sync-npc-team-skill.js'), '--check'],
+        {
+          encoding: 'utf8',
+        }
+      ).status;
     }
   );
   assertEqual(code, 1, 'sync --check 缩进漂移应拦截（exit 1）');
@@ -768,7 +846,10 @@ test('正向：sync 非 check 模式自动修正 SKILL 缩进漂移', function (
   // 第 10 轮评审 W2 新增：非 check 模式须感知缩进差异并重写修正（此前 normalize 假通过不重写）。
   const drifted = fs
     .readFileSync(SKILL_FILE, 'utf8')
-    .replace('\n- 未清零：\n@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮评审', '\n  - 未清零：\n@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮评审');
+    .replace(
+      '\n- 未清零：\n@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮评审',
+      '\n  - 未清零：\n@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮评审'
+    );
   const code = withSkillFile(drifted, () => {
     const { spawnSync } = require('child_process');
     return spawnSync('node', [path.join(__dirname, '..', 'scripts', 'sync-npc-team-skill.js')], {
