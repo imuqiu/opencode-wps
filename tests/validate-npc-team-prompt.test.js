@@ -278,8 +278,21 @@ test('负向：删「评审-修复循环同样逐轮接力」应拦截（exit 1�
 });
 
 test('负向：删「每轮评审与每次修复各是独立一次 @CodeBuddy 召唤」应拦截（exit 1）', function () {
-  const code = runValidate(p => p.replace('每轮评审与每次修复各是独立一次 @CodeBuddy 召唤，', ''));
+  // 第 9 轮评审 W2：该句在铁律 8 与 CR 卡片段各 1 次，原用例用 replace 只替换第一个匹配（删铁律 8 的），
+  // 但未断言拦截路径。改为段内定位铁律 8 再删 + 断言命中「评审-修复接力缺少完整句式」错误。
+  const { code, output } = runValidateCapture(p => {
+    const start = p.indexOf('8. 评审-修复循环（10 轮彻底循环，接力模式）');
+    const end = p.indexOf('9. 测试失败跳转');
+    const head = p.slice(0, start);
+    const rule8 = p.slice(start, end).replace('每轮评审与每次修复各是独立一次 @CodeBuddy 召唤，', '');
+    const tail = p.slice(end);
+    return head + rule8 + tail;
+  });
   assertEqual(code, 1, '删独立召唤声明应拦截（exit 1）');
+  assertTrue(
+    /评审-修复接力缺少完整句式「每轮评审与每次修复各是独立一次 @CodeBuddy 召唤」/.test(output),
+    '应命中铁律 8 段内校验（而非 CR 卡片段假阳性），实际输出：' + output
+  );
 });
 
 test('负向：删【评审接力卡】段应拦截（exit 1）', function () {

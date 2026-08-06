@@ -270,16 +270,30 @@ if (!m) {
     '执行第 R+1/10 轮评审（复评仍有问题，继续 review-修复循环）',
     '执行 6/10 测试（评审问题已清零，进入测试阶段）',
   ];
+  // 第 9 轮评审 W1：前 6 句是铁律 8 专属约束，但「每轮评审与每次修复各是独立一次 @CodeBuddy 召唤」/
+  // 「评审棒输出【评审接力卡】」/「修复棒输出【修复接力卡】」在 CR 卡片段也有相同句式（出现 2 次），
+  // 全局 indexOf 会命中 CR 卡片段同句 → 删铁律 8 中这三句时顺序校验不破坏（逃生口）。
+  // 修复：前 6 句限定在铁律 8 段（8. 至 9. 测试失败跳转之间）内校验，CR 卡片段句式不参与 indexOf。
+  const rule8Start = prompt.indexOf('8. 评审-修复循环（10 轮彻底循环，接力模式）');
+  const rule8End = prompt.indexOf('9. 测试失败跳转');
+  const rule8Section =
+    rule8Start !== -1 && rule8End !== -1 && rule8End > rule8Start
+      ? prompt.slice(rule8Start, rule8End)
+      : null;
+  const coreSearchTarget = rule8Section !== null ? rule8Section : prompt;
   let relayReviewLastIdx = -1;
-  for (const frag of RELAY_REVIEW_CORE) {
-    const idx = prompt.indexOf(frag);
+  const coreFrags = RELAY_REVIEW_CORE.slice(0, 6); // 铁律 8 专属
+  const cardFrags = RELAY_REVIEW_CORE.slice(6); // 三段卡标题与复评句式（全局唯一，用 prompt）
+  const searchTargets = [...coreFrags.map(f => ({ f, scope: coreSearchTarget })), ...cardFrags.map(f => ({ f, scope: prompt }))];
+  for (const { f, scope } of searchTargets) {
+    const idx = scope.indexOf(f);
     if (idx === -1)
       errors.push(
-        `评审-修复接力缺少完整句式「${frag}」（5/10 评审-修复循环须逐轮接力，每轮评审/修复各为独立召唤，防假装进行）`
+        `评审-修复接力缺少完整句式「${f}」（5/10 评审-修复循环须逐轮接力，每轮评审/修复各为独立召唤，防假装进行）`
       );
     else if (idx < relayReviewLastIdx)
       errors.push(
-        `评审-修复接力句式顺序错乱：「${frag}」出现在其声明顺序之前（疑似插入干扰文本拆解语义）`
+        `评审-修复接力句式顺序错乱：「${f}」出现在其声明顺序之前（疑似插入干扰文本拆解语义）`
       );
     else relayReviewLastIdx = idx;
   }
