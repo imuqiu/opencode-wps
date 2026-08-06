@@ -205,6 +205,8 @@ function setTaskPaneDockPosition(tskpane) {
 
     **补 DEV 增量 4（2026-08-06，Issue #78 五诊——像素级证据锁定真正根因）**：⑬ **任务窗格首次打开时整体上移 ~42px ≈ WPS 功能区（ribbon）高度，直接盖住「开始/插入」功能区**——用户按四诊探针指引实测 3 张截图（首次打开/切标签恢复/关闭重开），像素级对比确认：首次打开时任务窗格白色区从 y=50 开始（正常 y=92，上移 42px），功能区区域（y44-91）全白无任何内容；而底部输入区 y820 三图完全一致（WebView 活着、页面布局正常）。结论：**WPS 宿主首次创建任务窗格时窗口位置计算错误（未扣除功能区高度），不是页面布局/DockPosition 方向问题**；切标签/重开后恢复，是因为宿主在窗口切换时重新计算窗格位置。修复三层：① `createTaskPane` 创建后 + `forceTaskPaneRedraw` 恢复回调中设置 `DockPositionRestrict=1`（`msoCTPDockPositionRestrictNoChange`）锁定停靠方向，防宿主/用户把窗格拖成浮动覆盖功能区，宿主不支持时静默降级（`setTaskPaneDockRestrict`，探针 `void` 读探测）；② `forceTaskPaneRedraw` 恢复回调中强制重新停靠——先切 `DockPosition=0`（Left）再切回 `Right(2)`，主动复现「切标签触发宿主重排」行为，让宿主重新计算窗格窗口位置；③ 探针新增 P4c 记录 `DockPositionRestrict` 锁定读回结果（实机可验证宿主是否接受锁定）。测试 51 → 55（新增 4 个五诊用例：创建后锁定/宿主不支持降级/强制重新停靠 0→2 序列/P4c 探针），全量 8 套件全绿。
 
+    **补 DEV 增量 5（2026-08-06，Issue #78 六诊——Left→Right 同向切换被宿主忽略，改 Floating→Right 强制重停靠）**：⑭ 用户切 `fix/issue-78-taskpane-probe` 分支重装后遮挡**仍存在**（145/16/17 三张新截图）。像素级复检：145.png 功能区 y44-91 正常；16.png/17.png 窗格白色顶边仍从 **y=50** 开始（正常 y=92），功能区右侧被白色覆盖——五诊修复无效的原因：**窗格已处于 Right 停靠，`DockPosition` 0→2 是「同向 docked 切换」，宿主不重新计算窗口位置**（赋值被忽略/合并）。修复：① `forceTaskPaneRedraw` 恢复回调改用 **Floating(4)→Right(2)「脱离停靠→重新停靠」序列**——浮动状态强制宿主销毁停靠窗口、重建浮动窗口，再停靠时重新计算窗格矩形（含顶边 Y），与「切标签触发宿主重排」同源；读回 `DockPosition` 验证，宿主拒绝 Floating 时回退 0→2 序列保底；② `scheduleTaskPaneOpenRedraw` 新增**二次兜底重绘**（`TASKPANE_OPEN_REDRAW_RETRY_DELAY=1500ms`）——首次重绘（400ms+150ms）可能早于宿主完成首次窗口布局，1500ms 时宿主已稳定，补一次重绘提高自愈成功率；两次重绘共享守卫（等待期内用户操作则放弃）与防抖（`taskPaneRedrawPending`）；③ 探针新增 **P4d** 记录 Floating→Right 重停靠读回结果（实机可验证宿主是否接受浮动→停靠控制）。测试 55 → 57（新增 2 个六诊用例：P4d 探针读回/二次兜底重绘守卫放弃），全量 8 套件全绿。
+
 ---
 
 ## 五、部署模式

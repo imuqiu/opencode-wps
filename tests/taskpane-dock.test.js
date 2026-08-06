@@ -530,10 +530,11 @@ test('btnShowTaskPane 首次创建：延迟 400ms 后主动调度宿主重绘（
   // 首次创建：createTaskPane 内置可见 → pane._visible = true（visibleLog[0]）
   assertEqual(pane._visible, true, '首次创建后窗格应可见');
   assertEqual(visibleLog.length, 1, '创建路径应置可见一次');
-  // flush 全部定时器：调度宿主重绘（隐藏 visibleLog[1] → 恢复 visibleLog[2]）
+  // flush 全部定时器：调度宿主重绘（隐藏 → 恢复）× 两次（首次 400ms + 二次兜底 1500ms）
   sandbox.__flushTimeouts();
   assertEqual(pane._visible, true, '宿主重绘完成后应恢复可见');
-  assertEqual(visibleLog.length, 3, '应有 创建置可见+重绘隐藏+重绘恢复 共 3 次置位，实际: ' + JSON.stringify(visibleLog));
+  // 置位序列：创建置可见(1) + 首次重绘 隐藏/恢复(2,3) + 二次兜底重绘 隐藏/恢复(4,5)
+  assertEqual(visibleLog.length, 5, '应有 创建置可见+两次重绘各隐藏/恢复 共 5 次置位，实际: ' + JSON.stringify(visibleLog));
   assertEqual(pane.DockPosition, 2, '重绘时应校正停靠为 Right(2)');
 });
 
@@ -571,10 +572,10 @@ test('btnShowTaskPane 切换打开（已存在窗格）：延迟 400ms 后主动
   assertEqual(pane._visible, true, '切换后窗格应可见');
   assertEqual(pane.DockPosition, 2, '切换时应重新校正停靠为 Right(2)');
   assertEqual(visibleLog.length, 1, '切换打开应置可见一次');
-  // flush：执行调度定时器（隐藏）与恢复定时器（显示）
+  // flush：执行调度定时器（隐藏/恢复 × 2 次重绘：首次 400ms + 二次兜底 1500ms）
   sandbox.__flushTimeouts();
   assertEqual(pane._visible, true, '宿主重绘完成后应恢复可见');
-  assertEqual(visibleLog.length, 3, '应有 切换置可见+重绘隐藏+重绘恢复 共 3 次置位，实际: ' + JSON.stringify(visibleLog));
+  assertEqual(visibleLog.length, 5, '应有 切换置可见+两次重绘各隐藏/恢复 共 5 次置位，实际: ' + JSON.stringify(visibleLog));
 });
 
 test('btnShowTaskPane 切换关闭（窗格变隐藏）：不调度宿主重绘', function () {
@@ -741,8 +742,9 @@ test('scheduleTaskPaneOpenRedraw 等待期内无用户操作：正常清零并�
   var sandbox = loadMainJs(makeOpenPaneApp(pane, { storedId: 'tp-open12' }));
   sandbox.scheduleTaskPaneOpenRedraw();
   // 无用户操作（lastUserTaskPaneAction 保持 0，早于调度起点）：应清零并执行隐藏→显示重绘
+  // 两次：首次 400ms + 二次兜底 1500ms（Issue #78 六诊：宿主未就绪时首次重绘可能无效）
   sandbox.__flushTimeouts();
-  assertEqual(visibleLog.length, 2, '应有 隐藏+恢复 共 2 次置位，实际: ' + JSON.stringify(visibleLog));
+  assertEqual(visibleLog.length, 4, '应有 两次重绘各隐藏+恢复 共 4 次置位，实际: ' + JSON.stringify(visibleLog));
   assertEqual(pane._visible, true, '重绘后应恢复可见');
 });
 
@@ -1232,7 +1234,7 @@ test('五诊：setTaskPaneDockRestrict 宿主不支持时静默降级（不影�
   assertEqual(sandbox.setTaskPaneDockRestrict(undefined), false, 'undefined 应返回 false');
 });
 
-test('五诊：forceTaskPaneRedraw 恢复回调执行强制重新停靠（Left→Right 触发宿主重布局）', function () {
+test('五诊：forceTaskPaneRedraw 恢复回调执行强制重新停靠（Floating→Right 触发宿主重布局）', function () {
   var dockLog = [];
   var pane = {
     ID: 'tp-r3',
@@ -1240,7 +1242,7 @@ test('五诊：forceTaskPaneRedraw 恢复回调执行强制重新停靠（Left�
     DockPositionRestrict: 1,
     Visible: true
   };
-  // 记录 DockPosition 赋值序列：应出现 0（Left）→ 2（Right）的强制重新停靠
+  // 记录 DockPosition 赋值序列：应出现 4（Floating）→ 2（Right）的重新停靠
   Object.defineProperty(pane, 'DockPosition', {
     get: function () { return pane._dp; },
     set: function (v) { pane._dp = v; dockLog.push(v); }
@@ -1249,13 +1251,14 @@ test('五诊：forceTaskPaneRedraw 恢复回调执行强制重新停靠（Left�
   var sandbox = loadMainJs(makeOpenPaneApp(pane, { storedId: 'tp-r3' }));
   sandbox.forceTaskPaneRedraw(true);
   sandbox.__flushTimeouts();
-  // 恢复回调中：先切 Left(0) 再切回 Right(2) → 触发宿主重新计算窗格窗口位置
-  // 序列应为 ...→0→2（强制重新停靠）→2（最终校正）；检查包含 0→2 子序列即可
-  var foundRedock = false;
+  // 恢复回调中：先切 Floating(4) 再切回 Right(2) → 强制宿主脱离停靠→重新停靠，
+  // 重新计算窗格窗口位置（六诊：五诊的 Left→Right 同向切换被宿主忽略，
+  // 浮动→停靠才能强制宿主重新布局）。序列应包含 4→2 子序列。
+  var foundFloatRedock = false;
   for (var di = 1; di < dockLog.length; di++) {
-    if (dockLog[di - 1] === 0 && dockLog[di] === 2) { foundRedock = true; break; }
+    if (dockLog[di - 1] === 4 && dockLog[di] === 2) { foundFloatRedock = true; break; }
   }
-  assertTrue(foundRedock, '应出现 0→2 强制重新停靠序列，实际: ' + dockLog.join(','));
+  assertTrue(foundFloatRedock, '应出现 4→2 浮动→停靠重新停靠序列，实际: ' + dockLog.join(','));
   assertEqual(pane.Visible, true, '恢复回调应置窗格可见');
 });
 
@@ -1269,6 +1272,39 @@ test('五诊：探针 P4c 记录 DockPositionRestrict 锁定读回结果', funct
   sandbox.OnAction({ Id: 'btnShowTaskPane' });
   var probe = sandbox.lastTaskPaneProbe;
   assertTrue(probe.indexOf('[P4c] 锁定停靠 Restrict:') >= 0, 'P4c 应记录锁定读回，实际: ' + probe);
+});
+
+test('六诊：探针 P4d 记录 Floating→Right 重停靠读回结果（宿主接受时 2→4→2）', function () {
+  var pane = { ID: 'tp-r5', DockPosition: 2, DockPositionRestrict: 0, Width: 300, Height: 600 };
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return true; },
+    set: function (v) {}
+  });
+  var sandbox = loadMainJs(makeOpenPaneApp(pane));
+  sandbox.OnAction({ Id: 'btnShowTaskPane' });
+  var probe = sandbox.lastTaskPaneProbe;
+  assertTrue(probe.indexOf('[P4d] Floating→Right 重停靠:') >= 0, 'P4d 应记录重停靠读回，实际: ' + probe);
+  assertTrue(probe.indexOf('2→4→2 (重停靠成功)') >= 0, 'P4d 应记录 2→4→2 重停靠成功，实际: ' + probe);
+  assertEqual(pane.DockPosition, 2, 'P4d 探针后 DockPosition 应复位为 2');
+});
+
+test('六诊：scheduleTaskPaneOpenRedraw 二次兜底重绘——等待期内用户操作则放弃（守卫）', function () {
+  var pane = { ID: 'tp-open13', DockPosition: 0, _visible: true };
+  var visibleLog = [];
+  Object.defineProperty(pane, 'Visible', {
+    get: function () { return pane._visible; },
+    set: function (v) { pane._visible = v; visibleLog.push(v); }
+  });
+  var sandbox = loadMainJs(makeOpenPaneApp(pane, { storedId: 'tp-open13' }));
+  // 注入用户操作时间戳（晚于调度起点）：首次重绘（400ms）与二次兜底重绘（1500ms）
+  // 的守卫均应放弃，不执行任何重绘（Issue #78 六诊：宿主未就绪时首次重绘可能无效，
+  // 二次兜底同样受守卫保护——等待期内用户操作过窗格则放弃，尊重用户意图）
+  var scheduleAt = Date.now();
+  sandbox.scheduleTaskPaneOpenRedraw();
+  sandbox.lastUserTaskPaneAction = scheduleAt + 1;
+  sandbox.__flushTimeouts();
+  assertEqual(visibleLog.length, 0, '两次重绘都应因用户操作放弃，实际: ' + JSON.stringify(visibleLog));
+  assertEqual(sandbox.lastUserTaskPaneAction, scheduleAt + 1, '用户时间戳应保留（不被清零）');
 });
 
 // ==================== 测试结果汇总 ====================

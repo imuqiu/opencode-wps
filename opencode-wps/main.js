@@ -349,6 +349,11 @@ var lastUserTaskPaneAction = 0
 // 用户主动打开（tp.Visible=true）→ 等 400ms 宿主完成首次布局 → 再走 150ms
 // 隐藏→显示重绘，全程约 550ms 完成自愈。
 var TASKPANE_OPEN_REDRAW_DELAY = 400
+// 打开面板后的二次重绘延迟：首次重绘（400ms+150ms）可能早于宿主完成首次窗口布局，
+// 宿主未就绪时 Floating→Right 重新停靠无效；1500ms 时宿主已稳定（用户实测切标签
+// 后即恢复，说明宿主布局就绪后重新停靠能修正窗格位置），补一次重绘提高自愈成功率。
+// 仅影响时序，防抖语义与首次重绘一致（taskPaneRedrawPending 收口），无副作用。
+var TASKPANE_OPEN_REDRAW_RETRY_DELAY = 1500
 // WindowActivate 触发后的重绘延迟：等 WPS 完成窗口切换布局后再重绘（PR #83）
 // 与 TASKPANE_OPEN_REDRAW_DELAY 语义不同、不可混用：
 // - 400ms：等「新窗格首次布局」完成（打开面板路径，首次打开必触发）；
@@ -376,6 +381,21 @@ function scheduleTaskPaneOpenRedraw() {
         }
         lastUserTaskPaneAction = 0
         forceTaskPaneRedraw(true)
+        // 二次兜底：首次重绘（400ms+150ms）可能早于宿主完成首次窗口布局，导致
+        // Floating→Right 重新停靠发生在宿主尚未就绪的窗口上（六诊：五诊的 400ms
+        // 调度 + Left→Right 序列已跑过但问题仍复现，不能排除时序过早因素）。
+        // 延迟 1500ms 再补一次重绘——此时宿主已完成首次布局（用户实测切标签后
+        // 头部即恢复，说明宿主布局就绪后的重新停靠能修正窗格位置）。
+        // 守卫：等待期内用户又操作过窗格则放弃（与上方同源）；防抖由
+        // forceTaskPaneRedraw 内部 taskPaneRedrawPending 统一收口，无副作用。
+        setTimeout(function() {
+            if (lastUserTaskPaneAction > scheduleAt) {
+                console.log('[WPS] 打开面板二次自愈重绘已放弃（等待期内用户操作过窗格）')
+                return
+            }
+            lastUserTaskPaneAction = 0
+            forceTaskPaneRedraw(true)
+        }, TASKPANE_OPEN_REDRAW_RETRY_DELAY)
     }, TASKPANE_OPEN_REDRAW_DELAY)
 }
 function forceTaskPaneRedraw(force) {
@@ -436,16 +456,36 @@ function forceTaskPaneRedraw(force) {
                 if (!cur) return          // 窗格已销毁：放弃恢复
                 if (cur.Visible) return   // 已被外部恢复（用户重新打开等）：不重复置位
                 // 恢复可见前再次校正停靠 + 锁定（隐藏→显示过程中宿主可能重新布局窗格，
-                // 补一次确保窗格复位右侧、不覆盖功能区 —— Issue #78 五诊：像素级证据显示
-                // 首次打开时窗格上移 42px 盖住功能区，仅靠创建时校正会被宿主忽略）
-                // 强制重新停靠：先切 Left(0) 再切回 Right(2)，触发宿主重新计算任务窗格
-                // 窗口位置（切标签后头部恢复说明宿主在窗口切换时会重新布局，这里主动复现
-                // 该行为——同步连续赋值即使被宿主合并，最终值仍为 Right，零风险尝试）
+                // 补一次确保窗格复位右侧、不覆盖功能区 —— Issue #78 六诊：像素级证据显示
+                // 首次打开时窗格顶边整体上移 42px（≈功能区高度）盖住功能区右侧，且
+                // 五诊的 Left(0)→Right(2) 同向停靠切换被宿主忽略（问题仍复现）——因为
+                // 窗格已处于 Right 停靠，Left→Right 只是同向微调，宿主不重新计算窗口位置。
+                // 改用 Floating(4)→Right(2)「脱离停靠→重新停靠」序列：浮动状态会让宿主
+                // 销毁停靠窗口、重新创建浮动窗口，再停靠时强制重新计算窗格矩形（含顶边 Y），
+                // 与「切标签触发宿主重排」同源（用户实测切标签后头部即恢复）。
+                // 若宿主拒绝 Floating（读回仍为原值）则回退 Left→Right 序列保底尝试。
+                // 枚举：msoCTPDockPositionFloating=4（wps-jsapi KsoMsoCTPDockPosition）
+                var TASKPANE_DOCK_FLOATING = 4
                 try {
-                    cur.DockPosition = 0
+                    var dpBefore = cur.DockPosition
+                    cur.DockPosition = TASKPANE_DOCK_FLOATING
+                    var dpFloat = cur.DockPosition
                     cur.DockPosition = TASKPANE_DOCK_POSITION
+                    var dpAfter = cur.DockPosition
+                    console.log('[WPS] 强制重新停靠（Floating→Right）: ' + dpBefore + '→' + dpFloat + '→' + dpAfter)
+                    if (dpAfter !== TASKPANE_DOCK_POSITION) {
+                        // 宿主忽略 Floating/Right：回退 Left→Right 序列（零风险保底）
+                        cur.DockPosition = 0
+                        cur.DockPosition = TASKPANE_DOCK_POSITION
+                    }
                 } catch (e2) {
-                    console.error('[WPS] 强制重新停靠失败: ' + errMsg(e2))
+                    // 宿主不支持 DockPosition 写浮动/抛异常：回退 Left→Right 序列
+                    try {
+                        cur.DockPosition = 0
+                        cur.DockPosition = TASKPANE_DOCK_POSITION
+                    } catch (e3) {
+                        console.error('[WPS] 强制重新停靠失败: ' + errMsg(e3))
+                    }
                 }
                 setTaskPaneDockPosition(cur)
                 setTaskPaneDockRestrict(cur)
@@ -652,6 +692,16 @@ function probeTaskPane(tp) {
             var restAfter = tp.DockPositionRestrict
             lines.push('[P4c] 锁定停靠 Restrict: ' + restPrev + '→' + restAfter + (restAfter === 1 ? ' (宿主接受锁定)' : ' (宿主忽略!)'))
         } catch (e) { lines.push('[P4c] 锁定停靠 Restrict 失败: ' + errMsg(e)) }
+        // P4d: 尝试 Floating(4)→Right(2) 脱离停靠→重新停靠并读回验证（Issue #78 六诊：
+        // 五诊的 Left→Right 同向切换被宿主忽略，浮动→停靠才能强制宿主重新计算窗格位置）
+        try {
+            var dockPrev = tp.DockPosition
+            tp.DockPosition = 4 // Floating
+            var dockFloat = tp.DockPosition
+            tp.DockPosition = 2 // Right
+            var dockFinal = tp.DockPosition
+            lines.push('[P4d] Floating→Right 重停靠: ' + dockPrev + '→' + dockFloat + '→' + dockFinal + (dockFinal === 2 ? ' (重停靠成功)' : ' (宿主拒绝!)'))
+        } catch (e) { lines.push('[P4d] Floating→Right 重停靠失败: ' + errMsg(e)) }
         // P5: 残留 id 检测（id 有值但 GetTaskPane 找不到 → 旧实例残留，将走重建路径）
         var exists = true
         if (tsId) {
