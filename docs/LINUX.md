@@ -35,7 +35,7 @@ OpenCode MCP 客户端
 
 - Linux 发行版（Debian/Ubuntu/Arch 等），x86_64 或 aarch64
 - WPS Office Linux 版（https://linux.wps.cn，当前 12.1.x，deb/rpm）
-- Node.js >= 18
+- Node.js >= 18（或 Bun 1.0+）
 - OpenCode CLI（`opencode` 在 PATH 中）
 - Python 3（`wps-auto.sh` 生成空白 OOXML 文件用；缺失时回退无参启动 WPS）
 

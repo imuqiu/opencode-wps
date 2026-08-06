@@ -38,7 +38,7 @@ OpenCode MCP 客户端
 - WPS Office for Mac 最新版
 - Node.js >= 18（或 Bun 1.0+）
 - OpenCode CLI（`opencode` 在 PATH 中）
-- Python 3（`wps-auto.sh` 生成空白 OOXML 文件用；缺失时回退 `open -a "WPS Office"` 无参启动）
+- Python 3（`wps-auto.sh` 生成空白 OOXML 文件用；缺失时回退 `open -a "WPS Office"` 无参启动；Windows 不需要）
 
 ## 安装步骤
 
@@ -49,9 +49,8 @@ OpenCode MCP 客户端
 git clone https://github.com/lnxsun/opencode-wps.git
 cd opencode-wps
 
-# 2. 安装项目依赖并编译 MCP（install-addons-mac.js 依赖 fs-extra；MCP 必须先编译）
+# 2. 安装项目依赖（install-addons-mac.js 依赖根目录 node_modules 的 fs-extra；MCP 由脚本第 2 步自动编译）
 npm install
-cd wps-office-mcp && npm install && npm run build && cd ..
 
 # 3. 运行 Mac 安装脚本（等价于 Windows 的 install-addons.js / Linux 的 install-addons-linux.js）
 node install-addons-mac.js

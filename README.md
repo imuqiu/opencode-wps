@@ -28,7 +28,7 @@
 - **WPS Office**：Windows 个人版 12.1.0+ 或企业版 / Mac 最新版 / Linux 12.1.x（[linux.wps.cn](https://linux.wps.cn)）
 - **Node.js**：18.0.0+（或 Bun 1.0+）
 - **OpenCode**：`npm install -g opencode-ai`
-- **Python 3**：仅 Linux 需要（`wps-auto.sh` 生成空白 OOXML 用，缺失时回退无参启动）
+- **Python 3**：Mac/Linux 需要（`wps-auto.sh` 生成空白 OOXML 用，缺失时回退无参启动）；Windows 不需要
 
 ### 一键安装
 
