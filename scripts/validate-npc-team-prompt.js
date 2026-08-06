@@ -430,9 +430,42 @@ if (!fs.existsSync(SKILL_FILE)) {
           'NPC_TEAM Skill 正文与 docs/NPC_TEAM.md 提示词不一致（改提示词须同步改 skill，或反之）。' +
             '请运行 scripts/sync-npc-team-skill.js 自动同步，或手动保持一致'
         );
+      } else {
+        // 第 10 轮评审 W2：normalize 去空白比较会忽略「行首缩进」等纯格式差异，
+        // 导致第 5 轮 I1 类修复（docs 缩进统一、SKILL 未重新生成）静默失同步。
+        // 增加格式级比较：按行比较「行首缩进 + 行内内容（去行尾空白）」，缩进差异直接拦截。
+        const fmtDiff = formatDiff(skillPrompt, docPrompt);
+        if (fmtDiff.length > 0) {
+          errors.push(
+            'NPC_TEAM Skill 正文与 docs/NPC_TEAM.md 提示词存在格式级差异（行首缩进不一致）：' +
+              fmtDiff.slice(0, 3).join('； ') +
+              '。请运行 scripts/sync-npc-team-skill.js 自动同步'
+          );
+        }
       }
     }
   }
+}
+
+// 第 10 轮评审 W2：格式级 diff（行首缩进 + 行尾空白剥离后的行内容比较）。
+// normalize() 只比较「去所有空白后的内容」，两行 `  - 未清零：` 与 `- 未清零：` 归一化后相同 → 假通过；
+// 本函数逐行比较「行首缩进 + 去行尾空白的行内容」，缩进不同即视为漂移。
+// 返回差异描述数组（最多 3 条）。
+function formatDiff(a, b) {
+  const linesA = a.split('\n');
+  const linesB = b.split('\n');
+  const diffs = [];
+  const maxLen = Math.max(linesA.length, linesB.length);
+  for (let i = 0; i < maxLen; i++) {
+    const la = i < linesA.length ? linesA[i] : null;
+    const lb = i < linesB.length ? linesB[i] : null;
+    const norm = s => (s === null ? '' : s.replace(/\s+$/g, '')); // 去行尾空白，保留行首缩进
+    if (norm(la) !== norm(lb)) {
+      diffs.push(`L${i + 1} docs=「${la === null ? '<缺行>' : la.trim().slice(0, 30)}」 skill=「${lb === null ? '<缺行>' : lb.trim().slice(0, 30)}」`);
+      if (diffs.length >= 3) break;
+    }
+  }
+  return diffs;
 }
 
 // ---- 输出 ----

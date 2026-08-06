@@ -12,6 +12,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 
 const FILE = path.join(__dirname, '..', 'docs', 'NPC_TEAM.md');
 const SCRIPT = path.join(__dirname, '..', 'scripts', 'validate-npc-team-prompt.js');
@@ -685,6 +686,53 @@ test('正向：同步脚本 --check 对一致的双源返回 0', function () {
     }
   );
   assertEqual(r.status, 0, '--check 一致应 exit 0');
+});
+
+test('负向：SKILL 缩进漂移应被 validate formatDiff 拦截（exit 1）', function () {
+  // 第 10 轮评审 W2 新增：normalize 去空白比较忽略行首缩进，缩进漂移须由 formatDiff 拦截。
+  const code = withSkillFile(
+    fs
+      .readFileSync(SKILL_FILE, 'utf8')
+      .replace('\n- 未清零：\n@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮评审', '\n  - 未清零：\n@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮评审'),
+    () => {
+      const { spawnSync } = require('child_process');
+      return spawnSync('node', [SCRIPT], { encoding: 'utf8' }).status;
+    }
+  );
+  assertEqual(code, 1, 'SKILL 缩进漂移应拦截（exit 1）');
+});
+
+test('负向：sync --check 对 SKILL 缩进漂移应拦截（exit 1）', function () {
+  // 第 10 轮评审 W2 新增：sync --check 须与 validate 口径一致，缩进漂移也拦截。
+  const code = withSkillFile(
+    fs
+      .readFileSync(SKILL_FILE, 'utf8')
+      .replace('\n- 未清零：\n@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮评审', '\n  - 未清零：\n@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮评审'),
+    () => {
+      const { spawnSync } = require('child_process');
+      return spawnSync('node', [path.join(__dirname, '..', 'scripts', 'sync-npc-team-skill.js'), '--check'], {
+        encoding: 'utf8',
+      }).status;
+    }
+  );
+  assertEqual(code, 1, 'sync --check 缩进漂移应拦截（exit 1）');
+});
+
+test('正向：sync 非 check 模式自动修正 SKILL 缩进漂移', function () {
+  // 第 10 轮评审 W2 新增：非 check 模式须感知缩进差异并重写修正（此前 normalize 假通过不重写）。
+  const drifted = fs
+    .readFileSync(SKILL_FILE, 'utf8')
+    .replace('\n- 未清零：\n@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮评审', '\n  - 未清零：\n@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮评审');
+  const code = withSkillFile(drifted, () => {
+    const { spawnSync } = require('child_process');
+    return spawnSync('node', [path.join(__dirname, '..', 'scripts', 'sync-npc-team-skill.js')], {
+      encoding: 'utf8',
+    }).status;
+  });
+  assertEqual(code, 0, 'sync 自动修正应 exit 0');
+  // 修正后 SKILL 应与 docs 无格式差异（formatDiff 通过）
+  const r = spawnSync('node', [SCRIPT], { encoding: 'utf8' });
+  assertEqual(r.status, 0, '修正后 validate 应 exit 0');
 });
 
 // ---- 汇总 ----
