@@ -172,4 +172,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## 历史版本
 
-请查看 [Releases](https://github.com/lnxsun/opencode-wps/releases) 查看所有版本。
+请查看 [Releases](https://github.com/lnxsun/opencode-wps/releases)（国内镜像：https://cnb.cool/lnxsun/opencode-wps/-/releases）查看所有版本。

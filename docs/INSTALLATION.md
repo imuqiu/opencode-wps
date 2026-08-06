@@ -23,6 +23,8 @@ node install-addons-linux.js    # Linux
 ### 1. 克隆项目
 
 ```bash
+# 国内（CNB 镜像）：git clone https://cnb.cool/lnxsun/opencode-wps.git
+# 国外（GitHub）：git clone https://github.com/lnxsun/opencode-wps.git
 git clone https://github.com/lnxsun/opencode-wps.git
 cd opencode-wps
 ```
@@ -63,6 +65,8 @@ node install-addons.js
 ### 1. 克隆项目
 
 ```bash
+# 国内（CNB 镜像）：git clone https://cnb.cool/lnxsun/opencode-wps.git
+# 国外（GitHub）：git clone https://github.com/lnxsun/opencode-wps.git
 git clone https://github.com/lnxsun/opencode-wps.git
 cd opencode-wps
 ```
@@ -111,7 +115,9 @@ node launcher-mac.js
 > Linux 版与 macOS 版同架构（反向轮询桥），插件独立目录 `opencode-wps-linux/`。状态：✅ 开发完成；⚠️ 尚未在真实 Linux + WPS 环境实测（需要实机验证）。
 
 ```bash
-# 1. 克隆仓库（CNB 镜像：https://cnb.cool/lnxsun/opencode-wps.git）
+# 1. 克隆仓库（二选一：
+#    国内 CNB 镜像：git clone https://cnb.cool/lnxsun/opencode-wps.git
+#    国外 GitHub：  git clone https://github.com/lnxsun/opencode-wps.git）
 git clone https://github.com/lnxsun/opencode-wps.git
 cd opencode-wps
 

@@ -32,6 +32,8 @@
 ### 一键安装
 
 ```bash
+# 国内（CNB 镜像）：git clone https://cnb.cool/lnxsun/opencode-wps.git
+# 国外（GitHub）：git clone https://github.com/lnxsun/opencode-wps.git
 git clone https://github.com/lnxsun/opencode-wps.git
 cd opencode-wps
 npm install

@@ -70,7 +70,8 @@
 
 ## 快速链接
 
-- **项目主页**: https://github.com/lnxsun/opencode-wps
+- **项目主页（国外/GitHub）**: https://github.com/lnxsun/opencode-wps
+- **项目主页（国内/CNB 镜像）**: https://cnb.cool/lnxsun/opencode-wps
 - **OpenCode 配置**: `~/.config/opencode/opencode.json`
 - **Launcher**: http://127.0.0.1:14097
 - **OpenCode 服务**: http://127.0.0.1:14096

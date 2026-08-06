@@ -42,7 +42,9 @@ OpenCode MCP 客户端
 ## 安装步骤
 
 ```bash
-# 1. 克隆仓库（CNB 镜像：https://cnb.cool/lnxsun/opencode-wps.git）
+# 1. 克隆仓库（二选一：
+#    国内 CNB 镜像：git clone https://cnb.cool/lnxsun/opencode-wps.git
+#    国外 GitHub：  git clone https://github.com/lnxsun/opencode-wps.git）
 git clone https://github.com/lnxsun/opencode-wps.git
 cd opencode-wps
 
