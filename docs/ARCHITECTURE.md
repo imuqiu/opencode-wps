@@ -162,7 +162,7 @@ MCP 服务器采用三层工具体系，AI 通过不同的方式发现和调用�
 
 ┌─────────────────────────────────────┬────────────────────────────────────┐
 │  ⑪ Launcher 服务管理（:14097）— 旁路进程，不参与调用链                   │
-│  管理 opencode serve 生命周期：/status /start /stop（按端口精确停止）    │
+│  管理 opencode serve：/status /start /stop /health /dock（按端口精确停止）│
 │  Win: schtasks / Mac: LaunchAgent / Linux: XDG autostart                 │
 └─────────────────────────────────────┬────────────────────────────────────┘
 ```

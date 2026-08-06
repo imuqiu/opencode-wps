@@ -59,8 +59,10 @@ OpenCode 服务通过 Launcher 进程管理（监听 `127.0.0.1:14097`），无�
 ```bash
 # 通过 Launcher API 管理服务（跨平台）
 # 查看状态：GET http://127.0.0.1:14097/status
+# 健康检查：GET http://127.0.0.1:14097/health
 # 启动服务：POST http://127.0.0.1:14097/start (body: {"cwd": "目录"})
 # 停止服务：POST http://127.0.0.1:14097/stop  ← 按端口 14096 精确停止
+# 打开浏览器：POST http://127.0.0.1:14097/dock（「打开Web」按钮经此端点实现）
 ```
 
 | 平台 | Launcher | 自启机制 |
