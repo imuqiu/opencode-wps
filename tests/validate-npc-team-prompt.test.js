@@ -610,29 +610,48 @@ test('正向：合并确认（⏸CP3）要素完整（exit 0）', function () {
 });
 
 test('负向：删铁律 13「合并 PR 前必须暂停」应拦截（exit 1）', function () {
-  const code = runValidate(p =>
+  // CR 第 1 轮修复：断言命中「合并确认缺少完整句式」而非双源一致性假阳性
+  const { code, output } = runValidateCapture(p =>
     p.replace('**合并 PR 前必须暂停**输出【合并确认卡】', '直接合并 PR')
   );
   assertEqual(code, 1, '删合并前暂停应拦截（exit 1）');
+  assertTrue(
+    /合并确认缺少完整句式「合并 PR 前必须暂停」/.test(output),
+    '应命中合并确认校验（而非双源一致性假阳性），实际输出：' + output
+  );
 });
 
 test('负向：删「禁止未经确认自行合并 PR」应拦截（exit 1）', function () {
-  const code = runValidate(p => p.replace('禁止代替用户确认、禁止未经确认自行合并 PR。', ''));
+  const { code, output } = runValidateCapture(p =>
+    p.replace('禁止代替用户确认、禁止未经确认自行合并 PR。', '')
+  );
   assertEqual(code, 1, '删禁止未确认合并应拦截（exit 1）');
+  assertTrue(
+    /合并确认缺少完整句式「禁止代替用户确认、禁止未经确认自行合并 PR」/.test(output),
+    '应命中合并确认校验（而非双源一致性假阳性），实际输出：' + output
+  );
 });
 
 test('负向：删【合并确认卡】段应拦截（exit 1）', function () {
-  const code = runValidate(p =>
+  const { code, output } = runValidateCapture(p =>
     p.replace('【合并确认卡（⏸CP3，5/11 评审清零 + 6/11 测试通过后、8/11 合并 PR 前输出）】\n', '')
   );
   assertEqual(code, 1, '删合并确认卡段应拦截（exit 1）');
+  assertTrue(
+    /合并确认缺少完整句式「【合并确认卡/.test(output),
+    '应命中合并确认校验（而非双源一致性假阳性），实际输出：' + output
+  );
 });
 
 test('负向：删「继续合并」命令词应拦截（exit 1）', function () {
-  const code = runValidate(p =>
+  const { code, output } = runValidateCapture(p =>
     p.replace('「继续合并」→ 确认可合并，执行 8/11 合并 PR', '「继续」→ 执行合并')
   );
   assertEqual(code, 1, '删继续合并命令应拦截（exit 1）');
+  assertTrue(
+    /合并确认缺少完整句式「「继续合并」→ 确认可合并，执行 8\/11 合并 PR」/.test(output),
+    '应命中合并确认校验（而非双源一致性假阳性），实际输出：' + output
+  );
 });
 
 test('正向：发布三要素完整（exit 0）', function () {
@@ -641,31 +660,47 @@ test('正向：发布三要素完整（exit 0）', function () {
 });
 
 test('负向：删铁律 14「更新版本号」应拦截（exit 1）', function () {
-  const code = runValidate(p =>
+  const { code, output } = runValidateCapture(p =>
     p.replace('① 更新版本号（按 semver 语义递增，patch/minor/major 视变更定）', '')
   );
   assertEqual(code, 1, '删更新版本号应拦截（exit 1）');
+  assertTrue(
+    /发布三要素缺少完整句式「① 更新版本号」/.test(output),
+    '应命中发布三要素校验（而非双源一致性假阳性），实际输出：' + output
+  );
 });
 
 test('负向：删「形成/更新 CHANGELOG」应拦截（exit 1）', function () {
-  const code = runValidate(p =>
+  const { code, output } = runValidateCapture(p =>
     p.replace('② 形成/更新 CHANGELOG（记录本次变更，Keep a Changelog 格式）', '')
   );
   assertEqual(code, 1, '删CHANGELOG要素应拦截（exit 1）');
+  assertTrue(
+    /发布三要素缺少完整句式「② 形成\/更新 CHANGELOG」/.test(output),
+    '应命中发布三要素校验（而非双源一致性假阳性），实际输出：' + output
+  );
 });
 
 test('负向：删「发布产物」应拦截（exit 1）', function () {
-  const code = runValidate(p =>
+  const { code, output } = runValidateCapture(p =>
     p.replace('③ 发布产物（打 tag / 推送 release / 发布制品，按仓库实际发布机制执行）', '')
   );
   assertEqual(code, 1, '删发布产物应拦截（exit 1）');
+  assertTrue(
+    /发布三要素缺少完整句式「③ 发布产物」/.test(output),
+    '应命中发布三要素校验（而非双源一致性假阳性），实际输出：' + output
+  );
 });
 
 test('负向：删「禁止假装发布」应拦截（exit 1）', function () {
-  const code = runValidate(p =>
+  const { code, output } = runValidateCapture(p =>
     p.replace('；**禁止假装发布**（不更新版本号、不写 changelog、不产出发布产物却宣称已发布）', '')
   );
   assertEqual(code, 1, '删禁止假装发布应拦截（exit 1）');
+  assertTrue(
+    /发布三要素缺少完整句式「禁止假装发布」/.test(output),
+    '应命中发布三要素校验（而非双源一致性假阳性），实际输出：' + output
+  );
 });
 
 // ---- Issue #76：NPC_TEAM Skill 一键调用方案回归用例 ----
