@@ -4,6 +4,8 @@ OpenCode WPS 的 Linux 版支持，为 Linux 桌面环境下的 WPS Office 提�
 
 > 状态：✅ 开发完成（代码/脚本/测试就绪）；⚠️ 尚未在真实 Linux + WPS 环境实测（需要实机验证）。
 
+> 📖 完整三平台安装指南（含 Linux 环境要求/路径速查/卸载）见 [INSTALLATION.md](./INSTALLATION.md)。
+
 ## 架构总览
 
 Linux 版与 macOS 版同架构（反向轮询桥），因为 Linux 版 WPS 加载项同样运行在沙箱内，无法启动 HTTP 服务端：
@@ -40,11 +42,16 @@ OpenCode MCP 客户端
 ## 安装步骤
 
 ```bash
-# 1. 克隆仓库
-git clone https://cnb.cool/lnxsun/opencode-wps.git
+# 1. 克隆仓库（二选一：
+#    国内 CNB 镜像：git clone https://cnb.cool/lnxsun/opencode-wps.git
+#    国外 GitHub：  git clone https://github.com/lnxsun/opencode-wps.git）
+git clone https://github.com/lnxsun/opencode-wps.git
 cd opencode-wps
 
-# 2. 运行 Linux 安装脚本（等价于 Windows 的 install-addons.js / Mac 的 install-addons-mac.js）
+# 2. 安装项目依赖（install-addons-linux.js 依赖根目录 node_modules 的 fs-extra）
+npm install
+
+# 3. 运行 Linux 安装脚本（等价于 Windows 的 install-addons.js / Mac 的 install-addons-mac.js）
 node install-addons-linux.js
 ```
 
