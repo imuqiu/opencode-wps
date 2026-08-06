@@ -181,6 +181,24 @@ if (!m) {
   // 因此提示词默认改为「接力模式」：每次召唤只执行一个步骤，输出【接力卡】后停下，用户逐步召唤下一棒。
   // 全程模式（一次跑完全部步骤）仅在用户明确要求时可用。
   // 本节强校验：若「每步独立调用/接力」核心要素被删，CI 拦截（防回退为"一次跑完"旧行为）。
+  // 通用段化工具：截取 startFrag 到 endFrag（或文件尾）之间的文本。
+  // 第 7 轮评审 W1：区间不可达（endFrag ≤ startFrag / 锚点缺失）时显式报错并返回 null，
+  // 禁止静默返回空串跳过段化校验（防锚点被删后段化校验静默失效）。
+  const sliceSection = (startFrag, endFrag) => {
+    const s = prompt.indexOf(startFrag);
+    if (s === -1) {
+      errors.push(`段化校验锚点缺失：「${startFrag}」不存在（段化校验无法定位，疑似该段被删）`);
+      return null;
+    }
+    const e = endFrag ? prompt.indexOf(endFrag, s) : prompt.length;
+    if (e === -1 || e <= s) {
+      errors.push(
+        `段化校验区间不可达：「${endFrag}」未出现在「${startFrag}」之后（疑似段落顺序错乱或锚点被删）`
+      );
+      return null;
+    }
+    return prompt.slice(s, e);
+  };
   const RELAY_CORE = [
     '【运行模式（每次调用必须先自检）】',
     '接力模式（默认、推荐）',
@@ -213,14 +231,14 @@ if (!m) {
   // 实测【接力卡】段话术示例被删（评审/修复接力卡段保留）时全局 indexOf 仍命中，校验放行（exit 0）。
   // （第 1 轮评审 C1：校验盲区）同时要求「下一步召唤话术」标签与示例句都在段内（C2：原用例删的是标签行，
   // 仅校验示例句会漏）。
-  const relayCardStart = prompt.indexOf('【接力卡（接力模式每步结束时必须输出）】');
-  const relayReviewStart = prompt.indexOf('【评审接力卡（5/10 评审每轮评审结束时输出）】');
-  const relayCardSection =
-    relayCardStart !== -1 && relayReviewStart !== -1 && relayReviewStart > relayCardStart
-      ? prompt.slice(relayCardStart, relayReviewStart)
-      : '';
+  // 第 7 轮评审 W1/W2：统一改用 sliceSection 工具（区间不可达时显式报错，不再静默跳过），
+  // 并消除【接力卡】段与 10b 段两套段截取实现重复。
+  const relayCardSection = sliceSection(
+    '【接力卡（接力模式每步结束时必须输出）】',
+    '【评审接力卡（5/10 评审每轮评审结束时输出）】'
+  );
   if (
-    relayCardSection &&
+    relayCardSection !== null &&
     (!relayCardSection.includes('- 下一步召唤话术（用户原样复制即可）：') ||
       !/@CodeBuddy 接力 NPC_TEAM skill，执行下一步 N\+1\/10 <阶段名>：/.test(relayCardSection))
   )
@@ -268,21 +286,14 @@ if (!m) {
   // 评审接力卡/修复接力卡/复评接力卡必须含「下一步召唤话术」标签与示例句（用户原样复制即可触发下一棒独立执行）
   // 第 6 轮评审 W1：仿照 10 节【接力卡】段化做法，将三段卡的标签与示例句校验限定在各自段区间内，
   // 消除跨段假阳性与漏检（此前全局 indexOf 校验，双源同步删掉三段卡标签行后校验仍 exit 0）。
-  // 通用段化工具：截取 startFrag 到 endFrag（或文件尾）之间的文本；区间不成立时返回 ''（由下方判空报错）。
-  const sliceSection = (startFrag, endFrag) => {
-    const s = prompt.indexOf(startFrag);
-    if (s === -1) return '';
-    const e = endFrag ? prompt.indexOf(endFrag, s) : prompt.length;
-    if (e === -1 || e <= s) return '';
-    return prompt.slice(s, e);
-  };
+  // 第 7 轮评审 W2：统一使用 10 节上移的 sliceSection（区间不可达时已显式报错并返回 null）。
   // 【评审接力卡】段：起点到【修复接力卡】段标题
   const reviewCardSection = sliceSection(
     '【评审接力卡（5/10 评审每轮评审结束时输出）】',
     '【修复接力卡（5/10 评审每轮修复结束时输出）】'
   );
   if (
-    reviewCardSection &&
+    reviewCardSection !== null &&
     (!reviewCardSection.includes('- 下一步召唤话术（用户原样复制即可）：') ||
       !/@CodeBuddy 接力 NPC_TEAM skill，执行第 R\+1\/10 轮评审修复（修复本轮评审问题）：/.test(
         reviewCardSection
@@ -297,7 +308,7 @@ if (!m) {
     '【复评接力卡（5/10 评审每轮复评结束时输出）】'
   );
   if (
-    fixCardSection &&
+    fixCardSection !== null &&
     (!fixCardSection.includes('- 下一步召唤话术（用户原样复制即可）：') ||
       !/@CodeBuddy 接力 NPC_TEAM skill，执行第 R\+1\/10 轮复评（评审上轮修复）：/.test(
         fixCardSection
@@ -312,7 +323,7 @@ if (!m) {
     '【暂停确认】'
   );
   if (
-    reReviewCardSection &&
+    reReviewCardSection !== null &&
     (!reReviewCardSection.includes('- 下一步召唤话术（用户原样复制即可）：') ||
       !/@CodeBuddy 接力 NPC_TEAM skill，执行第 R\+1\/10 轮评审（复评仍有问题，继续 review-修复循环）：/.test(
         reReviewCardSection

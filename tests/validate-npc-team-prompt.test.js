@@ -400,6 +400,21 @@ test('负向：删复评卡「已清零」示例句应拦截（exit 1）', funct
   );
 });
 
+test('负向：删【暂停确认】锚点应报「段化校验区间不可达」（exit 1）', function () {
+  // 第 7 轮评审 W1 新增：sliceSection 区间不可达（锚点被删）时须显式报错，而非静默跳过段化校验。
+  const { code, output } = runValidateCapture(p =>
+    p.replace(
+      '【暂停确认】到 ⏸CP1/⏸CP2 时输出暂停卡并停下',
+      '【暂停点】到 ⏸CP1/⏸CP2 时输出暂停卡并停下'
+    )
+  );
+  assertEqual(code, 1, '删暂停确认锚点应拦截（exit 1）');
+  assertTrue(
+    /段化校验区间不可达：.*【暂停确认】/.test(output),
+    '应命中段化校验区间不可达错误，实际输出：' + output
+  );
+});
+
 test('负向：双源同步删三段接力卡话术标签应拦截（exit 1）', function () {
   // 第 6 轮评审 W1 新增：模拟用户改 docs 提示词（删三段卡标签行）未同步 skill，
   // 段化校验应拦截（此前全局 indexOf 校验漏检 exit 0）。
