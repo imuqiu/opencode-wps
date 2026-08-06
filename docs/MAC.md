@@ -2,7 +2,7 @@
 
 OpenCode WPS 的 macOS 版支持，为 macOS 桌面环境下的 WPS Office for Mac 提供 OpenCode AI 能力。Mac 版与 Linux 版同架构（反向轮询桥），因为 Mac 版 WPS 加载项运行在沙箱内，无法启动 HTTP 服务端。
 
-> 状态：✅ 完整支持（经 Issue #84/#86 Mac 侧彻底评审与修复，见 [HISTORY.md](./HISTORY.md) 与 CHANGELOG）。
+> 状态：✅ 完整支持（经 Issue #84/#86 Mac 侧彻底评审与修复，见 [CHANGELOG.md](../CHANGELOG.md)）。
 
 > 📖 完整三平台安装指南（含 macOS 环境要求/路径速查/卸载）见 [INSTALLATION.md](./INSTALLATION.md)。
 

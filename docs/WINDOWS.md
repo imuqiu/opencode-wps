@@ -28,7 +28,7 @@ wps-com.ps1 → WPS COM API（wps/et/wpp）
 
 | 组件 | 路径 | 说明 |
 |------|------|------|
-| Windows 插件（主目录） | `opencode-wps/` | 唯一带完整 Chat UI 的加载项：main.js / taskpane.html / ribbon.xml / manifest.xml / config.js / launcher.js / opencode-proxy.js / serve.js |
+| Windows 插件（主目录） | `opencode-wps/` | 唯一带完整 Chat UI 的加载项：main.js / taskpane.html / ribbon.xml / manifest.xml / config.js / launcher.js / opencode-proxy.js（serve.js 为开发用静态服务器 :3444，仅调试） |
 | Windows Launcher | `opencode-wps/launcher.js` | 端口 14097，netstat/findstr 查端口 + Get-CimInstance/wmic 验证进程（Win11 兼容），管理 opencode serve 生命周期 |
 | Windows 安装脚本 | `install-addons.js` | 8 步一键安装（插件 + MCP + 配置 + skills/agents/plugins + 计划任务自启），等价 Linux 的 `install-addons-linux.js` |
 | COM 桥接脚本 | `wps-office-mcp/scripts/wps-com.ps1` | PowerShell COM 桥（仅 Windows 使用），另有 extract-methods.ps1 / check-methods.cjs 用于动作提取与校验 |

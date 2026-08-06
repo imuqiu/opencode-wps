@@ -118,6 +118,8 @@ node launcher-mac.js
 
 > Linux 版与 macOS 版同架构（反向轮询桥），插件独立目录 `opencode-wps-linux/`。状态：✅ 开发完成；⚠️ 尚未在真实 Linux + WPS 环境实测（需要实机验证）。
 
+> 📖 Linux 完整说明（架构/组件清单/应用切换/已知限制/常见问题）见 [LINUX.md](./LINUX.md)。
+
 ### 1. 克隆仓库
 
 ```bash
