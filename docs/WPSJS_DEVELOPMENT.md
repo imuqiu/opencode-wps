@@ -193,7 +193,6 @@ function setTaskPaneDockPosition(tskpane) {
 12. **`CreateTaskPane` 返回 null 也要判空**：`createTaskPane()` 已对 `CreateTaskPane` **抛异常**做了 try/catch，但个别版本可能**返回 `null`**（而非抛异常）——若直接访问 `tskpane.ID` 会抛误导性的 TypeError，外层 catch 虽能兜住，但「初始化任务窗格失败」文案会把排查方向带偏到创建/存 ID/校正/置位全流程。统一做法：拿到返回值后立即判空，`null` 时 `console.error('[WPS] 创建任务窗格失败: CreateTaskPane 返回空对象')` 明确留痕并 `return null`（已实现，`tests/taskpane-dock.test.js` 的「CreateTaskPane 返回 null 立即判空」用例覆盖）。
 13. **停靠校正失败不阻断创建流程**：`setTaskPaneDockPosition()` 返回 `boolean`（失败时内部已留痕），但停靠校正失败**不代表窗格不可用**——窗格已创建、ID 已兜底，此时应继续置可见并返回窗格对象，让下次点击经 `GetTaskPane` 找回后重新校正（自愈机会）；若在失败时中断或返回 `null`，会误判「创建失败」。统一做法：`createTaskPane()` 检查返回值，失败时补充 `console.error('[WPS] 任务窗格停靠校正失败（窗格仍可用，下次点击将重新校正）')` 留痕后继续（已实现，`tests/taskpane-dock.test.js` 的「停靠校正失败仍返回窗格对象」用例覆盖）。
 14. **`GetTaskPane` 找回路径的停靠校正也要检查返回值**：`btnShowTaskPane` 的「GetTaskPane 找回」分支每次打开也会调用 `setTaskPaneDockPosition(tp)` 重新校正防漂移——与 `createTaskPane()` 内保持一致，校正失败（内部已留痕）时同样补充「窗格仍可用，下次点击将重新校正」增强留痕，不中断可见性切换（下次点击仍会重新校正，有自愈机会）。两处行为统一，避免「创建路径有增强留痕、找回路径静默」的不一致（已实现，`tests/taskpane-dock.test.js` 的「GetTaskPane 找回路径停靠校正失败」用例覆盖）。
----
 
 ## 五、部署模式
 
