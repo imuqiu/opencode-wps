@@ -1,5 +1,7 @@
 # WPS 插件问题排查与避坑指南
 
+> 🏠 返回 [README](../README.md)；安装与环境问题见 [INSTALLATION.md](./INSTALLATION.md)。
+
 ## 零、`config.js` 用户目录自引用哨兵被 install-addons.js 误替换（反复踩坑 4 次）
 
 ### 问题现象

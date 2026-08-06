@@ -1,5 +1,7 @@
 # NPC Team 总指挥 — 一段提示词，让官方免费 @CodeBuddy 化身 NPC Team
 
+> 🏠 项目首页见 [../README.md](../README.md)；日常使用方式见 [USAGE.md](./USAGE.md)。
+
 > 一个需求，一次会话，六位专家自动接力 — **零 NPC 积分消耗**。核心交付物是**一段可直接粘贴给官方免费 `@CodeBuddy` 的提示词**。
 
 ## 背景：为什么做这个组件
