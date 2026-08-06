@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **NPC_TEAM 提示词改造：默认接力模式（每步独立调用 @CodeBuddy，Issue #76）** — 按用户最新要求"每一步都独立调一次 @CodeBuddy NPC，而不是调一次 @CodeBuddy 跑完全部步骤"，提示词新增「运行模式」自检（默认接力 / 可选全程）：**接力模式**下每次召唤 `@CodeBuddy` **只执行流水线中的一个步骤**，执行完输出【接力卡】（含任务书 + 下一步召唤话术）后立即停下，用户把接力卡复制给下一次召唤的 `@CodeBuddy` 逐步续跑完全流程——每步独立调用、独立留痕、独立可见，步间天然可确认/纠正/停止，彻底杜绝"单会话闷头跑完 + 编造全绿"（#78 事故根因）；**全程模式**（一次跑完全部步骤）仅当用户明确要求时可用（保留 ⏸CP1/⏸CP2 暂停确认）。新增铁律 11（接力只执行一步，绝不自行继续、绝不代替用户召唤下一棒）+ 铁律 12（接力卡必含召唤话术）+【任务书】/【接力卡】模板段。配套：① `scripts/validate-npc-team-prompt.js` 新增第 10 节「接力模式」强校验（RELAY_CORE 11 句式顺序校验 + 接力召唤话术示例校验），防回退为"一次跑完"旧行为；② `tests/validate-npc-team-prompt.test.js` 新增 9 个接力模式回归用例（正向 + 8 负向：删默认声明/删只执行一步/删铁律 11/删接力卡段/删召唤话术/删绝不自行继续/删任务书段/删召唤话术示例 均拦截），26 用例全绿；③ `scripts/lib/npc-team-triggers.js` description 触发词新增「接力/每步独立执行」；④ `.codebuddy/skills/npc-team/SKILL.md` frontmatter 同步接力触发词 + 正文双源同步；⑤ `docs/NPC_TEAM.md` 新增「两种执行方式」「接力模式怎么开始/继续」「1b 接力模式冒烟测试」章节、对比表与冒烟测试表新增接力验证点；README 同步更新
+
 - **NPC_TEAM Skill：一键调用，告别粘贴提示词（Issue #76）** — 新增 `.codebuddy/skills/npc-team/SKILL.md`：将 `docs/NPC_TEAM.md` 中的提示词做成 CNB 平台可自动加载的自定义 Skill（官方文档支持项目级 `.codebuddy/skills/` 目录）。使用方式：在 CNB 平台本仓库对话中召唤官方免费 `@CodeBuddy` 后，只需一句「调用 NPC_TEAM skill 完成以下需求：xxxxxx」即可化身 NPC Team 跑完全流程，**无需再粘贴提示词**；原粘贴方式保留为兜底。配套：① `scripts/validate-npc-team-prompt.js` 新增第 11 节「Skill 双源一致性」强校验（Skill 存在 + frontmatter 合法 + name 为 npc-team + 正文与 docs 提示词归一化后完全一致），已接入 CI；② 新增 `scripts/sync-npc-team-skill.js`（含 `--check` 模式）供改提示词后一键同步；③ `tests/validate-npc-team-prompt.test.js` 新增 5 个回归用例（正向双源一致 / Skill 缺失拦截 / 正文漂移拦截 / frontmatter name 错误拦截 / 同步脚本 --check），13 用例全绿；④ `docs/NPC_TEAM.md` 新增「使用方式一（推荐）：一句话调用 Skill」、组件清单与边界说明；README 同步更新
 
 ### Changed

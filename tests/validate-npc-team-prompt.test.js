@@ -146,6 +146,80 @@ test('负向：删铁律 7「留下可见回复/记录」句（第 7 轮 9.1 跨
   assertEqual(code, 1, '删铁律 7 留痕句应拦截（exit 1）');
 });
 
+// ---- Issue #76：接力模式（每步独立调用 @CodeBuddy）回归用例 ----
+// 背景：用户最新要求"每一步都独立调一次 @CodeBuddy NPC，而不是调一次 @CodeBuddy 跑完全部步骤"。
+// 提示词默认改为「接力模式」：每次召唤只执行一步并输出【接力卡】，逐步接力跑完全流程。
+// 若接力核心要素被删（回退为"一次跑完"旧行为），CI 必须拦截。
+
+test('正向：接力模式要素完整（exit 0）', function () {
+  const code = runValidate(p => p);
+  assertEqual(code, 0, '接力模式要素完整应 exit 0');
+});
+
+test('负向：删「接力模式（默认、推荐）」应拦截（exit 1）', function () {
+  const code = runValidate(p =>
+    p.replace('- 接力模式（默认、推荐）：用户每次召唤你，', '- 全程模式：用户每次召唤你，')
+  );
+  assertEqual(code, 1, '删接力默认声明应拦截（exit 1）');
+});
+
+test('负向：删「只执行流水线中的一个步骤」应拦截（exit 1）', function () {
+  const code = runValidate(p =>
+    p.replace(
+      '你**只执行流水线中的一个步骤**，执行完输出【接力卡】并立即停下',
+      '你**一次跑完全部步骤**，'
+    )
+  );
+  assertEqual(code, 1, '删只执行一步应拦截（exit 1）');
+});
+
+test('负向：删铁律 11「接力只执行一步」应拦截（exit 1）', function () {
+  const code = runValidate(p =>
+    p.replace(
+      '11. 接力只执行一步（接力模式铁律）：每次被召唤**只执行流水线中的一个步骤**，',
+      '11. '
+    )
+  );
+  assertEqual(code, 1, '删铁律 11 应拦截（exit 1）');
+});
+
+test('负向：删【接力卡】段应拦截（exit 1）', function () {
+  const code = runValidate(p => p.replace('【接力卡（接力模式每步结束时必须输出）】\n', ''));
+  assertEqual(code, 1, '删接力卡段应拦截（exit 1）');
+});
+
+test('负向：删「下一步召唤话术」应拦截（exit 1）', function () {
+  const code = runValidate(p => p.replace('- 下一步召唤话术（用户原样复制即可）：', '- 下一步：'));
+  assertEqual(code, 1, '删下一步召唤话术应拦截（exit 1）');
+});
+
+test('负向：删「绝不自行继续后续步骤」应拦截（exit 1）', function () {
+  const code = runValidate(p =>
+    p.replace(
+      '执行完必须输出【接力卡】并立即停下；**绝不自行继续后续步骤、绝不代替用户召唤下一棒**；',
+      '执行完必须输出【接力卡】并立即停下；'
+    )
+  );
+  assertEqual(code, 1, '删绝不自行继续应拦截（exit 1）');
+});
+
+test('负向：删【任务书】段应拦截（exit 1）', function () {
+  const code = runValidate(p =>
+    p.replace('【任务书（接力模式第一棒 0/10 创建，随接力卡逐棒传递）】\n', '')
+  );
+  assertEqual(code, 1, '删任务书段应拦截（exit 1）');
+});
+
+test('负向：删接力卡召唤话术示例「@CodeBuddy 接力 NPC_TEAM skill」应拦截（exit 1）', function () {
+  const code = runValidate(p =>
+    p.replace(
+      '@CodeBuddy 接力 NPC_TEAM skill，执行下一步 N+1/10 <阶段名>：',
+      '@CodeBuddy 执行下一步：'
+    )
+  );
+  assertEqual(code, 1, '删接力召唤话术示例应拦截（exit 1）');
+});
+
 // ---- Issue #76：NPC_TEAM Skill 一键调用方案回归用例 ----
 
 // 统一「临时改坏 SKILL.md → 运行 → finally 还原」的健壮模式（防中途异常污染工作区）
@@ -182,7 +256,9 @@ test('负向：Skill 文件缺失应拦截（exit 1）', function () {
 
 test('负向：Skill 正文与 docs 提示词漂移应拦截（exit 1）', function () {
   const code = withSkillFile(
-    fs.readFileSync(SKILL_FILE, 'utf8').replace('你是「NPC Team 总指挥」', '你是「NPC Team 总指挥官」'),
+    fs
+      .readFileSync(SKILL_FILE, 'utf8')
+      .replace('你是「NPC Team 总指挥」', '你是「NPC Team 总指挥官」'),
     () => {
       const { spawnSync } = require('child_process');
       return spawnSync('node', [SCRIPT], { encoding: 'utf8' }).status;
@@ -204,10 +280,9 @@ test('负向：Skill frontmatter name 非 npc-team 应拦截（exit 1）', funct
 
 test('负向：Skill frontmatter description 缺触发词应拦截（exit 1）', function () {
   const code = withSkillFile(
-    fs.readFileSync(SKILL_FILE, 'utf8').replace(
-      '当用户说"调用 NPC_TEAM skill"、"npc-team"、"NPC Team"',
-      '当用户提到 NPC Team 时'
-    ),
+    fs
+      .readFileSync(SKILL_FILE, 'utf8')
+      .replace('当用户说"调用 NPC_TEAM skill"、"npc-team"、"NPC Team"', '当用户提到 NPC Team 时'),
     () => {
       const { spawnSync } = require('child_process');
       return spawnSync('node', [SCRIPT], { encoding: 'utf8' }).status;
@@ -232,7 +307,10 @@ test('负向：同步脚本 --check 对正文漂移应拦截（exit 1）', funct
   const code = withSkillFile(
     fs
       .readFileSync(SKILL_FILE, 'utf8')
-      .replace('你是「NPC Team 总指挥」，由官方免费', '你是「NPC Team 总指挥」，由官方免费（测试漂移）'),
+      .replace(
+        '你是「NPC Team 总指挥」，由官方免费',
+        '你是「NPC Team 总指挥」，由官方免费（测试漂移）'
+      ),
     () => {
       const { spawnSync } = require('child_process');
       const r = spawnSync(

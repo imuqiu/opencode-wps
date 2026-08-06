@@ -175,15 +175,56 @@ if (!m) {
   if (!/避免.*再发生|避免类似问题|预防/.test(prompt))
     errors.push('缺少复盘要素③「后续如何避免类似问题（预防机制）」');
   if (!/措施|加固/.test(prompt)) errors.push('缺少复盘要素④「采取什么措施（加固动作）」');
+
+  // ---- 10. 接力模式（每步独立调用 @CodeBuddy，Issue #76 最新补充）----
+  // 背景：用户要求"每一步都独立调一次 @CodeBuddy NPC，而不是调一次 @CodeBuddy 跑完全部步骤"。
+  // 因此提示词默认改为「接力模式」：每次召唤只执行一个步骤，输出【接力卡】后停下，用户逐步召唤下一棒。
+  // 全程模式（一次跑完全部步骤）仅在用户明确要求时可用。
+  // 本节强校验：若「每步独立调用/接力」核心要素被删，CI 拦截（防回退为"一次跑完"旧行为）。
+  const RELAY_CORE = [
+    '【运行模式（每次调用必须先自检）】',
+    '接力模式（默认、推荐）',
+    '只执行流水线中的一个步骤',
+    '绝不自行继续后续步骤',
+    '11. 接力只执行一步（接力模式铁律）',
+    '绝不代替用户召唤下一棒',
+    '12. 接力卡必含召唤话术',
+    '下一步召唤话术',
+    '【任务书（接力模式第一棒 0/10 创建，随接力卡逐棒传递）】',
+    '【接力卡（接力模式每步结束时必须输出）】',
+    '【接力卡·N/10 阶段名】',
+  ];
+  let relayLastIdx = -1;
+  for (const frag of RELAY_CORE) {
+    const idx = prompt.indexOf(frag);
+    if (idx === -1)
+      errors.push(
+        `接力模式缺少完整句式「${frag}」（每次召唤必须只执行一步并输出接力卡，防回退为一次跑完全部步骤）`
+      );
+    else if (idx < relayLastIdx)
+      errors.push(
+        `接力模式句式顺序错乱：「${frag}」出现在其声明顺序之前（疑似插入干扰文本拆解语义）`
+      );
+    else relayLastIdx = idx;
+  }
+  // 接力卡必含「下一步召唤话术」内容格式（用户原样复制即可触发下一棒独立执行）
+  if (!/@CodeBuddy 接力 NPC_TEAM skill/.test(prompt))
+    errors.push(
+      '接力卡缺少「下一步召唤话术」示例（@CodeBuddy 接力 NPC_TEAM skill，执行下一步 N/10 ...）'
+    );
+  // 全程模式仅为可选（默认必须为接力模式）：若提示词缺失「接力模式（默认、推荐）」已在上方强校验，
+  // 再校验「全程模式」声明存在（防只剩接力没有全程，或两者都丢）
+  if (!/全程模式/.test(prompt))
+    warnings.push('提示词未声明「全程模式」（可选：用户明确要求一次跑完时使用）');
 }
 
-// ---- 10. 文档级边界声明 ----
+// ---- 11. 文档级边界声明 ----
 const docSections = ['关键边界', '本地', '平台'];
 for (const s of docSections) {
   if (!content.includes(s)) warnings.push(`文档缺少「${s}」相关边界说明`);
 }
 
-// ---- 11. NPC_TEAM Skill 双源一致性（Issue #76 新增：一键调用 skill 方案）----
+// ---- 12. NPC_TEAM Skill 双源一致性（Issue #76 新增：一键调用 skill 方案）----
 // 背景：docs/NPC_TEAM.md 是提示词唯一权威源，.codebuddy/skills/npc-team/SKILL.md 是可自动加载的 skill 版。
 // 若两者正文漂移（skill 改老 / 提示词改新），用户用 skill 一句话调用时行为可能与文档不一致。
 // 因此 CI 强制校验：skill 存在 + frontmatter 合法 + 提示词正文与 docs 提示词完全一致（归一化空白后）。
@@ -216,7 +257,9 @@ if (!fs.existsSync(SKILL_FILE)) {
     const { ok, missing } = checkDesc(desc);
     if (!ok)
       errors.push(
-        'NPC_TEAM Skill description 缺少必要触发词：' + missing.join('、') + '（NPC 可能无法自动加载）'
+        'NPC_TEAM Skill description 缺少必要触发词：' +
+          missing.join('、') +
+          '（NPC 可能无法自动加载）'
       );
 
     // 11.1c docs 触发词交集校验：docs/NPC_TEAM.md「使用方式一」明示的触发短语必须全部出现在 description 中，
@@ -241,7 +284,9 @@ if (!fs.existsSync(SKILL_FILE)) {
       // 防止说明段与实际关系脱钩（docs 提示词大改而 SKILL 说明段仍声称“完全一致”）。
       const preamble = skillBody.slice(0, bodyStart);
       if (!/docs\/NPC_TEAM\.md/.test(preamble) || !/完全一致|一致|等价/.test(preamble))
-        warnings.push('NPC_TEAM Skill 说明段未明确声明“与 docs/NPC_TEAM.md 一致/等价”（建议补充，防声明与实际脱钩）');
+        warnings.push(
+          'NPC_TEAM Skill 说明段未明确声明“与 docs/NPC_TEAM.md 一致/等价”（建议补充，防声明与实际脱钩）'
+        );
 
       const skillPrompt = skillBody.slice(bodyStart).trim();
       const docPrompt = m ? m.groups.prompt.trim() : '';
