@@ -178,7 +178,7 @@ node launcher-linux.js
 | 平台 | 插件目录 | 注册文件 | 自启清理 | MCP 配置 |
 |------|----------|----------|----------|----------|
 | **Windows** | 删除 `%APPDATA%\kingsoft\wps\jsaddons\opencode-wps_` | 从 `publish.xml`/`jsplugins.xml` 移除 `opencode-wps` 条目（安装时合并追加，需单独移除） | 计划任务：`schtasks /Delete /TN "OpenCodeLauncher" /F`（另有旧任务 `OpenCodeServer` 一并清理） | 从 `~/.config/opencode/opencode.json` 移除 wps-office MCP 条目 |
-| **macOS** | 删除 `~/Library/Containers/com.kingsoft.wps/Data/Documents/jsaddons/` 下对应目录 | 无需处理（macOS 安装不写注册文件，WPS 自动扫描 jsaddons 目录） | `launchctl unload ~/Library/LaunchAgents/com.opencode.launcher.plist` 并删除 plist | 同上 |
+| **macOS** | 删除 `~/Library/Containers/com.kingsoft.wps/Data/Documents/jsaddons/` 下对应目录 | 无需处理（macOS 安装不写注册文件，WPS 自动扫描 jsaddons 目录） | `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.opencode.launcher.plist` 并删除 plist（`launchctl load/unload` 在 macOS 10.10+ 已废弃） | 同上 |
 | **Linux** | 删除 `~/.local/share/Kingsoft/wps/jsaddons/opencode-wps-linux_` | 从 `publish.xml`/`jsplugins.xml` 移除 `opencode-wps-linux` 条目（安装时整文件写入） | 删除 `~/.config/autostart/opencode-wps-launcher.desktop` | 同上 |
 
 卸载后重启 WPS，功能区不再显示 **OpenCode AI** 标签页即完成。
