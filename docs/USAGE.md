@@ -45,7 +45,7 @@ Mac/Linux 版为命令轮询桥架构（无内嵌侧边栏），对话在浏览�
 **使用方式**：
 
 1. 在消息中使用 `@wps-expert`、`@wps-word`、`@wps-excel`、`@wps-ppt` 调用子 agents 处理特定任务
-2. 在 CNB 平台对话中召唤官方免费 `@CodeBuddy`，只需一句「调用 NPC_TEAM skill 完成以下需求：xxxxxx」即可自动加载本仓库内置的 NPC_TEAM Skill 化身 NPC Team（零平台积分），或粘贴 [docs/NPC_TEAM.md](./NPC_TEAM.md) 提示词兜底
+2. 在 CNB 平台对话中召唤官方免费 `@CodeBuddy`，只需一句「调用 NPC_TEAM skill 完成以下需求：xxxxxx」即可自动加载本仓库内置的 NPC_TEAM Skill 化身 NPC Team（零平台积分），或粘贴 [NPC_TEAM.md](./NPC_TEAM.md) 提示词兜底
 
 **自定义 Agents**：
 
@@ -76,4 +76,4 @@ OpenCode 服务通过 Launcher 进程管理（监听 `127.0.0.1:14097`），无�
 - **文档填写（模板自动填值）** — 从结构化数据源提取值填充 Word 模板，全程修订模式可追溯，适用合同/报告/公文/审批表单批量生成
 - **大文档校对（铁律 3.0）** — 严格逐批校对（每批 ≤200 段），16 条规则代码层强制执行，禁止 AI 跳批/编造修复
 
-> 📖 特色功能完整说明见 [docs/FEATURES.md](./FEATURES.md)。
+> 📖 特色功能完整说明见 [FEATURES.md](./FEATURES.md)。

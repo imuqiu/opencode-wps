@@ -168,4 +168,4 @@ node launcher-linux.js
 - **Skills/Agents 未加载** → 重新运行安装脚本 + 重启 OpenCode 服务
 - **Linux 实机验证** → 参考 [LINUX.md](./LINUX.md)「已知限制」「常见问题」章节
 
-> 📖 更多排查见 [docs/TROUBLESHOOTING.md](./TROUBLESHOOTING.md)；安装脚本实现细节见 [docs/INSTALL_SCRIPT.md](./INSTALL_SCRIPT.md)。
+> 📖 更多排查见 [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)；安装脚本实现细节见 [INSTALL_SCRIPT.md](./INSTALL_SCRIPT.md)。
