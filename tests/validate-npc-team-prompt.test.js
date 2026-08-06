@@ -274,8 +274,54 @@ test('负向：删铁律 8「接力模式」声明应拦截（exit 1）', functi
 });
 
 test('负向：删「评审-修复循环同样逐轮接力」应拦截（exit 1）', function () {
-  const code = runValidate(p => p.replace('**接力模式下评审-修复循环同样逐轮接力**：', ''));
+  // 第 12 轮评审 W2：该句仅铁律 8 内出现 1 次，改为段内定位铁律 8 再删 + 断言拦截路径，与其他用例风格统一。
+  const { code, output } = runValidateCapture(p => {
+    const start = p.indexOf('8. 评审-修复循环（10 轮彻底循环，接力模式）');
+    const end = p.indexOf('9. 测试失败跳转');
+    const head = p.slice(0, start);
+    const rule8 = p.slice(start, end).replace('**接力模式下评审-修复循环同样逐轮接力**：', '');
+    const tail = p.slice(end);
+    return head + rule8 + tail;
+  });
   assertEqual(code, 1, '删逐轮接力声明应拦截（exit 1）');
+  assertTrue(
+    /评审-修复接力缺少完整句式「评审-修复循环同样逐轮接力」/.test(output),
+    '应命中铁律 8 段内校验，实际输出：' + output
+  );
+});
+
+test('负向：删铁律 8「评审棒输出【评审接力卡】」句应拦截（exit 1）', function () {
+  // 第 12 轮评审 W1：铁律 8 段内 6 句负向覆盖补全——评审棒输出句此前无专门删除用例。
+  const { code, output } = runValidateCapture(p => {
+    const start = p.indexOf('8. 评审-修复循环（10 轮彻底循环，接力模式）');
+    const end = p.indexOf('9. 测试失败跳转');
+    const head = p.slice(0, start);
+    const rule8 = p.slice(start, end).replace('评审棒输出【评审接力卡】、', '');
+    const tail = p.slice(end);
+    return head + rule8 + tail;
+  });
+  assertEqual(code, 1, '删评审棒输出句应拦截（exit 1）');
+  assertTrue(
+    /评审-修复接力缺少完整句式「评审棒输出【评审接力卡】」/.test(output),
+    '应命中铁律 8 段内校验，实际输出：' + output
+  );
+});
+
+test('负向：删铁律 8「修复棒输出【修复接力卡】」句应拦截（exit 1）', function () {
+  // 第 12 轮评审 W1：铁律 8 段内 6 句负向覆盖补全——修复棒输出句此前无专门删除用例。
+  const { code, output } = runValidateCapture(p => {
+    const start = p.indexOf('8. 评审-修复循环（10 轮彻底循环，接力模式）');
+    const end = p.indexOf('9. 测试失败跳转');
+    const head = p.slice(0, start);
+    const rule8 = p.slice(start, end).replace('修复棒输出【修复接力卡】，', '');
+    const tail = p.slice(end);
+    return head + rule8 + tail;
+  });
+  assertEqual(code, 1, '删修复棒输出句应拦截（exit 1）');
+  assertTrue(
+    /评审-修复接力缺少完整句式「修复棒输出【修复接力卡】」/.test(output),
+    '应命中铁律 8 段内校验，实际输出：' + output
+  );
 });
 
 test('负向：删「每轮评审与每次修复各是独立一次 @CodeBuddy 召唤」应拦截（exit 1）', function () {
