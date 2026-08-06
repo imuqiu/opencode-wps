@@ -88,7 +88,7 @@ opencode serve --port 14096 --hostname 127.0.0.1 --cors file://
 Ribbon 提供三个按钮（`opencode-wps/ribbon.xml`）：
 
 - **打开面板**：在 WPS 侧边栏打开 Chat UI（SSE 流式对话、Markdown 渲染、会话管理、Agent 选择）
-- **打开Web**：在系统浏览器中打开 OpenCode AI 对话界面（经 launcher `/dock` 打开 Edge）
+- **打开Web**：在系统浏览器中打开 OpenCode AI 对话界面（经 launcher `/dock` 打开 Edge；与 Mac/Linux 不同，Windows 无自愈拉起逻辑，需先确保 opencode 服务已运行）
 - **连接状态**：查看 OpenCode 服务连接状态
 
 ## 应用切换
