@@ -14,8 +14,9 @@
 - **WPS 专用 Agents** — wps-expert / wps-word / wps-excel / wps-ppt，通过 Agent 选择实现功能聚焦
 - **特色功能** — 模板自动填值（修订追踪）+ 长文档分批校对（铁律 3.0，16 条规则代码层强制执行）
 - **执行治理** — governance.js Hooks 拦截所有 MCP 调用（G1-G7 + P1-P16 + T1-T11 共 34 条规则），防 AI 作弊
-- **NPC Team 总指挥（零积分）** — 召唤官方免费 `@CodeBuddy` 一句「调用 NPC_TEAM skill」，6 位专家自动跑完研发全流程，零平台积分
 - **一键安装** — `node install-addons.js` 自动完成全部组件安装，开机自启
+
+> 💡 **NPC Team（零积分）与 CNB Skills 不是 WPS 插件功能**：`@CodeBuddy`、NPC_TEAM 提示词、`.codebuddy/skills/` 等属于 **cnb.cool 平台的开发辅助工具**，用于在 CNB 平台（Issue/PR/对话）辅助研发，与 WPS 插件本体无关。详见 [docs/NPC_TEAM.md](./docs/NPC_TEAM.md)。
 
 > 📖 详细功能说明见 [docs/FEATURES.md](./docs/FEATURES.md)。
 
@@ -83,11 +84,13 @@ Win: PowerShell COM 桥接  /  Mac·Linux: HTTP 轮询 (反向轮询插件)
 | 🧭 **使用** | [安装指南](./docs/INSTALLATION.md) · [使用指南](./docs/USAGE.md) · [特色功能](./docs/FEATURES.md) · [问题排查](./docs/TROUBLESHOOTING.md) |
 | 🔧 **开发** | [开发指南](./docs/DEVELOPMENT_GUIDE.md) · [代码审查](./docs/CODE_REVIEW_GUIDE.md) · [WPS JS 开发](./docs/WPSJS_DEVELOPMENT.md) · [安装脚本说明](./docs/INSTALL_SCRIPT.md) · [Skills](./docs/SKILLS.md) |
 | 🖥️ **平台专题** | [Windows 支持](./docs/WINDOWS.md) · [macOS 支持](./docs/MAC.md) · [Linux 支持](./docs/LINUX.md) |
-| 📚 **内部参考** | [架构](./docs/ARCHITECTURE.md) · [MCP](./docs/MCP.md) · [API 参考](./docs/OPENCODE_API.md) · [安全](./docs/SECURITY.md) · [NPC Team](./docs/NPC_TEAM.md) |
+| 📚 **内部参考** | [架构](./docs/ARCHITECTURE.md) · [MCP](./docs/MCP.md) · [API 参考](./docs/OPENCODE_API.md) · [安全](./docs/SECURITY.md) · [NPC Team（CNB 工具）](./docs/NPC_TEAM.md) |
 
 > 📚 完整文档中心（含全部 24 份顶层文档 + 2 份设计规格的索引）见 [docs/README.md](./docs/README.md)。
 
-## NPC 研发助手（零积分）
+## NPC 研发助手（CNB 平台开发辅助工具，与 WPS 插件无关）
+
+> ⚠️ 本节内容属于 **cnb.cool 平台**的研发辅助能力，**不是 WPS 插件的一部分**：它们不随 `install-addons*.js` 安装，不进入 `%APPDATA%`/`~/Library`/`~/.local` 等插件目录，也不依赖 WPS 运行。使用对象是**在 CNB 平台开发本仓库的开发者**，而非 WPS 插件使用者。
 
 在 CNB 平台召唤官方免费 `@CodeBuddy`，只说一句：
 
@@ -95,7 +98,7 @@ Win: PowerShell COM 桥接  /  Mac·Linux: HTTP 轮询 (反向轮询插件)
 调用 NPC_TEAM skill 完成以下需求：<你的需求>
 ```
 
-本仓库内置 NPC_TEAM Skill，`@CodeBuddy` 自动化身 6 位专家（PM/产品/架构/开发/评审/测试），一条需求自动跑完拆解→开发→评审→测试→文档→汇报→复盘全流程，**零平台 NPC 积分**。
+本仓库内置 NPC_TEAM Skill（`.codebuddy/skills/`），`@CodeBuddy` 自动化身 6 位专家（PM/产品/架构/开发/评审/测试），一条需求自动跑完拆解→开发→评审→测试→文档→汇报→复盘全流程，**零平台 NPC 积分**。
 
 > 📖 使用方式与提示词见 [docs/NPC_TEAM.md](./docs/NPC_TEAM.md)。
 

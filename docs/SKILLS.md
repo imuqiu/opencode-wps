@@ -2,6 +2,8 @@
 
 OpenCode Skills 定义 AI 在特定领域的操作能力和工作流程。
 
+> ⚠️ **本文档只覆盖随 WPS 插件安装的 5 个 WPS 专用 Skills**（`skills/` 目录，随 `install-addons*.js` 同步到 `~/.opencode/skills/`）。仓库内另有的 `.codebuddy/skills/npc-team/`（NPC_TEAM Skill）属于 **cnb.cool 平台开发辅助工具**，不随插件安装、与 WPS 插件无关，见 [NPC_TEAM.md](./NPC_TEAM.md)。
+
 > 本项目为 WPS Office 定义了 5 个 Skills：wps-excel、wps-word、wps-ppt、wps-office、wps-proofread
 
 ---

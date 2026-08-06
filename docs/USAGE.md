@@ -45,7 +45,9 @@ Mac/Linux 版为命令轮询桥架构（无内嵌侧边栏），对话在浏览�
 **使用方式**：
 
 1. 在消息中使用 `@wps-expert`、`@wps-word`、`@wps-excel`、`@wps-ppt` 调用子 agents 处理特定任务
-2. 在 CNB 平台对话中召唤官方免费 `@CodeBuddy`，只需一句「调用 NPC_TEAM skill 完成以下需求：xxxxxx」即可自动加载本仓库内置的 NPC_TEAM Skill 化身 NPC Team（零平台积分），或粘贴 [NPC_TEAM.md](./NPC_TEAM.md) 提示词兜底
+2. **（可选）CNB 平台研发辅助**：在 CNB 平台对话中召唤官方免费 `@CodeBuddy`，只需一句「调用 NPC_TEAM skill 完成以下需求：xxxxxx」即可自动加载本仓库内置的 NPC_TEAM Skill 化身 NPC Team（零平台积分），或粘贴 [NPC_TEAM.md](./NPC_TEAM.md) 提示词兜底。
+
+   > ⚠️ **NPC_TEAM / `.codebuddy/skills/` 是 cnb.cool 平台的开发辅助工具，与 WPS 插件无关**：它们不随 `install-addons*.js` 安装、不进入插件目录、不依赖 WPS 运行，使用对象是 CNB 平台上的开发者。
 
 **自定义 Agents**：
 
