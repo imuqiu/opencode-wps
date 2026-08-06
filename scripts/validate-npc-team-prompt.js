@@ -14,6 +14,7 @@
 const fs = require('fs');
 const path = require('path');
 const { normalize } = require('./lib/normalize');
+const { formatDiff } = require('./lib/format-compare');
 const { checkDesc, checkDescAgainstDocs } = require('./lib/npc-team-triggers');
 
 const FILE = path.resolve(__dirname, '../docs/NPC_TEAM.md');
@@ -445,27 +446,6 @@ if (!fs.existsSync(SKILL_FILE)) {
       }
     }
   }
-}
-
-// 第 10 轮评审 W2：格式级 diff（行首缩进 + 行尾空白剥离后的行内容比较）。
-// normalize() 只比较「去所有空白后的内容」，两行 `  - 未清零：` 与 `- 未清零：` 归一化后相同 → 假通过；
-// 本函数逐行比较「行首缩进 + 去行尾空白的行内容」，缩进不同即视为漂移。
-// 返回差异描述数组（最多 3 条）。
-function formatDiff(a, b) {
-  const linesA = a.split('\n');
-  const linesB = b.split('\n');
-  const diffs = [];
-  const maxLen = Math.max(linesA.length, linesB.length);
-  for (let i = 0; i < maxLen; i++) {
-    const la = i < linesA.length ? linesA[i] : null;
-    const lb = i < linesB.length ? linesB[i] : null;
-    const norm = s => (s === null ? '' : s.replace(/\s+$/g, '')); // 去行尾空白，保留行首缩进
-    if (norm(la) !== norm(lb)) {
-      diffs.push(`L${i + 1} docs=「${la === null ? '<缺行>' : la.trim().slice(0, 30)}」 skill=「${lb === null ? '<缺行>' : lb.trim().slice(0, 30)}」`);
-      if (diffs.length >= 3) break;
-    }
-  }
-  return diffs;
 }
 
 // ---- 输出 ----

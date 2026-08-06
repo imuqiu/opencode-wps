@@ -14,6 +14,7 @@
 const fs = require('fs');
 const path = require('path');
 const { normalize } = require('./lib/normalize');
+const { isFormatConsistent } = require('./lib/format-compare');
 const { checkDesc } = require('./lib/npc-team-triggers');
 
 const DOC_FILE = path.resolve(__dirname, '../docs/NPC_TEAM.md');
@@ -76,21 +77,8 @@ const currentPrompt = skillBody.slice(bodyStart).trim();
 
 // 第 10 轮评审 W2：normalize 去空白比较忽略「行首缩进」等纯格式差异（如 docs 缩进统一而 skill 未重新生成），
 // 导致 --check 与 validate 的 formatDiff 结论不一致、且非 check 模式不修正缩进。
-// 与 validate 保持同一口径：normalize 内容一致 + 行首缩进级一致才算「已是最新」。
-const formatConsistent = (() => {
-  const linesA = currentPrompt.split('\n');
-  const linesB = prompt.split('\n');
-  const maxLen = Math.max(linesA.length, linesB.length);
-  for (let i = 0; i < maxLen; i++) {
-    const la = i < linesA.length ? linesA[i] : null;
-    const lb = i < linesB.length ? linesB[i] : null;
-    const norm = s => (s === null ? '' : s.replace(/\s+$/g, ''));
-    if (norm(la) !== norm(lb)) return false;
-  }
-  return true;
-})();
-
-if (normalize(currentPrompt) === normalize(prompt) && formatConsistent) {
+// 与 validate 保持同一口径（共享 scripts/lib/format-compare.js）：normalize 内容一致 + 行首缩进级一致才算「已是最新」。
+if (normalize(currentPrompt) === normalize(prompt) && isFormatConsistent(currentPrompt, prompt)) {
   console.log('✅ NPC_TEAM Skill 已是最新，无需同步');
   process.exit(0);
 }
