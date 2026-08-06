@@ -58,6 +58,8 @@ node install-addons.js
 
 安装完成后重启 WPS，功能区会出现 **OpenCode AI** 标签页。
 
+> 📖 Windows 完整说明（架构/组件清单/应用切换/已知限制/常见问题）见 [WINDOWS.md](./WINDOWS.md)。
+
 ## macOS 安装
 
 > Mac 版 WPS 使用与 Windows 不同的 JS 插件架构（基于 WPS JS API 而非 COM 桥接），因此采用独立插件实现与安装方式。
@@ -109,6 +111,8 @@ node launcher-mac.js
 ### 5. 重启 WPS Office
 
 重启 WPS Office for Mac，功能区会出现 **OpenCode AI** 标签页。
+
+> 📖 macOS 完整说明（架构/组件清单/应用切换/已知限制/常见问题）见 [MAC.md](./MAC.md)。
 
 ## Linux 安装
 

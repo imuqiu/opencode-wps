@@ -29,6 +29,8 @@
 
 | 文档 | 说明 |
 |------|------|
+| [WINDOWS.md](./WINDOWS.md) | Windows 支持（✅ 完整支持：侧边栏 Chat UI + COM 桥接 + 计划任务自启） |
+| [MAC.md](./MAC.md) | macOS 支持（✅ 完整支持：浏览器对话 + 反向轮询桥 + LaunchAgent 自启） |
 | [LINUX.md](./LINUX.md) | Linux 支持（✅ 开发完成，⚠️ 待实机验证） |
 | [windows-code-review-fixes.md](./windows-code-review-fixes.md) | Windows 插件代码评审与修复记录（Issue #85） |
 
