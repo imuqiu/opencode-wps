@@ -203,6 +203,8 @@ function setTaskPaneDockPosition(tskpane) {
 
 16. **`forceTaskPaneRedraw` 异步恢复的已知限制——原生关闭语义**：`forceTaskPaneRedraw` 用 `lastUserTaskPaneAction`（`OnAction` toggle 分支记录）+ `redrawStartTime` 比对，重绘期间用户操作过窗格则放弃恢复。但 **WPS TaskPane 原生右上角 X 关闭不经过 `OnAction`**，该时间戳不会更新——若原生关闭为「销毁」语义（`GetTaskPane` 返回 null）则异步回调的 `!cur` 判空已覆盖；若个别版本为「隐藏」语义（`Visible=false` 保留对象）则异步恢复可能把用户刚关闭的窗格误弹回来。实测 WPS 多为销毁语义，但维护时需知晓该限制（对应 `main.js` 内注释）。
 
+    **补 DEV 增量 4（2026-08-06，Issue #78 五诊——像素级证据锁定真正根因）**：⑬ **任务窗格首次打开时整体上移 ~42px ≈ WPS 功能区（ribbon）高度，直接盖住「开始/插入」功能区**——用户按四诊探针指引实测 3 张截图（首次打开/切标签恢复/关闭重开），像素级对比确认：首次打开时任务窗格白色区从 y=50 开始（正常 y=92，上移 42px），功能区区域（y44-91）全白无任何内容；而底部输入区 y820 三图完全一致（WebView 活着、页面布局正常）。结论：**WPS 宿主首次创建任务窗格时窗口位置计算错误（未扣除功能区高度），不是页面布局/DockPosition 方向问题**；切标签/重开后恢复，是因为宿主在窗口切换时重新计算窗格位置。修复三层：① `createTaskPane` 创建后 + `forceTaskPaneRedraw` 恢复回调中设置 `DockPositionRestrict=1`（`msoCTPDockPositionRestrictNoChange`）锁定停靠方向，防宿主/用户把窗格拖成浮动覆盖功能区，宿主不支持时静默降级（`setTaskPaneDockRestrict`，探针 `void` 读探测）；② `forceTaskPaneRedraw` 恢复回调中强制重新停靠——先切 `DockPosition=0`（Left）再切回 `Right(2)`，主动复现「切标签触发宿主重排」行为，让宿主重新计算窗格窗口位置；③ 探针新增 P4c 记录 `DockPositionRestrict` 锁定读回结果（实机可验证宿主是否接受锁定）。测试 51 → 55（新增 4 个五诊用例：创建后锁定/宿主不支持降级/强制重新停靠 0→2 序列/P4c 探针），全量 8 套件全绿。
+
 ---
 
 ## 五、部署模式
