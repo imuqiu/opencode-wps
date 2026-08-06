@@ -317,6 +317,50 @@ test('负向：删「禁止在一次召唤内偷偷连跑多轮评审-修复」�
   assertEqual(code, 1, '删防连跑声明应拦截（exit 1）');
 });
 
+// ---- Issue #76 第 2 轮评审 C1/C2：复评环节闭环（复评接力卡 + 复评衔接强校验）----
+// 背景：接力-修复循环声明「评审棒→修复棒→复评棒…」，但仅有评审/修复两张接力卡，复评棒行为未定义；
+// 且校验脚本对复评仅有两处宽松正则，删复评衔接句可放行。本次新增【复评接力卡】模板 + 强校验。
+
+test('正向：复评接力卡要素完整（exit 0）', function () {
+  const code = runValidate(p => p);
+  assertEqual(code, 0, '复评接力卡要素完整应 exit 0');
+});
+
+test('负向：删【复评接力卡】段应拦截（exit 1）', function () {
+  const code = runValidate(p => p.replace('【复评接力卡（5/10 评审每轮复评结束时输出）】\n', ''));
+  assertEqual(code, 1, '删复评接力卡段应拦截（exit 1）');
+});
+
+test('负向：删复评结论双分支应拦截（exit 1）', function () {
+  const code = runValidate(p =>
+    p.replace(
+      '- 复评结论：🔴仍需修复（问题未清零，转下轮评审） / 🟢通过（问题清零，转 6/10 测试）',
+      '- 复评结论：🟢通过'
+    )
+  );
+  assertEqual(code, 1, '删复评结论双分支应拦截（exit 1）');
+});
+
+test('负向：删复评未清零续下轮评审话术应拦截（exit 1）', function () {
+  const code = runValidate(p =>
+    p.replace(
+      '@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮评审（复评仍有问题，继续 review-修复循环）：',
+      '@CodeBuddy 执行后续评审：'
+    )
+  );
+  assertEqual(code, 1, '删复评未清零续轮话术应拦截（exit 1）');
+});
+
+test('负向：删复评清零转 6/10 测试话术应拦截（exit 1）', function () {
+  const code = runValidate(p =>
+    p.replace(
+      '@CodeBuddy 接力 NPC_TEAM skill，执行 6/10 测试（评审问题已清零，进入测试阶段）：',
+      '@CodeBuddy 执行测试：'
+    )
+  );
+  assertEqual(code, 1, '删复评清零转测试话术应拦截（exit 1）');
+});
+
 // ---- Issue #76：NPC_TEAM Skill 一键调用方案回归用例 ----
 
 // 统一「临时改坏 SKILL.md → 运行 → finally 还原」的健壮模式（防中途异常污染工作区）
