@@ -11,9 +11,9 @@ OpenCode WPS 的 Windows 版支持，为 Windows 桌面环境下的 WPS Office �
 Windows 版走 **PowerShell COM 桥接**：WPS 加载项运行在 WPS 内置 Chromium 103 中，通过 REST + SSE 直连 OpenCode 服务，文档操作经 MCP 服务器调用 PowerShell 脚本操作 WPS COM API（同步、强类型）：
 
 ```
-OpenCode AI (WPS 侧边栏 Chat UI / 浏览器 14096)
+OpenCode AI (opencode serve :14096)
     ↑ SSE / HTTP
-WPS 插件 (opencode-wps，taskpane.html + main.js)
+WPS 插件 (opencode-wps，taskpane.html + main.js，REST + SSE 客户端)
     ↑ REST + SSE（launcher 以 --cors file:// 放行）
 OpenCode 中央调度 (opencode serve :14096)
     ↑ stdio / MCP
@@ -22,7 +22,7 @@ MCP Server (wps-office-mcp)
 wps-com.ps1 → WPS COM API（wps/et/wpp）
 ```
 
-> 💡 与 Mac/Linux 反向轮询桥的关键差异：Windows 的加载项**不在沙箱内**，可以启动 HTTP 服务端，因此采用「前台 Chat 面板 + 直连 OpenCode」架构；另保留 `opencode-proxy.js`（:14098，剥离 CSP 头）作为备用通讯层，当前 launcher 已用 `--cors file://` 放行，运行时调用链不再经过它。
+> 💡 侧边栏 Chat UI 与浏览器（14096）均为 REST + SSE 客户端，直连 OpenCode 服务；另保留 `opencode-proxy.js`（:14098，剥离 CSP 头）作为备用通讯层，当前 launcher 已用 `--cors file://` 放行，运行时调用链不再经过它。
 
 ## 组件清单
 
@@ -34,6 +34,7 @@ wps-com.ps1 → WPS COM API（wps/et/wpp）
 | COM 桥接脚本 | `wps-office-mcp/scripts/wps-com.ps1` | PowerShell COM 桥（仅 Windows 使用），另有 extract-methods.ps1 / check-methods.cjs 用于动作提取与校验 |
 | MCP 平台路由 | `wps-office-mcp/src/client/wps-client.ts` | 三通道：win32(PowerShell COM) / darwin(轮询) / linux(轮询)，Windows 走 `spawnPowerShell`，超时主动 kill PowerShell 进程 |
 | 代码评审记录 | `docs/windows-code-review-fixes.md` | Issue #85 Windows 侧 10 轮评审与修复记录 |
+| 文档 | `docs/WINDOWS.md` | 本文档 |
 
 ## 前置条件
 
@@ -100,7 +101,7 @@ Windows 版**无独立切换脚本**——COM 桥接模式下，MCP 直接通过
 
 - **WPS 内置 Chromium 103**（2022 年版本）：官方 opencode web 版需 Chrome 130+ 不兼容，故自建 Chat UI；同时不得使用过新的 Web API
 - **计划任务需管理员权限**：`schtasks /Create` 注册开机自启需要当前用户有创建计划任务权限（一般用户默认可创建，企业受限环境可能失败，可手动运行 launcher 代替）
-- **COM 桥接单实例**：操作基于当前打开的 WPS 进程，多开 WPS 实例时 COM 对象可能指向默认实例（与 Mac/Linux 每文档独立轮询桥不同）
+- **COM 桥接单实例**：操作基于当前打开的 WPS 进程，多开 WPS 实例时 COM 对象可能指向默认实例；若未启动任何 WPS 应用，`GetActiveObject` 返回「No WPS application running」需先手动打开（与 Mac/Linux 每文档独立轮询桥不同）
 
 ## 常见问题
 
