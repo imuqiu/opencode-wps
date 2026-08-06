@@ -29,6 +29,8 @@
 
 | 文档 | 说明 |
 |------|------|
+| [WINDOWS.md](./WINDOWS.md) | Windows 支持（✅ 完整支持：侧边栏 Chat UI + COM 桥接 + 计划任务自启） |
+| [MAC.md](./MAC.md) | macOS 支持（✅ 完整支持：浏览器对话 + 反向轮询桥 + LaunchAgent 自启） |
 | [LINUX.md](./LINUX.md) | Linux 支持（✅ 开发完成，⚠️ 待实机验证） |
 | [windows-code-review-fixes.md](./windows-code-review-fixes.md) | Windows 插件代码评审与修复记录（Issue #85） |
 
@@ -43,7 +45,7 @@
 | [WPS_COM_PS1.md](./WPS_COM_PS1.md) | wps-com.ps1 实现原理解析 |
 | [POWERSHELL_COM.md](./POWERSHELL_COM.md) | PowerShell COM 桥接技术 |
 | [SECURITY.md](./SECURITY.md) | 安全模型与注意事项 |
-| [NPC_TEAM.md](./NPC_TEAM.md) | NPC Team 总指挥（零积分全流程） |
+| [NPC_TEAM.md](./NPC_TEAM.md) | NPC Team 总指挥（**CNB 平台开发辅助工具**，零积分全流程，⚠️ 与 WPS 插件无关） |
 | [I18N_PLAN.md](./I18N_PLAN.md) | 国际化 (i18n) 支持规划（未来规划） |
 | [proofread-fluency-conciseness-design.md](./proofread-fluency-conciseness-design.md) | Word 校对通顺度/简洁度技术设计文档 |
 | [HISTORY.md](./HISTORY.md) | 演进历史与致谢 |

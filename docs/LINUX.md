@@ -35,7 +35,7 @@ OpenCode MCP 客户端
 
 - Linux 发行版（Debian/Ubuntu/Arch 等），x86_64 或 aarch64
 - WPS Office Linux 版（https://linux.wps.cn，当前 12.1.x，deb/rpm）
-- Node.js >= 18
+- Node.js >= 18（或 Bun 1.0+）
 - OpenCode CLI（`opencode` 在 PATH 中）
 - Python 3（`wps-auto.sh` 生成空白 OOXML 文件用；缺失时回退无参启动 WPS）
 
@@ -87,11 +87,12 @@ Ribbon 提供三个按钮：
 
 - 优先使用 WPS 原生命令：`wps`（文字）、`et`（表格）、`wpp`（演示）
 - 命令不存在时回退 `xdg-open` 打开空白 Office 文件
-- 切换流程：pkill 关闭所有 WPS 进程 → 启动目标应用
+- 切换流程：pkill 关闭所有 WPS 进程（轮询等待退出，最多 10s）→ 启动目标应用（轮询等待就绪，最多 10s）
 
 ## 已知限制
 
 - ⚠️ **未实测**：尚未在真实 Linux + WPS 环境验证 JSAPI 行为（与 Mac 版同架构，风险较低）
+- **沙箱内轮询延迟**：每 500ms 拉取一次命令，失败退避 500ms→1s→2s→5s 封顶，避免 CPU 空转（与 macOS 同架构）
 - `wpsjs` 工具链（npm 包）不支持 Linux，开发加载项需手写目录结构与注册文件（本仓库已内置）
 - Linux 版 WPS 不支持键盘快捷键模拟（WPS-Zotero 作者实测结论，影响很小）
 
