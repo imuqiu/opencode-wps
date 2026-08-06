@@ -293,23 +293,164 @@ test('负向：删【修复接力卡】段应拦截（exit 1）', function () {
 });
 
 test('负向：删评审接力卡召唤话术示例应拦截（exit 1）', function () {
-  const code = runValidate(p =>
-    p.replace(
-      '@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮评审修复（修复本轮评审问题）：',
-      '@CodeBuddy 执行修复：'
-    )
-  );
+  // 第 6 轮评审 W2：原用例用 replace 只替换第一个匹配，实际命中【接力卡】段内相同句式，
+  // 拦截靠接力校验（假阳性）而非目标段校验；改为段内定位替换 + 断言拦截路径。
+  const { code, output } = runValidateCapture(p => {
+    const sectionStart = p.indexOf('【评审接力卡（5/10 评审每轮评审结束时输出）】');
+    const sectionEnd = p.indexOf('【修复接力卡（5/10 评审每轮修复结束时输出）】');
+    const head = p.slice(0, sectionStart);
+    const section = p
+      .slice(sectionStart, sectionEnd)
+      .replace(
+        '@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮评审修复（修复本轮评审问题）：',
+        '@CodeBuddy 执行修复：'
+      );
+    const tail = p.slice(sectionEnd);
+    return head + section + tail;
+  });
   assertEqual(code, 1, '删评审接力卡召唤话术应拦截（exit 1）');
+  assertTrue(
+    /评审接力卡缺少「下一步召唤话术」/.test(output),
+    '应命中评审接力卡段化校验（而非跨段假阳性），实际输出：' + output
+  );
 });
 
 test('负向：删修复接力卡召唤话术示例应拦截（exit 1）', function () {
-  const code = runValidate(p =>
-    p.replace(
-      '@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮复评（评审上轮修复）：',
-      '@CodeBuddy 执行复评：'
-    )
-  );
+  // 第 6 轮评审 W2：同评审卡用例，改为段内定位替换 + 断言拦截路径。
+  const { code, output } = runValidateCapture(p => {
+    const sectionStart = p.indexOf('【修复接力卡（5/10 评审每轮修复结束时输出）】');
+    const sectionEnd = p.indexOf('【复评接力卡（5/10 评审每轮复评结束时输出）】');
+    const head = p.slice(0, sectionStart);
+    const section = p
+      .slice(sectionStart, sectionEnd)
+      .replace(
+        '@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮复评（评审上轮修复）：',
+        '@CodeBuddy 执行复评：'
+      );
+    const tail = p.slice(sectionEnd);
+    return head + section + tail;
+  });
   assertEqual(code, 1, '删修复接力卡召唤话术应拦截（exit 1）');
+  assertTrue(
+    /修复接力卡缺少「下一步召唤话术」/.test(output),
+    '应命中修复接力卡段化校验（而非跨段假阳性），实际输出：' + output
+  );
+});
+
+test('负向：删复评接力卡召唤话术标签应拦截（exit 1）', function () {
+  // 第 6 轮评审 W1/W2 新增：此前复评卡话术无段化校验，删标签行（保留【接力卡】段同句式）仍 exit 0。
+  const { code, output } = runValidateCapture(p => {
+    const sectionStart = p.indexOf('【复评接力卡（5/10 评审每轮复评结束时输出）】');
+    const sectionEnd = p.indexOf('【暂停确认】');
+    const head = p.slice(0, sectionStart);
+    const section = p
+      .slice(sectionStart, sectionEnd)
+      .replace('- 下一步召唤话术（用户原样复制即可）：', '- 下一步：');
+    const tail = p.slice(sectionEnd);
+    return head + section + tail;
+  });
+  assertEqual(code, 1, '删复评接力卡话术标签应拦截（exit 1）');
+  assertTrue(
+    /复评接力卡缺少「下一步召唤话术」/.test(output),
+    '应命中复评接力卡段化校验（而非跨段假阳性），实际输出：' + output
+  );
+});
+
+test('负向：删复评卡「未清零」示例句应拦截（exit 1）', function () {
+  // 第 6 轮评审 W1 新增：复评卡未清零示例句此前无独立校验，删除后须段内拦截。
+  const { code, output } = runValidateCapture(p => {
+    const sectionStart = p.indexOf('【复评接力卡（5/10 评审每轮复评结束时输出）】');
+    const sectionEnd = p.indexOf('【暂停确认】');
+    const head = p.slice(0, sectionStart);
+    const section = p
+      .slice(sectionStart, sectionEnd)
+      .replace(
+        '@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮评审（复评仍有问题，继续 review-修复循环）：',
+        '@CodeBuddy 执行后续评审：'
+      );
+    const tail = p.slice(sectionEnd);
+    return head + section + tail;
+  });
+  assertEqual(code, 1, '删复评未清零示例句应拦截（exit 1）');
+  assertTrue(
+    /复评接力卡缺少「下一步召唤话术」/.test(output),
+    '应命中复评接力卡段化校验（而非跨段假阳性），实际输出：' + output
+  );
+});
+
+test('负向：删复评卡「已清零」示例句应拦截（exit 1）', function () {
+  // 第 6 轮评审 W1 新增：复评卡已清零示例句（转 6/10 测试）此前无独立校验，删除后须段内拦截。
+  const { code, output } = runValidateCapture(p => {
+    const sectionStart = p.indexOf('【复评接力卡（5/10 评审每轮复评结束时输出）】');
+    const sectionEnd = p.indexOf('【暂停确认】');
+    const head = p.slice(0, sectionStart);
+    const section = p
+      .slice(sectionStart, sectionEnd)
+      .replace(
+        '@CodeBuddy 接力 NPC_TEAM skill，执行 6/10 测试（评审问题已清零，进入测试阶段）：',
+        '@CodeBuddy 执行测试：'
+      );
+    const tail = p.slice(sectionEnd);
+    return head + section + tail;
+  });
+  assertEqual(code, 1, '删复评已清零示例句应拦截（exit 1）');
+  assertTrue(
+    /复评接力卡缺少「下一步召唤话术」/.test(output),
+    '应命中复评接力卡段化校验（而非跨段假阳性），实际输出：' + output
+  );
+});
+
+test('负向：双源同步删三段接力卡话术标签应拦截（exit 1）', function () {
+  // 第 6 轮评审 W1 新增：模拟用户改 docs 提示词（删三段卡标签行）未同步 skill，
+  // 段化校验应拦截（此前全局 indexOf 校验漏检 exit 0）。
+  const code = withSkillFile(
+    fs.readFileSync(SKILL_FILE, 'utf8'),
+    () => {
+      const { content, prompt } = readPrompt();
+      const stripThree = p => {
+        const lines = p.split('\n');
+        const titles = [
+          '【评审接力卡（5/10 评审每轮评审结束时输出）】',
+          '【修复接力卡（5/10 评审每轮修复结束时输出）】',
+          '【复评接力卡（5/10 评审每轮复评结束时输出）】',
+        ];
+        let inSection = false;
+        const out = [];
+        for (const line of lines) {
+          if (titles.some(t => line.includes(t))) inSection = true;
+          if (inSection && line.trim() === '- 下一步召唤话术（用户原样复制即可）：') continue;
+          out.push(line);
+        }
+        return out.join('\n');
+      };
+      const rewritten = content.replace(prompt, stripThree(prompt));
+      // 与 runValidateCapture 相同的临时副本机制
+      const tmp = FILE + '.tmp';
+      const backup = FILE + '.bak';
+      fs.writeFileSync(tmp, rewritten);
+      fs.renameSync(FILE, backup);
+      fs.renameSync(tmp, FILE);
+      try {
+        const { spawnSync } = require('child_process');
+        const r = spawnSync('node', [SCRIPT], { encoding: 'utf8' });
+        return { code: r.status, output: (r.stdout || '') + (r.stderr || '') };
+      } finally {
+        fs.renameSync(FILE, tmp);
+        fs.renameSync(backup, FILE);
+        try {
+          fs.unlinkSync(tmp);
+          fs.unlinkSync(backup);
+        } catch (_) {}
+      }
+    }
+  );
+  assertEqual(code.code, 1, '双源删三段卡话术标签应拦截（exit 1）');
+  assertTrue(
+    /评审接力卡缺少「下一步召唤话术」|修复接力卡缺少「下一步召唤话术」|复评接力卡缺少「下一步召唤话术」/.test(
+      code.output
+    ),
+    '应命中三段卡段化校验，实际输出：' + code.output
+  );
 });
 
 test('负向：删「禁止在一次召唤内偷偷连跑多轮评审-修复」应拦截（exit 1）', function () {

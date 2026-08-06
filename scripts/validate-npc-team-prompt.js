@@ -265,11 +265,65 @@ if (!m) {
       );
     else relayReviewLastIdx = idx;
   }
-  // 评审接力卡/修复接力卡必须含「下一步召唤话术」示例（用户原样复制即可触发下一棒独立执行）
-  if (!/@CodeBuddy 接力 NPC_TEAM skill，执行第 R\+1\/10 轮评审修复/.test(prompt))
-    errors.push('评审接力卡缺少「下一步召唤话术」示例（执行第 R+1/10 轮评审修复）');
-  if (!/@CodeBuddy 接力 NPC_TEAM skill，执行第 R\+1\/10 轮复评/.test(prompt))
-    errors.push('修复接力卡缺少「下一步召唤话术」示例（执行第 R+1/10 轮复评）');
+  // 评审接力卡/修复接力卡/复评接力卡必须含「下一步召唤话术」标签与示例句（用户原样复制即可触发下一棒独立执行）
+  // 第 6 轮评审 W1：仿照 10 节【接力卡】段化做法，将三段卡的标签与示例句校验限定在各自段区间内，
+  // 消除跨段假阳性与漏检（此前全局 indexOf 校验，双源同步删掉三段卡标签行后校验仍 exit 0）。
+  // 通用段化工具：截取 startFrag 到 endFrag（或文件尾）之间的文本；区间不成立时返回 ''（由下方判空报错）。
+  const sliceSection = (startFrag, endFrag) => {
+    const s = prompt.indexOf(startFrag);
+    if (s === -1) return '';
+    const e = endFrag ? prompt.indexOf(endFrag, s) : prompt.length;
+    if (e === -1 || e <= s) return '';
+    return prompt.slice(s, e);
+  };
+  // 【评审接力卡】段：起点到【修复接力卡】段标题
+  const reviewCardSection = sliceSection(
+    '【评审接力卡（5/10 评审每轮评审结束时输出）】',
+    '【修复接力卡（5/10 评审每轮修复结束时输出）】'
+  );
+  if (
+    reviewCardSection &&
+    (!reviewCardSection.includes('- 下一步召唤话术（用户原样复制即可）：') ||
+      !/@CodeBuddy 接力 NPC_TEAM skill，执行第 R\+1\/10 轮评审修复（修复本轮评审问题）：/.test(
+        reviewCardSection
+      ))
+  )
+    errors.push(
+      '评审接力卡缺少「下一步召唤话术」（含标签与示例 @CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮评审修复（修复本轮评审问题）：）'
+    );
+  // 【修复接力卡】段：起点到【复评接力卡】段标题
+  const fixCardSection = sliceSection(
+    '【修复接力卡（5/10 评审每轮修复结束时输出）】',
+    '【复评接力卡（5/10 评审每轮复评结束时输出）】'
+  );
+  if (
+    fixCardSection &&
+    (!fixCardSection.includes('- 下一步召唤话术（用户原样复制即可）：') ||
+      !/@CodeBuddy 接力 NPC_TEAM skill，执行第 R\+1\/10 轮复评（评审上轮修复）：/.test(
+        fixCardSection
+      ))
+  )
+    errors.push(
+      '修复接力卡缺少「下一步召唤话术」（含标签与示例 @CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮复评（评审上轮修复）：）'
+    );
+  // 【复评接力卡】段：起点到【暂停确认】段标题，须含标签 + 未清零/已清零两个示例句
+  const reReviewCardSection = sliceSection(
+    '【复评接力卡（5/10 评审每轮复评结束时输出）】',
+    '【暂停确认】'
+  );
+  if (
+    reReviewCardSection &&
+    (!reReviewCardSection.includes('- 下一步召唤话术（用户原样复制即可）：') ||
+      !/@CodeBuddy 接力 NPC_TEAM skill，执行第 R\+1\/10 轮评审（复评仍有问题，继续 review-修复循环）：/.test(
+        reReviewCardSection
+      ) ||
+      !/@CodeBuddy 接力 NPC_TEAM skill，执行 6\/10 测试（评审问题已清零，进入测试阶段）：/.test(
+        reReviewCardSection
+      ))
+  )
+    errors.push(
+      '复评接力卡缺少「下一步召唤话术」（含标签与示例：执行第 R+1/10 轮评审（复评仍有问题）/ 执行 6/10 测试（问题已清零））'
+    );
 }
 
 // ---- 11. 文档级边界声明 ----
