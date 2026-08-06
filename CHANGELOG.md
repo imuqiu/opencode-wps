@@ -156,6 +156,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.1] - 2026-08-06
+
+### Fixed
+
+- **清理 Issue #78 无效修复代码（确认为 WPS 宿主 bug，Issue #78 七诊收尾，PR #112）** — 经 6 轮实机验证（PR #79/#83/#90/#109）确认「侧边栏 chatui 头部被遮挡 + WPS 顶栏标签被压扁」为 **WPS 宿主 TaskPane 布局 bug**，插件侧无法修复（仅新建标签/切标签可临时恢复）。清理全部无效修复代码（净删 889 行，+9/-889）：① `opencode-wps/main.js` 删除宿主重绘模块（`forceTaskPaneRedraw`/`scheduleTaskPaneOpenRedraw`/`registerWindowActivateReflow` 及配套状态变量/常量/`WindowActivate` 监听注册），`OnAddinLoad` 恢复仅初始化枚举+连接 OpenCode；② `opencode-wps/taskpane.html` 删除「头部遮挡自愈」IIFE（`forceReflowFix`/`scheduleReflowFix`/resize/visibilitychange 监听/定时器兜底）与 `showChat()` 中的自愈调度调用，`html,body` 布局恢复标准 `width:100%;height:100%`；③ `tests/taskpane-dock.test.js` 删除重绘/自愈相关用例（43 → 20）；④ `docs/WPSJS_DEVELOPMENT.md` 删除注意事项第 15/16 条与「头部遮挡修复实机验收步骤」章节。**保留**：PR #79 的任务窗格基础健壮性代码（右侧停靠默认、判空回退重建、全链路 try/catch 留痕、内存 ID 兜底）——通用质量提升，与 WPS bug 无关。验证：5 轮 review-修复循环问题清零 + 8 套件 **193 用例全绿** + CI success + 全仓库零残留扫描通过
+
 ## [1.0.0] - 2026-04-21
 
 ### Added
