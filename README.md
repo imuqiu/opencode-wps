@@ -7,624 +7,99 @@
 
 [OpenCode](https://github.com/anomalyco/opencode) AI 助手的 WPS Office 插件，让你在 WPS 文字、表格、演示中直接与 AI 对话，获取智能辅助。**支持 Windows、macOS、Linux 三平台。**
 
-## 项目简介
+## 核心特性
 
-OpenCode WPS 将 OpenCode AI 的能力集成到 WPS Office 中，通过侧边栏 Chat UI 与 AI 实时交互。你可以让 AI 帮你撰写文档、分析数据、生成幻灯片内容，所有操作都在 WPS 内完成，无需切换窗口。
+- **WPS 内嵌 AI 对话** — 侧边栏 Chat UI，支持 SSE 流式输出、Markdown 渲染、多会话管理
+- **MCP 工具集成** — WPS Office MCP 服务器三层工具体系（内置 12 + 注册 ~240 + COM Actions ~257，数量以代码为准），AI 可直接读写/格式化文档
+- **WPS 专用 Agents** — wps-expert / wps-word / wps-excel / wps-ppt，通过 Agent 选择实现功能聚焦
+- **特色功能** — 模板自动填值（修订追踪）+ 长文档分批校对（铁律 3.0，16 条规则代码层强制执行）
+- **执行治理** — governance.js Hooks 拦截所有 MCP 调用（G1-G7 + P1-P16 + T1-T11 共 34 条规则），防 AI 作弊
+- **NPC Team 总指挥（零积分）** — 召唤官方免费 `@CodeBuddy` 一句「调用 NPC_TEAM skill」，6 位专家自动跑完研发全流程，零平台积分；**默认接力模式**（每步独立调用、独立留痕，含评审-修复循环接力）
+- **一键安装** — `node install-addons.js` 自动完成全部组件安装，开机自启
 
-核心特性：
+> 📖 详细功能说明见 [docs/FEATURES.md](./docs/FEATURES.md)。
 
-- **WPS 内嵌 AI 对话** — 侧边栏 Chat UI，支持 SSE 流式输出、Markdown 渲染
-- **多会话管理** — 创建、重命名、切换、删除对话会话
-- **MCP 工具集成** — 通过 WPS Office MCP 服务器，AI 可以直接操作文档（读/写/格式化），500+ 工具覆盖三大应用（内置 12 + 注册 ~240 + COM Actions ~257，数量以代码为准）
-- **WPS 专用 Agents** — 自定义 wps-expert/wps-word/wps-excel/wps-ppt agents，通过 Agent 选择实现功能聚焦
-- **NPC Team 总指挥（零积分）** — 无需新增自建 NPC：在 CNB 平台召唤官方免费 `@CodeBuddy`，本仓库已内置 **NPC_TEAM Skill**（`.codebuddy/skills/npc-team/`），只需一句「调用 NPC_TEAM skill 完成以下需求：xxxxxx」即可自动加载化身 6 位专家（PM/产品/架构/开发/评审/测试），无需再粘贴提示词；亦可将 [docs/NPC_TEAM.md](./docs/NPC_TEAM.md) 中的提示词粘贴使用（兜底）。**默认接力模式（每步独立调用 @CodeBuddy）**：每次召唤只执行流水线中一个步骤，输出【接力卡】（含任务书 + 下一步召唤话术）后立即停下，用户逐步召唤下一棒接力跑完全流程——每步独立调用、独立留痕、独立可见，步间天然可确认/纠正/停止，彻底杜绝"单会话闷头跑完 + 编造全绿"；也支持用户明确要求时的全程模式（一次跑完，保留 ⏸CP1/⏸CP2 暂停确认）。零平台 NPC 积分、Token 实测省 51%；并内置 **4 条真实执行门禁（每步留痕防假装执行 / 10 轮 review-修复循环至清零，每轮均须在 PR 分别回复留痕（简单改动轮数可裁剪、留痕纪律不变） / 测试失败跳转重跑 / 复盘四要素）**，防"编造全绿"
-- **执行治理** — `.opencode/plugins/governance.js` 使用 7 条通用规则（G1-G7）+ 16 条校对规则（P1-P16）+ 11 条模板填写规则（T1-T11），运行时拦截所有 MCP 调用（强制逐批校对、禁止 AI 编造问题、交叉校验修复内容）
-- **Agent 选择** — 底部工具栏支持切换不同 agent，消息自动传递 agent 参数
-- **一键安装** — 运行 `node install-addons.js` 自动完成全部组件安装（8 步）
-- **开机自启** — 通过 Launcher 进程自动管理 OpenCode 服务（监听 14097 端口），用户登录时自动启动
-- **完整技术文档** — `docs/` 目录包含开发指南、API 参考、问题排查等 14 份文档
+## 快速开始
 
-## 项目组成（4 层组件视图）
+### 环境要求
 
-```
-opencode-wps/
-├── docs/                      # 技术文档
-│   ├── README.md              # 文档索引
-│   ├── CODE_REVIEW_GUIDE.md   # 代码评审指南
-│   ├── DEVELOPMENT_GUIDE.md   # 开发指南
-│   ├── I18N_PLAN.md           # 国际化方案
-│   ├── INSTALL_SCRIPT.md      # 安装脚本说明
-│   ├── MCP.md                 # MCP 协议说明
-│   ├── OPENCODE_API.md        # OpenCode API 文档
-│   ├── POWERSHELL_COM.md      # PowerShell COM 调用
-│   ├── SECURITY.md            # 安全策略
-│   ├── SKILLS.md              # Skills 开发指南
-│   ├── TROUBLESHOOTING.md     # 问题排查
-│   ├── WPSJS_DEVELOPMENT.md   # WPS JS 开发指南
-│   ├── WPS_COM_API.md         # WPS COM API 参考
-│   ├── WPS_COM_PS1.md         # wps-com.ps1 实现原理
-│   ├── assets/                # 文档资源（图片等）
-│   └── superpowers/           # 超能力扩展
-├── opencode-wps/              # 第 1 层（Win）：WPS JS 插件（前台 Chat 窗口 + 后台 Launcher）
-│   ├── main.js                # Ribbon 回调、状态管理、OpenCode 连接
-│   ├── taskpane.html          # Chat UI（SSE 流式对话、Markdown 渲染、会话管理、Agent 选择）
-│   ├── launcher.js            # Launcher 进程（Windows 版）
-│   ├── opencode-proxy.js      # CORS 代理（端口 14098，剥离 CSP 头）
-│   ├── config.js              # 全局配置中心
-│   ├── DESIGN.md              # 设计文档
-│   ├── serve.js               # 静态开发服务器
-│   ├── ribbon.xml             # 功能区按钮定义
-│   ├── manifest.xml           # 加载项清单
-│   ├── index.html             # 入口页
-│   ├── package.json           # 插件依赖
-│   ├── wpsjs.config.js        # wpsjs 开发配置
-│   ├── _sse_test.js           # SSE 测试脚本
-│   └── browsertest.html       # 浏览器测试页
-├── opencode-wps-assistant/    # 第 1 层（Mac）：WPS JS 插件（命令轮询桥）
-│   ├── main.js                # 轮询循环 + 命令分发
-│   ├── handlers/              # Word/Excel/PPT 操作处理器（~300 个动作）
-│   ├── utils/                 # 工具函数
-│   │   └── response.js        # 响应格式化
-│   ├── index.html             # 桥接入口页（轮询客户端，无 Chat 界面）
-│   ├── ribbon.xml             # 功能区按钮定义
-│   ├── manifest.xml           # 加载项清单
-│   ├── package.json           # 插件依赖
-│   └── wps-auto.sh            # Mac 自动安装脚本
-├── opencode-wps-linux/        # 第 1 层（Linux）：WPS JS 插件（独立目录，命令轮询桥）
-│   ├── main.js                # 轮询循环 + 命令分发（500ms 轮询 :58891）
-│   ├── handlers/              # Word/Excel/PPT 操作处理器（platform 标记 linux）
-│   ├── utils/                 # 工具函数
-│   │   └── response.js        # 响应格式化
-│   ├── ribbon.xml             # 功能区按钮定义（状态/暂停/打开Web）
-│   ├── manifest.xml           # 加载项清单（id=opencode-wps-linux）
-│   ├── package.json           # 插件依赖
-│   └── wps-auto.sh            # Linux 应用切换脚本（wps/et/wpp + xdg-open）
-├── tests/                     # 测试文件
-│   ├── e2e.test.js            # 端到端测试
-│   ├── launcher.test.js       # Launcher 测试
-│   ├── security.test.js       # 安全测试
-│   └── utils.test.js          # 工具函数测试
-├── .github/workflows/         # CI/CD 工作流
-│   ├── ci.yml                 # CI 主流程
-│   └── opencode.yml           # OpenCode 专用流程
-├── agents/                    # 第 2 层：Agents（跨平台通用）
-├── skills/                    # 第 3 层：Skills（跨平台通用）
-├── .opencode/                 # 项目级配置（跨平台通用）
-├── wps-office-mcp/            # 第 4 层：MCP 服务器（Win→COM 桥接 / Mac→HTTP 轮询 / Linux→HTTP 轮询）
-│   ├── src/
-│   │   ├── client/
-│   │   │   ├── wps-client.ts      # 跨平台路由：Win→PowerShell COM, Mac/Linux→HTTP poll
-│   │   │   ├── mac-poll-server.ts # Mac HTTP 轮询服务器（:58891，Linux 复用本类）
-│   │   │   ├── linux-poll-server.ts # Linux 轮询服务器（注入 Linux wps-auto.sh）
-│   │   │   ├── wps-keepalive.ts   # 连接保活（含 Linux 分支）
-│   │   │   └── README.md          # client 说明
-│   │   └── tools/                 # 11 个 darwin 守卫已移除，全部跨平台
-│   └── scripts/                   # Windows COM 脚本（仅 Windows 使用）
-├── AGENTS.md                  # AI 助手行为指引
-├── CHANGELOG.md               # 更新日志
-├── CODE_OF_CONDUCT.md         # 行为准则
-├── CONTRIBUTING.md            # 贡献指南
-├── install-addons.js          # Windows 一键安装脚本
-├── install-addons-mac.js      # macOS 安装脚本（launchd plist + 插件部署）
-├── install-addons-linux.js    # Linux 安装脚本（jsaddons + publish.xml + XDG autostart）
-├── launcher-mac.js            # macOS Launcher 进程（lsof/kill/ps/open）
-├── launcher-linux.js          # Linux Launcher 进程（/proc 扫描/kill/ps + xdg-open，无 lsof 依赖）
-├── package.json               # 项目依赖
-└── README.md
-```
+- **操作系统**：Windows 10/11、macOS 12+ 或 Linux（Debian/Ubuntu/Arch 等，x86_64 / aarch64）
+- **WPS Office**：Windows 个人版 12.1.0+ 或企业版 / Mac 最新版 / Linux 12.1.x（[linux.wps.cn](https://linux.wps.cn)）
+- **Node.js**：18.0.0+（或 Bun 1.0+）
+- **OpenCode**：`npm install -g opencode-ai`
+- **Python 3**：仅 Linux 需要（`wps-auto.sh` 生成空白 OOXML 用，缺失时回退无参启动）
 
-**4 层说明（从上到下，使用流程）：**
-- **第 1 层 WPS JS 插件** — Win：前台 Chat 窗口 + 服务进程管理；Mac/Linux：命令轮询桥（无 Chat 界面）。Windows 使用 COM 桥接（`opencode-wps/`），Mac 使用反向轮询（`opencode-wps-assistant/`），Linux 使用反向轮询（`opencode-wps-linux/`，独立目录）
-- **第 2 层 Agents** — 角色定义，通过 Agent 选择实现功能聚焦（跨平台通用）
-- **第 3 层 Skills** — 领域技能，AI 调用的能力集（跨平台通用）
-- **第 4 层 MCP** — 跨平台路由：Win→PowerShell COM 桥接，Mac/Linux→HTTP 轮询（反向轮询插件）。~240 TypeScript handler + ~257 个 WPS API 动作
-
-Linux 部署说明见 [docs/LINUX.md](./docs/LINUX.md)。
-
-**横向机制：**
-- **config.js 全局配置** — 所有配置的统一来源（OpenCode/Launcher 端口、网络超时、插件元数据、回退模型），注入为全局 `CONFIG` 对象供各层读取
-- **governance.js 执行治理** — 通过 OpenCode Plugin Hooks（`tool.execute.before`/`after`）在所有 MCP 工具调用前后注入 34 条规则拦截（G1-G7 + P1-P16 + T1-T11），after 钩子更新状态 → before 钩子校验状态，形成防 AI 作弊闭环
-
-### MCP 工具体系
-
-MCP 服务器采用三层工具体系，AI 通过不同的方式发现和调用：
-
-| 层级 | 数量 | 命名约定 | 调用方式 | 说明 |
-|------|------|----------|----------|------|
-| **内置工具** | 12 | `wps_xxx` | 直接 MCP 调用 | 启动即注册，始终可用。含 10 个基础工具 + 2 个 Gateway 工具（`wps_office_search`/`wps_office_execute`） |
-| **注册工具** | ~240 | `wps_xxx_xxx`（Excel ~82 / Word ~37 / PPT ~112 / Common ~10） | → Gateway 路由 | 通过 `tools/index.ts` 注册，有完整的 TypeScript handler（参数校验+类型安全）。**不注册到 MCP**，而是由 Gateway 优先调用。数量以代码为准（见 `scripts/validate-tool-counts.js`） |
-| **COM_ACTIONS** | ~257 | 短名称（`getCellValue`, `setFont`, `addSlide`） | `wps_office_search` → `wps_office_execute` → PS1 兜底 | Gateway 索引，按需发现。**执行流程：有 TS handler → 走 handler（自动转换 camelCase→snake_case），无 handler → 透传 PS1 脚本** |
-
-**三层分工**：内置工具处理基础操作，注册工具提供类型安全的深度控制，COM_ACTIONS 覆盖 WPS API 作为兜底。各层数量随开发持续演进，**以代码为准**（内置工具见 `mcp-server.ts`，注册工具见 `tools/index.ts`，COM_ACTIONS 见 `gateway/index.ts`）。
-
-
-### 组件说明
-
-
-| 组件 | 说明 | 平台 |
-|------|------|------|
-| **opencode-wps** | WPS JS 加载项（Windows 版），Ribbon + Chat UI + Launcher 进程 | Windows |
-| **opencode-wps-assistant** | WPS JS 加载项（Mac 版），命令轮询桥（无 Chat UI），轮询 :58891 拉取命令，通过 handlers/ 操作文档 | macOS |
-| **wps-office-mcp** | MCP 服务器，跨平台路由（Win→PowerShell COM 桥接，Mac→HTTP 轮询） | 跨平台 |
-| **skills** | OpenCode 技能定义，安装到 `~/.opencode/skills/` | 跨平台 |
-| **agents** | 自定义 WPS Agents，定义在 `~/.config/opencode/agents/` | 跨平台 |
-| **install-addons.js** | Windows 一键安装脚本 | Windows |
-| **install-addons-mac.js** | macOS 安装脚本（launchd plist + 插件部署） | macOS |
-| **launcher-mac.js** | macOS Launcher 进程（lsof/kill/ps/open） | macOS |
-
-### config.js — 全局配置中心
-
-`config.js` 是 WPS 插件的唯一配置来源，通过 `<script src="config.js">` 引入后，`CONFIG` 对象挂载为全局变量：
-
-| 配置项 | 用途 | 默认值 |
-|--------|------|--------|
-| `CONFIG.opencode.apiBase` | OpenCode 服务地址 | `http://127.0.0.1:14096` |
-| `CONFIG.launcher.apiBase` | Launcher 管理地址 | `http://127.0.0.1:14097` |
-| `CONFIG.plugin.userHome` | 用户主目录（安装时注入） | `__OPCODE_WPS_USER_HOME__` |
-| `CONFIG.network.timeout` | HTTP 请求超时 | `30000ms` |
-| `CONFIG.session.defaultAgent` | 默认 agent | `wps-expert` |
-
-### hooks — 执行治理的核心机制
-
-`.opencode/plugins/governance.js` 通过 OpenCode Plugin Hooks 机制，在所有 MCP 工具调用前后注入拦截逻辑：
-
-- **`tool.execute.before` 钩子**：在所有工具执行前检查 34 条规则（G1-G7 通用 + P1-P16 校对 + T1-T11 模板），违规直接阻断
-- **`tool.execute.after` 钩子**：工具执行成功后更新状态追踪（如批次计数、修订计数、issue 来源），供下一次 `before` 钩子校验
-
-**钩子的巨大作用**：
-1. **零侵入** — 无需修改工具实现代码，在插件运行时动态注入
-2. **全局管控** — 一次定义，覆盖所有 AI 的工具调用路径
-3. **状态联动** — after 钩子追踪状态 → before 钩子校验状态，形成闭环
-4. **防 AI 作弊** — 禁止 AI 跳过基础校对、跳过确认、编造修复等风险行为
-5. **代码层强制执行** — 不依赖 AI 自觉，违反规则直接报错，AI 无法绕过
-
-## 软件架构（全链路十层视图）
-
-> 上文「4 层组件视图」按**仓库目录归属**划分层次；本节按**一次完整请求的调用链**划分十层，两种视角互为补充：组件第 1 层 ≈ 调用链 ②③④+⑪，第 2 层 ≈ ⑥（Agents）、第 3 层 ≈ ⑦（Skills），第 4 层 ≈ ⑧⑨⑩；⑤ 为公共调度层，⑪ 为旁路服务进程。
->
-> 调用链共 10 层（①-⑩），⑪ Launcher 为**旁路服务管理进程**：它不参与请求流动，仅负责 `opencode serve`（⑤）的生命周期管理，故编号超出十层、单独列示。
-
-### 全链路架构图
-
-```
-┌─────────────────────────────────────▼────────────────────────────────────┐
-│             ① WPS 宿主应用（Win / Mac）                                  │
-│   Ribbon（打开面板 / 连接状态）+ WPS 文档对象模型                        │
-└─────────────────────────────────────┬────────────────────────────────────┘
-                                      │ ② 注入/加载
-┌─────────────────────────────────────▼────────────────────────────────────┐
-│        ② WPS JS 插件 — Win：前台 Chat UI / Mac：命令轮询桥               │
-│    Win: opencode-wps/（taskpane.html SSE+Markdown 直连 :14096）          │
-│    Mac: opencode-wps-assistant/（无 Chat UI，轮询 :58891 拉取命令）      │
-└─────────────────────────────────────┬────────────────────────────────────┘
-                                      │ ③ REST + SSE（仅 Win，运行时绕过 ④）
-┌─────────────────────────────────────▼────────────────────────────────────┐
-│   ⑤ OpenCode 中央调度平台（opencode serve :14096）                       │
-│   会话管理 / Agent 路由（wps-expert/word/excel/ppt）                     │
-│   ══ 治理横切：governance.js Hooks（before/after）══                     │
-└─────────────────────────────────────┬────────────────────────────────────┘
-                                      │ ⑤⑥ MCP 协议（stdio）
-┌─────────────────────────────────────▼────────────────────────────────────┐
-│       ⑥ Agents（跨平台）       ⑦ Skills（跨平台）                        │
-│       agents/*.md              skills/*（5 个技能）                      │
-└─────────────────────────────────────┬────────────────────────────────────┘
-                                      │ ⑦ 工具调用（MCP）
-┌─────────────────────────────────────▼────────────────────────────────────┐
-│        ⑧ WPS Office MCP 服务器（三层工具体系）                           │
-│        12 内置 + ~240 handler + ~257 COM Actions                         │
-└─────────────────────────────────────┬────────────────────────────────────┘
-                                      │ ⑧⑨ 平台桥接（按平台路由）
-┌─────────────────────────────────────▼────────────────────────────────────┐
-│  ⑨ Win：PowerShell COM（wps-com.ps1）  │  ⑨ Mac：HTTP 轮询（:58891）     │
-│     → ⑩ WPS COM API 操作文档            │  mac-poll-server.ts 500ms 拉取 │
-│                                        │     → ⑩ WPS JS API（handlers）  │
-└─────────────────────────────────────┬────────────────────────────────────┘
-                                      │ ⑩ 操作结果 → 沿原路返回
-
-┌─────────────────────────────────────┬────────────────────────────────────┐
-│  ④ 自建通讯层 — CORS 代理（:14098）— 备用，不在运行时调用链              │
-│  opencode-proxy.js 剥离 CSP 头；当前 launcher 已用 --cors file:// 放行   │
-└─────────────────────────────────────┬────────────────────────────────────┘
-
-┌─────────────────────────────────────┬────────────────────────────────────┐
-│  ⑪ Launcher 服务管理（:14097）— 旁路进程，不参与调用链                   │
-│  管理 opencode serve 生命周期：/status /start /stop（按端口精确停止）    │
-│  Win: schtasks / Mac: LaunchAgent                                        │
-└─────────────────────────────────────┬────────────────────────────────────┘
-```
-
-### 十层职责与平台差异
-
-| 层 | 职责 | 平台差异 |
-|----|------|----------|
-| ① WPS 宿主 | 承载插件运行环境，提供文档对象模型 | Win/Mac 均相同，但 COM 与 JS API 两套对象模型 |
-| ② WPS JS 插件 | Win：前台 Chat UI（UI/会话/Agent 选择）；Mac：命令轮询桥（无 Chat 界面） | Win：taskpane.html（SSE 直连 :14096）；Mac：index.html（轮询 :58891 拉取命令） |
-| ③ 通讯协议 | 浏览器与 OpenCode 服务之间的 REST + SSE（仅 Win）；Mac 为插件↔MCP 的 HTTP 轮询 | 仅 Win：REST + SSE 直连 :14096（launcher 以 `--cors file://` 放行）；Mac：插件↔MCP :58891 HTTP 轮询，不直连 OpenCode |
-| ④ 自建通讯层 | opencode-proxy.js（:14098）剥离 CSP 头，解决 WPS 内置 Chromium 103 不兼容现代 Web（官方 web 版需 Chrome 130+）的根因 | 备用方案：当前 launcher 已用 `--cors file://` 放行，运行时调用链不再经过它；Mac 无需 CORS 代理 |
-| ⑤ OpenCode 调度 | 会话管理、Agent 路由、模型调度（config.js 支持 Ollama 回退模型） | 跨平台一致 |
-| ⑥ Agents | 角色定义（wps-expert/word/excel/ppt），Agent 选择实现功能聚焦 | 跨平台一致 |
-| ⑦ Skills | 领域技能（wps-word/excel/ppt/office/proofread），AI 调用的能力集 | 跨平台一致 |
-| ⑧ MCP 服务器 | 三层工具体系：12 内置 + ~240 注册 handler + ~257 COM Actions | 跨平台一致，数量以代码为准 |
-| ⑨ 平台桥接 | 将 MCP 命令转换为平台原生调用 | Win：PowerShell COM（wps-com.ps1）；Mac：HTTP 轮询（:58891，500ms 间隔） |
-| ⑩ WPS 操作 | 最终执行文档读写/格式化/校对/填值 | Win：COM API；Mac：WPS JS API（handlers/*.js） |
-| ⑪ Launcher（旁路） | 管理 opencode serve 生命周期（:14097），实现开机自启；不参与请求调用链 | Win：计划任务（schtasks）；Mac：LaunchAgent plist |
-
-### 一次完整请求的调用链（以 Windows 为例）
-
-```
-用户在 Chat 输入 → ② taskpane.html → ③ SSE POST /session/{id}/message
-→ ⑤ opencode serve :14096（Win 直连，launcher 以 `--cors file://` 放行）→ ⑥ Agent 路由 + ⑦ Skill 选择
-→ ⑧ MCP 工具调用 → ⑨ wps-com.ps1（PowerShell COM）→ ⑩ WPS 文档操作
-→ 结果沿原路返回 → SSE 流式渲染到 Chat 窗口
-```
-
-> 注：④ CORS 代理（:14098）为备用方案，不在上述实际调用链中；Mac 端无 Chat UI，由 `opencode-wps-assistant/` 轮询 :58891 拉取 MCP 命令并返回结果。
-
-**关键设计决策**（源自实践中的踩坑）：
-
-1. **自建 Chat UI 而非官方 Web 版** — WPS 内置 Chromium 停留在 2022 年的 103 版本，官方 opencode web 版需 Chrome 130+，只能基于 REST + SSE 自建通讯层
-2. **Launcher 进程而非 VBS/bat** — 经历 `OAAssist.ShellExecute`（触发安全警告）、VBS 脚本、手动命令等方案后，最终采用 Launcher 进程 + 计划任务/LaunchAgent 自动启动
-3. **双平台差异化桥接** — Win 走 PowerShell COM（同步、强类型），Mac 走 HTTP 反向轮询（500ms 拉取、异步），两者共用同一 MCP 层和工具集
-4. **治理横切进调用链** — governance.js 的 34 条规则（G1-G7 + P1-P16 + T1-T11）不改变调用链结构，而是通过 Plugin Hooks 在⑤层拦截所有工具调用，before/after 形成状态闭环
-
-## 特色功能
-
-### 文档填写 — 模板自动化填值
-
-根据预定义的字段映射，自动从结构化数据源（JSON/Excel/数据库）中提取值，精准填充到 Word 文档模板的指定位置，全程开启修订模式，确保填值过程可追溯。
-
-**工作流程：**
-
-1. **评估文档** — `getDocumentTextByRange` 全文读取 → `analyzeDocStructure` 评估段落数量和结构
-2. **定义字段** — `step2LabelFields` 逐个标注需要填写的字段名称和位置
-3. **映射数据** — `step3MapFields` 将数据源字段与模板字段对应
-4. **预览校验** — 自动检测字段格式（日期/金额/编号等），发现异常立即提示
-5. **批量填值** — 分批次（每批 ≤200 段）调用 `replaceInParagraph` 执行填充，禁止 AI 编造数据，跳过签字/印章等不可自动填写的字段
-6. **修订记录** — 全程开启 `TrackRevisions` 模式，所有修改自动标记修订，用户可逐个接受/拒绝
-
-**治理规则（T1-T11）：**
-
-| 规则 | 说明 |
-|------|------|
-| T1 | 填写前评估文档结构，确定段落总数和字段位置 |
-| T2-T3 | 分批处理，每批 ≤200 段 |
-| T4 | 开启修订模式 |
-| T5-T11 | 禁止编造字段值、跳过签字字段、所有填值加下划线标记等 |
-
-**适用场景：**
-- 合同/协议批量生成（将订单数据填入合同模板）
-- 报告/报表自动生成（将统计数据填入报告模板）
-- 公文/信函批量制作（将收件人信息填入信函模板）
-- 审批表单填写（将审批结果填入审批单模板）
-
----
-
-### 大文档校对 — 铁律 3.0 严格逐批校对
-
-基于 `proofreadBasic` 工具的严格逐批校对流程，引入**铁律 3.0** — 禁止 AI 跳过基础校对、禁止跳过确认直接修改、禁止 AI 编造修复内容。通过 16 条校对规则（P1-P16）在代码层强制执行。
-
-**校对流程：**
-
-1. **生成批计划** — `getDocumentParagraphs` 获取全部段落 → 分批次（每批预期段数 × 2 为上限）
-2. **逐批校对** — `proofreadBasic` 每批独立调用，AI 逐批检查
-3. **确认修复** — `confirmBatchAiProofread` 确认本批问题
-4. **执行修复** — `replaceInParagraph` 修复本批问题 → **进入下一批**
-
-**铁律 3.0 核心规则：**
-
-| 规则 | 类型 | 说明 |
-|------|------|------|
-| **P1** | before | 每批前必调 `proofreadBasic`，禁止 AI 直接调用 `getDocumentParagraphs` 跳批 |
-| **P2-P3** | before/after | `proofreadBasic` 文本长度限制（段落 × 行 × 200 字符） |
-| **P4-P7** | after | 批次状态追踪（批数/段数/完成计数/状态设置） |
-| **P8-P10** | before | `confirmBatchAiProofread` 前必须调 `proofreadBasic`，禁止跳过基础校对 |
-| **P11** | before | 每批必须完成（proofread → confirm → fix）才能进入下一批 |
-| **P12** | before | `getDocumentParagraphs` 禁止获取超出本批范围的段落 |
-| **P13** | before | `confirmBatchAiProofread` 确认前必须调 `proofreadBasic` |
-| **P14** | before | `confirmBatchAiProofread` 前必须调 `proofreadBasic`，禁止 AI "分析"后跳过 |
-| **P15** | before | 当 `proofreadHadIssues=false`（基础校对无问题）时，最多允许 1 次 AI 自定修复，超限需 `_force_ai_fix` |
-| **P16** | before | `replaceInParagraph` 的 `findText` 必须与至少一条 `proofreadIssueOriginals` 原文匹配 |
-
-**治理机制（hooks 闭环）：**
-
-```
-before 钩子拦截违规 → 工具执行 → after 钩子更新状态 → before 钩子校验状态
-```
-
-- `proofreadHadIssues`：记录基础校对是否发现问题 → P15 据此限制 AI 自定修复次数
-- `proofreadIssueOriginals[]`：存储基础校对返回的 issue 原文 → P16 交叉校验
-- `proofreadCalledThisBatch`：标记本批是否调过基础校对 → P12/P13/P14 共用
-- `replaceCountThisBatch`：本批替换次数计数 → P15 超限拦截
-
-**适用场景：**
-- 长文档（100+ 段落）的错别字/语病检查
-- 合同/公文/学术文档的格式一致性校对
-- 批量校对 + 批量修正（铁律 3.0 确保每批严格闭环）
-
----
-
-本项目经历了以下演进过程：
-
-1. **wpsjs 起步** — 按 WPS 官方的 JS 加载项文档实在开发不出来，最后从 [wpsjs](https://github.com/laihaojie/wpsjs) 项目起步，才成功开发出 WPS 插件
-2. **iflow 时代** — 最初借鉴 [iflow-for-obsidian](https://github.com/junjie-yan/iflow-for-obsidian) 的方式在 WPS 中调用 [iflow cli](https://github.com/iflow-ai/iflow-cli)，通过 4 个 skills + 1 个 MCP（来自 [wps-skills](https://github.com/lc2panda/wps-skills)）及其关键的 COM 桥接插件，实现了在侧边栏通过对话所见即所得地实时操作文档。开发已经完成，但 iflow cli 官方执意关闭，只能另寻出路
-3. **转向 OpenCode** — 转到 OpenCode 后，最初想借鉴 [opencode-obsidian](https://github.com/mtymek/opencode-obsidian) 的方式直接调用官方的 opencode web 界面，但反复尝试后发现 WPS 内置 Chromium 停留在 2022 年的 103 版本，而官方 web 版需要 Chrome 130+，根本不兼容
-4. **自建 Chat UI** — 既然官方 web 界面走不通，就基于 OpenCode 的 REST API + SSE 自建了 Chat UI，直接在 WPS 侧边栏中渲染 AI 对话
-5. **解决启动问题** — 经历了 `OAAssist.ShellExecute`（触发 WPS 安全警告）、VBS 脚本、手动命令等多种方案后，最终采用 Launcher 进程管理服务 + 计划任务自动启动 Launcher，无需 bat/vbs/手动操作
-6. **功能整合** — 将两个独立的旧插件（`wps-claude-addon` 和 `wps-claude-assistant`）合并到统一的 `opencode-wps` 加载项中
-7. **迁移到 OpenCode 架构** — 从 Claude Desktop 架构完全迁移到 OpenCode 架构（MCP 配置格式、Skills 目录、插件机制等）
-8. **Markdown 渲染** — 重写 `renderMarkdown()` 函数，支持代码块、表格、列表、引用等完整 Markdown 语法
-9. **Gateway 按需加载** — 将全部工具一次性注册改为 Gateway 模式（启动时仅注册 12 内置 + 2 Gateway 工具，COM Actions 按需发现），大幅减少 MCP 启动耗时、节省 token
-10. **特色功能落地** — 根据实际工作需要增加了文档批量填写（模板自动填值 + 修订追踪）和长文档分批校对（铁律 3.0 严格逐批闭环）功能
-11. **Hooks 执行治理** — 在实际使用中逐步增加 governance.js hooks 拦截（G1-G7 + P1-P16 + T1-T11 共 34 条规则），解决 AI 随机执行、跳过基础校对、编造修复等运行问题，形成 before 拦截 + after 状态追踪的防作弊闭环
-
-## 环境要求
-
-- **操作系统**：Windows 10/11 或 macOS 12+
-- **WPS Office**：个人版 12.1.0+ 或企业版（Windows）；WPS Office for Mac 最新版
-- **Node.js**：18.0.0+（或 **Bun**：1.0+）
-- **OpenCode**：已安装 opencode-ai（`npm install -g opencode-ai`）
-
-## 安装
-
-### Windows
-
-#### 1. 克隆项目
+### 一键安装
 
 ```bash
+# 国内（CNB 镜像）：git clone https://cnb.cool/lnxsun/opencode-wps.git
+# 国外（GitHub）：git clone https://github.com/lnxsun/opencode-wps.git
 git clone https://github.com/lnxsun/opencode-wps.git
 cd opencode-wps
-```
-
-#### 2. 安装项目依赖
-
-```bash
 npm install
+
+# 按平台执行安装脚本
+node install-addons.js          # Windows（8 步自动安装）
+node install-addons-mac.js      # macOS（7 步自动安装）
+node install-addons-linux.js    # Linux（8 步自动安装）
 ```
 
-#### 3. 一键安装
+安装完成后重启 WPS，功能区出现 **OpenCode AI** 标签页：Windows 点击 **打开面板** 即可开始对话；macOS / Linux 点击 **打开Web** 在浏览器中对话。
 
-```bash
-node install-addons.js
-```
+> 📖 三平台完整安装步骤、目录路径与卸载说明见 [docs/INSTALLATION.md](./docs/INSTALLATION.md)。
 
-安装脚本会自动完成以下 8 个步骤：
+## 使用方式
 
-| 步骤 | 操作 | 说明 |
-|------|------|------|
-| 1 | 安装 WPS 插件 | 复制 opencode-wps 到 `%APPDATA%\kingsoft\wps\jsaddons\`，注册到 publish.xml/jsplugins.xml |
-| 2 | 安装并编译 MCP 服务器 | 在 wps-office-mcp 目录执行 `npm install` + `npm run build` |
-| 3 | 配置 OpenCode MCP | 修改 `~/.config/opencode/opencode.json`，添加 wps-office MCP 服务器 |
-| 4 | 安装 Skills | 复制 5 个技能到 `~/.opencode/skills/` |
-| 5 | 安装 Agents | 复制自定义 agents 到 `~/.config/opencode/agents/` 和 `~/.opencode/agents/` |
-| 6 | 安装 Plugins | 复制治理插件到 `~/.config/opencode/plugins/` |
-| 7 | 清理旧配置 | 移除旧版 legacy 配置文件残留 |
-| 8 | 注册 Launcher | 注册 Windows 计划任务实现开机自启，监听 14097 端口管理服务 |
+- **Windows**：WPS 侧边栏 Chat UI，直接与 AI 对话
+- **macOS / Linux**：Ribbon 点击「打开Web」，浏览器中对话，插件轮询桥操作文档
+- **对话能力**：SSE 流式输出、Markdown 渲染、会话管理、Agent 选择、`@wps-word` 等子 agent 调用
 
-#### 4. 重启 WPS Office
+> 📖 完整使用指南见 [docs/USAGE.md](./docs/USAGE.md)；问题排查见 [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md)。
 
-安装完成后重启 WPS，功能区会出现 **OpenCode AI** 标签页。
-
----
-
-### macOS
-
-> Mac 版 WPS 使用了与 Windows 版不同的 JS 插件架构（基于 WPS JS API，而非 COM 桥接），因此采用了独立的插件实现和安装方式。
-
-#### 1. 克隆项目
-
-```bash
-git clone https://github.com/lnxsun/opencode-wps.git
-cd opencode-wps
-```
-
-#### 2. 安装项目依赖
-
-```bash
-npm install
-# 编译 MCP 服务器
-cd wps-office-mcp && npm install && npm run build && cd ..
-```
-
-#### 3. 安装 Mac 插件和组件
-
-```bash
-node install-addons-mac.js
-```
-
-安装脚本会自动完成以下 7 个步骤：
-
-| 步骤 | 操作 | 说明 |
-|------|------|------|
-| 1 | 安装 WPS 插件 | 复制 `opencode-wps-assistant/` 到 `~/Library/Containers/com.kingsoft.wpsformac/Data/Documents/jsaddons/` |
-| 2 | 安装并编译 MCP 服务器 | 在 wps-office-mcp 目录执行 `npm install` + `npm run build` |
-| 3 | 配置 OpenCode MCP | 修改 `~/.config/opencode/opencode.json`，添加 wps-office MCP 服务器 |
-| 4 | 安装 Skills | 复制 5 个技能到 `~/.opencode/skills/` |
-| 5 | 安装 Agents | 复制 agents 到 `~/.config/opencode/agents/` 和 `~/.opencode/agents/` |
-| 6 | 安装 Plugins | 复制治理插件到 `~/.config/opencode/plugins/` |
-| 7 | 注册 LaunchAgent | 创建 `~/Library/LaunchAgents/com.opencode.launcher.plist` 实现开机自启 |
-
-#### 4. 启动服务
-
-安装完成后，手动启动 launcher-mac：
-
-```bash
-node launcher-mac.js
-```
-
-或重启 Mac 让 LaunchAgent 自动启动。
-
-#### 5. 重启 WPS Office
-
-重启 WPS Office for Mac，功能区会出现 **OpenCode AI** 标签页。
-
-## 使用
-
-### 打开 AI 对话面板
-
-#### Windows
-
-1. 在 WPS 功能区点击 **OpenCode AI** 标签页
-2. 点击 **打开面板** 按钮，右侧弹出 Chat 侧边栏
-3. 点击 **连接状态** 按钮查看 OpenCode 服务状态
-
-#### macOS
-
-Mac 版为命令轮询桥架构（无内嵌侧边栏），对话在浏览器中进行：
-
-1. 在 WPS 功能区点击 **OpenCode AI** 标签页
-2. 点击 **打开Web** 按钮，自动在系统默认浏览器（优先 Chrome/Edge）中打开 OpenCode AI 对话界面（`http://127.0.0.1:14096`）
-3. 在浏览器中与 AI 对话，文档操作经 WPS 插件轮询桥（`:58891`）自动执行
-
-> 若 launcher 未启动导致「打开Web」无响应，请先运行 `node launcher-mac.js` 或重启 Mac（LaunchAgent 会自动拉起）。
-
-### 对话操作
-
-- **发送消息** — 在输入框输入问题，按 Enter 或点击发送
-- **SSE 流式输出** — AI 回复实时流式显示，支持 Markdown 渲染（代码块、表格、列表等）
-- **会话管理** — 点击会话列表切换对话，支持创建、重命名、删除会话
-- **Agent 选择** — 点击底部工具栏的 Agent 按钮，选择不同的 AI 助手
-
-### WPS Agents
-
-项目内置了专门的 WPS Office 智能助手：
-
-| Agent | 类型 | 说明 |
-|-------|------|------|
-| **wps-expert** | 子 agent | WPS Office 智能助手，综合处理 Word/Excel/PPT（可用 `@wps-expert` 调用）|
-| **wps-word** | 子 agent | Word 文档处理专家（可用 `@wps-word` 调用）|
-| **wps-excel** | 子 agent | Excel 数据处理专家（可用 `@wps-excel` 调用）|
-| **wps-ppt** | 子 agent | PPT 演示文稿专家（可用 `@wps-ppt` 调用）|
-
-**使用方式**：
-1. 在消息中使用 `@wps-expert`、`@wps-word`、`@wps-excel`、`@wps-ppt` 调用子 agents 处理特定任务
-2. 在 CNB 平台对话中召唤官方免费 `@CodeBuddy`，只需一句「调用 NPC_TEAM skill 完成以下需求：xxxxxx」即可自动加载本仓库内置的 NPC_TEAM Skill 化身 NPC Team（或粘贴 [docs/NPC_TEAM.md](./docs/NPC_TEAM.md) 提示词兜底），不消耗平台 NPC 积分。**默认接力模式**：每次召唤只执行一步并输出【接力卡】（含任务书 + 下一步召唤话术），把接力卡发给下一次召唤的 `@CodeBuddy` 逐步续跑，直到跑完全流程；详细用法见 [docs/NPC_TEAM.md](./docs/NPC_TEAM.md)
-
-**自定义 Agents**：
-- Agents 定义位置：`~/.config/opencode/agents/`
-- 修改后重启 OpenCode 服务生效
-
-### OpenCode 服务管理
-
-OpenCode 服务通过 Launcher 进程管理（监听 `127.0.0.1:14097`），无需手动操作：
-
-```bash
-# 通过 Launcher API 管理服务（跨平台）
-# 查看状态：GET http://127.0.0.1:14097/status
-# 启动服务：POST http://127.0.0.1:14097/start (body: {"cwd": "目录"})
-# 停止服务：POST http://127.0.0.1:14097/stop  ← 按端口 14096 精确停止
-```
-
-| 平台 | Launcher | 自启机制 |
-|------|----------|----------|
-| Windows | `opencode-wps/launcher.js` | 计划任务（`schtasks /Create`） |
-| macOS | `launcher-mac.js` | LaunchAgent（`~/Library/LaunchAgents/com.opencode.launcher.plist`） |
-
-服务默认监听 `127.0.0.1:14096`，WPS 插件会自动检测并连接。
-
-## 工作原理
-
-### Windows
+## 项目架构（一图速览）
 
 ```
-┌────────────────────────────────────────────┐
-│              WPS Office                    │
-│  ┌──────────┐  ┌──────────────────────┐   │
-│  │  Ribbon  │  │  taskpane.html       │   │
-│  │  打开面板 │─▶│  SSE + Markdown      │   │
-│  └──────────┘  └──────────┬───────────┘   │
-│                           │ HTTP/SSE       │
-└───────────────────────────┼────────────────┘
-                            │
-                ┌───────────▼───────────┐
-                │  opencode serve:14096 │
-                └───────────┬───────────┘
-                            │ MCP
-                ┌───────────▼───────────┐
-                │  wps-office-mcp       │
-                │  ├─ 12 内置工具       │
-                │  ├─ ~240 注册工具      │
-                │  └─ ~257 COM Actions  │
-                └───────────┬───────────┘
-                            │ PowerShell COM
-                ┌───────────▼───────────┐
-                │  wps-com.ps1          │
-                └───────────────────────┘
-
-┌────────────────────────────────────────────┐
-│  Launcher (port 14097, 计划任务自启)        │
-└────────────────────────────────────────────┘
+WPS 宿主 (Win/Mac/Linux)
+   │
+   ▼
+WPS JS 插件 ── Win: Chat UI (SSE直连:14096) / Mac·Linux: 轮询桥 (:58891)
+   │
+   ▼
+OpenCode 中央调度 (opencode serve :14096) ── governance.js Hooks 横切治理
+   │
+   ▼
+WPS Office MCP 服务器 (12 内置 + ~240 handler + ~257 COM Actions)
+   │
+   ▼
+Win: PowerShell COM 桥接  /  Mac·Linux: HTTP 轮询 (反向轮询插件)
 ```
 
-1. 计划任务自动启动 Launcher → 启动 `opencode serve --port 14096`
-2. WPS 加载项连接 OpenCode，通过 SSE 流式对话
-3. MCP 工具调用 → PowerShell COM 桥接 → 操作 WPS 文档
+> 📖 完整架构（4 层组件 + 十层调用链 + 平台差异）见 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)。
 
-### macOS
+## 文档地图
 
-```
-┌────────────────────────────────────────────┐
-│         WPS Office for Mac                 │
-│  ┌──────────┐  ┌──────────────────────┐   │
-│  │  Ribbon  │  │  index.html          │   │
-│  │  打开面板 │─▶│  main.js (轮询循环)  │   │
-│  └──────────┘  │  handlers/*.js 执行 │   │
-│                └──────────▲───────────┘   │
-│                           │ GET /poll      │
-│                           │ 每 500ms       │
-└───────────────────────────┼────────────────┘
-                            │ :58891
-                ┌───────────▼───────────┐
-                │  mac-poll-server.ts   │
-                └───────────┬───────────┘
-                            │ MCP
-                ┌───────────▼───────────┐
-                │  wps-office-mcp       │
-                │  isMacPlatform()      │
-                │  → execMacPoll()      │
-                └───────────────────────┘
+| 分类            | 文档                                                                                                                                                                                                   |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 🧭 **使用**     | [安装指南](./docs/INSTALLATION.md) · [使用指南](./docs/USAGE.md) · [特色功能](./docs/FEATURES.md) · [问题排查](./docs/TROUBLESHOOTING.md)                                                              |
+| 🔧 **开发**     | [开发指南](./docs/DEVELOPMENT_GUIDE.md) · [代码审查](./docs/CODE_REVIEW_GUIDE.md) · [WPS JS 开发](./docs/WPSJS_DEVELOPMENT.md) · [安装脚本说明](./docs/INSTALL_SCRIPT.md) · [Skills](./docs/SKILLS.md) |
+| 🖥️ **平台专题** | [Linux 支持](./docs/LINUX.md)                                                                                                                                                                          |
+| 📚 **内部参考** | [架构](./docs/ARCHITECTURE.md) · [MCP](./docs/MCP.md) · [API 参考](./docs/OPENCODE_API.md) · [安全](./docs/SECURITY.md) · [NPC Team](./docs/NPC_TEAM.md)                                               |
 
-┌────────────────────────────────────────────┐
-│  launcher-mac (port 14097, LaunchAgent自启) │
-└────────────────────────────────────────────┘
-```
+> 📚 完整文档中心（含全部 22 份顶层文档 + 2 份设计规格的索引）见 [docs/README.md](./docs/README.md)。
 
-1. LaunchAgent 自动启动 launcher-mac → 启动 `opencode serve --port 14096`
-2. MCP 检测到 Mac，使用 HTTP 轮询（`:58891/poll`）而非 PowerShell COM
-3. WPS 插件每 500ms 拉取命令，通过 WPS JS API 直接操作文档
+## NPC 研发助手（零积分）
 
-### 跨平台通用
-
-所有 11 个原 darwin 守卫的 MCP 工具已移除平台限制，skills/agents/plugins 配置跨平台一致。
-
-## NPC 研发助手（6 角色团队）
-
-本仓库内置 6 个专业 NPC 角色，覆盖软件研发全生命周期：统筹管理 → 需求分析 → 架构设计 → 代码开发 → 代码评审 → 测试验证。角色定义见 `.cnb/settings.yml`，由 `.cnb.yml` + `Dockerfile` 驱动（源自 `mustang-code-ai/trip` 的 NPC 配置，新增「项目经理」源自 `zhengms-team/npc-team`）。
-
-| 角色 | Slogan | 职责 |
-|------|--------|------|
-| **项目经理** | 全局统筹，进度可控，使命必达！ | 项目规划/进度管控/资源协调/风险管理/跨角色协同/交付把控 |
-| **产品经理** | 需求澄清与拆分助手 — 先问清楚再动手 | 多轮追问澄清需求，拆分为可执行的 Issues |
-| **架构师** | 技术方案设计与架构选型 — 从全局视角把控技术方向 | 技术方案设计、架构规划、技术选型、风险评估 |
-| **全栈开发工程师** | 需求驱动开发 — 从代码实现到测试全覆盖 | 前端/后端开发、单元/接口/冒烟测试、代码交付 |
-| **代码评审员** | 全方位代码质量守护者 — 从语法到架构，不留死角 | 语法/Lint/最佳实践/性能/重复率五维评审，分级输出 |
-| **测试工程师** | 系统联调 · 性能测试 · 压力测试 · E2E 测试 · 用户流程验证 | 测试方案设计、执行与结构化报告 |
-
-### 触发方式
-
-在 Issue 或 PR 评论中 @NPC（或点击「召唤 NPC」按钮），从 6 个角色中选择最合适的即可，默认角色为「项目经理」。
-
-### 研发流程覆盖
+在 CNB 平台召唤官方免费 `@CodeBuddy`，只说一句：
 
 ```
-统筹管理 ──→ 需求分析 ──→ 架构设计 ──→ 代码开发 ──→ 代码评审 ──→ 测试验证
-(项目经理)   (产品经理)   (架构师)    (全栈开发)   (代码评审员)  (测试工程师)
+调用 NPC_TEAM skill 完成以下需求：<你的需求>
 ```
 
-### 自定义
+本仓库内置 NPC_TEAM Skill，`@CodeBuddy` 自动化身 6 位专家（PM/产品/架构/开发/评审/测试），一条需求自动跑完拆解→开发→评审→测试→文档→汇报→复盘全流程，**零平台 NPC 积分**。
 
-1. 编辑 `.cnb/settings.yml` — 调整 NPC 角色 prompt 或按钮配置
-2. 按需编辑 `Dockerfile` — 安装额外的 Skills 或系统依赖
-3. 推送到 CNB 仓库后自动构建 NPC 镜像
+> ⚡ **默认接力模式（每步独立调用 @CodeBuddy）**：每次召唤只执行流水线中一个步骤，输出【接力卡】（含任务书 + 下一步召唤话术）后立即停下，用户逐步召唤下一棒续跑——每步独立调用、独立留痕、独立可见，步间天然可确认/纠正/停止，彻底杜绝"单会话闷头跑完 + 编造全绿"；**评审-修复循环同样采用接力模式**（5/10 评审每轮独立召唤执行，评审/修复各自留痕，禁止假装进行）。也支持用户明确要求时的全程模式（一次跑完，保留 ⏸CP1/⏸CP2 暂停确认）。
+
+> 📖 使用方式与提示词见 [docs/NPC_TEAM.md](./docs/NPC_TEAM.md)。
 
 ## 交流群
 
@@ -632,16 +107,12 @@ OpenCode 服务通过 Launcher 进程管理（监听 `127.0.0.1:14097`），无�
 
 <img src="docs/assets/wechat-group.png" alt="OpenCode-WPS 微信交流群" width="300">
 
-> 二维码有效期至 8/5，加入后会更新。如二维码过期，请提交 [Issue](https://github.com/lnxsun/opencode-wps/issues) 联系维护者。
+> 二维码不定期更新。如二维码过期，请提交 [Issue](https://github.com/lnxsun/opencode-wps/issues) 联系维护者。
 
-## 致谢
+## License
 
-本项目站在以下项目的肩膀上，深表感谢：
+[MIT](./LICENSE)
 
-- [wpsjs](https://github.com/laihaojie/wpsjs) — 按 WPS 官方文档实在开发不出来，最后从 wpsjs 起步才成功开发出 WPS 插件
-- [wps-skills](https://github.com/lc2panda/wps-skills) — 侧边栏通过对话所见即所得地实时操作文档，靠的是 wps-skills 的 skills + MCP（wps-office MCP）及其关键的 COM 桥接插件
-- [iflow-for-obsidian](https://github.com/junjie-yan/iflow-for-obsidian) — 最初的实现借鉴了 iflow-for-obsidian 在 WPS 中调用 iflow cli 的方式
-- [iflow cli](https://github.com/iflow-ai/iflow-cli) — 一切开始的地方，太遗憾官方执意关闭了 iflow cli
-- [opencode-obsidian](https://github.com/mtymek/opencode-obsidian) — 转到 OpenCode 后本来想借鉴其方式直接调用官方 web 界面，但发现 WPS 内置 Chromium 103 不兼容官方 web 版（需 Chrome 130+）
-- [opencode](https://github.com/anomalyco/opencode) — 最后落脚的地方
+---
 
+📖 项目演进历史与致谢见 [docs/HISTORY.md](./docs/HISTORY.md)。

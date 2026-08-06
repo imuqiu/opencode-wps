@@ -1,5 +1,7 @@
 # WPS 插件问题排查与避坑指南
 
+> 🏠 返回 [README](../README.md)；安装与环境问题见 [INSTALLATION.md](./INSTALLATION.md)。
+
 ## 零、`config.js` 用户目录自引用哨兵被 install-addons.js 误替换（反复踩坑 4 次）
 
 ### 问题现象
@@ -83,6 +85,7 @@ WPS 插件配置分散在 **3 个文件** 中：
 ```powershell
 # 查看当前状态
 Get-Content "$env:APPDATA\kingsoft\wps\jsaddons\authaddin.json"
+```
 
 ---
 
@@ -470,7 +473,7 @@ if (result === -1) {
 
 ### 插件不显示
 ```
-~/Library/Containers/com.kingsoft.wpsformac/Data/Documents/jsaddons/
+~/Library/Containers/com.kingsoft.wps/Data/Documents/jsaddons/
 ├── opencode-wps-assistant/
 │   ├── manifest.xml            # 必须有
 │   ├── index.html

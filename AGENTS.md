@@ -30,6 +30,12 @@ npm run mcp:install             # Install MCP dependencies
 npm run mcp:test                # Run MCP tests (cd wps-office-mcp && npm test)
 npm run format                  # Format with Prettier
 npm run format:check            # Check formatting
+
+# CI 门禁本地预检
+npm run validate:toolcounts     # 工具数量校验（12/240/257）
+npm run validate:npc-team       # NPC_TEAM 提示词双源一致性校验
+npm run validate:versions       # 版本号一致性校验
+npm run validate:settings       # .cnb settings 校验
 ```
 
 **Order matters**: Edit source → `node install-addons.js` → restart WPS / OpenCode service.
@@ -55,10 +61,12 @@ agents/                    # 4 agent definitions (wps-expert, wps-word, wps-exce
 .opencode/
   plugins/governance.js    # Execution governance plugin (G1-G7 + P1-P16 + T1-T11 rules)
   opencode.jsonc           # OpenCode config template (merged into ~/.config/opencode/opencode.json)
-install-addons.js          # One-shot install script (7 steps) — Windows
+install-addons.js          # One-shot install script (8 steps) — Windows
 install-addons-mac.js      # One-shot install script — macOS (launchd autostart)
 install-addons-linux.js    # One-shot install script — Linux (XDG autostart)
-launcher-linux.js          # Linux process manager (port 14097, xdg-open dock)
+launcher-mac.js            # macOS Launcher process (lsof/kill/ps + open, port 14097)
+launcher-linux.js          # Linux Launcher process (/proc scan + xdg-open, port 14097)
+docs/                      # 文档中心（docs/README.md 四象限索引，改文档先读它）
 ```
 
 ## MCP Server

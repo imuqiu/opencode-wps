@@ -220,6 +220,72 @@ test('负向：删接力卡召唤话术示例「@CodeBuddy 接力 NPC_TEAM skill
   assertEqual(code, 1, '删接力召唤话术示例应拦截（exit 1）');
 });
 
+// ---- Issue #76：评审-修复循环接力（PR review 与修复循环也使用接力模式）回归用例 ----
+// 背景：用户要求"其中的 PR review 与 修复循环也建议使用接力模式"。
+// 因此 5/10 评审-修复循环在接力模式下逐轮接力：每轮评审与每次修复各是独立一次 @CodeBuddy 召唤，
+// 评审棒输出【评审接力卡】、修复棒输出【修复接力卡】，禁止在一次召唤内连跑多轮评审-修复。
+// 若评审-修复接力核心要素被删（回退为一次召唤内连跑多轮），CI 必须拦截。
+
+test('正向：评审-修复接力要素完整（exit 0）', function () {
+  const code = runValidate(p => p);
+  assertEqual(code, 0, '评审-修复接力要素完整应 exit 0');
+});
+
+test('负向：删铁律 8「接力模式」声明应拦截（exit 1）', function () {
+  const code = runValidate(p =>
+    p.replace(
+      '8. 评审-修复循环（10 轮彻底循环，接力模式）：',
+      '8. 评审-修复循环（10 轮彻底循环）：'
+    )
+  );
+  assertEqual(code, 1, '删评审-修复接力声明应拦截（exit 1）');
+});
+
+test('负向：删「评审-修复循环同样逐轮接力」应拦截（exit 1）', function () {
+  const code = runValidate(p => p.replace('**接力模式下评审-修复循环同样逐轮接力**：', ''));
+  assertEqual(code, 1, '删逐轮接力声明应拦截（exit 1）');
+});
+
+test('负向：删「每轮评审与每次修复各是独立一次 @CodeBuddy 召唤」应拦截（exit 1）', function () {
+  const code = runValidate(p => p.replace('每轮评审与每次修复各是独立一次 @CodeBuddy 召唤，', ''));
+  assertEqual(code, 1, '删独立召唤声明应拦截（exit 1）');
+});
+
+test('负向：删【评审接力卡】段应拦截（exit 1）', function () {
+  const code = runValidate(p => p.replace('【评审接力卡（5/10 评审每轮评审结束时输出）】\n', ''));
+  assertEqual(code, 1, '删评审接力卡段应拦截（exit 1）');
+});
+
+test('负向：删【修复接力卡】段应拦截（exit 1）', function () {
+  const code = runValidate(p => p.replace('【修复接力卡（5/10 评审每轮修复结束时输出）】\n', ''));
+  assertEqual(code, 1, '删修复接力卡段应拦截（exit 1）');
+});
+
+test('负向：删评审接力卡召唤话术示例应拦截（exit 1）', function () {
+  const code = runValidate(p =>
+    p.replace(
+      '@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮评审修复（修复本轮评审问题）：',
+      '@CodeBuddy 执行修复：'
+    )
+  );
+  assertEqual(code, 1, '删评审接力卡召唤话术应拦截（exit 1）');
+});
+
+test('负向：删修复接力卡召唤话术示例应拦截（exit 1）', function () {
+  const code = runValidate(p =>
+    p.replace(
+      '@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1/10 轮复评（评审上轮修复）：',
+      '@CodeBuddy 执行复评：'
+    )
+  );
+  assertEqual(code, 1, '删修复接力卡召唤话术应拦截（exit 1）');
+});
+
+test('负向：删「禁止在一次召唤内偷偷连跑多轮评审-修复」应拦截（exit 1）', function () {
+  const code = runValidate(p => p.replace('，禁止在一次召唤内偷偷连跑多轮评审-修复。', '。'));
+  assertEqual(code, 1, '删防连跑声明应拦截（exit 1）');
+});
+
 // ---- Issue #76：NPC_TEAM Skill 一键调用方案回归用例 ----
 
 // 统一「临时改坏 SKILL.md → 运行 → finally 还原」的健壮模式（防中途异常污染工作区）

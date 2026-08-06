@@ -9,11 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **NPC_TEAM 评审-修复循环接力化（Issue #76 最新补充）** — 按用户要求"其中的 PR review 与 修复循环也建议使用接力模式"，将 5/10 评审-修复循环在**接力模式**下逐轮接力：每轮评审与每次修复各是独立一次 `@CodeBuddy` 召唤，评审棒输出【评审接力卡】（含评审结论 + 修复召唤话术）、修复棒输出【修复接力卡】（含修复提交 + 复评召唤话术），禁止在一次召唤内偷偷连跑多轮评审-修复（防"假装评审"）。配套：① 提示词铁律 8 升级为「10 轮彻底循环，接力模式」、CR 角色卡片/流水线/工作流程/门禁表/冒烟测试表同步；② `scripts/validate-npc-team-prompt.js` 新增第 10b 节「评审-修复接力」强校验（RELAY_REVIEW_CORE 8 句式顺序校验 + 评审/修复接力卡召唤话术示例校验）；③ `tests/validate-npc-team-prompt.test.js` 新增 9 个评审-修复接力回归用例（正向 + 8 负向：删接力声明/删逐轮接力/删独立召唤/删评审接力卡段/删修复接力卡段/删评审话术/删复评话术/删防连跑 均拦截），35 用例全绿；④ `docs/NPC_TEAM.md` 新增【评审接力卡】/【修复接力卡】模板段与「方法 C（评审-修复接力）」冒烟测试；⑤ `.codebuddy/skills/npc-team/SKILL.md` 双源同步；README 同步更新
+
 - **NPC_TEAM 提示词改造：默认接力模式（每步独立调用 @CodeBuddy，Issue #76）** — 按用户最新要求"每一步都独立调一次 @CodeBuddy NPC，而不是调一次 @CodeBuddy 跑完全部步骤"，提示词新增「运行模式」自检（默认接力 / 可选全程）：**接力模式**下每次召唤 `@CodeBuddy` **只执行流水线中的一个步骤**，执行完输出【接力卡】（含任务书 + 下一步召唤话术）后立即停下，用户把接力卡复制给下一次召唤的 `@CodeBuddy` 逐步续跑完全流程——每步独立调用、独立留痕、独立可见，步间天然可确认/纠正/停止，彻底杜绝"单会话闷头跑完 + 编造全绿"（#78 事故根因）；**全程模式**（一次跑完全部步骤）仅当用户明确要求时可用（保留 ⏸CP1/⏸CP2 暂停确认）。新增铁律 11（接力只执行一步，绝不自行继续、绝不代替用户召唤下一棒）+ 铁律 12（接力卡必含召唤话术）+【任务书】/【接力卡】模板段。配套：① `scripts/validate-npc-team-prompt.js` 新增第 10 节「接力模式」强校验（RELAY_CORE 11 句式顺序校验 + 接力召唤话术示例校验），防回退为"一次跑完"旧行为；② `tests/validate-npc-team-prompt.test.js` 新增 9 个接力模式回归用例（正向 + 8 负向：删默认声明/删只执行一步/删铁律 11/删接力卡段/删召唤话术/删绝不自行继续/删任务书段/删召唤话术示例 均拦截），26 用例全绿；③ `scripts/lib/npc-team-triggers.js` description 触发词新增「接力/每步独立执行」；④ `.codebuddy/skills/npc-team/SKILL.md` frontmatter 同步接力触发词 + 正文双源同步；⑤ `docs/NPC_TEAM.md` 新增「两种执行方式」「接力模式怎么开始/继续」「1b 接力模式冒烟测试」章节、对比表与冒烟测试表新增接力验证点；README 同步更新
 
 - **NPC_TEAM Skill：一键调用，告别粘贴提示词（Issue #76）** — 新增 `.codebuddy/skills/npc-team/SKILL.md`：将 `docs/NPC_TEAM.md` 中的提示词做成 CNB 平台可自动加载的自定义 Skill（官方文档支持项目级 `.codebuddy/skills/` 目录）。使用方式：在 CNB 平台本仓库对话中召唤官方免费 `@CodeBuddy` 后，只需一句「调用 NPC_TEAM skill 完成以下需求：xxxxxx」即可化身 NPC Team 跑完全流程，**无需再粘贴提示词**；原粘贴方式保留为兜底。配套：① `scripts/validate-npc-team-prompt.js` 新增第 11 节「Skill 双源一致性」强校验（Skill 存在 + frontmatter 合法 + name 为 npc-team + 正文与 docs 提示词归一化后完全一致），已接入 CI；② 新增 `scripts/sync-npc-team-skill.js`（含 `--check` 模式）供改提示词后一键同步；③ `tests/validate-npc-team-prompt.test.js` 新增 5 个回归用例（正向双源一致 / Skill 缺失拦截 / 正文漂移拦截 / frontmatter name 错误拦截 / 同步脚本 --check），13 用例全绿；④ `docs/NPC_TEAM.md` 新增「使用方式一（推荐）：一句话调用 Skill」、组件清单与边界说明；README 同步更新
 
 ### Changed
+
+- **以 README 为中心的文档体系重构（Issue #100）** — README.md 从 647 行精简为 116 行门户式结构（核心特性/快速开始/使用方式/架构速览/文档地图/NPC 零积分），详细内容子文档化：新增 `docs/INSTALLATION.md`（三平台安装合并+路径速查）、`docs/USAGE.md`（使用指南）、`docs/ARCHITECTURE.md`（4 层组件+十层调用链+工作原理+设计决策）、`docs/FEATURES.md`（特色功能详解）、`docs/HISTORY.md`（演进史+致谢）；重写 `docs/README.md` 为四象限完整文档中心索引（使用/开发/平台专题/内部参考，全覆盖 22 份顶层文档+2 份 specs，平台路径表补 Linux）；修复 `docs/CODE_REVIEW_GUIDE.md`、`docs/DEVELOPMENT_GUIDE.md` 两处既有断链（`./CODE_OF_CONDUCT.md` → `../CODE_OF_CONDUCT.md`）；自建 NPC（6 角色）配置参考迁入 `docs/NPC_TEAM.md` 防信息丢失；全库 63 份 md 文档相对链接经脚本校验全部有效，原 README 54 个关键概念全覆盖无遗漏
 
 - **修复 Issue #78 三诊：打开面板路径主动调度宿主重绘，首次打开头部不再遮挡** — 用户实测合并 PR #83 后首次打开面板头部仍被遮挡、切标签后才恢复，且「打开两个文档标签窗口后开启 opencode-wps 标签则正常」。根因：PR #83 的宿主重绘（`forceTaskPaneRedraw`）只挂在 `WindowActivate` 事件上，而首次打开面板（`btnShowTaskPane`）**不经过该事件** → 首次打开时宿主重绘永不触发；打开第二个文档标签触发 `WindowActivate` → 重绘执行 → 头部恢复，与用户全部观察吻合。修复：① `forceTaskPaneRedraw` 新增 `force` 参数（仅日志区分触发源，防抖语义不变）；② `btnShowTaskPane` 首次创建/切换显示为可见后，延迟 400ms 主动调度宿主重绘（隐藏→显示任务窗格），让 WPS 宿主重新布局 WebView 拿到正确视口；③ 关闭路径不调度；重绘窗口内用户操作仍被尊重（`lastUserTaskPaneAction` 时间戳比对不变），切换路径仅当无重绘进行中才调度（避免快速点击额外闪烁），调度前重置时间戳避免旧操作被误判为窗口内操作；`tests/taskpane-dock.test.js` 新增 12 个用例（31 → 43），全量 8 套件 + 语法门禁全绿（评审修复：抽 `scheduleTaskPaneOpenRedraw` 公共函数去重；新增「重绘窗口内用户关闭不误弹」「窗格销毁放弃恢复」安全边界用例；等待期守卫保留用户时间戳；`WINDOW_ACTIVATE_REDRAW_DELAY` 抽命名常量；可观测性增强——守卫放弃/窗格不存在/窗格不可见三条静默返回路径补日志留痕，形成 放弃/跳过/完成 三段可观测链）
 
@@ -172,4 +176,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## 历史版本
 
-请查看 [Releases](https://github.com/lnxsun/opencode-wps/releases) 查看所有版本。
+请查看 [Releases](https://github.com/lnxsun/opencode-wps/releases)（国内镜像：https://cnb.cool/lnxsun/opencode-wps/-/releases）查看所有版本。
