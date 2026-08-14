@@ -658,6 +658,8 @@ function startOpenCode() {
 function stopOpenCode() {
     // 通过 main.js 命令通道停止
     setPS('opencode_command', JSON.stringify({cmd: 'stop', ts: Date.now()}))
+    // 显式停止：停止健康检测，避免服务退出窗口内被全局健康检查自动重连并切回 chat（评审 P1）
+    stopHealthCheck()
     SERVER_RUNNING = false
     CONNECTED = false
     if (SSE) { SSE.close(); SSE = null }
@@ -669,6 +671,8 @@ function stopOpenCode() {
 }
 
 function onServerConnected() {
+    // 幂等守卫：手动启动轮询与全局健康检测可能并发触发 onServerConnected，避免重复建会话/重连 SSE（评审 P2）
+    if (SERVER_RUNNING && CONNECTED) return
     SERVER_RUNNING = true
     CONNECTED = true
     updateServerStatus(true)
@@ -1551,16 +1555,11 @@ function scrollToBottom() { setTimeout(function() { if ($messages) $messages.scr
                 $topbarCwd.textContent = PROJECT_DIR.replace(/\\\\/g, '\\')
                 $topbarCwd.title = PROJECT_DIR.replace(/\\\\/g, '\\')
                 onServerConnected()
-            } else if (launcherOk) {
-                // launcher 在运行但 opencode 没启动，显示 setup
-                updateServerStatus(false)
-                showSetup()
-                startHealthCheck()   // 补：setup 下也启动健康检测，支持自动恢复
             } else {
-                // 都未运行，显示 setup
+                // launcher 未运行或 opencode 未启动，都显示 setup；统一启动健康检测以支持自动恢复（评审 P3 合并重复分支）
                 updateServerStatus(false)
                 showSetup()
-                startHealthCheck()   // 补：setup 下也启动健康检测，支持自动恢复
+                startHealthCheck()   // setup 下也启动健康检测，支持自动恢复
             }
         })
     })
