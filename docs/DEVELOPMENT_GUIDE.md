@@ -62,8 +62,8 @@ node install-addons.js        # Windows
 ## 二、项目结构
 
 ```
-opencode-wps/              # 第 1 层（Win）：WPS JS 插件
-├── .opencode/             # 治理插件 + OpenCode 配置模板
+opencode-wps/             # 仓库根目录
+├── .opencode/             # 治理插件 + OpenCode 配置模板（仓库顶层）
 │   ├── plugins/governance.js   # 执行治理（G1-G7 + P1-P16 + T1-T11）
 │   └── opencode.jsonc          # OpenCode 配置模板
 ├── opencode-wps/          # Windows JS 插件（Chat UI + Launcher）
