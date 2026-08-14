@@ -339,6 +339,7 @@ var IN_SETUP_VIEW = false
 var HEALTH_CHECK_TIMER = null
 var HEALTH_CHECK_IN_FLIGHT = false
 var STOPPING = false   // 显式停止标记：防止在途健康检查在显式停止后错误触发自动重连（评审 R2-1）
+var START_POLL_TIMER = null   // 手动启动服务时的 1s 就绪轮询定时器（提升为模块级，供显式停止时清理，评审 R3-1）
 var INPUT_HISTORY = []
 var INPUT_HISTORY_INDEX = -1
 
@@ -586,16 +587,18 @@ function confirmCwdChange() {
     // 轮询等待服务就绪
     var retries = 0
     var maxRetries = 30
-    var pollTimer = setInterval(function() {
+    START_POLL_TIMER = setInterval(function() {
         fetchJSON('GET', '/global/health', null, function(data) {
             if (data && data.healthy) {
-                clearInterval(pollTimer)
+                clearInterval(START_POLL_TIMER)
+                START_POLL_TIMER = null
                 onServerConnected()
             }
         }, function() {
             retries++
             if (retries >= maxRetries) {
-                clearInterval(pollTimer)
+                clearInterval(START_POLL_TIMER)
+                START_POLL_TIMER = null
                 $btnStart.disabled = false
                 $btnStart.innerHTML = '<span class="icon-play"></span>启动服务'
                 $setupStatus.textContent = '启动失败，请检查 OpenCode 是否已安装。'
@@ -639,16 +642,18 @@ function startOpenCode() {
 
     var retries = 0
     var maxRetries = 30
-    var pollTimer = setInterval(function() {
+    START_POLL_TIMER = setInterval(function() {
         fetchJSON('GET', '/global/health', null, function(data) {
             if (data && data.healthy) {
-                clearInterval(pollTimer)
+                clearInterval(START_POLL_TIMER)
+                START_POLL_TIMER = null
                 onServerConnected()
             }
         }, function() {
             retries++
             if (retries >= maxRetries) {
-                clearInterval(pollTimer)
+                clearInterval(START_POLL_TIMER)
+                START_POLL_TIMER = null
                 $btnStart.disabled = false
                 $btnStart.innerHTML = '<span class="icon-play"></span>启动服务'
                 if (!launcherOk) $setupStatus.textContent = 'Launcher 未运行'
@@ -665,6 +670,8 @@ function stopOpenCode() {
     STOPPING = true
     HEALTH_CHECK_IN_FLIGHT = false   // 放弃在途 /global/health 请求的结果
     stopHealthCheck()
+    // 清理手动启动的 1s 就绪轮询：避免停止后轮询仍运行，最终服务就绪时误把刚显式停止的服务自动重连（评审 R3-1）
+    if (START_POLL_TIMER) { clearInterval(START_POLL_TIMER); START_POLL_TIMER = null }
     SERVER_RUNNING = false
     CONNECTED = false
     if (SSE) { SSE.close(); SSE = null }
