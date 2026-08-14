@@ -1450,7 +1450,10 @@ function respondPermission(response) {
 /** 通过 /tui/control/response 端点响应权限（session 权限端点不可用时的回退） */
 function sendControlPermissionResponse(response, remember) {
     var controlPayload = { body: { type: 'permission', response: response, remember: remember } }
-    fetchJSON('POST', '/tui/control/response', controlPayload, function(r2) { }, function(s2, t2) {
+    fetchJSON('POST', '/tui/control/response', controlPayload, function(r2) {
+        // #116 第 3 轮评审：响应成功后清除 PENDING_PERMISSION，避免 stale "waiting" 状态
+        PENDING_PERMISSION = null
+    }, function(s2, t2) {
         addSystemMessage('权限响应失败: ' + (t2 || ('status ' + s2)))
     })
 }
