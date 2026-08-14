@@ -2,7 +2,7 @@
 <manifest xmlns="http://schemas.wps.cn/oaassist/2019/manifest"
           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
     <id>opencode-wps-linux</id>
-    <Version>1.1.1</Version>
+    <Version>1.2.0</Version>
     <name>OpenCode AI</name>
     <description>OpenCode AI 与 WPS Office 桥接加载项（反向轮询模式，Linux 版）</description>
     <author>OpenCode Team</author>

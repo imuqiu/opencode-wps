@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-14
+
+### Added
+
+- **生成项目 Wiki（Issue #117，PR #118）** — 结合本项目代码库及库中现有文档（`docs/`），在 CNB 平台用 **Code Wiki（codewiki 插件）** 机制生成项目 Wiki：`.cnb.yml` 新增 `tag_push` → `codewiki` 插件 stage（`git_doc_dir: /data/codewiki/${CNB_REPO_SLUG}` 必填 + `knowledge_enabled: true` 自动入库仓库知识库，可被 AI 问答引用），打 tag 即自动读取仓库代码与现有文档生成 Wiki，仓库首页出现 Wiki 入口。同时围绕 **开发 / 使用双主线** 将文档补充至 Wiki 级详细度：`docs/USAGE.md`（Wiki 级使用手册：快速上手/三平台打开面板/完整对话操作/WPS 专用 Agents/常用文档操作场景/OpenCode 服务管理/配置参考/最佳实践）、`docs/DEVELOPMENT_GUIDE.md`（Wiki 级开发手册：环境/项目结构/五大模块开发/MCP 三层工具体系/开发流程/规范/测试/CI/CD/二次开发）、`docs/SKILLS.md`（内置工具清单/两级网关调用规范/各 Skill 能力/开发规范）；`docs/README.md` 更新四象限索引。评审 15 轮 review-修复循环清零 + QA 测试通过（锚点缺陷修复复验）。Wiki 入口：https://cnb.cool/lnxsun/opencode-wps/-/wikis
+
 ### Fixed
 
 - **修复 opencode 服务运行中但状态栏误显"已停止"**（Issue #114）— 根因：健康检查"一次失败即永久放弃"的单向设计——`showSetup()` 与 `stopHealthCheck()` 强耦合，一旦进入 setup 视图健康检测永久关闭，且 setup 视图无任何自动恢复探测；瞬时网络抖动/CORS proxy 抖动/launcher 重启间隙一次误触即可导致即使服务始终健康，UI 也永远显示"已停止"。修复（`opencode-wps/taskpane.html`）：① `showSetup()` 移除 `stopHealthCheck()`，健康检测与视图切换解耦，改为**全局常驻**；② 新增 `IN_SETUP_VIEW` 标记，setup 下检测到服务恢复自动 `onServerConnected()` 切回 chat；③ `startHealthCheck()` 失败仅切视图不停止检测，成功且 setup 未连接时自动恢复；④ `init()` 初始失败路径补启动健康检测；⑤ 显式停止（`STOPPING` 标记）不再被全局健康检查自动重连，并清理手动启动轮询（`START_POLL_TIMER`）；⑥ 健康检查防重入（`HEALTH_CHECK_IN_FLIGHT`）避免请求风暴，仅状态变化时更新。新增 `tests/taskpane-healthcheck.test.js`（14 用例，AC1-AC5 + 历轮评审修复回归）并接入 CI。评审-修复 9 轮循环清零。
