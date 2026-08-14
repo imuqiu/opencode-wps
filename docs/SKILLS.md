@@ -144,6 +144,100 @@ AI 识别：使用 wps-ppt skill
 
 ---
 
+## 内置工具（12 个，所有 Skill 共用）
+
+所有 WPS Skill 遵循相同的**两级网关调用规范**，内置 12 个工具（启动即注册，可直接调用）：
+
+| # | 工具名称 | 功能描述 |
+|---|---------|---------|
+| 1 | `wps_check_connection` | 检查 WPS Office 连接状态 |
+| 2 | `wps_get_active_workbook` | 获取当前工作簿信息（名称、路径、工作表列表） |
+| 3 | `wps_get_cell_value` | 读取指定单元格的值 |
+| 4 | `wps_set_cell_value` | 写入值到指定单元格 |
+| 5 | `wps_insert_text` | 在当前文档插入文本（兜底用） |
+| 6 | `wps_get_active_document` | 获取当前活动文档信息（名称、路径、段落数、字数） |
+| 7 | `wps_get_active_presentation` | 获取当前演示文稿信息 |
+| 8 | `wps_execute_method` | 执行 WPS API 方法（网关兜底） |
+| 9 | `wps_cache_data` | 缓存数据到 MCP Server |
+| 10 | `wps_get_cached_data` | 从 MCP Server 获取缓存数据 |
+| 11 | `wps_office_search` | 搜索 COM Actions 索引（**必须先搜索**） |
+| 12 | `wps_office_execute` | 执行搜索到的工具（**搜索后用此执行**） |
+
+### 两级网关调用规范（所有 Skill 必须遵循）
+
+```text
+1. 先用 wps_office_search 搜索可用工具（COM Actions 索引）
+2. 再用 wps_office_execute 执行找到的工具
+3. 12 个内置工具可直接调用（无需搜索）
+```
+
+> ⚠️ **禁止直接猜测工具名称**——必须经过 `wps_office_search` → `wps_office_execute` 两级网关，确保调用的是索引内真实存在的工具。
+
+---
+
+## 各 Skill 详细能力
+
+### wps-excel（表格智能助手）
+
+**能力**：公式编写、数据清洗、图表创建、透视表、条件格式、数据分析。
+
+**典型场景**：
+- 「帮我算一下 A 列的总和」（`wps_excel_get_range` + `wps_excel_set_formula` =SUM(A:A)）
+- 「删掉 A 列的空行」（数据清洗）
+- 「根据 1-6 月销量生成柱状图」（图表创建）
+
+**调用流程**：获取当前工作簿 → 确定目标单元格/区域/图表 → 执行操作 → 返回结果。
+
+### wps-word（文字智能助手）
+
+**能力**：文档排版、格式设置、目录生成、表格插入、样式管理、模板填写、修订校对。
+
+**典型场景**：
+- 「把这段文字设为标题1」（`wps_word_apply_style`）
+- 「按模板批量填值」（`smartFillField` 五模式 + 修订追踪）
+- 「帮我校对文档」（`proofreadBasic` + `replaceInParagraph`，P1-P16 严格逐批）
+
+**调用流程**：获取当前文档 → 确定操作目标 → 执行 → 返回。
+
+### wps-ppt（演示智能助手）
+
+**能力**：幻灯片美化、内容生成、动画设置、母版编辑、批量处理。
+
+**典型场景**：
+- 「新增一页标题为『季度汇报』的幻灯片」（`wps_ppt_add_slide`）
+- 「美化这页PPT」（`wps_ppt_beautify`）
+- 「把第三页文本框对齐居中」（排版）
+
+**调用流程**：获取当前演示文稿 → 确定幻灯片 → 执行 → 返回。
+
+### wps-office（跨应用智能助手）
+
+**能力**：跨应用操作（Excel↔Word↔PPT）、格式转换、批量处理、文档管理。
+
+**典型场景**：
+- 「把 Excel 数据做成 PPT 图表」
+- 「统一多个文档格式风格」
+- 「Excel 数据导入 Word 表格」
+
+**调用流程**：检测各应用状态 → 协调专项助手 → 跨应用数据迁移 → 返回。
+
+### wps-proofread（文档校对专家）
+
+**能力**：错别字检测、语病检查、格式一致性校对（独立校对技能，P1-P16 铁律 3.0）。
+
+**典型流程**（严格逐批闭环）：
+```text
+1. 输出分批校对计划表（总段数 / 每批 200 段 / 总批次数）
+2. 调用 enableTrackChanges 开启修订模式
+3. 分批读取段落（每批 ~200 段），调用 proofreadBasic 检测问题
+4. 按段落索引 + 文本匹配调用 replaceInParagraph 精确修复
+5. 所有批次完成后生成 .校对报告.md 保存到文档目录
+```
+
+> ⚠️ 校对**必须**按 铁律 3.0 严格执行（proofread → confirm → fix），禁止跳批/编造。详见 [FEATURES.md](./FEATURES.md)。
+
+---
+
 ## 自定义 Skill
 
 ### 创建新 Skill
@@ -167,6 +261,65 @@ AI 识别：使用 wps-ppt skill
 ## 工具
 - tool_name_1
 - tool_name_2
+```
+
+---
+
+## Skill 开发规范
+
+### 修改现有 Skill
+
+1. **只修改源目录** `skills/<name>/`（git 跟踪）
+2. 修改 `SKILL.md` 或 `README.md`
+3. 运行 `node install-addons.js` 同步到 `~/.opencode/skills/`
+4. 重启 OpenCode 生效
+
+> ⚠️ **绝不直接修改** `~/.opencode/skills/`（这是安装产物，非 git 跟踪）。
+
+### 创建新 Skill
+
+```bash
+# 1. 创建目录
+mkdir skills/my-skill
+
+# 2. 编写 SKILL.md（frontmatter 必含 name + description）
+cat > skills/my-skill/SKILL.md <<'EOF'
+---
+name: my-skill
+description: "技能描述，用于触发识别。包含关键词时会被自动匹配。"
+---
+
+# 技能标题
+
+## 概述
+...
+
+## 能力
+- ...
+
+## 工具
+- ...
+
+## 工作流程
+1. ...
+
+## 限制
+- ...
+EOF
+
+# 3. 同步安装
+node install-addons.js
+```
+
+**SKILL.md frontmatter 要求**：
+- `name`：技能名（唯一）
+- `description`：描述技能能力 + 触发关键词（AI 据此识别何时使用此技能）
+
+### 验证同步状态
+
+```bash
+# 对比源文件和安装后的文件
+diff -r skills/ ~/.opencode/skills/
 ```
 
 ---

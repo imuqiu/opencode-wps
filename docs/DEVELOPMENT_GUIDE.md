@@ -1,107 +1,233 @@
-# 贡献指南
+# 开发指南（Wiki 级）
 
-欢迎为 opencode-wps 贡献代码和文档！
+本文档是 opencode-wps 的**完整开发手册**，面向开发者/贡献者，覆盖：开发环境搭建、项目结构、五大模块（插件/MCP/Skills/Agents/安装脚本）的开发指南、开发流程、代码规范、提交规范、测试、CI/CD 门禁、二次开发与常见问题。
+
+> 📖 架构与设计见 [ARCHITECTURE.md](./ARCHITECTURE.md)；代码审查规范见 [CODE_REVIEW_GUIDE.md](./CODE_REVIEW_GUIDE.md)；WPS JS 加载项专项开发见 [WPSJS_DEVELOPMENT.md](./WPSJS_DEVELOPMENT.md)。
 
 ---
 
 ## 目录
 
-- [行为准则](#行为准则)
-- [如何贡献](#如何贡献)
-- [开发环境](#开发环境)
-- [项目结构](#项目结构)
-- [开发流程](#开发流程)
-- [代码规范](#代码规范)
-- [提交规范](#提交规范)
-- [PR 描述模板](#pr-描述模板)
-- [测试](#测试)
-- [文档贡献](#文档贡献)
-- [常见问题](#常见问题)
-- [联系方式](#联系方式)
+- [一、开发环境](#一开发环境)
+- [二、项目结构](#二项目结构)
+- [三、模块开发指南](#三模块开发指南)
+- [四、开发流程](#四开发流程)
+- [五、代码规范](#五代码规范)
+- [六、提交规范](#六提交规范)
+- [七、测试](#七测试)
+- [八、CI/CD 门禁](#八cicd-门禁)
+- [九、二次开发](#九二次开发)
+- [十、常见问题](#十常见问题)
+- [十一、联系方式](#十一联系方式)
 
 ---
 
-## 行为准则
+## 一、开发环境
 
-请阅读并遵守我们的 [Code of Conduct](../CODE_OF_CONDUCT.md)（行为准则），确保社区友好包容。
+| 依赖 | 版本要求 | 说明 |
+|------|----------|------|
+| **操作系统** | Windows 10/11（主）/ macOS 12+ / Linux | Windows 是完整支持平台（COM 桥接） |
+| **WPS Office** | 12.1.0+（Win 个人版或企业版） | Mac/Linux 用最新版 |
+| **Node.js** | 18.0.0+（或 Bun 1.0+） | MCP 服务器为 TypeScript |
+| **npm** | 随 Node.js | 依赖安装 |
 
----
-
-## 如何贡献
-
-### 1. 报告 Bug
-
-如果你发现了 Bug，请通过 GitHub Issues 报告：
-
-1. 搜索现有 Issue，避免重复
-2. 使用 Bug 报告模板，提供：
-   - 复现步骤
-   - 期望行为 vs 实际行为
-   - 环境信息（WPS 版本、OpenCode 版本等）
-   - 相关日志或截图
-
-### 2. 提出功能建议
-
-1. 搜索现有 Feature Request
-2. 使用 Feature Request 模板，说明：
-   - 你的使用场景
-   - 期望的解决方案
-   - 可能的替代方案
-
-### 3. 提交代码
-
-见下方 [开发流程](#开发流程) 章节。
-
----
-
-## 开发环境
-
-| 要求 | 版本 |
-|------|------|
-| 操作系统 | Windows 10/11 |
-| WPS Office | 12.1.0+ |
-| Node.js | 18.0.0+ |
-
----
-
-## 项目结构
-
-```
-opencode-wps/
-├── .opencode/          # 治理插件 + OpenCode 配置模板
-│   ├── plugins/governance.js
-│   └── opencode.jsonc
-├── opencode-wps/       # WPS JS 插件
-├── wps-office-mcp/     # MCP 服务器 (TypeScript)
-├── skills/             # OpenCode Skills
-├── agents/             # OpenCode Agents
-├── tests/              # 测试文件
-├── docs/               # 文档
-└── install-addons.js   # 安装脚本
-```
-
----
-
-## 开发流程
-
-### 1. 本地开发
+### 环境准备
 
 ```bash
-# 1. Fork 仓库
-# 2. 克隆到本地
-git clone https://github.com/your-username/opencode-wps.git
+# 1. 克隆仓库
+# 国内（CNB 镜像）：git clone https://cnb.cool/lnxsun/opencode-wps.git
+# 国外（GitHub）：git clone https://github.com/lnxsun/opencode-wps.git
+git clone https://github.com/lnxsun/opencode-wps.git
 cd opencode-wps
 
-# 3. 安装依赖
+# 2. 安装根依赖
+npm install
+
+# 3. 安装并编译 MCP 服务器
 cd wps-office-mcp
 npm install
 npm run build
 cd ..
 
-# 4. 安装插件
-node install-addons.js
+# 4. 安装插件到本机
+node install-addons.js        # Windows
+# node install-addons-mac.js  # macOS
+# node install-addons-linux.js# Linux
 
-# 5. 重启 WPS Office
+# 5. 重启 WPS Office，功能区出现 OpenCode AI 标签页
+```
+
+---
+
+## 二、项目结构
+
+```
+opencode-wps/              # 第 1 层（Win）：WPS JS 插件
+├── .opencode/             # 治理插件 + OpenCode 配置模板
+│   ├── plugins/governance.js   # 执行治理（G1-G7 + P1-P16 + T1-T11）
+│   └── opencode.jsonc          # OpenCode 配置模板
+├── opencode-wps/          # Windows JS 插件（Chat UI + Launcher）
+├── opencode-wps-assistant/# macOS JS 插件（反向轮询桥）
+├── opencode-wps-linux/    # Linux JS 插件（反向轮询桥）
+├── wps-office-mcp/        # MCP 服务器（TypeScript，三层工具）
+├── skills/                # 5 个 WPS Skills
+├── agents/                # 4 个 WPS Agents
+├── scripts/               # 校验/工具脚本（validate-*）
+├── tests/                 # 测试文件
+├── docs/                  # 文档中心
+├── install-addons*.js     # 三平台一键安装脚本
+├── launcher-mac.js        # macOS Launcher 进程
+├── launcher-linux.js      # Linux Launcher 进程
+└── package.json           # 根命令
+```
+
+### 关键路径与安装映射
+
+| 源目录（git 跟踪） | 安装目标（非 git 跟踪） |
+|--------------------|------------------------|
+| `opencode-wps/` | `%APPDATA%\kingsoft\wps\jsaddons\opencode-wps_` |
+| `wps-office-mcp/` | MCP 编译产物 + `~/.config/opencode/opencode.json` 配置 |
+| `skills/` | `~/.opencode/skills/` |
+| `agents/` | `~/.config/opencode/agents/` + `~/.opencode/agents/` |
+| `.opencode/plugins/` | `~/.config/opencode/plugins/` |
+
+> ⚠️ **铁律**：只编辑源文件，然后运行 `node install-addons.js` 同步；**绝不**直接编辑安装产物目录。每次改动后用 `git status` 核对，避免改错目录。
+
+---
+
+## 三、模块开发指南
+
+### 3.1 WPS 插件（`opencode-wps/`，Windows）
+
+核心文件：
+
+| 文件 | 职责 |
+|------|------|
+| `main.js` | Ribbon 回调、状态管理、OpenCode 连接 |
+| `taskpane.html` | Chat UI（SSE 流式、Markdown 渲染、会话/Agent 管理） |
+| `launcher.js` | 后台 Launcher 进程（管理 OpenCode 服务） |
+| `opencode-proxy.js` | CORS 代理（端口 14098，剥离 CSP 头） |
+| `config.js` | 全局配置中心（`CONFIG` 对象） |
+| `ribbon.xml` | 功能区按钮定义 |
+| `manifest.xml` | 插件清单 |
+| `serve.js` | 开发静态服务器（端口 3444，仅开发用） |
+
+**开发要点**：
+- 所有文件路径必须使用**绝对路径**
+- 前端与后端通过 `config.js` 共享 `CONFIG`
+- Chat UI 用 SSE 流式（`XMLHttpRequest`，禁用 `fetch`）
+
+### 3.2 MCP 服务器（`wps-office-mcp/`，TypeScript）
+
+```
+wps-office-mcp/
+├── src/
+│   ├── server/           # MCP server 入口
+│   ├── client/           # 跨平台路由（Win→PowerShell COM, Mac/Linux→HTTP poll）
+│   │   ├── wps-client.ts
+│   │   ├── mac-poll-server.ts   # Mac 反向轮询（Linux 复用本类）
+│   │   └── linux-poll-server.ts # Linux 轮询
+│   ├── tools/            # 三层工具
+│   │   ├── index.ts      # 注册工具（allTools）
+│   │   ├── gateway/      # Gateway（COM_ACTIONS 索引）
+│   │   ├── common/       # 通用工具
+│   │   ├── excel/        # Excel 工具
+│   │   ├── word/         # Word 工具
+│   │   └── ppt/          # PPT 工具
+│   ├── types/            # 类型定义
+│   └── utils/
+│       └── path-safety.ts # 路径安全（validateFilePath）
+├── scripts/              # Windows COM 脚本（wps-com.ps1 等）
+└── package.json
+```
+
+**三层工具体系**（理解 MCP 开发的关键）：
+
+| 层级 | 数量 | 命名 | 注册/调用方式 |
+|------|------|------|---------------|
+| 内置工具 | 12 | `wps_xxx` | 启动即注册，始终可用（含 `wps_office_search`/`wps_office_execute` Gateway） |
+| 注册工具 | ~240 | `wps_xxx_xxx` | 经 `tools/index.ts` 注册，Gateway 路由，有完整 TS handler |
+| COM Actions | ~257 | 短名称 | `wps_office_search` → `wps_office_execute` → PS1 兜底 |
+
+**开发流程**（新增一个工具）：
+1. 在 `src/tools/<category>/` 下新建 handler（类型安全 + 参数校验）
+2. 在 `tools/index.ts` 的 `allTools` 注册
+3. （如需 COM 透传）在 `gateway/index.ts` 的 `COM_ACTIONS` 登记
+4. `npm run build` 编译
+5. 运行 `npm run validate:toolcounts` 校验工具数量
+6. 重启 OpenCode 生效
+
+**关键约定**：
+- 所有接受文件路径的 handler 必须用 `validateFilePath()`（来自 `utils/path-safety.ts`）且在 `try` 块内调用
+- 新增/修改后跑单元测试与工具数量校验
+
+### 3.3 Skills（`skills/`）
+
+5 个 WPS 专用 Skills：`wps-excel`、`wps-word`、`wps-ppt`、`wps-office`、`wps-proofread`。
+
+每个 Skill 目录结构：
+```
+skills/wps-word/
+├── SKILL.md    # Skill 定义（必需）
+└── README.md   # 使用说明
+```
+
+> 📖 修改 Skills 前**必读** `skills/README.md`；每个 Skill 的详细用法见 [SKILLS.md](./SKILLS.md)。
+
+**开发流程**：
+1. 编辑 `skills/<name>/SKILL.md`（或 README.md）
+2. 运行 `node install-addons.js` 同步到 `~/.opencode/skills/`
+3. 重启 OpenCode 使新 Skill 生效
+
+### 3.4 Agents（`agents/`）
+
+4 个 Agents：`wps-expert`、`wps-word`、`wps-excel`、`wps-ppt`。定义文件含 frontmatter（description/mode/color/tools）。
+
+**开发流程**：
+1. 编辑 `agents/*.md`
+2. `node install-addons.js` 同步到 `~/.config/opencode/agents/` + `~/.opencode/agents/`
+3. 重启 OpenCode 生效
+
+### 3.5 治理插件（`.opencode/plugins/governance.js`）
+
+通过 OpenCode Plugin Hooks（`tool.execute.before`/`after`）拦截所有 MCP 工具调用：
+
+- **G1-G7**：Gateway 强制、破坏性操作确认、路径安全、密码保护、参数校验
+- **P1-P16**：校对规则（批 ≤200、严格 proofread→confirm→fix 顺序）
+- **T1-T11**：模板填值规则（评估文档、批 ≤200、修订追踪、不编造字段）
+
+**开发流程**：
+1. 修改 `governance.js`
+2. `node install-addons.js` 同步到 `~/.config/opencode/plugins/`
+3. 重启 OpenCode 生效
+
+> ⚠️ 治理规则有配套 CI 校验（validate-settings 等），改动需保证 CI 通过。
+
+### 3.6 安装脚本（`install-addons*.js`）
+
+三平台一键安装脚本（Windows/macOS/Linux 各 7-8 步）：安装插件、编译 MCP、配置 OpenCode、同步 Skills/Agents/Plugins、注册自启。实现细节见 [INSTALL_SCRIPT.md](./INSTALL_SCRIPT.md)。
+
+---
+
+## 四、开发流程
+
+### 1. 本地开发
+
+见 [第一节](#一开发环境)。开发时常用命令：
+
+```bash
+# 构建 MCP 服务器
+npm run build
+
+# 安装 MCP 依赖
+npm run mcp:install
+
+# 运行 MCP 测试
+npm run mcp:test
+
+# 格式化代码
+npm run format
+npm run format:check
 ```
 
 ### 2. 创建功能分支
@@ -110,49 +236,77 @@ node install-addons.js
 git checkout -b feat/your-feature
 ```
 
-### 3. 修改代码
+### 3. 修改代码（按模块）
 
-- **修改 skills**: 编辑 `skills/` 目录，运行 `node install-addons.js` 同步
-- **修改 agents**: 编辑 `agents/` 目录或 `~/.config/opencode/agents/`
-- **修改 MCP**: 编辑 `wps-office-mcp/src/`，然后 `npm run build`
-- **修改插件**: 编辑 `opencode-wps/` 目录下的 JS/HTML 文件
+- **Skills**：编辑 `skills/` → `node install-addons.js`
+- **Agents**：编辑 `agents/` 或安装后的 `~/.config/opencode/agents/`（后者为产物）
+- **MCP**：编辑 `wps-office-mcp/src/` → `npm run build`
+- **插件**：编辑 `opencode-wps/` 下 JS/HTML 文件
+- **治理**：编辑 `.opencode/plugins/governance.js` → 同步
 
-### 4. 提交并推送
+### 4. 本地验证
 
 ```bash
-git commit -m "feat: 添加新功能"
+# 工具数量校验（12/240/257）
+npm run validate:toolcounts
+# NPC_TEAM 双源一致性
+npm run validate:npc-team
+# 版本号一致性
+npm run validate:versions
+# settings 校验
+npm run validate:settings
+# 运行全部单测
+node tests/*.test.js
+cd wps-office-mcp && npm test
+```
+
+### 5. 提交并推送
+
+```bash
+git add .
+git commit -m "feat(mcp): 添加 xxx 功能"
 git push origin feat/your-feature
 ```
 
-### 5. 创建 Pull Request
+### 6. 创建 Pull Request
+
+见 [PR 描述模板](#六提交规范)。
 
 ---
 
-## 代码规范
+## 五、代码规范
 
-- **JavaScript**: 使用 ES5 语法（兼容 WPS 内置浏览器 Chrome 103）
-  - 使用 `var` 而非 `let/const`
-  - 使用 `function` 而非箭头函数
-  - 使用回调而非 async/await
-  - **必须使用 `XMLHttpRequest`，禁止使用 `fetch`**（WPS Chromium 104 的 fetch Promise 永远 pending）
-  - **禁止使用 `ReadableStream`/`TextDecoderStream`**（WPS 104 不完整支持）
-- **TypeScript**: 启用 strict 模式
-- **命名**: 使用小驼峰命名
-- **注释**: 使用 JSDoc 风格
-- **路径安全**: 所有接受文件路径的 handler 必须使用 `validateFilePath()`（来自 `utils/path-safety.ts`），且必须在 `try` 块内调用
-- **代码格式**: 使用 Prettier（`npm run format`）
+### JavaScript（WPS 插件）
+
+**必须遵守**（兼容 WPS 内置 Chromium 103/104）：
+- 使用 ES5 语法：`var`（非 `let/const`）、`function`（非箭头函数）、回调（非 async/await）
+- **必须使用 `XMLHttpRequest`，禁止 `fetch`**（WPS Chromium 104 的 fetch Promise 永远 pending）
+- **禁止 `ReadableStream`/`TextDecoderStream`**（WPS 104 不完整支持）
+- 所有路径处理用绝对路径 + `validateFilePath()`
+
+### TypeScript（MCP）
+
+- 启用 strict 模式
+- 小驼峰命名
+- JSDoc 风格注释
+- 所有接受文件路径的 handler 用 `validateFilePath()`（在 `try` 块内）
+
+### 通用
+
+- 命名小驼峰
+- JSDoc 注释
+- Prettier 格式化（`npm run format`）
 
 ---
 
-## 提交规范
+## 六、提交规范
 
-项目使用 **Conventional Commits**：
+使用 **Conventional Commits**：
 
 ```
 <type>(<scope>): <subject>
 
 <body>
-
 <footer>
 ```
 
@@ -175,9 +329,7 @@ git commit -m "docs: 更新 README"
 git commit -m "feat(mcp): 添加 Excel 图表创建工具"
 ```
 
----
-
-## PR 描述模板
+### PR 描述模板
 
 ```markdown
 ## 描述
@@ -196,55 +348,90 @@ git commit -m "feat(mcp): 添加 Excel 图表创建工具"
 
 ---
 
-## 测试
+## 七、测试
 
 ```bash
-# 运行单元测试
+# 运行全部根测试
 node tests/security.test.js
 node tests/utils.test.js
 node tests/launcher.test.js
 node tests/e2e.test.js
+node tests/mac-bridge.test.js
+node tests/setcellformat-mac.test.js
 
-# 运行路径安全测试
+# 路径安全测试
 cd wps-office-mcp && npx jest src/tests/unit/path-safety.test.ts
 
-# 运行 MCP 测试
+# MCP 测试
 npm run mcp:test
+
+# MCP 单元测试
+cd wps-office-mcp && npm run test:unit
+
+# MCP 开发模式
+cd wps-office-mcp && npm run dev
 ```
 
----
-
-## 文档贡献
-
-文档位于 `docs/` 目录，欢迎：
-
-- 修正错别字
-- 补充内容
-- 翻译文档
-- 添加新文档
-
-文档列表：
-
-| 文档 | 说明 |
-|------|------|
-| [DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md) | 本文件 |
-| [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | 问题排查与避坑指南 |
-| [SECURITY.md](./SECURITY.md) | 安全模型与注意事项 |
-| [OPENCODE_API.md](./OPENCODE_API.md) | OpenCode API |
-| [WPS_COM_API.md](./WPS_COM_API.md) | WPS COM API |
-| [WPS_COM_PS1.md](./WPS_COM_PS1.md) | wps-com.ps1 解析 |
-| [WPSJS_DEVELOPMENT.md](./WPSJS_DEVELOPMENT.md) | WPS JS 插件开发指南 |
-| [MCP.md](./MCP.md) | MCP 服务器说明 |
-| [INSTALL_SCRIPT.md](./INSTALL_SCRIPT.md) | 安装脚本说明 |
-| [SKILLS.md](./SKILLS.md) | Skills 说明 |
+> 📖 测试也是 PR 门禁的一部分，见 [第八节](#八cicd-门禁)。
 
 ---
 
-## 常见问题
+## 八、CI/CD 门禁
+
+`.cnb.yml` 定义了 CNB 平台的 CI/CD 流水线。`main.push` 触发**全量门禁测试**：
+
+| 校验项 | 命令 | 说明 |
+|--------|------|------|
+| settings 校验 | `node scripts/validate-settings.js` | 校验 NPC settings |
+| 版本校验 | `node scripts/validate-versions.js` | 版本号一致性 |
+| 工具数量 | `node scripts/validate-tool-counts.js` | 12/240/257 |
+| NPC_TEAM | `node scripts/validate-npc-team-prompt.js` | 提示词双源一致性 |
+| NPC_TEAM 同步 | `node scripts/sync-npc-team-skill.js --check` | Skill 同步检查 |
+| 单测 | `node tests/*.test.js` | 安全/Launcher/Mac/Linux 回归 |
+| JS 语法 | `node --check <file>` | 三平台脚本语法门禁 |
+| MCP | `cd wps-office-mcp && npm ci && npm run test:unit` | MCP 单测 |
+
+提交 PR 前建议本地跑一遍门禁，避免 CI 失败。
+
+---
+
+## 九、二次开发
+
+### 新增一个 Word 工具（示例）
+
+1. 在 `wps-office-mcp/src/tools/word/` 新建 `my-tool.ts`（含入参/出参类型 + 校验）
+2. 在 `src/tools/index.ts` 的 `allTools` 注册
+3. 编译：`cd wps-office-mcp && npm run build`
+4. 校验：`npm run validate:toolcounts`
+5. 重启 OpenCode，工具即被 MCP 注册
+
+### 新增一个 Skill
+
+1. 在 `skills/` 新建目录 `skills/my-skill/`
+2. 添加 `SKILL.md`（frontmatter + 概述/能力/工具/工作流/限制）
+3. `node install-addons.js` 同步
+4. 重启 OpenCode
+
+### 新增一个 Agent
+
+1. 在 `agents/` 新建 `my-agent.md`（含 frontmatter）
+2. `node install-addons.js` 同步
+3. 重启 OpenCode，即可在 Agent 列表选择
+
+### 新增一条治理规则
+
+1. 在 `.opencode/plugins/governance.js` 的 before/after 钩子中新增规则
+2. 保持编号连续（G/P/T 系列）
+3. `node install-addons.js` 同步
+4. 重启 OpenCode，并确保 CI 校验通过
+
+---
+
+## 十、常见问题
 
 ### 插件不显示
 
-- 检查 WPS 版本是否 >= 12.1.0
+- 检查 WPS 版本是否 ≥ 12.1.0
 - 重启 WPS Office
 - 运行 `node install-addons.js` 重新安装
 
@@ -253,15 +440,24 @@ npm run mcp:test
 - 检查 OpenCode 服务是否启动
 - 检查端口 14096 是否被占用
 - 查看 `~/.config/opencode/opencode.json` 配置
+- `cd wps-office-mcp && npm install && npm run build` 后重启 OpenCode
 
 ### 服务启动失败
 
 - 检查 Launcher 是否运行：`schtasks /Query /TN "OpenCodeLauncher"`
 - 手动启动：`schtasks /Run /TN "OpenCodeLauncher"`
 
+### Skills/Agents 未加载
+
+- 重新运行安装脚本 + 重启 OpenCode
+
+### 工具数量校验失败
+
+- 运行 `npm run validate:toolcounts`，按提示调整 `tools/index.ts` / `gateway/index.ts` / `mcp-server.ts`
+
 ---
 
-## 联系方式
+## 十一、联系方式
 
 - GitHub Issues: 报告 Bug 和问题
 - GitHub Discussions: 提问和讨论
