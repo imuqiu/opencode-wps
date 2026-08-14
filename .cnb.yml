@@ -87,12 +87,12 @@ $:
 
   # Code Wiki：打 tag 时自动读取仓库代码 + docs/ 现有文档，生成项目 Wiki
   # 生成后仓库首页出现 Wiki 入口，并自动入库知识库（knowledge_enabled: true，可被 AI 问答引用）
+  # 配置遵循 codewiki 插件 README 推荐模式：image 置于 stage 级 + git_doc_dir 指向工作区
   tag_push:
-    - docker:
-        image: cnbcool/codewiki:latest
-      stages:
+    - stages:
         - name: generate codewiki
           timeout: 10h
+          image: cnbcool/codewiki:latest
           settings:
-            git_doc_dir: /data/codewiki/${CNB_REPO_SLUG}
+            git_doc_dir: /${CNB_BUILD_WORKSPACE}/${CNB_REPO_SLUG}/codewiki
             knowledge_enabled: true   # 生成的 Wiki 自动入库仓库知识库
