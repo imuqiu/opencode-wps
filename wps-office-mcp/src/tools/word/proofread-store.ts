@@ -35,9 +35,23 @@ export function ensureProofreadDir(): void {
 
 /** 获取某会话的磁盘文件路径 */
 function getSessionFilePath(sessionId: string): string {
-  // 仅允许 UUID 安全的字符，防止路径注入
+  // 仅允许安全字符，防止路径注入
   const safeId = sessionId.replace(/[^a-zA-Z0-9_-]/g, '_');
-  return path.join(PROOFREAD_DIR, `${safeId}.json`);
+  // 评审第 1 轮 W2：不同 sessionId 经安全化可能映射到同一 safeId（如 a/b 与 a_b 都变 a_b），
+  // 导致会话数据互相覆盖。故对**原始 sessionId** 取确定性 hash 追加到文件名后缀，
+  // 使含特殊字符但 safeId 相同的 sessionId 也具备唯一文件；读回/删除用同样映射保证一致性。
+  const hash = fnv1a(sessionId);
+  return path.join(PROOFREAD_DIR, `${safeId.slice(0, 8)}-${hash}.json`);
+}
+
+/** FNV-1a 32bit 哈希（轻量、确定性，用于生成唯一会话文件名） */
+function fnv1a(str: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = (h * 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, '0');
 }
 
 /**

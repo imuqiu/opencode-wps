@@ -1513,6 +1513,24 @@ describe('proofread-store 落盘持久化（Issue #116 问题十二）', () => {
     expect(loaded).not.toBeNull();
     proofreadStore.removeSessionFromDisk(specialId);
   });
+
+  it('两个不同 sessionId 安全化后不互相覆盖（评审第1轮 W2）', () => {
+    // a/b 与 a_b 经安全化都会得到 safeId=a_b，若不追加 hash 后缀会互相覆盖
+    const idWithSlash = 'a/b';
+    const idWithUnderscore = 'a_b';
+    const dataA = { ...testData, issues: [{ ...testData.issues[0], original: '甲', suggestion: '乙' }] };
+    const dataB = { ...testData, issues: [{ ...testData.issues[0], original: '丙', suggestion: '丁' }] };
+    proofreadStore.saveSessionToDisk(idWithSlash, dataA);
+    proofreadStore.saveSessionToDisk(idWithUnderscore, dataB);
+    const loadedA = proofreadStore.loadSessionFromDisk(idWithSlash);
+    const loadedB = proofreadStore.loadSessionFromDisk(idWithUnderscore);
+    expect(loadedA).not.toBeNull();
+    expect(loadedB).not.toBeNull();
+    expect(loadedA.issues[0].original).toBe('甲'); // A 未被 B 覆盖
+    expect(loadedB.issues[0].original).toBe('丙');
+    proofreadStore.removeSessionFromDisk(idWithSlash);
+    proofreadStore.removeSessionFromDisk(idWithUnderscore);
+  });
 });
 
 // 服务重启后从磁盘恢复测试（Issue #116 问题七/九）
@@ -1594,6 +1612,27 @@ describe('疑似问题（Issue #116 问题十一）', () => {
 
     const result = await generateProofreadReportHandler({ session_id: 'suspect-session' });
     const text = result.content[0].text!;
+    expect(text).not.toContain('待确认问题');
+  });
+
+  it('suspected_issues 含缺 original/suggestion 的条目时明确报错（评审第1轮 C1）', async () => {
+    const result = await proofreadAccumulateHandler({
+      session_id: 'suspect-session',
+      issues: [
+        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
+      ],
+      suspected_issues: [
+        // 缺 suggestion
+        { offset: 100, length: 4, original: '已未形成', type: '疑似', source: 'ai' as const },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('suspected_issues');
+    expect(result.error).toContain('original/suggestion');
+    // 不应累加任何疑似问题
+    const report = await generateProofreadReportHandler({ session_id: 'suspect-session' });
+    const text = report.content[0].text!;
     expect(text).not.toContain('待确认问题');
   });
 });

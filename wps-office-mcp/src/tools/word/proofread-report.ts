@@ -116,7 +116,11 @@ function enforceSessionLimit(): void {
     sessionIssues.delete(sid);
     sessionLastAccess.delete(sid);
     // LRU 淘汰同步清理磁盘文件（Issue #116 问题十二）
-    removeSessionFromDisk(sid);
+    // 评审第 1 轮 W3：检查删除返回值，失败时打日志，避免磁盘文件残留膨胀
+    const removed = removeSessionFromDisk(sid);
+    if (!removed) {
+      console.warn(`[proofread] LRU 淘汰清理磁盘文件失败: ${sid}`);
+    }
   }
 }
 
@@ -147,7 +151,14 @@ function getSessionOrLoad(sessionId: string): SessionData | undefined {
   const memSession = sessionIssues.get(sessionId);
   if (memSession) return memSession;
   const diskSession = loadSessionFromDisk<SessionData>(sessionId);
-  if (diskSession && diskSession.issues) {
+  // 评审第 1 轮 W1：磁盘恢复需校验数据结构完整性——issues 与 docInfo 都是后续流程的必字段，
+  // 缺任一即视为坏数据（半写入/截断），不恢复进内存，避免报告生成/累加复用 docInfo 时二次崩溃
+  if (
+    diskSession &&
+    Array.isArray(diskSession.issues) &&
+    diskSession.docInfo &&
+    typeof diskSession.docInfo === 'object'
+  ) {
     // 恢复进内存 Map（保证后续操作一致），并刷新访问时间
     sessionIssues.set(sessionId, diskSession);
     touchSession(sessionId);
@@ -778,7 +789,29 @@ export const proofreadAccumulateHandler: ToolHandler = async (
 
   // 疑似问题累加（Issue #116 问题十一）：AI 识别但未确认的问题，报告单独列出「待确认」
   // 支持通过 suspected_issues 参数累加，与正式问题分开存储
+  // 评审第 1 轮 C1：与 issues 对称，suspected_issues 也需必填字段校验（original/suggestion），
+  // 避免空原文/空建议的疑似问题静默进入报告「待确认问题」节
   if (suspected_issues && Array.isArray(suspected_issues)) {
+    const missingSuspectedFields = suspected_issues.filter(
+      (i) =>
+        (typeof i.original !== 'string' || i.original.trim() === '') ||
+        (typeof i.suggestion !== 'string' || i.suggestion.trim() === '')
+    );
+    if (missingSuspectedFields.length > 0) {
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [
+          {
+            type: 'text',
+            text:
+              `suspected_issues 含 ${missingSuspectedFields.length} 条缺少必填字段 original/suggestion，未累加。\n` +
+              `每条疑似问题必须携带 original（原文）和 suggestion（疑为的修改建议）两个必填字段。`,
+          },
+        ],
+        error: `suspected_issues 含 ${missingSuspectedFields.length} 条缺少 original/suggestion`,
+      };
+    }
     const normalizedSuspected = suspected_issues.map((i) =>
       normalizeIssueLocation(normalizeIssueSource(normalizeIssueType(i)))
     );
