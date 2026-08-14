@@ -237,6 +237,8 @@ OpenCode 服务由 **Launcher 进程**管理（监听 `127.0.0.1:14097`），通
 | POST | `/start` | 启动服务（body: `{"cwd": "目录"}`） |
 | POST | `/stop` | 停止服务（按端口 14096 精确停止） |
 | POST | `/dock` | 打开浏览器（「打开Web」按钮经此端点实现） |
+| POST | `/docinfo` | 写入当前文档信息缓存（body: 文档对象；`closed:true` 时清除缓存） |
+| GET | `/docinfo` | 读取当前文档信息缓存（无缓存返回 404 `No document info available`） |
 
 ```bash
 # 查看状态
@@ -253,6 +255,12 @@ curl -X POST http://127.0.0.1:14097/stop
 
 # 打开浏览器
 curl -X POST http://127.0.0.1:14097/dock
+
+# 写入文档信息缓存（对象 body；closed:true 清除）
+curl -X POST http://127.0.0.1:14097/docinfo -H 'Content-Type: application/json' -d '{"name":"demo.docx","path":"C:\\demo\\demo.docx"}'
+
+# 读取文档信息缓存
+curl http://127.0.0.1:14097/docinfo
 ```
 
 ### 6.2 各平台 Launcher 与自启
