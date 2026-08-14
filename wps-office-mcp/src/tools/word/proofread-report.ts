@@ -976,10 +976,15 @@ export const generateProofreadReportHandler: ToolHandler = async (
     };
   }
 
-  const { issues, docInfo, createdAt, totalRevisions } = session;
+  const { issues, docInfo, createdAt, totalRevisions, suspectedIssues } = session;
 
   if (issues.length === 0) {
-    const emptyReport = buildEmptyReport(docInfo, createdAt);
+    // 评审第 6 轮 C3：空 issues 但存在疑似问题时，不走纯空报告，
+    // 需在报告中单列「待确认问题」节（疑似问题正是要供人工核对，不能丢弃）
+    const emptyReport =
+      suspectedIssues && suspectedIssues.length > 0
+        ? buildEmptyReport(docInfo, createdAt) + buildSuspectedSection(suspectedIssues)
+        : buildEmptyReport(docInfo, createdAt);
     let wroteFile = false;
     let writeError: string | undefined;
     if (output_file) {
@@ -1323,6 +1328,26 @@ export const generateProofreadReportHandler: ToolHandler = async (
 };
 
 // ==================== 辅助函数 ====================
+
+/**
+ * 构建「待确认问题」节（评审第 6 轮 C3 提取）：疑似问题单独列出供人工核对，不纳入五维评分。
+ * 用于空 issues + 有疑似问题，以及主分支（issues > 0 时）共用。
+ */
+function buildSuspectedSection(suspectedIssues: ProofreadIssueEntry[]): string {
+  let section = `## ⚠️ 待确认问题（未修改，请人工核对） — ${suspectedIssues.length} 处\n\n`;
+  section += `> **说明**：以下问题由 AI 在校对过程中识别为疑似问题，但尚未确认是否为真实错误，未进行修改。请人工核对后决定是否处理。\n\n`;
+  section += `| # | 位置 | 原文 | 疑为 | 类型 | 来源 |\n`;
+  section += `|---|------|------|------|------|------|\n`;
+  suspectedIssues.forEach((issue, idx) => {
+    const location = formatIssueLocation(issue);
+    // Issue #116 问题一：original/suggestion 缺字段时兜底为空串，避免 .replace() 读 undefined 崩溃
+    const escapedOriginal = (issue.original || '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
+    const escapedSuggestion = (issue.suggestion || '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
+    section += `| ${idx + 1} | ${location} | ${escapedOriginal} | ${escapedSuggestion} | ${issue.type || '（空）'} | ${issue.source === 'ai' ? 'AI' : 'MCP'} |\n`;
+  });
+  section += `\n`;
+  return section;
+}
 
 /**
  * 构建空报告（0 个问题时）

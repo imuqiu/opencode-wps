@@ -1631,6 +1631,25 @@ describe('疑似问题（Issue #116 问题十一）', () => {
     expect(text).not.toContain('待确认问题');
   });
 
+  it('空 issues + 有 suspectedIssues 时报告仍列出待确认问题（评审第6轮 C3）', async () => {
+    // 只累加疑似问题，正式 issues 为空
+    await proofreadAccumulateHandler({
+      session_id: 'suspect-session',
+      issues: [],
+      suspected_issues: [
+        { offset: 100, length: 4, original: '已未形成', suggestion: '尚未形成', type: '疑似', source: 'ai' as const },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+    const result = await generateProofreadReportHandler({ session_id: 'suspect-session' });
+    expect(result.success).toBe(true);
+    const text = result.content[0].text!;
+    expect(text).toContain('待确认问题');
+    expect(text).toContain('1 处');
+    expect(text).toContain('已未形成');
+    expect(text).toContain('尚未形成');
+  });
+
   it('suspected_issues 含缺 original/suggestion 的条目时明确报错（评审第1轮 C1）', async () => {
     const result = await proofreadAccumulateHandler({
       session_id: 'suspect-session',
