@@ -174,7 +174,7 @@ AI 识别：使用 wps-ppt skill
 ```text
 1. 先用 wps_office_search 搜索可用工具（COM Actions 索引）
 2. 再用 wps_office_execute 执行找到的工具
-3. 12 个内置工具可直接调用（无需搜索）
+3. 内置工具（12 核心 + 2 缓存管理）可直接调用（无需搜索）
 ```
 
 > ⚠️ **禁止直接猜测工具名称**——必须经过 `wps_office_search` → `wps_office_execute` 两级网关，确保调用的是索引内真实存在的工具。
