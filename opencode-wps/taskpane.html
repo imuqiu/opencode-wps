@@ -339,6 +339,8 @@ var IN_SETUP_VIEW = false
 var HEALTH_CHECK_TIMER = null
 var HEALTH_CHECK_IN_FLIGHT = false
 var STOPPING = false   // 显式停止标记：防止在途健康检查在显式停止后错误触发自动重连（评审 R2-1）
+var STOPPED_AT = 0     // 显式停止时间戳：用于丢弃停止前置位前的在途健康检查请求结果（评审 P3）
+var HEALTH_CHECK_TS = 0  // 最近一次健康检查请求的发起时间戳（评审 P3）
 var START_POLL_TIMER = null   // 手动启动服务时的 1s 就绪轮询定时器（提升为模块级，供显式停止时清理，评审 R3-1）
 var INPUT_HISTORY = []
 var INPUT_HISTORY_INDEX = -1
@@ -500,9 +502,8 @@ function showChat() {
 
 // --- CWD Modal ---
 function openCwdModal() {
-    if (SERVER_RUNNING) {
-        stopOpenCode()
-    }
+    // 不再提前停止服务：仅浏览/选择目录不应中断正在运行的服务（评审 P4）
+    // 停止延迟到 confirmCwdChange() 确认新 CWD 时执行
     var modal = document.getElementById('cwd-modal')
     var currentCwd = document.getElementById('modal-cwd-current')
     var cwdInput = document.getElementById('cwd-input')
@@ -571,6 +572,9 @@ function confirmCwdChange() {
         stopOpenCode()
     }
 
+    // 用户主动启动新 CWD 服务：清除旧停止标记，避免残留 STOPPING 阻断自动恢复（评审 P2）
+    STOPPING = false
+
     // 设置新的 CWD 并启动（PERSIST.cwd setter 自动调用 setPS）
     PROJECT_DIR = newCwd
     PERSIST.cwd = newCwd
@@ -589,6 +593,8 @@ function confirmCwdChange() {
     var maxRetries = 30
     START_POLL_TIMER = setInterval(function() {
         fetchJSON('GET', '/global/health', null, function(data) {
+            // 在途回调防泄漏：若用户在轮询期间显式停止，不再恢复（评审 P1）
+            if (STOPPING) { clearInterval(START_POLL_TIMER); START_POLL_TIMER = null; return }
             if (data && data.healthy) {
                 clearInterval(START_POLL_TIMER)
                 START_POLL_TIMER = null
@@ -602,6 +608,8 @@ function confirmCwdChange() {
                 $btnStart.disabled = false
                 $btnStart.innerHTML = '<span class="icon-play"></span>启动服务'
                 $setupStatus.textContent = '启动失败，请检查 OpenCode 是否已安装。'
+                // 启动失败后恢复全局健康检测，服务可能延迟自愈/外部恢复（评审 P2）
+                startHealthCheck()
             }
         })
     }, 1000)
@@ -628,6 +636,9 @@ function startOpenCode() {
 
     setPS('opencode_command', JSON.stringify({cmd: 'start:' + cwd, ts: Date.now()}))
 
+    // 用户主动启动：清除旧停止标记，避免残留 STOPPING 阻断自动恢复（评审 P2）
+    STOPPING = false
+
     var launcherUrl = 'http://127.0.0.1:14097'
     var launcherOk = false
     var xhrLauncher = new XMLHttpRequest()
@@ -644,6 +655,8 @@ function startOpenCode() {
     var maxRetries = 30
     START_POLL_TIMER = setInterval(function() {
         fetchJSON('GET', '/global/health', null, function(data) {
+            // 在途回调防泄漏：若用户在轮询期间显式停止，不再恢复（评审 P1）
+            if (STOPPING) { clearInterval(START_POLL_TIMER); START_POLL_TIMER = null; return }
             if (data && data.healthy) {
                 clearInterval(START_POLL_TIMER)
                 START_POLL_TIMER = null
@@ -658,6 +671,8 @@ function startOpenCode() {
                 $btnStart.innerHTML = '<span class="icon-play"></span>启动服务'
                 if (!launcherOk) $setupStatus.textContent = 'Launcher 未运行'
                 else $setupStatus.textContent = '启动失败，请检查 OpenCode 是否已安装。'
+                // 启动失败后恢复全局健康检测，服务可能延迟自愈/外部恢复（评审 P2）
+                startHealthCheck()
             }
         })
     }, 1000)
@@ -666,8 +681,9 @@ function startOpenCode() {
 function stopOpenCode() {
     // 通过 main.js 命令通道停止
     setPS('opencode_command', JSON.stringify({cmd: 'stop', ts: Date.now()}))
-    // 显式停止：置停止标记 + 放弃在途健康检查结果 + 停检测，避免服务退出窗口内被全局健康检查自动重连并切回 chat（评审 P1/R2-1）
+    // 显式停止：置停止标记 + 记录停止时刻 + 放弃在途健康检查结果 + 停检测（评审 P1/R2-1/P3）
     STOPPING = true
+    STOPPED_AT = Date.now()   // 记录停止时刻，用于丢弃停止前置位前的在途请求结果（评审 P3）
     HEALTH_CHECK_IN_FLIGHT = false   // 复位防重入标记，避免显式停止后重启检测时被旧在途请求卡住；注意：此操作不能真正取消在途 XHR（重试由独立 setTimeout 驱动），故同时置 STOPPING 由回调分支拦截其结果（评审 P3）
     stopHealthCheck()
     // 清理手动启动的 1s 就绪轮询：避免停止后轮询仍运行，最终服务就绪时误把刚显式停止的服务自动重连（评审 R3-1）
@@ -722,8 +738,13 @@ function startHealthCheck() {
         // 避免慢请求叠加并发多个 /global/health 造成状态竞态（评审 R1-2）
         if (HEALTH_CHECK_IN_FLIGHT) return
         HEALTH_CHECK_IN_FLIGHT = true
+        // 记录本次请求发起时刻到闭包，用于丢弃 STOPPING 置位前的旧请求结果（评审 P3）
+        var requestTs = Date.now()
+        HEALTH_CHECK_TS = requestTs   // 全局变量保留最近发起时刻供测试断言
         fetchJSON('GET', '/global/health', null, function(data) {
             healthCheckDone(function() {
+                // 丢弃在显式停止之前发起的旧请求结果：其重试由 setTimeout 驱动，无法被 clearInterval 取消（评审 P3）
+                if (requestTs <= STOPPED_AT) return
                 var ok = data && data.healthy
                 if (ok) {
                     // 服务恢复：setup 视图、未连接、且非显式停止时才自动切回 chat；
@@ -747,6 +768,8 @@ function startHealthCheck() {
             })
         }, function() {
             healthCheckDone(function() {
+                // 丢弃在显式停止之前发起的旧请求结果（评审 P3）
+                if (requestTs <= STOPPED_AT) return
                 // 网络错误分支：同样保持检测，等待恢复
                 if (SERVER_RUNNING && !STOPPING) {
                     SERVER_RUNNING = false; CONNECTED = false
