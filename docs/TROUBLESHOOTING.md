@@ -567,3 +567,64 @@ node install-addons-mac.js
 curl -X POST http://127.0.0.1:14097/stop
 curl -X POST http://127.0.0.1:14097/start -H "Content-Type: application/json" -d '{"cwd": "'$PWD'"}'
 ```
+
+## 十三、CNB Code Wiki 生成失败排查（Issue #117）
+
+> 适用于：在仓库配置了 `.cnb.yml` 的 `tag_push` → `codewiki` 插件，但打 tag 后仓库 `/wikis` 页面仍是 "Page not found"、Wiki 始终未生成。
+
+### 问题现象
+
+- 仓库导航栏未出现 **Wiki** 入口，访问 `/-/wikis` 报 404 / "Page not found"。
+- 知识库中看不到 Wiki 生成的文档。
+- `tag_push` 触发的 codewiki 构建日志反复出现：
+  ```
+  LLM响应中未找到有效的Action标签, LLM响应预览: (空)
+  analyze_repository_structure_agent: agent.run() 返回空内容
+  generate catalogue error: agent returned empty catalogue items
+  ```
+
+### 根因（平台侧，非仓库配置）
+
+经容器内实测（与 codewiki 插件相同构建环境直接调用 LLM 端点），根因是 **codewiki 插件（镜像 `cnbcool/codewiki:latest`，v5.3）调用的 LLM 接入端点返回 401 认证失败**：
+
+| 测试项 | 结果 |
+|--------|------|
+| `use_codebuddy: 0` 端点 `/-/ai/chat/completions` | **401** `errcode:16 "user is not logged in"` |
+| `use_codebuddy: 1` 端点 `/-/ai-ide/v2/chat/completions` | **401** `errcode:16 "user is not logged in"` |
+| `Authorization: Bearer $CNB_TOKEN` | ❌ 401 |
+| `x-cnb-token: $CNB_TOKEN` | ❌ 401 |
+
+同时确认 `CNB_TOKEN`（27 位）已注入容器、`CNB_API_ENDPOINT=https://api.cnb.cool` 正常。结论：
+
+- codewiki 插件调用的两个 LLM 端点都**拒绝了 `CNB_TOKEN` 认证**，返回 401 未登录 → LLM 拿到空响应 → 仓库结构分析 / 目录生成全部失败 → Wiki 从未真正生成。
+- 这与 `.cnb.yml` 无关——`use_codebuddy` 0/1、任何模型名都无法绕过认证。
+- **这是 CNB 平台侧 LLM 接入的认证兼容性问题**（插件旧版 v5.3 的 LLM proxy 认证机制与当前平台 AI 接入要求不匹配），非仓库配置可修复。
+
+### 如何避坑 / 处理
+
+1. **确认配置已就绪**（`.cnb.yml` 顶层 `$` 下 `tag_push` → `generate codewiki` stage）：
+   ```yaml
+   tag_push:
+     - stages:
+         - name: generate codewiki
+           timeout: 10h
+           image: cnbcool/codewiki:latest
+           settings:
+             git_doc_dir: /${CNB_BUILD_WORKSPACE}/${CNB_REPO_SLUG}/codewiki   # 必填
+             use_codebuddy: 0          # CNB AI 接入点
+             llm_model_name: 'hy3-preview'   # 插件 README 示例模型
+             knowledge_enabled: true   # 生成的 Wiki 自动入库仓库知识库
+   ```
+   > `git_doc_dir` 为**必填**，缺失会导致插件直接运行失败。
+
+2. **检查构建日志**：若出现上述 `LLM响应...空` / `返回空内容` 错误，即命中本根因。
+
+3. **向平台侧反馈**（仓库侧无法自行修复）：
+   - 向 CNB 平台反馈 codewiki 插件 LLM 401 认证问题；
+   - 在仓库「设置 → AI/知识库」中确认本仓库 AI 接入（custom-token）已正确配置；
+   - 待插件镜像升级到兼容认证机制的版本后，重新打 tag 触发一次即可（届时 `.cnb.yml` 配置已就绪）。
+
+### 判定要点
+
+- **是配置问题**：`git_doc_dir` 缺失、`knowledge_enabled` 未开、`tag_push` 事件缺失 → 修改 `.cnb.yml` 即可。
+- **是平台认证问题**：配置逐项核对无误但日志仍报 401 / LLM 空响应 → 平台侧问题，按上文第 3 条处理。
