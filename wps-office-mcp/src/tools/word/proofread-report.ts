@@ -981,10 +981,11 @@ export const generateProofreadReportHandler: ToolHandler = async (
   if (issues.length === 0) {
     // 评审第 6 轮 C3：空 issues 但存在疑似问题时，不走纯空报告，
     // 需在报告中单列「待确认问题」节（疑似问题正是要供人工核对，不能丢弃）
+    // 评审第 8 轮 W8：有疑似问题时，空报告收尾用中性提示（而非「✅ 未发现任何问题」），
+    // 避免「✅ 未发现问题」与「⚠️ 待确认问题」语义并置引起困惑
+    const hasSuspected = !!(suspectedIssues && suspectedIssues.length > 0);
     const emptyReport =
-      suspectedIssues && suspectedIssues.length > 0
-        ? buildEmptyReport(docInfo, createdAt) + buildSuspectedSection(suspectedIssues)
-        : buildEmptyReport(docInfo, createdAt);
+      buildEmptyReport(docInfo, createdAt, hasSuspected) + (hasSuspected ? buildSuspectedSection(suspectedIssues!) : '');
     let wroteFile = false;
     let writeError: string | undefined;
     if (output_file) {
@@ -1351,9 +1352,14 @@ function buildSuspectedSection(suspectedIssues: ProofreadIssueEntry[]): string {
 
 /**
  * 构建空报告（0 个问题时）
+ * @param hasSuspected 是否存在待确认疑似问题（评审第 8 轮 W8：有则用中性提示，
+ *   避免「✅ 未发现问题」与「⚠️ 待确认问题」语义并置）
  */
-function buildEmptyReport(docInfo: DocInfo, _createdAt: string): string {
+function buildEmptyReport(docInfo: DocInfo, _createdAt: string, hasSuspected = false): string {
   const reportDate = new Date().toISOString().replace('T', ' ').substring(0, 19);
+  const summaryLine = hasSuspected
+    ? `正式问题 0 处；另有待确认疑似问题，见下方「待确认问题」节，请人工核对。`
+    : `✅ 文档质量优秀，未发现任何问题。`;
   return [
     `# 校对报告`,
     ``,
@@ -1374,7 +1380,7 @@ function buildEmptyReport(docInfo: DocInfo, _createdAt: string): string {
     `| 一致性 (consistency) | 0 | 5.0 | 2.00 | 10.0/10 |`,
     `| 完整度 (completeness) | 0 | 5.0 | 2.00 | 10.0/10 |`,
     ``,
-    `✅ 文档质量优秀，未发现任何问题。`,
+    summaryLine,
   ].join('\n');
 }
 

@@ -1631,7 +1631,7 @@ describe('疑似问题（Issue #116 问题十一）', () => {
     expect(text).not.toContain('待确认问题');
   });
 
-  it('空 issues + 有 suspectedIssues 时报告仍列出待确认问题（评审第6轮 C3）', async () => {
+  it('空 issues + 有 suspectedIssues 时报告仍列出待确认问题（评审第6轮 C3 / 第8轮 W8）', async () => {
     // 只累加疑似问题，正式 issues 为空
     await proofreadAccumulateHandler({
       session_id: 'suspect-session',
@@ -1648,6 +1648,9 @@ describe('疑似问题（Issue #116 问题十一）', () => {
     expect(text).toContain('1 处');
     expect(text).toContain('已未形成');
     expect(text).toContain('尚未形成');
+    // 评审第8轮 W8：有疑似问题时，收尾用中性提示而非「✅ 未发现任何问题」
+    expect(text).not.toContain('✅ 文档质量优秀，未发现任何问题');
+    expect(text).toContain('待确认疑似问题');
   });
 
   it('suspected_issues 含缺 original/suggestion 的条目时明确报错（评审第1轮 C1）', async () => {
