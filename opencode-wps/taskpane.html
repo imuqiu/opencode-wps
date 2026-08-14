@@ -1296,6 +1296,12 @@ function connectSSE() {
             console.log('[SSE] Connection error, will reconnect...');
             CONNECTED = false;
             updateConnectionStatus();
+            // #116 第 2 轮评审：连接断开时清理待响应的权限请求（避免过期模态框残留）
+            if (PENDING_PERMISSION) {
+                PENDING_PERMISSION = null;
+                if (PERMISSION_MODAL_VISIBLE) hidePermissionDialog();
+                setStatus('idle')
+            }
             if (SSE) { SSE.close(); SSE = null; }
             // 自动重连（指数退避，最大30秒）
             if (!sseReconnectTimer) {
@@ -1371,6 +1377,12 @@ function handleSSEEvent(data) {
  * 兼容多种事件格式：properties 可能含 permissionID、tool、request 等字段
  */
 function handlePermissionRequest(type, props) {
+    // #116 第 2 轮评审：若已有未响应的权限请求，先隐藏旧的（防静默覆盖导致第一个请求永不响应）
+    if (PENDING_PERMISSION) {
+        console.warn('[Permission] 已有待响应的权限请求，新权限请求到来，先清理旧请求');
+        if (PERMISSION_MODAL_VISIBLE) hidePermissionDialog();
+        PENDING_PERMISSION = null;
+    }
     // 从不同字段结构提取权限请求信息
     // 优先取内嵌 permission.id（最可靠），其次取显式 ID 字段，最后才用 props.id 兑底
     var permissionID = (props.permission ? props.permission.id : '') || props.permissionID || props.permission_id || props.requestID || props.id || ''
