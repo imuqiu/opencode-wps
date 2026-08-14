@@ -335,6 +335,7 @@ var AVAILABLE_PROVIDERS = []
 var CURRENT_AGENT = 'wps-expert'
 var DEFAULT_AGENT = 'wps-expert'
 var SERVER_RUNNING = false
+var IN_SETUP_VIEW = false
 var HEALTH_CHECK_TIMER = null
 var INPUT_HISTORY = []
 var INPUT_HISTORY_INDEX = -1
@@ -427,7 +428,9 @@ window.onunhandledrejection = function(event) {
 function showSetup() {
     $viewSetup.classList.remove('hidden')
     $viewChat.classList.add('hidden')
-    stopHealthCheck()
+    IN_SETUP_VIEW = true
+    // 不再 stopHealthCheck() —— 健康检测改为全局常驻，不随视图切换停止；
+    // setup 视图下仍持续探测服务状态，一旦恢复即自动切回 chat（见 startHealthCheck）
     // 恢复上次 CWD
     var lastCwd = getPS('opencode_cwd')
     if (lastCwd) $setupCwd.value = lastCwd
@@ -485,6 +488,7 @@ function selectFolderViaFile() {
 function showChat() {
     $viewSetup.classList.add('hidden')
     $viewChat.classList.remove('hidden')
+    IN_SETUP_VIEW = false
     // 更新 topbar cwd 显示
     var cwd = PROJECT_DIR || getPS('opencode_cwd') || ''
     $topbarCwd.textContent = cwd || '点击选择工作目录'
@@ -692,20 +696,30 @@ function startHealthCheck() {
     HEALTH_CHECK_TIMER = setInterval(function() {
         fetchJSON('GET', '/global/health', null, function(data) {
             var ok = data && data.healthy
-            if (!ok && SERVER_RUNNING) {
-                SERVER_RUNNING = false; CONNECTED = false
-                if (SSE) { SSE.close(); SSE = null }
-                updateServerStatus(false)
-                showSetup()
-                $setupStatus.textContent = '服务已断开，请重新启动以继续。'
+            if (ok) {
+                // 服务恢复：无论当前视图，统一走恢复链路
+                if (IN_SETUP_VIEW && !SERVER_RUNNING) {
+                    onServerConnected()   // 自动切回 chat + 重启检测
+                } else {
+                    SERVER_RUNNING = true; updateServerStatus(true)
+                }
+            } else {
+                // 失败：标记断开 + 切 setup（若未在 setup），但【不停止检测】
+                if (SERVER_RUNNING) {
+                    SERVER_RUNNING = false; CONNECTED = false
+                    if (SSE) { SSE.close(); SSE = null }
+                    updateServerStatus(false)
+                    if (!IN_SETUP_VIEW) showSetup()   // 仅切视图，不再 stopHealthCheck
+                    $setupStatus.textContent = '服务已断开，请重新启动以继续。'
+                }
             }
-            if (ok) { SERVER_RUNNING = true; updateServerStatus(true) }
         }, function() {
+            // 网络错误分支：同样保持检测，等待恢复
             if (SERVER_RUNNING) {
                 SERVER_RUNNING = false; CONNECTED = false
                 if (SSE) { SSE.close(); SSE = null }
                 updateServerStatus(false)
-                showSetup()
+                if (!IN_SETUP_VIEW) showSetup()
                 $setupStatus.textContent = '服务已断开，请重新启动以继续。'
             }
         })
@@ -1541,10 +1555,12 @@ function scrollToBottom() { setTimeout(function() { if ($messages) $messages.scr
                 // launcher 在运行但 opencode 没启动，显示 setup
                 updateServerStatus(false)
                 showSetup()
+                startHealthCheck()   // 补：setup 下也启动健康检测，支持自动恢复
             } else {
                 // 都未运行，显示 setup
                 updateServerStatus(false)
                 showSetup()
+                startHealthCheck()   // 补：setup 下也启动健康检测，支持自动恢复
             }
         })
     })
