@@ -874,6 +874,8 @@ function startHealthCheck() {
                         // 的场景，Issue #114 核心场景）。同步降级已先执行，故测试环境（launcher 探测
                         // 不回调）不影响既有降级断言。
                         probeLauncherRunning(function(launcherRunning) {
+                            // 丢弃显式停止前发起的在途探测结果（与健康检查回调的 STOPPED_AT 过滤语义一致，双保险）
+                            if (requestTs <= STOPPED_AT) return
                             if (launcherRunning && !STOPPING) {
                                 SERVER_RUNNING = true
                                 updateServerStatus(true)
@@ -898,6 +900,8 @@ function startHealthCheck() {
                     $setupStatus.textContent = '服务已断开，请重新启动以继续。'
                     // 与成功分支失败一致：launcher 确认服务在跑则立即恢复 + 重建 SSE
                     probeLauncherRunning(function(launcherRunning) {
+                        // 丢弃显式停止前发起的在途探测结果（与健康检查回调的 STOPPED_AT 过滤语义一致，双保险）
+                        if (requestTs <= STOPPED_AT) return
                         if (launcherRunning && !STOPPING) {
                             SERVER_RUNNING = true
                             updateServerStatus(true)
