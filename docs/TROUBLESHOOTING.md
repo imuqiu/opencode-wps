@@ -219,7 +219,7 @@ Get-Content "$env:APPDATA\kingsoft\wps\jsaddons\authaddin.json"
 | 侧边栏空白 | main.js 的 GetUrlPath 是否用绝对路径 | 硬编码插件目录路径 |
 | Start Server 失败 | launcher.js 是否支持 .ps1 | 添加 powershell 检测逻辑 |
 | 服务启动了但连不上 | 检查 14096 端口是否正常 | 手动测试 /global/health |
-| 服务运行中但状态栏显示"已停止" | 健康检查"一次失败即永久放弃"（历史版本） | 升级到包含健康检查自动恢复的版本；健康检查已改为全局常驻，瞬时抖动后会≤1 周期内自动恢复为"运行中" |
+| 服务运行中但状态栏显示"已停止" | ① 健康检查"一次失败即永久放弃"（历史版本）② `/global/health` 探测在 WPS Chromium 下受 CORS/环境差异影响持续失败 | 升级到包含健康检查自动恢复 + **多源交叉验证**的版本：健康检查全局常驻，且状态判定不再单一依赖 `/global/health`——`/status` 端口监听回退 + SSE 连接成功联动，任一可靠信号源确认服务在跑即恢复"运行中"（≤1 周期自动恢复） |
 | Proxy 连接失败 | opencode-proxy.js 端口 14098 是否启动 | 检查 14098 端口 |
 | 聊天报 `Error: {"name":"UnknownError",...}` | OpenCode 服务端内部错误（模型调用失败等），非插件 bug | 见下方「UnknownError 排查」章节 |
 
