@@ -219,6 +219,7 @@ Get-Content "$env:APPDATA\kingsoft\wps\jsaddons\authaddin.json"
 | 侧边栏空白 | main.js 的 GetUrlPath 是否用绝对路径 | 硬编码插件目录路径 |
 | Start Server 失败 | launcher.js 是否支持 .ps1 | 添加 powershell 检测逻辑 |
 | 服务启动了但连不上 | 检查 14096 端口是否正常 | 手动测试 /global/health |
+| 服务运行中但状态栏显示"已停止" | 健康检查"一次失败即永久放弃"（历史版本） | 升级到包含健康检查自动恢复的版本；健康检查已改为全局常驻，瞬时抖动后会≤1 周期内自动恢复为"运行中" |
 | Proxy 连接失败 | opencode-proxy.js 端口 14098 是否启动 | 检查 14098 端口 |
 
 ---
