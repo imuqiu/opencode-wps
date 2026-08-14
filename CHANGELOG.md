@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.2] - 2026-08-14
+
+### Fixed
+
+- **修复 opencode 服务运行中但 UI 状态误显「已停止」（Issue #114 回归，PR #132）** — 用户反馈 opencode 实际运行中，WPS 插件顶部状态栏却显示「已停止」。根因：插件对服务状态的判定**单一依赖 `/global/health`** 健康检查，一旦瞬时误触失败（网络抖动 / CORS proxy 抖动 / launcher 重启间隙 / SSE 连接被 close），状态即误判为「已停止」且难以自动恢复。本轮将状态判定改为**多源交叉验证**：① `launcher.js` `/status` 端口回退——`running` 不再只依赖 `opencodeProcess` 引用，引用丢失时回退探测 14096 端口监听，并暴露 `portOpen` 字段供前端交叉验证；② `taskpane.html` 新增 `probeLauncherRunning()` 多源兜底——`/global/health` 失败但 launcher 确认服务在跑则恢复「运行中」并重建 SSE（覆盖「SSE 被 close 后无法自动恢复」的核心场景）；③ `SSE.onopen` 状态联动——连接成功同步恢复「运行中」并切回 chat；④ `init()` 首屏 launcher 回退 + `enterChat()` 去重。测试：`taskpane-healthcheck` 19/19、`launcher` 15/15、全量 10 套件通过。评审 10 轮 review-修复循环清零。
+
 ## [1.5.1] - 2026-08-14
 
 ### Fixed
