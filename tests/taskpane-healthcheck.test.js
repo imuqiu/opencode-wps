@@ -307,6 +307,9 @@ test('R2-1: 显式停止（STOPPING=true）后不自动重连', function () {
   healthOverride = null;
   s.__flushHealthChecks(2);
   assertEqual(connected, 0, 'STOPPING 显式停止后不应自动重连');
+  // P1/P4 加固断言：显式停止后即便在途请求返回 ok，SERVER_RUNNING/CONNECTED 也不应被错误置位（评审 P1/P2）
+  assertEqual(s.SERVER_RUNNING, false, 'STOPPING 显式停止后 SERVER_RUNNING 不应被错误置为 true');
+  assertEqual(s.CONNECTED, false, 'STOPPING 显式停止后 CONNECTED 不应被错误置为 true');
 });
 
 test('R3-1: stopOpenCode() 清理手动启动轮询 START_POLL_TIMER', function () {

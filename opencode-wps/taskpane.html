@@ -668,7 +668,7 @@ function stopOpenCode() {
     setPS('opencode_command', JSON.stringify({cmd: 'stop', ts: Date.now()}))
     // 显式停止：置停止标记 + 放弃在途健康检查结果 + 停检测，避免服务退出窗口内被全局健康检查自动重连并切回 chat（评审 P1/R2-1）
     STOPPING = true
-    HEALTH_CHECK_IN_FLIGHT = false   // 放弃在途 /global/health 请求的结果
+    HEALTH_CHECK_IN_FLIGHT = false   // 复位防重入标记，避免显式停止后重启检测时被旧在途请求卡住；注意：此操作不能真正取消在途 XHR（重试由独立 setTimeout 驱动），故同时置 STOPPING 由回调分支拦截其结果（评审 P3）
     stopHealthCheck()
     // 清理手动启动的 1s 就绪轮询：避免停止后轮询仍运行，最终服务就绪时误把刚显式停止的服务自动重连（评审 R3-1）
     if (START_POLL_TIMER) { clearInterval(START_POLL_TIMER); START_POLL_TIMER = null }
@@ -730,8 +730,9 @@ function startHealthCheck() {
                     // 否则仅在状态变化时更新，避免每 10s 冗余写入（评审 R1-1/R2-1）
                     if (IN_SETUP_VIEW && !SERVER_RUNNING && !STOPPING) {
                         onServerConnected()   // 自动切回 chat + 重启检测（内部含幂等守卫）
-                    } else if (!SERVER_RUNNING) {
-                        SERVER_RUNNING = true; updateServerStatus(true)
+                    } else if (!SERVER_RUNNING && !STOPPING) {
+                        // 非 setup 视图（或已在 chat）但服务未标记运行：仅同步状态，恢复 CONNECTED 保持一致（评审 P1/P4）
+                        SERVER_RUNNING = true; CONNECTED = true; updateServerStatus(true)
                     }
                 } else {
                     // 失败：标记断开 + 切 setup（若未在 setup），但【不停止检测】
