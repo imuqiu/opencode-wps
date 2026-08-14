@@ -7,6 +7,13 @@
 # 构建 NPC 运行镜像并推送到 CNB 制品库
 main:
   push:
+    # 知识库入库：将仓库 docs/ 等文档切片、分词、向量化写入仓库知识库
+    # （配合 codewiki 的 knowledge_enabled: true，确保仓库被标记为知识库并激活 Wiki 展示）
+    - stages:
+        - name: build knowledge base
+          type: knowledge:update
+          options:
+            include: "**/**.md"
     - services:
         - docker
       stages:
