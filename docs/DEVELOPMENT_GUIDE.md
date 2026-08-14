@@ -137,7 +137,10 @@ wps-office-mcp/
 │   │   └── ppt/          # PPT 工具
 │   ├── types/            # 类型定义
 │   └── utils/
-│       └── path-safety.ts # 路径安全（validateFilePath）
+│       ├── path-safety.ts # 路径安全（validateFilePath）
+│       ├── error.ts       # 错误处理工具
+│       ├── launcher.ts    # Launcher 工具函数
+│       └── logger.ts      # 日志工具
 ├── scripts/              # Windows COM 脚本（wps-com.ps1 等）
 └── package.json
 ```
@@ -397,6 +400,27 @@ cd wps-office-mcp && npm run dev
 | MCP | `cd wps-office-mcp && npm ci && npm run test:unit` | MCP 单测 |
 
 提交 PR 前建议本地跑一遍门禁，避免 CI 失败。
+
+### Code Wiki 生成（`tag_push` → `codewiki` 插件）
+
+`.cnb.yml` 顶层 `$` 下另配置了 `tag_push` 事件，打 tag 时自动运行 **CNB Code Wiki（codewiki）插件**，读取仓库代码 + `docs/` 现有文档生成项目 Wiki：
+
+```yaml
+$:
+  tag_push:
+    - docker:
+        image: cnbcool/codewiki:latest
+      stages:
+        - name: generate codewiki
+          timeout: 10h
+          settings:
+            git_doc_dir: /data/codewiki/${CNB_REPO_SLUG}   # 必填
+            knowledge_enabled: true                        # 生成 Wiki 自动入库仓库知识库
+```
+
+- **`git_doc_dir`**：必填项，指定 codewiki 插件的临时工作目录（官方示例写法）。
+- **`knowledge_enabled: true`**：生成内容自动同步到仓库知识库，可被 AI 问答引用。
+- **触发时机**：仅 `tag_push` 事件触发（打 tag 时），与 `main.push` 全量门禁互不干扰。发布时打 tag 即可触发 Wiki 生成，生成后仓库首页出现 Wiki 入口。
 
 ---
 
