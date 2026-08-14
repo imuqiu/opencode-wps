@@ -219,7 +219,44 @@ Get-Content "$env:APPDATA\kingsoft\wps\jsaddons\authaddin.json"
 | 侧边栏空白 | main.js 的 GetUrlPath 是否用绝对路径 | 硬编码插件目录路径 |
 | Start Server 失败 | launcher.js 是否支持 .ps1 | 添加 powershell 检测逻辑 |
 | 服务启动了但连不上 | 检查 14096 端口是否正常 | 手动测试 /global/health |
+| 服务运行中但状态栏显示"已停止" | 健康检查"一次失败即永久放弃"（历史版本） | 升级到包含健康检查自动恢复的版本；健康检查已改为全局常驻，瞬时抖动后会≤1 周期内自动恢复为"运行中" |
 | Proxy 连接失败 | opencode-proxy.js 端口 14098 是否启动 | 检查 14098 端口 |
+| 聊天报 `Error: {"name":"UnknownError",...}` | OpenCode 服务端内部错误（模型调用失败等），非插件 bug | 见下方「UnknownError 排查」章节 |
+
+---
+
+### 六·补充：UnknownError 排查（聊天报错）
+
+**现象**：在聊天框发送消息后，插件顶部/聊天区提示：
+
+```json
+Error: {"name":"UnknownError","data":{"message":"Unexpected server error. Check server logs for details.","ref":"err_xxxxxxxx"}}
+```
+
+**结论先行**：`UnknownError` 是 **OpenCode 服务端**（`opencode serve` 进程）在生成回复时抛出的内部错误，**不是 WPS 插件代码问题**。`ref: err_xxxxxxxx` 是服务端生成、用于在服务端日志中定位具体错误的引用 ID。常见触发因素：
+
+| 因素 | 说明 | 处理 |
+|------|------|------|
+| 模型调用失败 | API key 失效 / 限流 / 模型不存在 / provider 配置错误 | 检查 `~/.config/opencode/opencode.json` 的 model/provider 配置与 API key |
+| 文档上下文过大 | `injectContext` 注入的 WPS 文档上下文超过模型上下文窗口 | 在插件中清空/精简当前文档上下文后再试 |
+| 会话状态异常 | 会话 `SESSION_ID` 失效或服务端会话损坏 | 在插件中「新建会话」重试 |
+| 服务端 bug | `opencode serve` 自身异常 | 查看服务端日志定位（见下） |
+
+**如何查看服务端日志（关键）**：
+
+1. 确保已升级到含 **日志落盘** 的版本（`opencode-wps/launcher.js` 已将 opencode serve 的 stdout/stderr 写入日志文件，而非丢弃）。
+2. 打开日志文件（按实际用户目录定位，Windows 默认为 `C:\Users\<你的用户名>`）：`<用户目录>\.opencode\logs\opencode-serve.log`
+3. 在日志中搜索 `err_xxxxxxxx` 或报错时间点前后的堆栈，即可定位真正原因。
+4. 日志采用**追加模式**，单文件超 5MB 会自动重命名为 `opencode-serve.log.old` 并重新开始记录，避免无限增长占满磁盘；如磁盘紧张可手动删除 `.old` 历史文件。
+
+**临时绕过 launcher 手动启动查看日志**：
+
+```bash
+cd C:\path\to\your\workspace
+opencode serve --port 14096 --hostname 127.0.0.1 --cors file://
+```
+
+在终端复现报错，直接看服务端打印的详细错误。
 
 ---
 
@@ -530,3 +567,64 @@ node install-addons-mac.js
 curl -X POST http://127.0.0.1:14097/stop
 curl -X POST http://127.0.0.1:14097/start -H "Content-Type: application/json" -d '{"cwd": "'$PWD'"}'
 ```
+
+## 十三、CNB Code Wiki 生成失败排查（Issue #117）
+
+> 适用于：在仓库配置了 `.cnb.yml` 的 `tag_push` → `codewiki` 插件，但打 tag 后仓库 `/wikis` 页面仍是 "Page not found"、Wiki 始终未生成。
+
+### 问题现象
+
+- 仓库导航栏未出现 **Wiki** 入口，访问 `/-/wikis` 报 404 / "Page not found"。
+- 知识库中看不到 Wiki 生成的文档。
+- `tag_push` 触发的 codewiki 构建日志反复出现：
+  ```
+  LLM响应中未找到有效的Action标签, LLM响应预览: (空)
+  analyze_repository_structure_agent: agent.run() 返回空内容
+  generate catalogue error: agent returned empty catalogue items
+  ```
+
+### 根因（平台侧，非仓库配置）
+
+经容器内实测（与 codewiki 插件相同构建环境直接调用 LLM 端点），根因是 **codewiki 插件（镜像 `cnbcool/codewiki:latest`，v5.3）调用的 LLM 接入端点返回 401 认证失败**：
+
+| 测试项 | 结果 |
+|--------|------|
+| `use_codebuddy: 0` 端点 `/-/ai/chat/completions` | **401** `errcode:16 "user is not logged in"` |
+| `use_codebuddy: 1` 端点 `/-/ai-ide/v2/chat/completions` | **401** `errcode:16 "user is not logged in"` |
+| `Authorization: Bearer $CNB_TOKEN` | ❌ 401 |
+| `x-cnb-token: $CNB_TOKEN` | ❌ 401 |
+
+同时确认 `CNB_TOKEN`（27 位）已注入容器、`CNB_API_ENDPOINT=https://api.cnb.cool` 正常。结论：
+
+- codewiki 插件调用的两个 LLM 端点都**拒绝了 `CNB_TOKEN` 认证**，返回 401 未登录 → LLM 拿到空响应 → 仓库结构分析 / 目录生成全部失败 → Wiki 从未真正生成。
+- 这与 `.cnb.yml` 无关——`use_codebuddy` 0/1、任何模型名都无法绕过认证。
+- **这是 CNB 平台侧 LLM 接入的认证兼容性问题**（插件旧版 v5.3 的 LLM proxy 认证机制与当前平台 AI 接入要求不匹配），非仓库配置可修复。
+
+### 如何避坑 / 处理
+
+1. **确认配置已就绪**（`.cnb.yml` 顶层 `$` 下 `tag_push` → `generate codewiki` stage）：
+   ```yaml
+   tag_push:
+     - stages:
+         - name: generate codewiki
+           timeout: 10h
+           image: cnbcool/codewiki:latest
+           settings:
+             git_doc_dir: /${CNB_BUILD_WORKSPACE}/${CNB_REPO_SLUG}/codewiki   # 必填
+             use_codebuddy: 0          # CNB AI 接入点
+             llm_model_name: 'hy3-preview'   # 插件 README 示例模型
+             knowledge_enabled: true   # 生成的 Wiki 自动入库仓库知识库
+   ```
+   > `git_doc_dir` 为**必填**，缺失会导致插件直接运行失败。
+
+2. **检查构建日志**：若出现上述 `LLM响应...空` / `返回空内容` 错误，即命中本根因。
+
+3. **向平台侧反馈**（仓库侧无法自行修复）：
+   - 向 CNB 平台反馈 codewiki 插件 LLM 401 认证问题；
+   - 在仓库「设置 → AI/知识库」中确认本仓库 AI 接入（custom-token）已正确配置；
+   - 待插件镜像升级到兼容认证机制的版本后，重新打 tag 触发一次即可（届时 `.cnb.yml` 配置已就绪）。
+
+### 判定要点
+
+- **是配置问题**：`git_doc_dir` 缺失、`knowledge_enabled` 未开、`tag_push` 事件缺失 → 修改 `.cnb.yml` 即可。
+- **是平台认证问题**：配置逐项核对无误但日志仍报 401 / LLM 空响应 → 平台侧问题，按上文第 3 条处理。

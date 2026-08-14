@@ -7,6 +7,13 @@
 # 构建 NPC 运行镜像并推送到 CNB 制品库
 main:
   push:
+    # 知识库入库：将仓库 docs/ 等文档切片、分词、向量化写入仓库知识库
+    # （配合 codewiki 的 knowledge_enabled: true，确保仓库被标记为知识库并激活 Wiki 展示）
+    - stages:
+        - name: build knowledge base
+          type: knowledge:update
+          options:
+            include: "**/**.md"
     - services:
         - docker
       stages:
@@ -21,6 +28,8 @@ main:
             node scripts/sync-npc-team-skill.js --check
             node tests/validate-npc-team-prompt.test.js
             node tests/taskpane-dock.test.js
+            node tests/taskpane-healthcheck.test.js
+            node tests/taskpane-formatsenderror.test.js
             # Windows 侧安全/Launcher 回归测试（PR #87 评审迭代新增）
             node tests/security.test.js
             node tests/launcher.test.js
@@ -76,3 +85,17 @@ main:
 $:
   issue.comment@npc: *npc_task
   pull_request.comment@npc: *npc_task
+
+  # Code Wiki：打 tag 时自动读取仓库代码 + docs/ 现有文档，生成项目 Wiki
+  # 生成后仓库首页出现 Wiki 入口，并自动入库知识库（knowledge_enabled: true，可被 AI 问答引用）
+  # 配置遵循 codewiki 插件 README 推荐模式：image 置于 stage 级 + git_doc_dir 指向工作区
+  tag_push:
+    - stages:
+        - name: generate codewiki
+          timeout: 10h
+          image: cnbcool/codewiki:latest
+          settings:
+            git_doc_dir: /${CNB_BUILD_WORKSPACE}/${CNB_REPO_SLUG}/codewiki
+            use_codebuddy: 0   # 使用 CNB AI 接入点（默认 CodeBuddy 接入点在本环境返回空响应，见 Issue #117）
+            llm_model_name: 'hy3-preview'   # 插件 README 示例模型（混元免费模型；区别于 NPC 任务注释里的 hy3，此处为 codewiki 插件模型的合法命名）
+            knowledge_enabled: true   # 生成的 Wiki 自动入库仓库知识库

@@ -1,83 +1,399 @@
-# 使用指南
+# 使用指南（Wiki 级）
 
-本文档介绍 OpenCode WPS 的日常使用方式：打开 AI 对话面板、对话操作、WPS Agents 调用与 OpenCode 服务管理。
+本文档是 OpenCode WPS 的**完整使用手册**，覆盖从快速上手到深度使用的全部内容：打开 AI 对话面板、完整对话操作、WPS 专用 Agents 调用、常用文档操作场景、OpenCode 服务管理与配置。
 
-## 打开 AI 对话面板
+> 若你刚接触本项目，建议先通读 [INSTALLATION.md](./INSTALLATION.md) 完成安装，再回到本文档。三平台完整说明见 [WINDOWS.md](./WINDOWS.md) / [MAC.md](./MAC.md) / [LINUX.md](./LINUX.md)；问题排查见 [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)。
+
+---
+
+## 目录
+
+- [一、快速上手](#一快速上手)
+- [二、打开 AI 对话面板](#二打开-ai-对话面板)
+- [三、完整对话操作](#三完整对话操作)
+- [四、WPS 专用 Agents](#四wps-专用-agents)
+- [五、常用文档操作场景](#五常用文档操作场景)
+- [六、OpenCode 服务管理](#六opencode-服务管理)
+- [七、配置参考](#七配置参考)
+- [八、最佳实践](#八最佳实践)
+- [九、已知限制](#九已知限制)
+
+---
+
+## 一、快速上手
+
+安装完成并重启 WPS 后，功能区出现 **OpenCode AI** 标签页。按平台差异进入对话：
+
+| 平台 | 操作 | 对话界面 |
+|------|------|----------|
+| **Windows** | 功能区 **OpenCode AI** → 点击 **打开面板** | WPS 内嵌侧边栏 Chat UI |
+| **macOS** | 功能区 **OpenCode AI** → 点击 **打开Web** | 系统浏览器（优先 Chrome，回退默认浏览器） |
+| **Linux** | 功能区 **OpenCode AI** → 点击 **打开Web** | 系统默认浏览器（xdg-open，回退 google-chrome/firefox） |
+
+**第一条消息**：在输入框输入自然语言指令（如「把标题设为黑体三号」），按 Enter 或点击发送，AI 即开始处理。若涉及文档操作，AI 会自动调用 MCP 工具读写 WPS 当前活动文档。
+
+> ⚠️ **使用前提**：MCP 操作（读写文档）要求 **WPS 处于运行状态**，且当前有打开的文档。若连接不上，先按 [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) 排查，或 `cd wps-office-mcp && npm install && npm run build` 后重启 OpenCode。
+
+---
+
+## 二、打开 AI 对话面板
 
 ### Windows（侧边栏 Chat UI）
 
-功能区提供 **打开面板 / 打开Web / 连接状态** 三个按钮：
+功能区 **OpenCode AI** 标签页提供 **打开面板 / 打开Web / 连接状态** 三个按钮：
+
+| 按钮 | 功能 |
+|------|------|
+| **打开面板** | 在 WPS 右侧弹出 Chat 侧边栏（最常用） |
+| **打开Web** | 在系统浏览器打开 AI 对话界面（备用） |
+| **连接状态** | 查看 OpenCode 服务状态（是否在线、端口连通性） |
+
+操作步骤：
 
 1. 在 WPS 功能区点击 **OpenCode AI** 标签页
-2. 点击 **打开面板** 按钮，右侧弹出 Chat 侧边栏
-3. 点击 **连接状态** 按钮查看 OpenCode 服务状态
-4. （可选）点击 **打开Web** 按钮，在系统浏览器中打开 AI 对话界面
+2. 点击 **打开面板**，右侧弹出 Chat 侧边栏
+3. 点击 **连接状态** 确认 OpenCode 服务已就绪
+4. （可选）点击 **打开Web** 在浏览器中打开同一对话界面
+
+侧边栏顶部可 **新建会话**，底部工具栏可 **切换 Agent**、**查看连接状态**。
 
 ### macOS / Linux（浏览器对话 + 轮询桥）
 
 Mac/Linux 版为命令轮询桥架构（无内嵌侧边栏），对话在浏览器中进行。功能区提供 **服务状态 / 暂停恢复 / 打开Web** 三个按钮：
 
+| 按钮 | 功能 |
+|------|------|
+| **服务状态** | 查看轮询状态与已注册动作数 |
+| **暂停/恢复** | 暂停或恢复轮询桥（临时关闭文档操作通道） |
+| **打开Web** | 在浏览器打开 AI 对话界面 |
+
+操作步骤：
+
 1. 在 WPS 功能区点击 **OpenCode AI** 标签页
-2. 点击 **打开Web** 按钮，自动在系统浏览器中打开 OpenCode AI 对话界面（`http://127.0.0.1:14096`）——macOS 优先 Chrome（缺失时回退系统默认浏览器），Linux 优先系统默认浏览器（xdg-open，缺失时回退 google-chrome/firefox）
-3. 在浏览器中与 AI 对话，文档操作经 WPS 插件轮询桥（`:58891`）自动执行
-4. 点击 **服务状态** 查看轮询状态与已注册动作数；点击 **暂停/恢复** 暂停或恢复轮询
+2. 点击 **打开Web**，自动在浏览器打开 `http://127.0.0.1:14096`
+3. 在浏览器与 AI 对话，文档操作经 WPS 插件轮询桥（`:58891`）自动执行
+4. 点击 **服务状态** 查看轮询状态与已注册动作数
 
-> 若 launcher 未启动导致「打开Web」无响应，请先运行 `node launcher-mac.js`（macOS）或 `node launcher-linux.js`（Linux），或重启系统让自启机制拉起。
+> 💡 若「打开Web」无响应，多为 launcher 未启动。请先运行 `node launcher-mac.js`（macOS）或 `node launcher-linux.js`（Linux），或重启系统让自启机制拉起。
 
-## 对话操作
+---
 
-- **发送消息** — 在输入框输入问题，按 Enter 或点击发送
-- **SSE 流式输出** — AI 回复实时流式显示，支持 Markdown 渲染（代码块、表格、列表等）
-- **会话管理** — 点击会话列表切换对话，支持创建、重命名、删除会话
-- **Agent 选择** — 点击底部工具栏的 Agent 按钮，选择不同的 AI 助手
+## 三、完整对话操作
 
-## WPS Agents
+### 3.1 发送消息
 
-项目内置了专门的 WPS Office 智能助手：
+- **输入**：在输入框输入问题或指令，支持自然语言
+- **发送**：按 `Enter` 或点击发送按钮
+- **换行**：输入框内需换行时使用 `Shift + Enter`
 
-| Agent | 类型 | 说明 |
-|-------|------|------|
-| **wps-expert** | 子 agent | WPS Office 智能助手，综合处理 Word/Excel/PPT（可用 `@wps-expert` 调用）|
-| **wps-word** | 子 agent | Word 文档处理专家（可用 `@wps-word` 调用）|
-| **wps-excel** | 子 agent | Excel 数据处理专家（可用 `@wps-excel` 调用）|
-| **wps-ppt** | 子 agent | PPT 演示文稿专家（可用 `@wps-ppt` 调用）|
+### 3.2 SSE 流式输出
 
-**使用方式**：
+AI 回复**实时流式显示**（SSE，Server-Sent Events），边生成边展示，体验流畅。流式输出支持：
 
-1. 在消息中使用 `@wps-expert`、`@wps-word`、`@wps-excel`、`@wps-ppt` 调用子 agents 处理特定任务
-2. **（可选）CNB 平台研发辅助**：在 CNB 平台对话中召唤官方免费 `@CodeBuddy`，只需一句「调用 NPC_TEAM skill 完成以下需求：xxxxxx」即可自动加载本仓库内置的 NPC_TEAM Skill 化身 NPC Team（零平台积分），或粘贴 [NPC_TEAM.md](./NPC_TEAM.md) 提示词兜底。
+- **Markdown 渲染**：代码块、表格、列表、标题、链接、图片等自动渲染为富文本
+- **流式光标**：生成中显示闪烁光标，完成后消失
+- **取消生成**：可中断当前正在生成的回复
 
-   > ⚠️ **NPC_TEAM / `.codebuddy/skills/` 是 cnb.cool 平台的开发辅助工具，与 WPS 插件无关**：它们不随 `install-addons*.js` 安装、不进入插件目录、不依赖 WPS 运行，使用对象是 CNB 平台上的开发者。
+### 3.3 会话管理
 
-**自定义 Agents**：
+侧边栏支持完整的会话管理：
 
-- Agents 定义位置：`~/.config/opencode/agents/`
-- 修改后重启 OpenCode 服务生效
+| 操作 | 方式 | 说明 |
+|------|------|------|
+| **新建会话** | 顶栏「+」按钮 | 创建全新对话，独立上下文 |
+| **切换会话** | 点击会话列表条目 | 在不同对话间切换，历史消息即时加载 |
+| **重命名会话** | 会话条目下拉 → 重命名 | 为会话设置有意义的标题 |
+| **删除会话** | 会话条目下拉 → 删除 | 删除会话及其全部历史（需确认） |
 
-## OpenCode 服务管理
+会话切换后，AI 会加载该会话的历史消息作为上下文继续对话，实现多任务并行、互不干扰。
 
-OpenCode 服务通过 Launcher 进程管理（监听 `127.0.0.1:14097`），无需手动操作：
+### 3.4 Agent 选择
 
-```bash
-# 通过 Launcher API 管理服务（跨平台）
-# 查看状态：GET http://127.0.0.1:14097/status
-# 健康检查：GET http://127.0.0.1:14097/health
-# 启动服务：POST http://127.0.0.1:14097/start (body: {"cwd": "目录"})
-# 停止服务：POST http://127.0.0.1:14097/stop  ← 按端口 14096 精确停止
-# 打开浏览器：POST http://127.0.0.1:14097/dock（「打开Web」按钮经此端点实现）
+点击底部工具栏的 Agent 按钮，切换不同的 AI 助手（见 [第四节](#四wps-专用-agents)）。当前选中的 Agent 显示在输入框上方，切换后新消息按新 Agent 能力处理。
+
+### 3.5 对话状态
+
+- **连接状态**：输入框/顶栏显示与 OpenCode 服务的连接状态
+- **生成状态**：回复生成中显示流式光标与「正在生成」提示
+- **等待审批状态**：当 AI 需要调用需要权限确认的工具时，状态点变为橙色闪烁，底栏高亮提示「⏳ 等待你确认工具调用」，**区别于正常 busy 状态**（正常忙碌为蓝色，等待审批为橙色）——避免用户误以为死循环
+- **错误提示**：连接断开、工具调用失败等会以 Markdown 错误信息展示
+
+#### 工具调用权限确认（Issue #116）
+
+当 AI 需要调用需要审批的工具时，侧边栏会弹出**权限确认模态框**：
+
+- 展示待调用的**工具名**、**参数**、**说明**
+- 三个操作：**允许**（本次放行）、**拒绝**（阻止本次调用）、**记住选择**（勾选后下次不再询问该类工具）
+- 点击后通过 `POST /session/:id/permissions/:permissionID` 响应 OpenCode 服务，任务继续
+
+> 💡 **背景**：此功能解决此前「生成报告卡住」问题——权限请求在侧边栏静默、进程一直等待，只能切到 web 会话确认。现在侧边栏直接弹出确认框并高亮提示等待状态。
+
+#### 上下文用量条（Issue #116）
+
+侧边栏底部新增**上下文用量进度条**（3px），随 SSE 事件实时更新，hover 显示详细 token 数：
+
+- **绿色**：用量正常（<70%）
+- **橙色**：接近上限（≥70%），提示即将触发会话压缩
+- **红色**：即将打满（≥90%），建议手动开新会话或提前压缩
+
+> 💡 **背景**：此功能解决长任务（如 35 批校对）被上下文窗口打断却无感知的问题——用户可据此预判何时让 AI 开新会话或手动压缩，避免长任务中途中断。
+
+### 3.6 底部工具栏控制项
+
+侧边栏底部工具栏提供 **5 个控制项**，用于调节 AI 对话行为：
+
+| 按钮 | 功能 | 说明 |
+|------|------|------|
+| **Agent** | Agent 选择 | 切换 wps-expert/word/excel/ppt（见 [3.4](#34-agent-选择)） |
+| **模式** | 构建/规划 | 构建（build）模式侧重执行，规划（plan）模式侧重方案 |
+| **提供方** | 供应商切换 | 切换模型供应商（OpenCode / Ollama 等） |
+| **AI 模型** | 模型选择 | 在选定供应商下选择具体模型 |
+| **推理级别** | 低/中/高 | 调节响应速度与推理深度（低更快、高更深入） |
+
+#### 模型选择
+
+点击底部工具栏的 **AI 模型** 按钮（显示当前模型名），弹出可用模型下拉列表：
+
+| 操作 | 方式 | 说明 |
+|------|------|------|
+| **打开模型列表** | 点击「AI 模型」按钮 | 弹出可用模型下拉列表（从 OpenCode 服务获取） |
+| **切换模型** | 点击列表中的某个模型 | 当前模型立即切换，后续消息按新模型处理 |
+| **记忆模型** | 自动持久化 | 选择的模型会记住，重新打开面板后仍保持上次选择 |
+
+- 可用模型由 OpenCode 服务动态返回（支持本地 Ollama、OpenCode 内置模型等）。
+- 切换 Agent 与切换模型互不冲突：Agent 决定技能倾向，模型决定底层推理引擎，二者可独立设置。
+
+#### 提供方选择
+
+点击底部工具栏的 **提供方** 按钮，选择模型供应商。切换提供方后，模型列表自动更新为该提供方下的可用模型。
+
+#### 推理级别选择
+
+点击底部工具栏的 **推理级别** 按钮，在「低 / 中 / 高」三档间切换：
+
+| 级别 | 行为 | 适用场景 |
+|------|------|----------|
+| **低** | 响应更快、推理较少 | 简单问答、快速操作 |
+| **中**（默认） | 良好的推理和速度 | 常规文档操作 |
+| **高** | 最佳推理、可能较慢 | 复杂分析、长文档处理 |
+
+---
+
+## 四、WPS 专用 Agents
+
+项目内置 4 个 WPS Office 智能助手（定义见 `agents/`，安装到 `~/.config/opencode/agents/` + `~/.opencode/agents/`）：
+
+| Agent | 类型 | 说明 | 调用方式 |
+|-------|------|------|----------|
+| **wps-expert** | 子 agent | WPS Office 智能助手，综合处理 Word/Excel/PPT | `@wps-expert` |
+| **wps-word** | 子 agent | Word 文档处理专家（排版/格式/模板填写） | `@wps-word` |
+| **wps-excel** | 子 agent | Excel 数据处理专家（公式/函数/数据分析/图表） | `@wps-excel` |
+| **wps-ppt** | 子 agent | PPT 演示文稿专家（制作/内容编辑/美化排版） | `@wps-ppt` |
+
+### 4.1 调用方式
+
+```text
+# 方式一：消息中直接 @ 调用
+@wps-word 把这篇文档的标题统一设为「标题 1」样式
+
+# 方式二：切换 Agent 后直接对话
+（先在底部工具栏切换到 wps-excel）帮我统计 A 列的总和
 ```
 
-| 平台 | Launcher | 自启机制 |
-|------|----------|----------|
-| Windows | `opencode-wps/launcher.js` | 计划任务（`schtasks /Create`） |
-| macOS | `launcher-mac.js` | LaunchAgent（`~/Library/LaunchAgents/com.opencode.launcher.plist`） |
-| Linux | `launcher-linux.js` | XDG autostart |
+### 4.2 各 Agent 能力一览
 
-服务默认监听 `127.0.0.1:14096`，WPS 插件会自动检测并连接。
+**wps-word（Word）**：
+- 文档排版、样式设置、字体格式
+- 模板自动填值、修订模式校对
+- 批量文档生成（合同/报告/公文）
 
-## 特色功能速览
+**wps-excel（Excel）**：
+- 公式与函数编写
+- 数据清洗、数据分析
+- 图表创建、单元格格式设置
 
-- **文档填写（模板自动填值）** — 从结构化数据源提取值填充 Word 模板，全程修订模式可追溯，适用合同/报告/公文/审批表单批量生成
-- **大文档校对（铁律 3.0）** — 严格逐批校对（每批 ≤200 段），16 条规则代码层强制执行，禁止 AI 跳批/编造修复
+**wps-ppt（PPT）**：
+- 幻灯片制作、内容编辑
+- 排版美化、动画设置
+- 母版编辑、批量处理
 
-> 📖 特色功能完整说明见 [FEATURES.md](./FEATURES.md)。
+**wps-expert（综合）**：
+- 跨应用操作（Word/Excel/PPT）
+- 自动路由到对应 Skills 处理
+- 适合不明确属于哪个应用的混合任务
+
+### 4.3 Agent 与 Skill 的对应关系
+
+| Agent | 优先 Skill |
+|-------|-----------|
+| wps-expert | 全部 WPS Skills（wps-office/word/excel/ppt） |
+| wps-word | wps-word |
+| wps-excel | wps-excel |
+| wps-ppt | wps-ppt |
+
+### 4.4 自定义 Agents
+
+- **定义位置**：`~/.config/opencode/agents/` + `~/.opencode/agents/`（两处均由 `install-addons*.js` 从源目录 `agents/` 同步）
+- **修改方式**：编辑源目录 `agents/*.md`，运行 `node install-addons.js` 同步，重启 OpenCode 生效
+- **自定义新 Agent**：在 `agents/` 新建 `*.md`（含 frontmatter），同步后即可在 Agent 列表中选择
+
+> 📖 Agents 与 Skills 的关系、Skills 详细说明见 [SKILLS.md](./SKILLS.md)。
+
+---
+
+## 五、常用文档操作场景
+
+以下是通过 AI 对话即可完成的典型场景（AI 会自动调用 MCP 工具操作 WPS）。
+
+### 5.1 Word 文档
+
+| 场景 | 示例指令 |
+|------|----------|
+| 排版 | 「把全文标题设为标题1，正文设为宋体小四」 |
+| 模板填值 | 「按这张表的数据把合同模板填好，开启修订」 |
+| 大文档校对 | 「帮我校对这篇文档，每批200段严格逐批」 |
+| 格式调整 | 「把第三段加粗、居中」 |
+
+### 5.2 Excel 表格
+
+| 场景 | 示例指令 |
+|------|----------|
+| 公式 | 「在 B 列用 SUM 求 A 列总和」 |
+| 数据清洗 | 「删掉 A 列的空行」 |
+| 图表 | 「根据 1-6 月销量生成柱状图」 |
+| 格式 | 「把表头设为黄色底、加粗」 |
+
+### 5.3 PPT 演示
+
+| 场景 | 示例指令 |
+|------|----------|
+| 制作 | 「新增一页标题为『季度汇报』的幻灯片」 |
+| 美化 | 「把这页的美化一下，统一配色」 |
+| 排版 | 「把第三页的文本框对齐居中」 |
+
+### 5.4 跨应用（wps-expert）
+
+| 场景 | 示例指令 |
+|------|----------|
+| 混合任务 | 「把 Excel 里的数据做成 PPT 图表」 |
+| 通用 | 「帮我整理一下当前打开的文档」 |
+
+> 📖 特色功能（模板填值 + 校对铁律 3.0）的完整工作流与治理规则见 [FEATURES.md](./FEATURES.md)。
+
+---
+
+## 六、OpenCode 服务管理
+
+OpenCode 服务由 **Launcher 进程**管理（监听 `127.0.0.1:14097`），通常无需手动干预，开机自动启动。服务本身监听 `127.0.0.1:14096`。
+
+### 6.1 Launcher API
+
+可通过 Launcher 的 HTTP API 管理服务（curl / 浏览器访问）：
+
+| 方法 | 端点 | 功能 |
+|------|------|------|
+| GET | `/status` | 查看服务状态 |
+| GET | `/health` | 健康检查 |
+| POST | `/start` | 启动服务（body: `{"cwd": "目录"}`） |
+| POST | `/stop` | 停止服务（按端口 14096 精确停止） |
+| POST | `/dock` | 打开浏览器（「打开Web」按钮经此端点实现） |
+| POST | `/docinfo` | 写入当前文档信息缓存（body: 文档对象；`closed:true` 时清除缓存） |
+| GET | `/docinfo` | 读取当前文档信息缓存（无缓存返回 404 `No document info available`） |
+
+```bash
+# 查看状态
+curl http://127.0.0.1:14097/status
+
+# 健康检查
+curl http://127.0.0.1:14097/health
+
+# 启动服务
+curl -X POST http://127.0.0.1:14097/start -H 'Content-Type: application/json' -d '{"cwd":"/path/to/project"}'
+
+# 停止服务
+curl -X POST http://127.0.0.1:14097/stop
+
+# 打开浏览器
+curl -X POST http://127.0.0.1:14097/dock
+
+# 写入文档信息缓存（对象 body；closed:true 清除）
+curl -X POST http://127.0.0.1:14097/docinfo -H 'Content-Type: application/json' -d '{"name":"demo.docx","path":"C:\\demo\\demo.docx"}'
+
+# 读取文档信息缓存
+curl http://127.0.0.1:14097/docinfo
+```
+
+### 6.2 各平台 Launcher 与自启
+
+| 平台 | Launcher 文件 | 自启机制 |
+|------|---------------|----------|
+| **Windows** | `opencode-wps/launcher.js` | 计划任务（`schtasks /Create`） |
+| **macOS** | `launcher-mac.js` | LaunchAgent（`~/Library/LaunchAgents/com.opencode.launcher.plist`） |
+| **Linux** | `launcher-linux.js` | XDG autostart（`~/.config/autostart/opencode-wps-launcher.desktop`） |
+
+### 6.3 端口速查
+
+| 端口 | 服务 | 说明 |
+|------|------|------|
+| `14096` | OpenCode 服务 | AI 对话核心服务 |
+| `14097` | Launcher | 服务生命周期管理 |
+| `14098` | CORS 代理 | `opencode-proxy.js` 剥离 CSP 头，供 WPS Chromium 使用 |
+| `58891` | Mac/Linux 轮询桥 | 插件与 MCP 之间的反向轮询通道 |
+| `58890` | WPS 服务保活 | Win/Mac 内置 RelayHttpServer 探测口（`wps-keepalive.ts` 定期探测，断开自动重启） |
+| `3444` | 开发服务器 | `opencode-wps/serve.js` 静态开发服务器（仅开发用） |
+
+> 📚 **交叉参考**：端口对应的 MCP Server 三层工具体系与开发映射详见 [DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md#三层工具体系)；内置工具完整清单与两级网关调用规范详见 [SKILLS.md](./SKILLS.md#内置工具12-个所有-skill-共用)。
+
+### 6.4 手动管理
+
+```bash
+# 查看 OpenCode 是否在运行（Win）
+schtasks /Query /TN "OpenCodeLauncher"
+
+# 手动启动计划任务（Win）
+schtasks /Run /TN "OpenCodeLauncher"
+
+# 手动启动 Launcher（Mac/Linux）
+node launcher-mac.js
+node launcher-linux.js
+```
+
+> 📖 更详细的平台特定服务管理见 [WINDOWS.md](./WINDOWS.md) / [MAC.md](./MAC.md) / [LINUX.md](./LINUX.md)。
+
+---
+
+## 七、配置参考
+
+全局配置集中在 `opencode-wps/config.js` 的 `CONFIG` 对象（前端经 `<script src="config.js">` 注入，后端由 `launcher.js` require 引入）。关键配置项：
+
+| 配置项 | 用途 | 默认值 |
+|--------|------|--------|
+| `CONFIG.opencode.apiBase` | OpenCode 服务地址 | `http://127.0.0.1:14096` |
+| `CONFIG.launcher.apiBase` | Launcher 管理地址 | `http://127.0.0.1:14097` |
+| `CONFIG.plugin.userHome` | 用户主目录（安装时注入） | 安装时注入值 |
+| `CONFIG.network.timeout` | HTTP 请求超时 | `30000ms` |
+| `CONFIG.session.defaultAgent` | 默认 Agent | `wps-expert` |
+
+> ⚠️ **修改配置注意**：`config.js` 是源文件，修改后需运行 `node install-addons.js` 同步到插件目录；不要直接改 `%APPDATA%`/`~/Library` 等安装产物目录。
+
+---
+
+## 八、最佳实践
+
+1. **明确指令**：给出具体、可执行的操作指令，AI 能更准确调用工具
+2. **活用 Agent**：按任务类型选择 wps-word/excel/ppt，避免混合任务走错 Skill
+3. **会话隔离**：不同任务用不同会话，避免上下文污染
+4. **特色功能优先**：模板填值、校对用专门的 FEATURES 流程，确保可追溯、不编造
+5. **及时保存**：AI 操作的是 WPS 活动文档，重要操作建议先另存副本
+6. **连接排查**：操作失败先查连接状态（Win「连接状态」/ Mac·Linux「服务状态」）
+
+---
+
+## 九、已知限制
+
+- **MCP 操作依赖 WPS 运行**：无打开文档时文档类工具不可用
+- **Windows 为侧边栏 UI，Mac/Linux 为浏览器对话**：三者交互入口不同，能力一致
+- **WPS Chromium 内核限制**（Windows 侧边栏）：不支持 `fetch` Promise、`ReadableStream` 等现代 Web 特性，本项目已用 `XMLHttpRequest` + SSE 规避
+- **Linux 版为开发完成待实机验证**：见 [LINUX.md](./LINUX.md)
+
+> 📖 完整问题排查与避坑指南见 [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)。

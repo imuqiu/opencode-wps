@@ -155,9 +155,14 @@ test('负向：删铁律 8「至少进行 10 轮彻底循环」（第 4 轮逃�
   assertEqual(code, 1, '删 10 轮要求应拦截（exit 1）');
 });
 
-test('负向：删铁律 8「每轮 review 必须在 PR 中回复」（第 4 轮逃生口回归）', function () {
-  const code = runValidate(p => p.replace('每轮 review 必须在 PR 中回复（真实评审记录），', ''));
-  assertEqual(code, 1, '删每轮 review 回复应拦截（exit 1）');
+test('负向：删铁律 8「每一步（评审棒/修复棒/复评棒）都必须在 PR 中分别回复留痕」（第 4 轮逃生口回归）', function () {
+  const code = runValidate(p =>
+    p.replace(
+      '**每一步（评审棒 / 修复棒 / 复评棒）都必须在 PR 中分别回复留痕**（评审留下真实评审记录、修复留下修复说明 + 提交、复评留下复评记录），',
+      ''
+    )
+  );
+  assertEqual(code, 1, '删每步留痕声明应拦截（exit 1）');
 });
 
 test('负向：删铁律 8「循环执行直至问题清零」（第 5 轮逃生口回归）', function () {
@@ -169,7 +174,10 @@ test('负向：删铁律 8「循环执行直至问题清零」（第 5 轮逃生
 
 test('负向：删铁律 8「禁止以简单为由缩减轮数」句（CR 第 28 轮回归）', function () {
   const code = runValidate(p =>
-    p.replace('**评审轮数不得以简单为由缩减**，不得以简单可缩为名跳轮偷懒。', '**评审轮数不得以简单为由缩减**。')
+    p.replace(
+      '**评审轮数不得以简单为由缩减**，不得以简单可缩为名跳轮偷懒。',
+      '**评审轮数不得以简单为由缩减**。'
+    )
   );
   assertEqual(code, 1, '删禁止简单可缩句应拦截（exit 1）');
 });
@@ -248,7 +256,7 @@ test('负向：删【接力卡】段应拦截（exit 1）', function () {
 
 test('负向：删「下一步召唤话术」应拦截（exit 1）', function () {
   // 第 1 轮评审 C2 修复：原用例用 String.replace 只替换第一个匹配，实际删的是【接力卡】段句子，
-  // 评审/修复接力卡段仍含相同句式 → 接力校验未真正失效，exit=1 靠「双源一致性」假阳性拦截。
+  // 评审/修复留痕卡段仍含相同句式 → 接力校验未真正失效，exit=1 靠「双源一致性」假阳性拦截。
   // 现改用全量替换（split/join 删除所有出现处），并断言拦截路径为接力校验错误。
   const { code, output } = runValidateCapture(p =>
     p.split('- 下一步召唤话术（用户原样复制即可）：').join('- 下一步：')
@@ -278,12 +286,13 @@ test('负向：删【任务书】段应拦截（exit 1）', function () {
 });
 
 test('负向：删接力卡召唤话术示例「@CodeBuddy 接力 NPC_TEAM skill」应拦截（exit 1）', function () {
-  // 第 1 轮评审 C2 修复：原用例只替换第一个匹配（删的是【接力卡】段），评审/修复接力卡段仍含
+  // 第 1 轮评审 C2 修复：原用例只替换第一个匹配（删的是【接力卡】段），评审/修复留痕卡段仍含
   // 相同句式 → 接力校验未真正失效，exit=1 靠「双源一致性」假阳性拦截。
   // 现改为：仅删除【接力卡】段内的召唤话术示例（定位到该段再替换），并断言命中接力校验错误。
+  // PR #123 第 5 轮修复：结束锚点从旧「【评审接力卡】」改为新「【评审-修复循环留痕卡】」。
   const { code, output } = runValidateCapture(p => {
     const sectionStart = p.indexOf('【接力卡（接力模式每步结束时必须输出）】');
-    const sectionEnd = p.indexOf('【评审接力卡（5/12 评审每轮评审结束时输出）】');
+    const sectionEnd = p.indexOf('【评审-修复循环留痕卡（5/12 评审-修复循环自动连续执行时使用）】');
     const head = p.slice(0, sectionStart);
     const section = p
       .slice(sectionStart, sectionEnd)
@@ -301,253 +310,222 @@ test('负向：删接力卡召唤话术示例「@CodeBuddy 接力 NPC_TEAM skill
   );
 });
 
-// ---- Issue #76：评审-修复循环接力（PR review 与修复循环也使用接力模式）回归用例 ----
-// 背景：用户要求"其中的 PR review 与 修复循环也建议使用接力模式"。
-// 因此 5/10 评审-修复循环在接力模式下逐轮接力：每轮评审与每次修复各是独立一次 @CodeBuddy 召唤，
-// 评审棒输出【评审接力卡】、修复棒输出【修复接力卡】，禁止在一次召唤内连跑多轮评审-修复。
-// 若评审-修复接力核心要素被删（回退为一次召唤内连跑多轮），CI 必须拦截。
+// ---- Issue #76：评审-修复循环自动连续执行 + 每步留痕（用户最新要求：自动继续、不用暂停、每步在 PR 留痕而非每轮）----
+// 背景：用户要求"5 轮独立的 PR review 与修复循环还是不能自动进行，中间还是会暂停，要求...采用接力模式（自动继续，不用暂停），
+// 每步独立调用 @CodeBuddy"；并澄清"是每步在 PR 留痕，而不是每轮"。
+// 因此 5/12 评审-修复循环在接力模式下**自动连续执行**：用户要求跑 N 轮时，同一次召唤内自动跑完 N 轮直至清零，
+// 中途不暂停、无需逐棒手动召唤；但**每一步（评审/修复/复评）都必须在 PR 分别回复留痕（留痕以「每步」为粒度而非「每轮」）**。
+// 若评审-修复循环核心要素被删（回退为手动逐棒暂停、或漏步留痕），CI 必须拦截。
 
-test('正向：评审-修复接力要素完整（exit 0）', function () {
+test('正向：评审-修复自动连续循环要素完整（exit 0）', function () {
   const code = runValidate(p => p);
-  assertEqual(code, 0, '评审-修复接力要素完整应 exit 0');
+  assertEqual(code, 0, '评审-修复自动连续循环要素完整应 exit 0');
 });
 
-test('负向：删铁律 8「接力模式」声明应拦截（exit 1）', function () {
+test('负向：删铁律 8「接力模式下自动连续执行」声明应拦截（exit 1）', function () {
   const code = runValidate(p =>
     p.replace(
-      '8. 评审-修复循环（10 轮彻底循环，接力模式）：',
+      '8. 评审-修复循环（10 轮彻底循环，接力模式下自动连续执行）：',
       '8. 评审-修复循环（10 轮彻底循环）：'
     )
   );
-  assertEqual(code, 1, '删评审-修复接力声明应拦截（exit 1）');
+  assertEqual(code, 1, '删评审-修复自动连续声明应拦截（exit 1）');
 });
 
-test('负向：删「评审-修复循环同样逐轮接力」应拦截（exit 1）', function () {
-  // 第 12 轮评审 W2：该句仅铁律 8 内出现 1 次，改为段内定位铁律 8 再删 + 断言拦截路径，与其他用例风格统一。
+test('负向：删铁律 8「每步留痕/非每轮」声明应拦截（exit 1）', function () {
   const { code, output } = runValidateCapture(p => {
-    const start = p.indexOf('8. 评审-修复循环（10 轮彻底循环，接力模式）');
+    const start = p.indexOf('8. 评审-修复循环（10 轮彻底循环，接力模式下自动连续执行）');
     const end = p.indexOf('9. 测试失败跳转');
     const head = p.slice(0, start);
-    const rule8 = p.slice(start, end).replace('**接力模式下评审-修复循环同样逐轮接力**：', '');
+    const rule8 = p.slice(start, end).replace('**留痕以「每步」为粒度而非「每轮」**', '');
     const tail = p.slice(end);
     return head + rule8 + tail;
   });
-  assertEqual(code, 1, '删逐轮接力声明应拦截（exit 1）');
+  assertEqual(code, 1, '删每步留痕声明应拦截（exit 1）');
   assertTrue(
-    /评审-修复接力缺少完整句式「评审-修复循环同样逐轮接力」/.test(output),
+    /评审-修复自动连续循环缺少完整句式「留痕以「每步」为粒度而非「每轮」」/.test(output),
     '应命中铁律 8 段内校验，实际输出：' + output
   );
 });
 
-test('负向：删铁律 8「评审棒输出【评审接力卡】」句应拦截（exit 1）', function () {
-  // 第 12 轮评审 W1：铁律 8 段内 6 句负向覆盖补全——评审棒输出句此前无专门删除用例。
+test('负向：删铁律 8「无需逐棒手动召唤、中途不暂停」应拦截（exit 1）', function () {
   const { code, output } = runValidateCapture(p => {
-    const start = p.indexOf('8. 评审-修复循环（10 轮彻底循环，接力模式）');
+    const start = p.indexOf('8. 评审-修复循环（10 轮彻底循环，接力模式下自动连续执行）');
     const end = p.indexOf('9. 测试失败跳转');
     const head = p.slice(0, start);
-    const rule8 = p.slice(start, end).replace('评审棒输出【评审接力卡】、', '');
+    const rule8 = p.slice(start, end).replace('（无需逐棒手动召唤、中途不暂停）', '');
     const tail = p.slice(end);
     return head + rule8 + tail;
   });
-  assertEqual(code, 1, '删评审棒输出句应拦截（exit 1）');
+  assertEqual(code, 1, '删自动连续（不暂停）声明应拦截（exit 1）');
   assertTrue(
-    /评审-修复接力缺少完整句式「评审棒输出【评审接力卡】」/.test(output),
+    /评审-修复自动连续循环缺少完整句式「无需逐棒手动召唤、中途不暂停」/.test(output),
     '应命中铁律 8 段内校验，实际输出：' + output
   );
 });
 
-test('负向：删铁律 8「修复棒输出【修复接力卡】」句应拦截（exit 1）', function () {
-  // 第 12 轮评审 W1：铁律 8 段内 6 句负向覆盖补全——修复棒输出句此前无专门删除用例。
-  const { code, output } = runValidateCapture(p => {
-    const start = p.indexOf('8. 评审-修复循环（10 轮彻底循环，接力模式）');
-    const end = p.indexOf('9. 测试失败跳转');
-    const head = p.slice(0, start);
-    const rule8 = p.slice(start, end).replace('修复棒输出【修复接力卡】，', '');
-    const tail = p.slice(end);
-    return head + rule8 + tail;
-  });
-  assertEqual(code, 1, '删修复棒输出句应拦截（exit 1）');
-  assertTrue(
-    /评审-修复接力缺少完整句式「修复棒输出【修复接力卡】」/.test(output),
-    '应命中铁律 8 段内校验，实际输出：' + output
-  );
-});
-
-test('负向：删「每轮评审与每次修复各是独立一次 @CodeBuddy 召唤」应拦截（exit 1）', function () {
-  // 第 9 轮评审 W2：该句在铁律 8 与 CR 卡片段各 1 次，原用例用 replace 只替换第一个匹配（删铁律 8 的），
-  // 但未断言拦截路径。改为段内定位铁律 8 再删 + 断言命中「评审-修复接力缺少完整句式」错误。
-  const { code, output } = runValidateCapture(p => {
-    const start = p.indexOf('8. 评审-修复循环（10 轮彻底循环，接力模式）');
-    const end = p.indexOf('9. 测试失败跳转');
-    const head = p.slice(0, start);
-    const rule8 = p
-      .slice(start, end)
-      .replace('每轮评审与每次修复各是独立一次 @CodeBuddy 召唤，', '');
-    const tail = p.slice(end);
-    return head + rule8 + tail;
-  });
-  assertEqual(code, 1, '删独立召唤声明应拦截（exit 1）');
-  assertTrue(
-    /评审-修复接力缺少完整句式「每轮评审与每次修复各是独立一次 @CodeBuddy 召唤」/.test(output),
-    '应命中铁律 8 段内校验（而非 CR 卡片段假阳性），实际输出：' + output
-  );
-});
-
-test('负向：删【评审接力卡】段应拦截（exit 1）', function () {
-  const code = runValidate(p => p.replace('【评审接力卡（5/12 评审每轮评审结束时输出）】\n', ''));
-  assertEqual(code, 1, '删评审接力卡段应拦截（exit 1）');
-});
-
-test('负向：删【修复接力卡】段应拦截（exit 1）', function () {
-  const code = runValidate(p => p.replace('【修复接力卡（5/12 评审每轮修复结束时输出）】\n', ''));
-  assertEqual(code, 1, '删修复接力卡段应拦截（exit 1）');
-});
-
-test('负向：删评审接力卡召唤话术示例应拦截（exit 1）', function () {
-  // 第 6 轮评审 W2：原用例用 replace 只替换第一个匹配，实际命中【接力卡】段内相同句式，
-  // 拦截靠接力校验（假阳性）而非目标段校验；改为段内定位替换 + 断言拦截路径。
-  const { code, output } = runValidateCapture(p => {
-    const sectionStart = p.indexOf('【评审接力卡（5/12 评审每轮评审结束时输出）】');
-    const sectionEnd = p.indexOf('【修复接力卡（5/12 评审每轮修复结束时输出）】');
-    const head = p.slice(0, sectionStart);
-    const section = p
-      .slice(sectionStart, sectionEnd)
-      .replace(
-        '@CodeBuddy 接力 NPC_TEAM skill，执行第 R 轮评审修复（修复本轮评审问题）：',
-        '@CodeBuddy 执行修复：'
-      );
-    const tail = p.slice(sectionEnd);
-    return head + section + tail;
-  });
-  assertEqual(code, 1, '删评审接力卡召唤话术应拦截（exit 1）');
-  assertTrue(
-    /评审接力卡缺少「下一步召唤话术」/.test(output),
-    '应命中评审接力卡段化校验（而非跨段假阳性），实际输出：' + output
-  );
-});
-
-test('负向：删修复接力卡召唤话术示例应拦截（exit 1）', function () {
-  // 第 6 轮评审 W2：同评审卡用例，改为段内定位替换 + 断言拦截路径。
-  const { code, output } = runValidateCapture(p => {
-    const sectionStart = p.indexOf('【修复接力卡（5/12 评审每轮修复结束时输出）】');
-    const sectionEnd = p.indexOf('【复评接力卡（5/12 评审每轮复评结束时输出）】');
-    const head = p.slice(0, sectionStart);
-    const section = p
-      .slice(sectionStart, sectionEnd)
-      .replace(
-        '@CodeBuddy 接力 NPC_TEAM skill，执行第 R 轮复评（评审上轮修复）：',
-        '@CodeBuddy 执行复评：'
-      );
-    const tail = p.slice(sectionEnd);
-    return head + section + tail;
-  });
-  assertEqual(code, 1, '删修复接力卡召唤话术应拦截（exit 1）');
-  assertTrue(
-    /修复接力卡缺少「下一步召唤话术」/.test(output),
-    '应命中修复接力卡段化校验（而非跨段假阳性），实际输出：' + output
-  );
-});
-
-test('负向：删复评接力卡召唤话术标签应拦截（exit 1）', function () {
-  // 第 6 轮评审 W1/W2 新增：此前复评卡话术无段化校验，删标签行（保留【接力卡】段同句式）仍 exit 0。
-  const { code, output } = runValidateCapture(p => {
-    const sectionStart = p.indexOf('【复评接力卡（5/12 评审每轮复评结束时输出）】');
-    const sectionEnd = p.indexOf('【暂停确认】');
-    const head = p.slice(0, sectionStart);
-    const section = p
-      .slice(sectionStart, sectionEnd)
-      .replace('- 下一步召唤话术（用户原样复制即可）：', '- 下一步：');
-    const tail = p.slice(sectionEnd);
-    return head + section + tail;
-  });
-  assertEqual(code, 1, '删复评接力卡话术标签应拦截（exit 1）');
-  assertTrue(
-    /复评接力卡缺少「下一步召唤话术」/.test(output),
-    '应命中复评接力卡段化校验（而非跨段假阳性），实际输出：' + output
-  );
-});
-
-test('负向：删复评卡「未清零」示例句应拦截（exit 1）', function () {
-  // 第 6 轮评审 W1 新增：复评卡未清零示例句此前无独立校验，删除后须段内拦截。
-  const { code, output } = runValidateCapture(p => {
-    const sectionStart = p.indexOf('【复评接力卡（5/12 评审每轮复评结束时输出）】');
-    const sectionEnd = p.indexOf('【暂停确认】');
-    const head = p.slice(0, sectionStart);
-    const section = p
-      .slice(sectionStart, sectionEnd)
-      .replace(
-        '@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1 轮评审（复评仍有问题，继续 review-修复循环）：',
-        '@CodeBuddy 执行后续评审：'
-      );
-    const tail = p.slice(sectionEnd);
-    return head + section + tail;
-  });
-  assertEqual(code, 1, '删复评未清零示例句应拦截（exit 1）');
-  assertTrue(
-    /复评接力卡缺少「下一步召唤话术」/.test(output),
-    '应命中复评接力卡段化校验（而非跨段假阳性），实际输出：' + output
-  );
-});
-
-test('负向：删复评卡「已清零」示例句应拦截（exit 1）', function () {
-  // 第 6 轮评审 W1 新增：复评卡已清零示例句（转 6/10 测试）此前无独立校验，删除后须段内拦截。
-  const { code, output } = runValidateCapture(p => {
-    const sectionStart = p.indexOf('【复评接力卡（5/12 评审每轮复评结束时输出）】');
-    const sectionEnd = p.indexOf('【暂停确认】');
-    const head = p.slice(0, sectionStart);
-    const section = p
-      .slice(sectionStart, sectionEnd)
-      .replace(
-        '@CodeBuddy 接力 NPC_TEAM skill，执行 6/12 测试（评审问题已清零，进入测试阶段）：',
-        '@CodeBuddy 执行测试：'
-      );
-    const tail = p.slice(sectionEnd);
-    return head + section + tail;
-  });
-  assertEqual(code, 1, '删复评已清零示例句应拦截（exit 1）');
-  assertTrue(
-    /复评接力卡缺少「下一步召唤话术」/.test(output),
-    '应命中复评接力卡段化校验（而非跨段假阳性），实际输出：' + output
-  );
-});
-
-test('负向：删【暂停确认】锚点应报「段化校验区间不可达」（exit 1）', function () {
-  // 第 7 轮评审 W1 新增：sliceSection 区间不可达（锚点被删）时须显式报错，而非静默跳过段化校验。
+test('负向：删铁律 8「同一次召唤内自动连续执行」应拦截（exit 1）', function () {
   const { code, output } = runValidateCapture(p =>
+    p.replace('在**同一次召唤内自动连续执行**', '执行')
+  );
+  assertEqual(code, 1, '删同一次召唤内自动连续执行应拦截（exit 1）');
+  assertTrue(
+    /评审-修复自动连续循环缺少完整句式「同一次召唤内自动连续执行」/.test(output),
+    '应命中铁律 8 段内校验，实际输出：' + output
+  );
+});
+
+test('负向：删铁律 8「每步留痕必须真实可核实，否则视为假装执行」应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace('，但每步留痕必须真实可核实，否则视为假装执行。', '。')
+  );
+  assertEqual(code, 1, '删每步留痕真实可核实应拦截（exit 1）');
+  assertTrue(
+    /评审-修复自动连续循环缺少完整句式「每步留痕必须真实可核实，否则视为假装执行」/.test(output),
+    '应命中铁律 8 段内校验，实际输出：' + output
+  );
+});
+
+test('负向：删【评审-修复循环留痕卡】段应拦截（exit 1）', function () {
+  const code = runValidate(p =>
+    p.replace('【评审-修复循环留痕卡（5/12 评审-修复循环自动连续执行时使用）】\n', '')
+  );
+  assertEqual(code, 1, '删评审-修复循环留痕卡段应拦截（exit 1）');
+});
+
+test('负向：删【评审留痕·第 R 轮·评审棒】块应拦截（exit 1）', function () {
+  const code = runValidate(p => p.replace('【评审留痕·第 R 轮·评审棒】\n', ''));
+  assertEqual(code, 1, '删评审留痕块应拦截（exit 1）');
+});
+
+test('负向：删【修复留痕·第 R 轮·修复棒】块应拦截（exit 1）', function () {
+  const code = runValidate(p => p.replace('【修复留痕·第 R 轮·修复棒】\n', ''));
+  assertEqual(code, 1, '删修复留痕块应拦截（exit 1）');
+});
+
+test('负向：删【复评留痕·第 R 轮·复评棒】块应拦截（exit 1）', function () {
+  const code = runValidate(p => p.replace('【复评留痕·第 R 轮·复评棒】\n', ''));
+  assertEqual(code, 1, '删复评留痕块应拦截（exit 1）');
+});
+
+test('负向：删评审留痕块「本步留痕」位置字段应拦截（exit 1）', function () {
+  // 每步在 PR 留痕以「本步留痕」位置字段为落点，删除后该步即失去留痕要求 → 应拦截。
+  const { code, output } = runValidateCapture(p => {
+    const sectionStart = p.indexOf('【评审留痕·第 R 轮·评审棒】');
+    const sectionEnd = p.indexOf('【修复留痕·第 R 轮·修复棒】');
+    const head = p.slice(0, sectionStart);
+    const section = p
+      .slice(sectionStart, sectionEnd)
+      .replace(
+        '本步留痕：<评审记录在 PR 的留痕位置>（必须真实调用 PR 评审能力留下记录）',
+        '本步结论：已评审'
+      );
+    const tail = p.slice(sectionEnd);
+    return head + section + tail;
+  });
+  assertEqual(code, 1, '删评审本步留痕字段应拦截（exit 1）');
+  assertTrue(
+    /评审留痕块缺少「本步留痕：<评审记录在 PR 的留痕位置>」/.test(output),
+    '应命中评审留痕块段化校验，实际输出：' + output
+  );
+});
+
+test('负向：删复评留痕块「本步留痕」位置字段应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p => {
+    const sectionStart = p.indexOf('【复评留痕·第 R 轮·复评棒】');
+    const sectionEnd = p.indexOf('【暂停确认】');
+    const head = p.slice(0, sectionStart);
+    const section = p
+      .slice(sectionStart, sectionEnd)
+      .replace('本步留痕：<复评记录在 PR 的留痕位置>（必须真实留下复评记录）', '本步结论：已复评');
+    const tail = p.slice(sectionEnd);
+    return head + section + tail;
+  });
+  assertEqual(code, 1, '删复评本步留痕字段应拦截（exit 1）');
+  assertTrue(
+    /复评留痕块缺少「本步留痕：<复评记录在 PR 的留痕位置>」/.test(output),
+    '应命中复评留痕块段化校验，实际输出：' + output
+  );
+});
+
+test('负向：删【评审-修复循环汇总卡】卡名应拦截（exit 1）', function () {
+  // PR #123 第 6 轮评审 C6：循环收尾须输出【评审-修复循环汇总卡】，卡名自身强校验。
+  // 若仅删卡名（保留内容短语），LOOP_CARD_CORE 的「转 6/12」「每步留痕必须真实可核实」仍命中，
+  // 但汇总卡审计语义被削弱——本用例确保卡名丢失被拦截。
+  const { code, output } = runValidateCapture(p =>
+    p.replace('【评审-修复循环汇总卡】', '【循环汇总卡】')
+  );
+  assertEqual(code, 1, '改汇总卡卡名应拦截（exit 1）');
+  assertTrue(
+    /循环收尾缺少「【评审-修复循环汇总卡】」卡名/.test(output),
+    '应命中汇总卡卡名校验，实际输出：' + output
+  );
+});
+
+test('负向：删循环留痕卡「已累计轮次」句应拦截（exit 1）', function () {
+  // 已累计轮次在评审/修复/复评三个留痕块各出现一次；全部删除才会触发循环留痕卡段内强校验。
+  const { code, output } = runValidateCapture(p => {
+    const sectionStart = p.indexOf(
+      '【评审-修复循环留痕卡（5/12 评审-修复循环自动连续执行时使用）】'
+    );
+    const sectionEnd = p.indexOf('【暂停确认】');
+    const head = p.slice(0, sectionStart);
+    const section = p
+      .slice(sectionStart, sectionEnd)
+      .replace(/- 已累计轮次：第 R 轮（[^\n]*）\n/g, '')
+      .replace(/- 已累计轮次：第 R 轮\n/g, '');
+    const tail = p.slice(sectionEnd);
+    return head + section + tail;
+  });
+  assertEqual(code, 1, '删循环留痕卡已累计轮次句应拦截（exit 1）');
+  assertTrue(
+    /评审-修复循环留痕卡缺少完整句式「已累计轮次：第 R 轮」/.test(output),
+    '应命中循环留痕卡段内句式校验，实际输出：' + output
+  );
+});
+
+test('负向：删循环留痕卡「每步留痕必须真实可核实，缺任一步即视为假装执行」应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace('每步留痕必须真实可核实，缺任一步即视为假装执行。', '留痕以轮为单位汇总。')
+  );
+  assertEqual(code, 1, '删缺步即假装执行句应拦截（exit 1）');
+  assertTrue(
+    /评审-修复循环留痕卡缺少完整句式「每步留痕必须真实可核实，缺任一步即视为假装执行」/.test(
+      output
+    ),
+    '应命中循环留痕卡段内句式校验，实际输出：' + output
+  );
+});
+
+test('负向：删循环留痕卡「转 6/12 测试需独立召唤下一棒」应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace('（转 6/12 测试需独立召唤下一棒，铁律 11）', '（继续执行 6/12 测试）')
+  );
+  assertEqual(code, 1, '删转 6/12 独立召唤句应拦截（exit 1）');
+  assertTrue(
+    /评审-修复循环留痕卡缺少完整句式「转 6\/12 测试需独立召唤下一棒」/.test(output),
+    '应命中循环留痕卡段内句式校验，实际输出：' + output
+  );
+});
+
+test('负向：删复评结论双分支应拦截（exit 1）', function () {
+  const code = runValidate(p =>
     p.replace(
-      '【暂停确认】到 ⏸CP1/⏸CP2 时输出暂停卡并停下',
-      '【暂停点】到 ⏸CP1/⏸CP2 时输出暂停卡并停下'
+      '- 复评结论：🔴仍需修复（未清零，自动继续第 R+1 轮评审棒） / 🟢通过（清零且已达有效下限轮次，结束循环转 6/12 测试；有效下限 = max(10, 用户要求 N)，铁律 8 下限优先）',
+      '- 复评结论：🟢通过'
     )
   );
-  assertEqual(code, 1, '删暂停确认锚点应拦截（exit 1）');
-  assertTrue(
-    /段化校验区间不可达：.*【暂停确认】/.test(output),
-    '应命中段化校验区间不可达错误，实际输出：' + output
-  );
+  assertEqual(code, 1, '删复评结论双分支应拦截（exit 1）');
 });
 
-test('负向：双源同步删三段接力卡话术标签应拦截（exit 1）', function () {
-  // 第 6 轮评审 W1 新增：模拟用户改 docs 提示词（删三段卡标签行）未同步 skill，
-  // 段化校验应拦截（此前全局 indexOf 校验漏检 exit 0）。
+test('负向：双源同步删循环留痕卡「每步留痕」字段应拦截（exit 1）', function () {
+  // 模拟用户改 docs 提示词（删循环留痕卡本步留痕字段）未同步 skill，段化校验应拦截。
   const code = withSkillFile(fs.readFileSync(SKILL_FILE, 'utf8'), () => {
     const { content, prompt } = readPrompt();
-    const stripThree = p => {
-      const lines = p.split('\n');
-      const titles = [
-        '【评审接力卡（5/12 评审每轮评审结束时输出）】',
-        '【修复接力卡（5/12 评审每轮修复结束时输出）】',
-        '【复评接力卡（5/12 评审每轮复评结束时输出）】',
-      ];
-      let inSection = false;
-      const out = [];
-      for (const line of lines) {
-        if (titles.some(t => line.includes(t))) inSection = true;
-        if (inSection && line.trim() === '- 下一步召唤话术（用户原样复制即可）：') continue;
-        out.push(line);
-      }
-      return out.join('\n');
-    };
-    const rewritten = content.replace(prompt, stripThree(prompt));
+    const rewritten = content.replace(
+      prompt,
+      prompt.replace('本步留痕：<评审记录在 PR 的留痕位置>', '本步结论：已评审')
+    );
     // 与 runValidateCapture 相同的临时副本机制
     const tmp = FILE + '.tmp';
     const backup = FILE + '.bak';
@@ -567,99 +545,34 @@ test('负向：双源同步删三段接力卡话术标签应拦截（exit 1）',
       } catch (_) {}
     }
   });
-  assertEqual(code.code, 1, '双源删三段卡话术标签应拦截（exit 1）');
+  assertEqual(code.code, 1, '双源删循环留痕卡每步留痕字段应拦截（exit 1）');
   assertTrue(
-    /评审接力卡缺少「下一步召唤话术」|修复接力卡缺少「下一步召唤话术」|复评接力卡缺少「下一步召唤话术」/.test(
-      code.output
-    ),
-    '应命中三段卡段化校验，实际输出：' + code.output
+    /评审留痕块缺少「本步留痕：<评审记录在 PR 的留痕位置>」/.test(code.output),
+    '应命中评审留痕块段化校验，实际输出：' + code.output
   );
 });
 
-test('负向：删「禁止在一次召唤内偷偷连跑多轮评审-修复」应拦截（exit 1）', function () {
-  const code = runValidate(p => p.replace('，禁止在一次召唤内偷偷连跑多轮评审-修复。', '。'));
-  assertEqual(code, 1, '删防连跑声明应拦截（exit 1）');
-});
+// ---- Issue #76 第 2 轮评审 C1/C2：复评闭环（复评留痕 + 循环留痕卡强校验）----
+// 背景：自动连续循环声明「评审棒→修复棒→复评棒→下一轮…」，复评棒行为须定义在循环留痕卡中；
+// 且每步（评审/修复/复评）都必须在 PR 分别留痕。若复评结论/留痕要求被删，CI 必须拦截。
 
-// ---- Issue #76 第 2 轮评审 C1/C2：复评环节闭环（复评接力卡 + 复评衔接强校验）----
-// 背景：接力-修复循环声明「评审棒→修复棒→复评棒…」，但仅有评审/修复两张接力卡，复评棒行为未定义；
-// 且校验脚本对复评仅有两处宽松正则，删复评衔接句可放行。本次新增【复评接力卡】模板 + 强校验。
-
-test('正向：复评接力卡要素完整（exit 0）', function () {
+test('正向：复评留痕闭环要素完整（exit 0）', function () {
   const code = runValidate(p => p);
-  assertEqual(code, 0, '复评接力卡要素完整应 exit 0');
+  assertEqual(code, 0, '复评留痕闭环要素完整应 exit 0');
 });
 
-test('负向：删【复评接力卡】段应拦截（exit 1）', function () {
-  const code = runValidate(p => p.replace('【复评接力卡（5/12 评审每轮复评结束时输出）】\n', ''));
-  assertEqual(code, 1, '删复评接力卡段应拦截（exit 1）');
-});
-
-test('负向：删复评结论双分支应拦截（exit 1）', function () {
-  const code = runValidate(p =>
+test('负向：删【暂停确认】锚点应报「段化校验区间不可达」（exit 1）', function () {
+  // 第 7 轮评审 W1 新增：sliceSection 区间不可达（锚点被删）时须显式报错，而非静默跳过段化校验。
+  const { code, output } = runValidateCapture(p =>
     p.replace(
-      '- 复评结论：🔴仍需修复（问题未清零，转下轮评审） / 🟢通过（问题清零，转 6/12 测试）',
-      '- 复评结论：🟢通过'
+      '【暂停确认】到 ⏸CP1/⏸CP2 时输出暂停卡并停下',
+      '【暂停点】到 ⏸CP1/⏸CP2 时输出暂停卡并停下'
     )
   );
-  assertEqual(code, 1, '删复评结论双分支应拦截（exit 1）');
-});
-
-test('负向：删复评未清零续下轮评审话术应拦截（exit 1）', function () {
-  const code = runValidate(p =>
-    p.replace(
-      '@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1 轮评审（复评仍有问题，继续 review-修复循环）：',
-      '@CodeBuddy 执行后续评审：'
-    )
-  );
-  assertEqual(code, 1, '删复评未清零续轮话术应拦截（exit 1）');
-});
-
-test('负向：删复评清零转 6/12 测试话术应拦截（exit 1）', function () {
-  const code = runValidate(p =>
-    p.replace(
-      '@CodeBuddy 接力 NPC_TEAM skill，执行 6/12 测试（评审问题已清零，进入测试阶段）：',
-      '@CodeBuddy 执行测试：'
-    )
-  );
-  assertEqual(code, 1, '删复评清零转测试话术应拦截（exit 1）');
-});
-
-test('负向：复评句式插入干扰句打乱顺序应拦截（exit 1）', function () {
-  // 第 3 轮评审 W3：RELAY_REVIEW_CORE 顺序校验缺复评句式的回归用例。
-  // 在【复评接力卡】段声明前插入「执行 6/10 测试」句，打乱 12 句式声明顺序 → 应报顺序错乱。
-  const code = runValidate(p =>
-    p.replace(
-      '【复评接力卡（5/12 评审每轮复评结束时输出）】',
-      '执行 6/12 测试（评审问题已清零，进入测试阶段），【复评接力卡（5/12 评审每轮复评结束时输出）】'
-    )
-  );
-  assertEqual(code, 1, '复评句式打乱顺序应拦截（exit 1）');
-});
-
-test('负向：删复评卡「已累计轮次」句应拦截（exit 1）', function () {
-  // 第 4 轮评审 W2：复评卡「已累计轮次」句是「至少 10 轮」门禁在复评环节的落点，须纳入强校验。
-  // CR 第 22 轮修复（追加 12 轮循环 R3）：原用例用 replace 只替换第一个匹配，
-  // 而「已累计轮次」现在在评审/修复/复评三张卡各出现一次（第 22 轮同步），
-  // 原替换命中评审卡（位置靠前），拦截靠双源一致性假阳性而非复评卡段内校验；
-  // 改为段内定位【复评接力卡】段再删，并断言命中复评卡段内校验错误。
-  const { code, output } = runValidateCapture(p => {
-    const sectionStart = p.indexOf('【复评接力卡（5/12 评审每轮复评结束时输出）】');
-    const sectionEnd = p.indexOf('【暂停确认】');
-    const head = p.slice(0, sectionStart);
-    const section = p
-      .slice(sectionStart, sectionEnd)
-      .replace(
-        '- 已累计轮次：第 R 轮（未清零则继续；清零且已达至少 10 轮则进下一阶段）',
-        '- 已累计轮次：第 R 轮'
-      );
-    const tail = p.slice(sectionEnd);
-    return head + section + tail;
-  });
-  assertEqual(code, 1, '删复评卡已累计轮次句应拦截（exit 1）');
+  assertEqual(code, 1, '删暂停确认锚点应拦截（exit 1）');
   assertTrue(
-    /复评接力卡缺少完整句式「已累计轮次/.test(output),
-    '应命中复评卡段内句式校验（而非双源一致性假阳性），实际输出：' + output
+    /段化校验区间不可达：.*【暂停确认】/.test(output),
+    '应命中段化校验区间不可达错误，实际输出：' + output
   );
 });
 
@@ -841,10 +754,7 @@ test('负向：删铁律 13「禁止未获确认就合并/假装已合并」细�
     )
   );
   assertEqual(code, 1, '删铁律 13 禁止细节应拦截（exit 1）');
-  assertTrue(
-    /铁律 13 缺少禁止细节/.test(output),
-    '应命中铁律 13 强校验，实际输出：' + output
-  );
+  assertTrue(/铁律 13 缺少禁止细节/.test(output), '应命中铁律 13 强校验，实际输出：' + output);
 });
 
 test('正向：发布四要素要素完整（exit 0）', function () {
@@ -859,7 +769,10 @@ test('正向：发布四要素要素完整（exit 0）', function () {
 
 test('负向：删提示词流水线 ⏸CP3 合并确认节点应拦截（exit 1）', function () {
   const { code, output } = runValidateCapture(p =>
-    p.replace(' → ⏸CP3 合并确认(PM 主持，等用户确认后才合并) → 8/12 PR 合并(PM，merge-pull 留痕) → 9/12 发布(DEV，版本号/CHANGELOG/发布产物/Release Notes) → 10/12 汇报(PM)', ' → 10/12 汇报(PM)')
+    p.replace(
+      ' → ⏸CP3 合并确认(PM 主持，等用户确认后才合并) → 8/12 PR 合并(PM，merge-pull 留痕) → 9/12 发布(DEV，版本号/CHANGELOG/发布产物/Release Notes) → 10/12 汇报(PM)',
+      ' → 10/12 汇报(PM)'
+    )
   );
   assertEqual(code, 1, '删流水线合并/发布节点应拦截（exit 1）');
   assertTrue(
@@ -870,7 +783,10 @@ test('负向：删提示词流水线 ⏸CP3 合并确认节点应拦截（exit 1
 
 test('负向：删工作流程阶段 9/12 发布行应拦截（exit 1）', function () {
   const { code, output } = runValidateCaptureFull(p =>
-    p.replace('阶段 9/12 发布（DEV）→ **四要素**：① 更新版本号（package.json 等）② 形成 CHANGELOG ③ 发布产物（构建/制品/标签）④ 形成 Release Notes（发布说明，发布到 Release/对应页面）\n', '')
+    p.replace(
+      '阶段 9/12 发布（DEV）→ **四要素**：① 更新版本号（package.json 等）② 形成 CHANGELOG ③ 发布产物（构建/制品/标签）④ 形成 Release Notes（发布说明，发布到 Release/对应页面）\n',
+      ''
+    )
   );
   assertEqual(code, 1, '删工作流程发布行应拦截（exit 1）');
   assertTrue(
@@ -881,18 +797,18 @@ test('负向：删工作流程阶段 9/12 发布行应拦截（exit 1）', funct
 
 test('负向：删门禁表「合并前暂停确认（⏸CP3）」行应拦截（exit 1）', function () {
   const { code, output } = runValidateCaptureFull(p =>
-    p.replace('| **合并前暂停确认（⏸CP3）**               | 8/12 PR 合并前必须停到 ⏸CP3，输出【合并确认卡】（待合并 PR + 评审清零/测试通过/CI success 记录位置），**只有用户本人回复「确认合并/继续」才放行合并**；禁止代替确认、禁止未获确认就合并、禁止假装已合并（未真实 merge-pull 不得宣称已合并）                                                                                                                                               | 合并失控/假装合并    |\n', '')
+    p.replace(/\| \*\*合并前暂停确认（⏸CP3）\*\*[^\n]*\n/, '')
   );
   assertEqual(code, 1, '删门禁表合并行应拦截（exit 1）');
-  assertTrue(
-    /门禁表缺少合并\/发布门禁行/.test(output),
-    '应命中门禁表校验，实际输出：' + output
-  );
+  assertTrue(/门禁表缺少合并\/发布门禁行/.test(output), '应命中门禁表校验，实际输出：' + output);
 });
 
 test('负向：删暂停确认表 ⏸ CP3 合并确认行应拦截（exit 1）', function () {
   const { code, output } = runValidateCaptureFull(p =>
-    p.replace('| **⏸ CP3 合并确认** | 7/12 文档完成后、8/12 合并前 | 待合并 PR 的前置状态是否齐备（评审清零/测试通过/CI success），是否确认合并 |\n', '')
+    p.replace(
+      '| **⏸ CP3 合并确认** | 7/12 文档完成后、8/12 合并前 | 待合并 PR 的前置状态是否齐备（评审清零/测试通过/CI success），是否确认合并 |\n',
+      ''
+    )
   );
   assertEqual(code, 1, '删暂停确认表 CP3 行应拦截（exit 1）');
   assertTrue(
@@ -906,10 +822,7 @@ test('负向：删角色卡片 PM 合并职责应拦截（exit 1）', function (
     p.replace('主持 ⏸CP3 合并确认、执行 8/12 PR 合并（merge-pull，留痕合并结果）。', '')
   );
   assertEqual(code, 1, '删 PM 合并职责应拦截（exit 1）');
-  assertTrue(
-    /角色卡片 PM 缺少合并职责/.test(output),
-    '应命中角色卡片校验，实际输出：' + output
-  );
+  assertTrue(/角色卡片 PM 缺少合并职责/.test(output), '应命中角色卡片校验，实际输出：' + output);
 });
 
 // ---- Issue #76 第 9 轮评审：留痕纪律多处覆盖盲区回归用例 ----
@@ -919,7 +832,10 @@ test('负向：删角色卡片 PM 合并职责应拦截（exit 1）', function (
 
 test('负向：删角色卡片 CR 留痕纪律应拦截（exit 1）', function () {
   const { code, output } = runValidateCapture(p =>
-    p.replace('，每轮 review 与每次修复均须在 PR 中分别回复留痕。', '。')
+    p.replace(
+      '**每一步（评审棒/修复棒/复评棒）均须在 PR 中分别回复留痕（留痕以「每步」为粒度而非「每轮」）**',
+      ''
+    )
   );
   assertEqual(code, 1, '删 CR 卡留痕纪律应拦截（exit 1）');
   assertTrue(
@@ -930,7 +846,10 @@ test('负向：删角色卡片 CR 留痕纪律应拦截（exit 1）', function (
 
 test('负向：删工作流程评审行留痕纪律应拦截（exit 1）', function () {
   const { code, output } = runValidateCaptureFull(p =>
-    p.replace('（每轮 review 与每次修复均须在 PR 中分别回复留痕；', '（')
+    p.replace(
+      '**每一步（评审/修复/复评）均须在 PR 中分别回复留痕，留痕以「每步」为粒度而非「每轮」；',
+      '**'
+    )
   );
   assertEqual(code, 1, '删工作流程评审行留痕纪律应拦截（exit 1）');
   assertTrue(
@@ -982,7 +901,10 @@ test('负向：改暂停确认表标题锚点应拦截（exit 1）', function ()
 
 test('负向：删门禁表发布行四要素内容应拦截（exit 1）', function () {
   const { code, output } = runValidateCaptureFull(p =>
-    p.replace('| **发布真实执行（四要素）**               | 9/12 发布必须真实执行并留痕：① 更新版本号（package.json 等）② 形成 CHANGELOG（含本次变更）③ 发布产物（构建/制品/标签，真实产出）④ 形成 Release Notes（发布到 Release/对应页面）；禁止只输出"已发布"却缺任一要素                                                                                                                                                                           | 发布造假/缺产物      |', '| **发布真实执行（四要素）**               | 9/12 发布必须真实执行                                                                                                                                                                      | 发布造假/缺产物      |')
+    p.replace(
+      /(\| \*\*发布真实执行（四要素）\*\*[^\n]*?① 更新版本号[^\n]*?④ 形成 Release Notes[^\n]*?\|)/,
+      '| **发布真实执行（四要素）** | 9/12 发布必须真实执行 |'
+    )
   );
   assertEqual(code, 1, '删门禁表发布行四要素应拦截（exit 1）');
   assertTrue(
@@ -993,7 +915,10 @@ test('负向：删门禁表发布行四要素内容应拦截（exit 1）', funct
 
 test('负向：打乱流水线主链合并/发布顺序应拦截（exit 1）', function () {
   const { code, output } = runValidateCapture(p =>
-    p.replace(' → ⏸CP3 合并确认(PM 主持，等用户确认后才合并) → 8/12 PR 合并(PM，merge-pull 留痕) → 9/12 发布(DEV，版本号/CHANGELOG/发布产物/Release Notes) → 10/12 汇报(PM)', ' → 9/12 发布(DEV，版本号/CHANGELOG/发布产物/Release Notes) → ⏸CP3 合并确认(PM 主持，等用户确认后才合并) → 8/12 PR 合并(PM，merge-pull 留痕) → 10/12 汇报(PM)')
+    p.replace(
+      ' → ⏸CP3 合并确认(PM 主持，等用户确认后才合并) → 8/12 PR 合并(PM，merge-pull 留痕) → 9/12 发布(DEV，版本号/CHANGELOG/发布产物/Release Notes) → 10/12 汇报(PM)',
+      ' → 9/12 发布(DEV，版本号/CHANGELOG/发布产物/Release Notes) → ⏸CP3 合并确认(PM 主持，等用户确认后才合并) → 8/12 PR 合并(PM，merge-pull 留痕) → 10/12 汇报(PM)'
+    )
   );
   assertEqual(code, 1, '打乱流水线主链顺序应拦截（exit 1）');
   assertTrue(
@@ -1004,7 +929,10 @@ test('负向：打乱流水线主链合并/发布顺序应拦截（exit 1）', f
 
 test('负向：删暂停确认表 CP3 前置状态应拦截（exit 1）', function () {
   const { code, output } = runValidateCaptureFull(p =>
-    p.replace('| **⏸ CP3 合并确认** | 7/12 文档完成后、8/12 合并前 | 待合并 PR 的前置状态是否齐备（评审清零/测试通过/CI success），是否确认合并 |', '| **⏸ CP3 合并确认** | 7/12 文档完成后、8/12 合并前 | 是否确认合并 |')
+    p.replace(
+      '| **⏸ CP3 合并确认** | 7/12 文档完成后、8/12 合并前 | 待合并 PR 的前置状态是否齐备（评审清零/测试通过/CI success），是否确认合并 |',
+      '| **⏸ CP3 合并确认** | 7/12 文档完成后、8/12 合并前 | 是否确认合并 |'
+    )
   );
   assertEqual(code, 1, '删 CP3 前置状态应拦截（exit 1）');
   assertTrue(
@@ -1015,7 +943,10 @@ test('负向：删暂停确认表 CP3 前置状态应拦截（exit 1）', functi
 
 test('负向：改工作流程 8/12 合并行为自动合并应拦截（exit 1）', function () {
   const { code, output } = runValidateCaptureFull(p =>
-    p.replace('阶段 8/12 PR 合并（PM）→ **真实 merge-pull**（合并前 CI 须 success）→ 在 Issue/PR 留痕合并结果', '阶段 8/12 PR 合并（PM）→ 自动合并')
+    p.replace(
+      '阶段 8/12 PR 合并（PM）→ **真实 merge-pull**（合并前 CI 须 success）→ 在 Issue/PR 留痕合并结果',
+      '阶段 8/12 PR 合并（PM）→ 自动合并'
+    )
   );
   assertEqual(code, 1, '改工作流程合并语义应拦截（exit 1）');
   assertTrue(
@@ -1026,7 +957,10 @@ test('负向：改工作流程 8/12 合并行为自动合并应拦截（exit 1�
 
 test('负向：删门禁表合并行禁止细节应拦截（exit 1）', function () {
   const { code, output } = runValidateCaptureFull(p =>
-    p.replace('| **合并前暂停确认（⏸CP3）**               | 8/12 PR 合并前必须停到 ⏸CP3，输出【合并确认卡】（待合并 PR + 评审清零/测试通过/CI success 记录位置），**只有用户本人回复「确认合并/继续」才放行合并**；禁止代替确认、禁止未获确认就合并、禁止假装已合并（未真实 merge-pull 不得宣称已合并）                                                                                                                                               | 合并失控/假装合并    |', '| **合并前暂停确认（⏸CP3）**               | 8/12 合并前须确认                                                                                                                                                                            | 合并失控/假装合并    |')
+    p.replace(
+      /(\| \*\*合并前暂停确认（⏸CP3）\*\*[^\n]*?禁止代替确认、禁止未获确认就合并、禁止假装已合并[^\n]*?\|)/,
+      '| **合并前暂停确认（⏸CP3）** | 8/12 合并前须确认 |'
+    )
   );
   assertEqual(code, 1, '删门禁表合并禁止细节应拦截（exit 1）');
   assertTrue(
@@ -1041,21 +975,30 @@ test('负向：删门禁表合并行禁止细节应拦截（exit 1）', function
 
 test('正向：门禁表合并行加空格不误拦（exit 0）', function () {
   const code = runValidateCaptureFull(p =>
-    p.replace('只有用户本人回复「确认合并/继续」才放行合并', '只有 用户本人 回复「确认合并/继续」才放行合并')
+    p.replace(
+      '只有用户本人回复「确认合并/继续」才放行合并',
+      '只有 用户本人 回复「确认合并/继续」才放行合并'
+    )
   ).code;
   assertEqual(code, 0, '门禁表行内加空格不应误拦（exit 0）');
 });
 
 test('正向：暂停确认表 CP3 行文本重排不误拦（exit 0）', function () {
   const code = runValidateCaptureFull(p =>
-    p.replace('待合并 PR 的前置状态是否齐备（评审清零/测试通过/CI success），是否确认合并', '待合并 PR 前置状态：评审清零 / 测试通过 / CI success；是否确认合并')
+    p.replace(
+      '待合并 PR 的前置状态是否齐备（评审清零/测试通过/CI success），是否确认合并',
+      '待合并 PR 前置状态：评审清零 / 测试通过 / CI success；是否确认合并'
+    )
   ).code;
   assertEqual(code, 0, 'CP3 行文本重排不应误拦（exit 0）');
 });
 
 test('负向：工作流程合并行删留痕合并结果应拦截（exit 1）', function () {
   const { code, output } = runValidateCaptureFull(p =>
-    p.replace('阶段 8/12 PR 合并（PM）→ **真实 merge-pull**（合并前 CI 须 success）→ 在 Issue/PR 留痕合并结果', '阶段 8/12 PR 合并（PM）→ **真实 merge-pull**（合并前 CI 须 success）')
+    p.replace(
+      '阶段 8/12 PR 合并（PM）→ **真实 merge-pull**（合并前 CI 须 success）→ 在 Issue/PR 留痕合并结果',
+      '阶段 8/12 PR 合并（PM）→ **真实 merge-pull**（合并前 CI 须 success）'
+    )
   );
   assertEqual(code, 1, '删留痕合并结果应拦截（exit 1）');
   assertTrue(
@@ -1275,8 +1218,8 @@ test('负向：SKILL 缩进漂移应被 validate formatDiff 拦截（exit 1）',
     fs
       .readFileSync(SKILL_FILE, 'utf8')
       .replace(
-        '\n- 未清零（转第 R+1 轮评审棒）：\n@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1 轮评审',
-        '\n  - 未清零：\n@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1 轮评审'
+        '\n- 复评结论：🔴仍需修复（未清零，自动继续第 R+1 轮评审棒）',
+        '\n  - 复评结论：🔴仍需修复（未清零，自动继续第 R+1 轮评审棒）'
       ),
     () => {
       const { spawnSync } = require('child_process');
@@ -1292,8 +1235,8 @@ test('负向：sync --check 对 SKILL 缩进漂移应拦截（exit 1）', functi
     fs
       .readFileSync(SKILL_FILE, 'utf8')
       .replace(
-        '\n- 未清零（转第 R+1 轮评审棒）：\n@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1 轮评审',
-        '\n  - 未清零：\n@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1 轮评审'
+        '\n- 复评结论：🔴仍需修复（未清零，自动继续第 R+1 轮评审棒）',
+        '\n  - 复评结论：🔴仍需修复（未清零，自动继续第 R+1 轮评审棒）'
       ),
     () => {
       const { spawnSync } = require('child_process');
@@ -1314,8 +1257,8 @@ test('正向：sync 非 check 模式自动修正 SKILL 缩进漂移', function (
   const drifted = fs
     .readFileSync(SKILL_FILE, 'utf8')
     .replace(
-      '\n- 未清零（转第 R+1 轮评审棒）：\n@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1 轮评审',
-      '\n  - 未清零：\n@CodeBuddy 接力 NPC_TEAM skill，执行第 R+1 轮评审'
+      '\n- 复评结论：🔴仍需修复（未清零，自动继续第 R+1 轮评审棒）',
+      '\n  - 复评结论：🔴仍需修复（未清零，自动继续第 R+1 轮评审棒）'
     );
   const code = withSkillFile(drifted, () => {
     const { spawnSync } = require('child_process');
@@ -1365,107 +1308,109 @@ test('负向：改【流水线】段 5/12 字面量为 5 应拦截（exit 1）',
   );
 });
 
-test('负向：复评接力卡已清零分支缺失「至少 10 轮」应拦截（exit 1）', function () {
-  // CR 第 21 轮（追加 12 轮循环 R2）新增：复评卡已清零分支须重申「至少 10 轮」下限，
-  // 改成「已清零（转 6/12 测试，独立召唤）」应拦截（防第 1 轮清零即放行）。
+test('负向：循环留痕卡已清零分支缺失「至少 10 轮」应拦截（exit 1）', function () {
+  // CR 第 21 轮（追加 12 轮循环 R2）新增：已清零分支须重申「至少 10 轮」下限，
+  // 改成「已清零 → 转 6/12 测试」应拦截（防第 1 轮清零即放行）。
   const { code, output } = runValidateCapture(p =>
     p.replace(
-      '- 已清零（**且已达至少 10 轮**，转 6/12 测试，独立召唤）：',
-      '- 已清零（转 6/12 测试，独立召唤）：'
+      '复评结论：🔴仍需修复（未清零，自动继续第 R+1 轮评审棒） / 🟢通过（清零且已达有效下限轮次，结束循环转 6/12 测试；有效下限 = max(10, 用户要求 N)，铁律 8 下限优先）',
+      '复评结论：🔴仍需修复（未清零，自动继续第 R+1 轮评审棒） / 🟢通过（结束循环转 6/12 测试）'
     )
   );
-  assertEqual(code, 1, '复评卡已清零分支缺 10 轮下限应拦截（exit 1）');
+  assertEqual(code, 1, '复评留痕已清零分支缺 10 轮下限应拦截（exit 1）');
   assertTrue(
-    /复评接力卡缺少完整句式「已清零/.test(output),
-    '应命中复评卡段内句式校验，实际输出：' + output
+    /评审-修复循环留痕卡缺少完整句式「复评结论/.test(output),
+    '应命中循环留痕卡段内句式校验，实际输出：' + output
   );
 });
 
-test('负向：冒烟测试方法 C 残留旧口径 R+1/12 应拦截（exit 1）', function () {
-  // CR 第 12 轮（追加 9 轮循环 R2）新增：方法 C 未同步新计轮口径（残留 R+1/12）时须由 9.7 ⑥ 拦截。
+test('负向：冒烟测试方法 C 残留旧口径（手动逐棒）应拦截（exit 1）', function () {
+  // CR 第 12 轮（追加 9 轮循环 R2）新增：方法 C 未同步自动连续语义（残留手动逐棒召唤）时须由 9.7 ⑥ 拦截。
   const { code, output } = runValidateCaptureFull(p =>
     p.replace(
-      '**复评结论未清零 → 转第 R+1 轮评审继续循环；已清零（且已达至少 10 轮）→ 独立召唤 6/12 测试（复评棒停下，等待用户召唤下一棒）**',
-      '**复评结论未清零 → 转第 R+1/12 轮评审继续循环；已清零 → 转 6/12 测试**'
+      '**方法 C（评审-修复自动连续循环，仅当用户明确要求跑 N 轮时适用）**：跑到 5/12 评审时，若用户明确要求跑 N 轮评审-修复，预期在**同一次召唤内自动连续执行**',
+      '**方法 C（评审-修复自动连续循环，仅当用户明确要求跑 N 轮时适用）**：跑到 5/12 评审时，若用户明确要求跑 N 轮评审-修复，预期每轮评审/修复/复评各为独立一次召唤'
     )
   );
   assertEqual(code, 1, '方法 C 残留旧口径应拦截（exit 1）');
   assertTrue(
-    /冒烟测试方法 C 未同步新计轮口径/.test(output),
+    /冒烟测试方法 C 未同步新语义/.test(output),
     '应命中 9.7 ⑥ 冒烟测试方法 C 校验，实际输出：' + output
   );
 });
 
 test('负向：冒烟测试方法 C 已清零分支缺失「至少 10 轮」应拦截（exit 1）', function () {
   // CR 第 21 轮（追加 12 轮循环 R2）新增：方法 C 已清零分支须重申「至少 10 轮」下限，
-  // 改成「已清零 → 独立召唤 6/12 测试」应拦截（防复评棒提前放行进 6/12）。
+  // 改成「已清零 → 转 6/12 测试」应拦截（防复评棒提前放行进 6/12）。
   const { code, output } = runValidateCaptureFull(p =>
     p.replace(
-      '**复评结论未清零 → 转第 R+1 轮评审继续循环；已清零（且已达至少 10 轮）→ 独立召唤 6/12 测试（复评棒停下，等待用户召唤下一棒）**',
-      '**复评结论未清零 → 转第 R+1 轮评审继续循环；已清零 → 独立召唤 6/12 测试（复评棒停下，等待用户召唤下一棒）**'
+      '复评结论未清零 → 自动继续下一轮评审；已清零（且已达有效下限轮次 max(10, 用户要求 N)）→ 独立召唤 6/12 测试',
+      '复评结论未清零 → 自动继续下一轮评审；已清零 → 独立召唤 6/12 测试'
     )
   );
   assertEqual(code, 1, '方法 C 已清零分支缺 10 轮下限应拦截（exit 1）');
   assertTrue(
-    /冒烟测试方法 C 未同步新计轮口径/.test(output),
+    /冒烟测试方法 C 未同步新语义/.test(output),
     '应命中 9.7 ⑥ 冒烟测试方法 C 校验，实际输出：' + output
   );
 });
 
-test('负向：复评卡已清零分支加回「简单可缩」后缀应拦截（CR 第 28 轮回归）', function () {
-  // CR 第 28 轮（删除简单可缩）新增：复评卡已清零分支硬性要求完整句
-  // 「已清零（**且已达至少 10 轮**，转 6/12 测试，独立召唤）」——加回「（简单改动可缩）」后缀
-  // 违反「至少 10 轮无条件硬性下限」，RELAY_REREVIEW_CORE 完整句匹配失配 → 拦截。
+test('负向：复评留痕已清零分支加回「简单可缩」后缀应拦截（CR 第 28 轮回归）', function () {
+  // CR 第 28 轮（删除简单可缩）新增：已清零分支硬性要求完整句
+  // 「清零且已达至少 10 轮，结束循环转 6/12 测试」——加回「（简单改动可缩）」后缀
+  // 违反「至少 10 轮无条件硬性下限」，循环留痕卡完整句匹配失配 → 拦截。
   const { code, output } = runValidateCapture(p =>
     p.replace(
-      '- 已清零（**且已达至少 10 轮**，转 6/12 测试，独立召唤）：',
-      '- 已清零（**且已达至少 10 轮（简单改动可缩）**，转 6/12 测试，独立召唤）：'
+      '复评结论：🔴仍需修复（未清零，自动继续第 R+1 轮评审棒） / 🟢通过（清零且已达有效下限轮次，结束循环转 6/12 测试；有效下限 = max(10, 用户要求 N)，铁律 8 下限优先）',
+      '复评结论：🔴仍需修复（未清零，自动继续第 R+1 轮评审棒） / 🟢通过（清零且已达至少 10 轮（简单改动可缩），结束循环转 6/12 测试）'
     )
   );
-  assertEqual(code, 1, '复评卡加回简单可缩后缀应拦截（exit 1）');
+  assertEqual(code, 1, '复评留痕加回简单可缩后缀应拦截（exit 1）');
   assertTrue(
-    /复评接力卡缺少完整句式「已清零/.test(output),
-    '应命中复评卡段内句式校验，实际输出：' + output
+    /评审-修复循环留痕卡缺少完整句式「复评结论/.test(output),
+    '应命中循环留痕卡段内句式校验，实际输出：' + output
   );
 });
 
-test('负向：评审卡已累计轮次行加回「简单可缩」后缀应拦截（CR 第 28 轮回归）', function () {
-  // CR 第 28 轮（删除简单可缩）新增：三卡「已累计轮次」只允许完整句式
-  // 「第 R 轮（未清零则继续；清零且已达至少 10 轮则进下一阶段）」——加回「；简单改动按铁律 8 可缩」
-  // 后缀违反「至少 10 轮无条件硬性下限」，段内完整句校验失配 → 拦截。
+test('负向：循环留痕卡复评结论加回「简单可缩」后缀应拦截（CR 第 28 轮回归）', function () {
+  // CR 第 28 轮（删除简单可缩）新增：循环留痕卡复评结论已清零分支硬性要求
+  // 「清零且已达至少 10 轮，结束循环转 6/12 测试」——加回「（简单改动可缩）」后缀
+  // 违反「至少 10 轮无条件硬性下限」，段内完整句匹配失配 → 拦截。
   const { code, output } = runValidateCapture(p => {
-    const sectionStart = p.indexOf('【评审接力卡（5/12 评审每轮评审结束时输出）】');
-    const sectionEnd = p.indexOf('【修复接力卡（5/12 评审每轮修复结束时输出）】');
+    const sectionStart = p.indexOf(
+      '【评审-修复循环留痕卡（5/12 评审-修复循环自动连续执行时使用）】'
+    );
+    const sectionEnd = p.indexOf('【暂停确认】');
     const head = p.slice(0, sectionStart);
     const section = p
       .slice(sectionStart, sectionEnd)
       .replace(
-        '- 已累计轮次：第 R 轮（未清零则继续；清零且已达至少 10 轮则进下一阶段）',
-        '- 已累计轮次：第 R 轮（未清零则继续；清零且已达至少 10 轮则进下一阶段；简单改动按铁律 8 可缩）'
+        '复评结论：🔴仍需修复（未清零，自动继续第 R+1 轮评审棒） / 🟢通过（清零且已达有效下限轮次，结束循环转 6/12 测试；有效下限 = max(10, 用户要求 N)，铁律 8 下限优先）',
+        '复评结论：🔴仍需修复（未清零，自动继续第 R+1 轮评审棒） / 🟢通过（清零且已达至少 10 轮（简单改动可缩），结束循环转 6/12 测试）'
       );
     const tail = p.slice(sectionEnd);
     return head + section + tail;
   });
-  assertEqual(code, 1, '评审卡加回简单可缩后缀应拦截（exit 1）');
+  assertEqual(code, 1, '循环留痕卡复评结论加回简单可缩后缀应拦截（exit 1）');
   assertTrue(
-    /评审接力卡缺少「已累计轮次」/.test(output),
-    '应命中评审卡已累计轮次段内校验，实际输出：' + output
+    /评审-修复循环留痕卡缺少完整句式「复评结论/.test(output),
+    '应命中循环留痕卡复评结论段内校验，实际输出：' + output
   );
 });
 
 test('负向：冒烟测试方法 C 已清零分支加回「简单可缩」后缀应拦截（CR 第 28 轮回归）', function () {
   // CR 第 28 轮（删除简单可缩）新增：方法 C 已清零分支硬性要求完整句
-  // 「已清零（且已达至少 10 轮）→ 独立召唤 6/12 测试」——加回「（简单改动可缩）」后缀
+  // 「已清零（且已达有效下限轮次 max(10, 用户要求 N)）→ 独立召唤 6/12 测试」——加回「（简单改动可缩）」后缀
   // 违反「至少 10 轮无条件硬性下限」，9.7 ⑥ 完整句校验失配 → 拦截。
   const { code, output } = runValidateCaptureFull(p =>
     p.replace(
-      '**复评结论未清零 → 转第 R+1 轮评审继续循环；已清零（且已达至少 10 轮）→ 独立召唤 6/12 测试（复评棒停下，等待用户召唤下一棒）**',
-      '**复评结论未清零 → 转第 R+1 轮评审继续循环；已清零（且已达至少 10 轮（简单改动可缩））→ 独立召唤 6/12 测试（复评棒停下，等待用户召唤下一棒）**'
+      '复评结论未清零 → 自动继续下一轮评审；已清零（且已达有效下限轮次 max(10, 用户要求 N)）→ 独立召唤 6/12 测试',
+      '复评结论未清零 → 自动继续下一轮评审；已清零（且已达至少 10 轮（简单改动可缩））→ 独立召唤 6/12 测试'
     )
   );
   assertEqual(code, 1, '方法 C 加回简单可缩后缀应拦截（exit 1）');
   assertTrue(
-    /冒烟测试方法 C 未同步新计轮口径/.test(output),
+    /冒烟测试方法 C 未同步新语义/.test(output),
     '应命中 9.7 ⑥ 冒烟测试方法 C 校验，实际输出：' + output
   );
 });
@@ -1493,19 +1438,18 @@ test('负向：冒烟测试方法 E 删全程模式边界约束应拦截（exit 
   );
 });
 
-test('负向：冒烟测试方法 C 删独立召唤句应拦截（exit 1）', function () {
-  // CR 第 25 轮（本轮 5 轮循环 R3/W1）新增：方法 C 除计轮口径外还须保留
-  // 「每轮评审/修复/复评各为独立一次 @CodeBuddy 召唤，禁止一次召唤内连跑多轮」——
-  // 删除/改写后此前实测 exit 0 漏检（铁律 8 与 CR 卡段同句不覆盖冒烟测试段）。
+test('负向：冒烟测试方法 C 删自动连续语义应拦截（exit 1）', function () {
+  // CR 第 25 轮（本轮 5 轮循环 R3/W1）新增：方法 C 须保留自动连续执行 + 每步留痕语义，
+  // 删除方法 C 段内「同一次召唤内自动连续执行」应拦截（防回退为手动逐棒）。
   const { code, output } = runValidateCaptureFull(p =>
     p.replace(
-      '**每轮评审/修复/复评各为独立一次 @CodeBuddy 召唤，禁止一次召唤内连跑多轮**',
-      '**评审-修复循环可连续执行**'
+      '**方法 C（评审-修复自动连续循环，仅当用户明确要求跑 N 轮时适用）**：跑到 5/12 评审时，若用户明确要求跑 N 轮评审-修复，预期在**同一次召唤内自动连续执行**',
+      '**方法 C（评审-修复自动连续循环，仅当用户明确要求跑 N 轮时适用）**：跑到 5/12 评审时，若用户明确要求跑 N 轮评审-修复，预期在**分多次召唤执行**'
     )
   );
-  assertEqual(code, 1, '方法 C 删独立召唤句应拦截（exit 1）');
+  assertEqual(code, 1, '方法 C 删自动连续语义应拦截（exit 1）');
   assertTrue(
-    /冒烟测试方法 C 未同步新计轮口径/.test(output),
+    /冒烟测试方法 C 未同步新语义/.test(output),
     '应命中 9.7 ⑥ 方法 C 校验，实际输出：' + output
   );
 });
@@ -1542,18 +1486,15 @@ test('负向：冒烟测试方法 D 删「真实 merge-pull 并留痕」应拦�
   );
 });
 
-test('负向：冒烟测试方法 C 删「复评棒停下，等待用户召唤下一棒」应拦截（exit 1）', function () {
-  // CR 第 27 轮（本轮 5 轮循环 R4/W2）新增：方法 C 还须含「（复评棒停下，等待用户召唤下一棒）」——
-  // 铁律 11「接力只执行一步」冒烟层落点，删后此前实测 exit 0 漏检（已清零分支缺停棒声明）。
+test('负向：冒烟测试方法 C 删「中途不暂停、无需逐棒手动召唤」应拦截（exit 1）', function () {
+  // CR 第 27 轮（本轮 5 轮循环 R4/W2）新增：方法 C 还须含「中途不暂停、无需逐棒手动召唤」——
+  // 用户要求「自动继续、不用暂停」，删后应拦截（防回退为中途暂停等手动召唤）。
   const { code, output } = runValidateCaptureFull(p =>
-    p.replace(
-      '（复评棒停下，等待用户召唤下一棒）',
-      ''
-    )
+    p.replace('，中途不暂停、无需逐棒手动召唤', '')
   );
-  assertEqual(code, 1, '方法 C 删停棒声明应拦截（exit 1）');
+  assertEqual(code, 1, '方法 C 删不暂停声明应拦截（exit 1）');
   assertTrue(
-    /冒烟测试方法 C 未同步新计轮口径/.test(output),
+    /冒烟测试方法 C 未同步新语义/.test(output),
     '应命中 9.7 ⑥ 方法 C 校验，实际输出：' + output
   );
 });
@@ -1592,7 +1533,10 @@ test('负向：接力卡段首引导语残留旧口径（CP3 也归暂停卡）�
 test('负向：删接力卡段首引导语应拦截（exit 1）', function () {
   // CR 第 16 轮（追加 9 轮循环 R6）新增：引导语整体删除须拦截（防全程/接力输出契约丢失）。
   const code = runValidate(p =>
-    p.replace('> 仅接力模式需输出；全程模式（用户明确要求一次跑完）不输出接力卡，改为 ⏸CP1/⏸CP2 暂停卡 + ⏸CP3【合并确认卡】。\n', '')
+    p.replace(
+      '> 仅接力模式需输出；全程模式（用户明确要求一次跑完）不输出接力卡，改为 ⏸CP1/⏸CP2 暂停卡 + ⏸CP3【合并确认卡】。\n',
+      ''
+    )
   );
   assertEqual(code, 1, '删接力卡引导语应拦截（exit 1）');
 });
@@ -1616,6 +1560,30 @@ test('负向：删运行模式判断接力续棒分支应拦截（exit 1）', fu
   assertEqual(code, 1, '删接力续棒分支应拦截（exit 1）');
 });
 
+test('负向：删运行模式接力描述中的评审-修复循环例外应拦截（exit 1）', function () {
+  // PR #123 第 3 轮评审 C3 新增：运行模式「接力模式」描述中的评审-修复循环自动连续执行例外被删
+  // （仅保留铁律 8/11 中的例外）时须拦截（防运行模式硬性措辞覆盖铁律 8 例外语义）。
+  const { code, output } = runValidateCapture(p => {
+    const start = p.indexOf('【运行模式（每次调用必须先自检）】');
+    const end = p.indexOf('【铁律（最高优先级）】');
+    if (start === -1 || end === -1) return p;
+    const head = p.slice(0, start);
+    const relayMode = p
+      .slice(start, end)
+      .replace(
+        '**例外：5/12 评审-修复循环自动连续执行（铁律 8）**——用户明确要求跑 N 轮评审-修复时，同一次召唤内自动连续跑完「评审棒→修复棒→复评棒→下一轮…」直至达成 N 轮且问题清零（每步在 PR 分别留痕）。',
+        ''
+      );
+    const tail = p.slice(end);
+    return head + relayMode + tail;
+  });
+  assertEqual(code, 1, '删运行模式评审-修复例外应拦截（exit 1）');
+  assertTrue(
+    /运行模式「接力模式」描述缺少评审-修复循环自动连续执行例外声明/.test(output),
+    '应命中运行模式例外校验，实际输出：' + output
+  );
+});
+
 test('负向：删合并确认卡 8/12→9/12 接力衔接应拦截（exit 1）', function () {
   // CR 第 18 轮（追加 9 轮循环 R8）新增：合并棒完成后如何进入 9/12 发布（独立发布棒召唤）链路
   // 被删时须拦截（防接力模式下合并后无法规范进入发布阶段）。
@@ -1631,45 +1599,39 @@ test('负向：删合并确认卡 8/12→9/12 接力衔接应拦截（exit 1）'
 test('负向：删 9/12 发布召唤话术应拦截（exit 1）', function () {
   // CR 第 18 轮（追加 9 轮循环 R8）新增：9/12 发布独立召唤话术被删须拦截。
   const code = runValidate(p =>
-    p.replace(
-      '@CodeBuddy 接力 NPC_TEAM skill，执行 9/12 发布：',
-      '@CodeBuddy 继续执行发布：'
-    )
+    p.replace('@CodeBuddy 接力 NPC_TEAM skill，执行 9/12 发布：', '@CodeBuddy 继续执行发布：')
   );
   assertEqual(code, 1, '删 9/12 发布召唤话术应拦截（exit 1）');
 });
 
-test('负向：删评审接力卡已累计轮次 10 轮下限句应拦截（exit 1）', function () {
-  // CR 第 22 轮（追加 12 轮循环 R3）新增：三张接力卡「已累计轮次」口径一致化后，
-  // 评审接力卡（第 1 棒）的「清零且已达至少 10 轮则进下一阶段」被删须拦截——
-  // 前两棒缺少循环结束条件提示会让 CodeBuddy 对何时结束评审循环预期不完整。
+test('负向：删评审留痕块已累计轮次句（含 10 轮结束条件）应拦截（exit 1）', function () {
+  // CR 第 22 轮（追加 12 轮循环 R3）新增：评审留痕块「已累计轮次」
+  // 「清零且已达至少 10 轮则结束循环」被删须拦截（缺结束条件则无法判断何时循环完毕）。
+  // 注：已累计轮次在评审/修复/复评三块各一次，全删才会触发循环留痕卡段内强校验。
   const { code, output } = runValidateCapture(p => {
-    const sectionStart = p.indexOf('【评审接力卡（5/12 评审每轮评审结束时输出）】');
-    const sectionEnd = p.indexOf('【修复接力卡（5/12 评审每轮修复结束时输出）】');
+    const sectionStart = p.indexOf(
+      '【评审-修复循环留痕卡（5/12 评审-修复循环自动连续执行时使用）】'
+    );
+    const sectionEnd = p.indexOf('【暂停确认】');
     const head = p.slice(0, sectionStart);
     const section = p
       .slice(sectionStart, sectionEnd)
-      .replace(
-        '- 已累计轮次：第 R 轮（未清零则继续；清零且已达至少 10 轮则进下一阶段）',
-        '- 已累计轮次：第 R 轮（未清零则继续）'
-      );
+      .replace(/- 已累计轮次：第 R 轮（[^\n]*）\n/g, '')
+      .replace(/- 已累计轮次：第 R 轮\n/g, '');
     const tail = p.slice(sectionEnd);
     return head + section + tail;
   });
-  assertEqual(code, 1, '删评审卡已累计轮次 10 轮下限应拦截（exit 1）');
+  assertEqual(code, 1, '删评审留痕块已累计轮次应拦截（exit 1）');
   assertTrue(
-    /评审接力卡缺少「已累计轮次」10 轮下限句/.test(output),
-    '应命中评审接力卡段内句式校验，实际输出：' + output
+    /评审-修复循环留痕卡缺少完整句式「已累计轮次：第 R 轮」/.test(output),
+    '应命中循环留痕卡段内句式校验，实际输出：' + output
   );
 });
 
 test('负向：删任务书用户命令记录 CP3 确认合并说明应拦截（exit 1）', function () {
   // CR 第 19 轮（追加 9 轮循环 R9）新增：任务书字段遗漏 CP3 确认合并命令说明须拦截。
   const code = runValidate(p =>
-    p.replace(
-      '用户命令记录（继续/补充/停止，CP3 含确认合并）',
-      '用户命令记录（继续/补充/停止）'
-    )
+    p.replace('用户命令记录（继续/补充/停止，CP3 含确认合并）', '用户命令记录（继续/补充/停止）')
   );
   assertEqual(code, 1, '删任务书 CP3 确认合并说明应拦截（exit 1）');
 });
@@ -1683,10 +1645,7 @@ test('负向：删任务书用户命令记录 CP3 确认合并说明应拦截（
 test('负向：删流水线 0/12 与 11/12 边界节点应拦截（exit 1）', function () {
   const { code, output } = runValidateCapture(p =>
     p
-      .replace(
-        '0/12 需求接收+PO澄清 → ',
-        '需求接收+PO澄清 → '
-      )
+      .replace('0/12 需求接收+PO澄清 → ', '需求接收+PO澄清 → ')
       .replace(' → 11/12 复盘(全员)', ' → 复盘(全员)')
   );
   assertEqual(code, 1, '删 0/12 与 11/12 应拦截（exit 1）');
@@ -1700,10 +1659,7 @@ test('负向：runValidateCaptureFull 不污染 SKILL.md（工作区还原回归
   const before = fs.readFileSync(SKILL_FILE, 'utf8');
   // 使用会触发 sync 改写提示词的 Full 变体（删 PM 卡合并职责）
   const { code } = runValidateCaptureFull(content =>
-    content.replace(
-      '主持 ⏸CP3 合并确认、执行 8/12 PR 合并（merge-pull，留痕合并结果）。',
-      ''
-    )
+    content.replace('主持 ⏸CP3 合并确认、执行 8/12 PR 合并（merge-pull，留痕合并结果）。', '')
   );
   const after = fs.readFileSync(SKILL_FILE, 'utf8');
   assertEqual(code, 1, '删 PM 合并职责应拦截（exit 1）');

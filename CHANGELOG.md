@@ -5,7 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.5.1] - 2026-08-14
+
+### Fixed
+
+- **修复 codewiki 生成 Wiki 失败：切换 CNB AI 接入点（Issue #117，PR #129）** — codewiki 插件默认 `use_codebuddy: 1`（CodeBuddy 接入点）在本环境调用 LLM 返回空响应，导致仓库结构分析失败（`analyze_repository_structure_agent: agent.run() 返回空内容` / `generate catalogue error: agent returned empty catalogue items`），Wiki 始终无法生成。按 codewiki 插件 README 示例在 `.cnb.yml` 的 `tag_push → codewiki` stage 增加 `use_codebuddy: 0`（切换 CNB AI 接入点）+ `llm_model_name: 'hy3-preview'`（混元免费模型，区别于 NPC 任务注释里的 hy3，此处为 codewiki 插件模型的合法命名）。本版本合并 PR #129 并打 tag `v1.5.1` 触发 codewiki 重新生成 Wiki，验证 Wiki 能否成功生成并激活仓库导航栏入口。Wiki 入口：https://cnb.cool/lnxsun/opencode-wps/-/wikis
+
+## [1.5.0] - 2026-08-14
+
+### Fixed
+
+- **聊天报错 `UnknownError` 可排查（Issue #114 跟进，PR #126）** — 用户在聊天发送消息时偶发 `Error: {"name":"UnknownError","ref":"err_xxx"}`，此为 **OpenCode 服务端**（`opencode serve`）生成回复时的内部错误（常见于模型 API key 失效/限流、模型不存在、provider 配置错误、文档上下文过大），非插件 bug。本轮改进：① `opencode-wps/launcher.js` 将 opencode serve 的 `stdio: 'ignore'` 改为**日志落盘**到 `~/.opencode/logs/opencode-serve.log`（追加模式），服务端 stdout/stderr 不再被丢弃，用户可搜索 `err_xxx` 定位真实根因；② `opencode-wps/taskpane.html` 新增 `formatSendError()`，发送消息出错时若识别到 `UnknownError`，给出含日志路径与常见原因的**可操作排查引导**（不再裸显示 JSON）；③ `docs/TROUBLESHOOTING.md` 新增「UnknownError 排查」章节。测试：`taskpane-healthcheck` 14/14、`taskpane-formatsenderror` 7/7、`launcher` 14/14、`taskpane` 内联脚本语法全部通过。
+  **评审修复（PR #126 第 1~10 轮）**：① 日志写流 `logStream` 提升为模块级变量并新增 `closeOpenCodeLogStream()`，在 `stopOpenCode()` 与子进程 `exit`/`error` 时统一关闭释放（仅 `end()` 先 flush 再关 fd，避免 destroy 丢数据），修复资源泄漏与末尾日志丢失；② 新增简单日志轮转（单文件超 5MB 先删旧 `.old` 再重命名，规避 Windows rename 目标已存在报错）；③ `formatSendError()` 日志路径提示改为「按实际用户目录定位」，不再硬编码 C 盘路径；④ `TROUBLESHOOTING.md` 同步补充日志路径与轮转清理说明；⑤ 新增 `tests/taskpane-formatsenderror.test.js`（7 用例）并接入 CI 门禁，覆盖 UnknownError/普通错误/空响应/网络错误/null-undefined 兜底等场景。
+
+## [1.4.0] - 2026-08-14
+
+### Added
+
+- **校对数据服务端落盘持久化 + 必填字段校验 + 疑似问题机制（Issue #116，PR #124）** — 根治校对流程数据易失的核心问题：① 新增 `proofread-store.ts` 落盘存储模块，`proofreadAccumulate` 每次累加后增量写盘到 `~/.opencode-wps/proofread-sessions/{sessionId}.json`，报告生成优先读内存、缺失时从磁盘恢复（`getSessionOrLoad`），`releaseSession`/LRU 淘汰同步删除磁盘文件，存储目录 `0o700` 权限收敛——即使会话压缩（Compaction）或 MCP 服务重启，已累加校对问题不丢失、报告可完整生成；② `proofreadAccumulate` 入口对缺 `original`/`suggestion` 的 issue 明确报错，替代此前静默通过、到报告生成阶段 `.replace()` 读 `undefined` 崩溃的隐患；③ 报告生成器 `.replace()` 处统一 `(issue.original || '')` 兜底，历史坏数据漏过校验也不崩溃；④ 新增 `suspected_issues` 参数（AI 识别但未确认的问题），报告单独列出「⚠️ 待确认问题」节并标注「未修改，请人工核对」，不纳入五维评分，即使 issues 为空也列出该节。评审 10 轮 review-修复循环清零（含必填校验原子性、空 issues+疑似问题不丢失、权限收敛等）。
+
+- **侧边栏权限确认 UI + 上下文用量条 + 等待审批状态（Issue #116，PR #120）** — 补齐侧边栏交互三个关键能力：① **权限确认模态框**：监听权限请求事件，弹出「工具调用权限确认」框（展示工具名/参数/说明），支持**允许 / 拒绝 / 记住选择**，通过 `POST /session/:id/permissions/:permissionID` 响应——解决此前「生成报告卡住」只能切 web 会话确认的问题；② **上下文用量条**：底部 3px 进度条随 SSE 实时更新，hover 显示详细 token 数，<70% 绿 / ≥70% 橙 / ≥90% 红，提示用户预判会话压缩；③ **等待审批状态**：`session.status` 新增 `waiting` 中间态，状态点橙色闪烁 + 底栏高亮提示「等待你确认工具调用」，与正常 busy 状态区分，避免用户误以为死循环。评审 5 轮 review-修复循环清零（含 props.id 提取优先级、SSE 断开状态清理、并发权限请求覆盖、会话切换状态清理等）。
+
+- **MCP 超时放大 + 校对批次建议 + TC-12 口径说明（Issue #116，PR #121）** — 性能与数据口径优化：① `getDocumentParagraphs` 超时 30s→60s、`getDocumentTextByRange` 15s→30s，减少大批量段落获取在 WPS COM 处理慢时的超时重试；② SKILL 推荐每批 100 段（此前默认 200），避免单次返回文本超过 MCP 输出限制被截断导致漏检；③ TC-12 口径明确：报告「发现问题 = issue 条数」「修订数 ÷ 2 仅修订模式等价」，修正此前口径混乱。评审 5 轮 review-修复循环清零（含 SKILL 批次计算示例、版本引用一致性）。
+
+## [1.3.1] - 2026-08-14
+
+### Fixed
+
+- **修复 codewiki 配置以正确激活 Wiki 入口（Issue #117，PR #127）** — 仓库首页 `showWiki=false`、Wiki 导航入口不显示、`/-/wikis` 报 404 的根因：codewiki 插件配置结构与插件 README 推荐模式不一致——旧配置把 `image` 放在任务级 `docker.image`、`git_doc_dir` 指向容器内 `/data/codewiki/${CNB_REPO_SLUG}` 路径且未声明 Docker 数据卷，插件生成的内容写入容器内部，流水线结束后即丢失，平台无法读取。按 codewiki 插件 README **Pattern 1（推荐模式）** 调整 `.cnb.yml`：① `image: cnbcool/codewiki:latest` 移至 `stages[].image`（阶段级）；② `git_doc_dir` 改为工作区路径 `/${CNB_BUILD_WORKSPACE}/${CNB_REPO_SLUG}/codewiki`，生成内容可被平台持久化读取；③ 保留 `knowledge_enabled: true`（Wiki 自动入库仓库知识库）。合并后打 `v1.3.1` tag 触发 `tag_push` → codewiki 重新生成 Wiki 并激活入口。Wiki 入口：https://cnb.cool/lnxsun/opencode-wps/-/wikis
+
+## [1.3.0] - 2026-08-14
+
+### Added
+
+- **NPC_TEAM 评审-修复循环改为自动连续执行 + 每步留痕（Issue #76，PR #123）** — 按用户反馈"5 轮独立的 PR review 与修复循环还是不能自动进行、中间还是会暂停"并澄清"是每步在 PR 留痕，而不是每轮"，将提示词 5/12 评审-修复循环由「逐轮接力（每轮评审/修复/复评各为独立一次 @CodeBuddy 召唤，禁止一次召唤内连跑多轮）」改为**接力模式下自动连续执行**：用户要求跑 N 轮时，同一次召唤内自动连续跑完「评审棒 → 修复棒 → 复评棒 → 下一轮…」直至达成 N 轮且问题清零，**中途不暂停、无需逐棒手动召唤**；但**每一步（评审/修复/复评）都必须在 PR 分别回复留痕（留痕以「每步」为粒度而非「每轮」）**，每步留痕必须真实可核实，否则视为假装执行。配套：① 提示词铁律 8 / CR 角色卡片 / 流水线 5/12 / 工作流程 / 门禁表 / 冒烟测试方法 C 全部同步（评审-修复接力卡 → 评审-修复循环留痕卡，含评审/修复/复评留痕块 + 本步留痕位置字段）；② `scripts/validate-npc-team-prompt.js` 第 10b 节重写为「自动连续执行 + 每步留痕」强校验；③ `tests/validate-npc-team-prompt.test.js` 评审-修复接力相关用例重写为自动连续语义（115 用例全绿）；④ `.codebuddy/skills/npc-team/SKILL.md` frontmatter description + 正文双源同步。**评审修复汇总（PR #123 第 1~10 轮）**：① 铁律 11 补「评审-修复循环自动连续执行例外」声明；② 运行模式「接力模式」描述同步补评审-修复循环例外；③ description 补「自动继续/自动连续执行」触发词；④ 运行模式段内评审-修复例外强校验 + 锚点缺失提示；⑤R6 新增【评审-修复循环汇总卡】卡名强校验 + 负向用例；⑥R7 澄清用户要求 N 轮与「至少 10 轮」下限优先级——铁律 8 补「下限优先：若 N<10 按至少 10 轮执行」，复评留痕改「有效下限 = max(10, 用户要求 N)」；⑦R8 冒烟测试验证表「接力只执行一步」行补评审-修复自动连续例外；⑧R9 方法 C 已清零分支改「有效下限轮次 max(10, 用户要求 N)」；⑨R10 CHANGELOG 用例数同步 115。
+
+## [1.2.0] - 2026-08-14
+
+### Added
+
+- **生成项目 Wiki（Issue #117，PR #118）** — 结合本项目代码库及库中现有文档（`docs/`），在 CNB 平台用 **Code Wiki（codewiki 插件）** 机制生成项目 Wiki：`.cnb.yml` 新增 `tag_push` → `codewiki` 插件 stage（`git_doc_dir: /data/codewiki/${CNB_REPO_SLUG}` 必填 + `knowledge_enabled: true` 自动入库仓库知识库，可被 AI 问答引用），打 tag 即自动读取仓库代码与现有文档生成 Wiki，仓库首页出现 Wiki 入口。同时围绕 **开发 / 使用双主线** 将文档补充至 Wiki 级详细度：`docs/USAGE.md`（Wiki 级使用手册：快速上手/三平台打开面板/完整对话操作/WPS 专用 Agents/常用文档操作场景/OpenCode 服务管理/配置参考/最佳实践）、`docs/DEVELOPMENT_GUIDE.md`（Wiki 级开发手册：环境/项目结构/五大模块开发/MCP 三层工具体系/开发流程/规范/测试/CI/CD/二次开发）、`docs/SKILLS.md`（内置工具清单/两级网关调用规范/各 Skill 能力/开发规范）；`docs/README.md` 更新四象限索引。评审 15 轮 review-修复循环清零 + QA 测试通过（锚点缺陷修复复验）。Wiki 入口：https://cnb.cool/lnxsun/opencode-wps/-/wikis
+
+### Fixed
+
+- **修复 opencode 服务运行中但状态栏误显"已停止"**（Issue #114）— 根因：健康检查"一次失败即永久放弃"的单向设计——`showSetup()` 与 `stopHealthCheck()` 强耦合，一旦进入 setup 视图健康检测永久关闭，且 setup 视图无任何自动恢复探测；瞬时网络抖动/CORS proxy 抖动/launcher 重启间隙一次误触即可导致即使服务始终健康，UI 也永远显示"已停止"。修复（`opencode-wps/taskpane.html`）：① `showSetup()` 移除 `stopHealthCheck()`，健康检测与视图切换解耦，改为**全局常驻**；② 新增 `IN_SETUP_VIEW` 标记，setup 下检测到服务恢复自动 `onServerConnected()` 切回 chat；③ `startHealthCheck()` 失败仅切视图不停止检测，成功且 setup 未连接时自动恢复；④ `init()` 初始失败路径补启动健康检测；⑤ 显式停止（`STOPPING` 标记）不再被全局健康检查自动重连，并清理手动启动轮询（`START_POLL_TIMER`）；⑥ 健康检查防重入（`HEALTH_CHECK_IN_FLIGHT`）避免请求风暴，仅状态变化时更新。新增 `tests/taskpane-healthcheck.test.js`（14 用例，AC1-AC5 + 历轮评审修复回归）并接入 CI。评审-修复 9 轮循环清零。
 
 ### Added
 

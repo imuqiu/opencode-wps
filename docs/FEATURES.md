@@ -50,7 +50,7 @@
 ### 校对流程
 
 1. **评估文档** — `getActiveDocument` 获取文档总段落数，输出分批校对计划（P3 前置要求）
-2. **生成批计划** — `getDocumentParagraphs` 获取本批段落（每批 ≤200 段，从第 1 段起连续分批）
+2. **生成批计划** — `getDocumentParagraphs` 获取本批段落（每批 ≤200 段，从第 1 段起连续分批；**推荐每批 100 段**，避免单次返回文本超过 MCP 输出限制被截断导致漏检，见 Issue #116 PR-C）
 3. **逐批校对** — `proofreadBasic` 每批独立调用，AI 逐批检查
 4. **确认修复** — `confirmBatchAiProofread` 确认本批问题（必须先调 `proofreadBasic`）
 5. **执行修复** — `replaceInParagraph` 修复本批问题 → **进入下一批**（本批未完成禁止下一批）
@@ -80,6 +80,28 @@ before 钩子拦截违规 → 工具执行 → after 钩子更新状态 → befo
 - `proofreadIssueOriginals[]`：存储基础校对返回的 issue 原文 → P16 交叉校验
 - `proofreadCalledThisBatch`：标记本批是否调过基础校对 → P12/P13/P14 共用
 - `replaceCountThisBatch`：本批替换次数计数 → P15 超限拦截
+
+### 校对数据持久化（Issue #116）
+
+校对流程中累加的问题数据默认存在 MCP 服务端进程内内存（`sessionIssues` Map）。为避免**会话压缩（Compaction）**和 **MCP 服务重启**导致已累加的校对问题丢失、报告不完整，引入了**服务端落盘持久化**：
+
+- `proofreadAccumulate` 每次累加后**增量写盘**到 `~/.opencode-wps/proofread-sessions/{sessionId}.json`
+- 报告生成时优先读内存 Map（快路径），缺失则**从磁盘恢复**（`getSessionOrLoad`）
+- `releaseSession` / LRU 淘汰同步删除磁盘文件，防止磁盘膨胀
+- 存储目录创建时设置 `0o700` 权限，收敛敏感数据可读范围
+
+这样即使长会话发生压缩、或 MCP 服务中途抖动重启，已确认的校对问题都不丢失，报告可完整生成。
+
+### 疑似问题（待确认问题）机制（Issue #116）
+
+校对过程中，AI 常识别出**疑似但未确认**的问题（如语义存疑、疑似误写、需人工核实的计算错误等）。此前这些疑似问题只能留在 AI 上下文中，会话压缩后即丢失。
+
+新增 `suspected_issues` 参数（`proofreadAccumulate` 支持）：
+
+- AI 可将**未确认的问题**单独累加到 `suspected_issues`（而非 `issues`）
+- 报告中单独列出「⚠️ 待确认问题」节，标注「未修改，请人工核对」
+- **不纳入五维评分**，仅作提示，避免误报影响报告可信度
+- 即使没有确认问题（`issues` 为空），只要存在疑似问题，报告仍列出该节
 
 ### 适用场景
 

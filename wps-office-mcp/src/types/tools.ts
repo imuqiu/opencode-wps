@@ -81,6 +81,8 @@ export interface ToolCallResult {
   content: ToolContent[];
   /** 错误信息（失败时） */
   error?: string;
+  /** 可编程附加数据（评审第 4 轮 W6）：供 AI 程序化判定的结构化字段，如 { diskPersisted: boolean } */
+  data?: Record<string, unknown>;
 }
 
 /**
