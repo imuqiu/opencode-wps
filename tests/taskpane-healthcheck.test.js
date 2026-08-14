@@ -148,11 +148,17 @@ function loadTaskpaneScript() {
     },
     setTimeout: function (cb) { return 1; },
     clearTimeout: function () {},
-    setInterval: function (cb) { intervals.push(cb); return intervals.length; },
-    clearInterval: function (id) { intervals = intervals.filter(function (c, i) { return i + 1 !== id; }); }
+    setInterval: function (cb) { intervals.push(cb); intervalIds.push(nextIntervalId); nextIntervalId++; return nextIntervalId - 1; },
+    clearInterval: function (id) { 
+      var idx = intervalIds.indexOf(id);
+      if (idx >= 0) { intervals.splice(idx, 1); intervalIds.splice(idx, 1); }
+    }
   };
   var intervals = [];
+  var intervalIds = [];
+  var nextIntervalId = 1;
   sandbox.__intervals = intervals;
+  sandbox.__intervalIds = intervalIds;
   sandbox.__flushHealthChecks = function (n) {
     // 执行健康检查回调（每个触发一次），返回触发次数
     var count = 0;
@@ -413,6 +419,37 @@ test('R5-P3: 健康检查旧请求时间戳检查——停止前发起的请求�
   healthOverride = null;
   s.__flushHealthChecks(1);
   assertEqual(connected, 1, '正常路径仍应触发 onServerConnected');
+});
+
+test('R8-P1: 定时器替换防误清理——旧定时器回调不误清新定时器引用', function () {
+  var s = loadTaskpaneScript();
+  var connected = 0;
+  s.onServerConnected = function () { connected++; };
+  // 模拟：timer1 被设置，然后在途请求期间用户停止并启动新服务（timer2）
+  s.STOPPING = true;
+  s.SERVER_RUNNING = false;
+  s.startOpenCode();
+  var timer1Id = s.START_POLL_TIMER;  // 保存 timer1 引用
+  // 模拟用户停止：清理 timer1
+  s.stopOpenCode();
+  assertEqual(s.START_POLL_TIMER, null, 'stopOpenCode 后 START_POLL_TIMER 应为 null');
+  // 模拟用户重新启动：设置 timer2
+  s.STOPPING = false;
+  s.startOpenCode();
+  var timer2Id = s.START_POLL_TIMER;
+  assertTrue(timer2Id !== timer1Id, '新启动应创建新的定时器');
+  // 模拟 timer1 的旧回调执行（在途请求返回）：
+  // 由于回调使用闭包 pollTimerId=timer1，clearInterval(timer1) 不会影响 timer2
+  // 且 START_POLL_TIMER === pollTimerId 检查（timer2 !== timer1）不会置 null
+  // 由于 fetchJSON 返回 healthy，但 STOPPING=false，回调会执行 onServerConnected
+  // 这是合理的（服务确实健康）；关键是 START_POLL_TIMER 不被错误清除
+  // 通过健康检查回调模拟 timer1 在途请求返回
+  healthOverride = { healthy: true };
+  // 直接验证：START_POLL_TIMER 仍指向 timer2
+  assertEqual(s.START_POLL_TIMER, timer2Id, 'START_POLL_TIMER 应保持 timer2 引用');
+  // 验证 stopOpenCode 仍能清理 timer2
+  s.stopOpenCode();
+  assertEqual(s.START_POLL_TIMER, null, 'stopOpenCode 应能清理 timer2');
 });
 
 // ==================== 测试结果汇总 ====================

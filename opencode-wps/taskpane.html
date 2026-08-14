@@ -339,7 +339,8 @@ var IN_SETUP_VIEW = false
 var HEALTH_CHECK_TIMER = null
 var HEALTH_CHECK_IN_FLIGHT = false
 var STOPPING = false   // 显式停止标记：防止在途健康检查在显式停止后错误触发自动重连（评审 R2-1）
-var STOPPED_AT = 0     // 显式停止时间戳：用于丢弃停止前置位前的在途健康检查请求结果（评审 P3）
+var STOPPED_AT = 0     // 显式停止时间戳：仅在 stopOpenCode() 中更新，不在启动/连接时重置，
+                        // 用于时间戳过滤丢弃停止前发起的旧请求结果（评审 P3/P1）
 var START_POLL_TIMER = null   // 手动启动服务时的 1s 就绪轮询定时器（提升为模块级，供显式停止时清理，评审 R3-1）
 var INPUT_HISTORY = []
 var INPUT_HISTORY_INDEX = -1
@@ -573,7 +574,7 @@ function confirmCwdChange() {
 
     // 用户主动启动新 CWD 服务：清除旧停止标记，避免残留 STOPPING 阻断自动恢复（评审 P2）
     // 注意：不重置 STOPPED_AT，保留停止时刻以维持时间戳过滤语义（评审 P1）
-    STOPPING = false
+    if (STOPPING) STOPPING = false
 
     // 设置新的 CWD 并启动（PERSIST.cwd setter 自动调用 setPS）
     PROJECT_DIR = newCwd
@@ -639,7 +640,7 @@ function startOpenCode() {
 
     // 用户主动启动：清除旧停止标记，避免残留 STOPPING 阻断自动恢复（评审 P2）
     // 注意：不重置 STOPPED_AT，保留停止时刻以维持时间戳过滤语义（评审 P1）
-    STOPPING = false
+    if (STOPPING) STOPPING = false
 
     var launcherUrl = 'http://127.0.0.1:14097'
     var launcherOk = false
