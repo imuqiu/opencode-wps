@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-08-14
+
+### Fixed
+
+- **修复 codewiki 生成 Wiki 失败：切换 CNB AI 接入点（Issue #117，PR #129）** — codewiki 插件默认 `use_codebuddy: 1`（CodeBuddy 接入点）在本环境调用 LLM 返回空响应，导致仓库结构分析失败（`analyze_repository_structure_agent: agent.run() 返回空内容` / `generate catalogue error: agent returned empty catalogue items`），Wiki 始终无法生成。按 codewiki 插件 README 示例在 `.cnb.yml` 的 `tag_push → codewiki` stage 增加 `use_codebuddy: 0`（切换 CNB AI 接入点）+ `llm_model_name: 'hy3-preview'`（混元免费模型，区别于 NPC 任务注释里的 hy3，此处为 codewiki 插件模型的合法命名）。本版本合并 PR #129 并打 tag `v1.5.1` 触发 codewiki 重新生成 Wiki，验证 Wiki 能否成功生成并激活仓库导航栏入口。Wiki 入口：https://cnb.cool/lnxsun/opencode-wps/-/wikis
+
 ## [1.5.0] - 2026-08-14
 
 ### Fixed
