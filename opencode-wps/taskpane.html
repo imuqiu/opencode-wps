@@ -340,7 +340,6 @@ var HEALTH_CHECK_TIMER = null
 var HEALTH_CHECK_IN_FLIGHT = false
 var STOPPING = false   // 显式停止标记：防止在途健康检查在显式停止后错误触发自动重连（评审 R2-1）
 var STOPPED_AT = 0     // 显式停止时间戳：用于丢弃停止前置位前的在途健康检查请求结果（评审 P3）
-var HEALTH_CHECK_TS = 0  // 最近一次健康检查请求的发起时间戳（评审 P3）
 var START_POLL_TIMER = null   // 手动启动服务时的 1s 就绪轮询定时器（提升为模块级，供显式停止时清理，评审 R3-1）
 var INPUT_HISTORY = []
 var INPUT_HISTORY_INDEX = -1
@@ -574,6 +573,7 @@ function confirmCwdChange() {
 
     // 用户主动启动新 CWD 服务：清除旧停止标记，避免残留 STOPPING 阻断自动恢复（评审 P2）
     STOPPING = false
+    STOPPED_AT = 0   // 同步重置停止时刻，使语义清晰（评审 P4）
 
     // 设置新的 CWD 并启动（PERSIST.cwd setter 自动调用 setPS）
     PROJECT_DIR = newCwd
@@ -591,20 +591,20 @@ function confirmCwdChange() {
     // 轮询等待服务就绪
     var retries = 0
     var maxRetries = 30
-    START_POLL_TIMER = setInterval(function() {
+    var pollTimerId = setInterval(function() {
         fetchJSON('GET', '/global/health', null, function(data) {
             // 在途回调防泄漏：若用户在轮询期间显式停止，不再恢复（评审 P1）
-            if (STOPPING) { clearInterval(START_POLL_TIMER); START_POLL_TIMER = null; return }
+            if (STOPPING) { clearInterval(pollTimerId); if (START_POLL_TIMER === pollTimerId) START_POLL_TIMER = null; return }
             if (data && data.healthy) {
-                clearInterval(START_POLL_TIMER)
-                START_POLL_TIMER = null
+                clearInterval(pollTimerId)
+                if (START_POLL_TIMER === pollTimerId) START_POLL_TIMER = null
                 onServerConnected()
             }
         }, function() {
             retries++
             if (retries >= maxRetries) {
-                clearInterval(START_POLL_TIMER)
-                START_POLL_TIMER = null
+                clearInterval(pollTimerId)
+                if (START_POLL_TIMER === pollTimerId) START_POLL_TIMER = null
                 $btnStart.disabled = false
                 $btnStart.innerHTML = '<span class="icon-play"></span>启动服务'
                 $setupStatus.textContent = '启动失败，请检查 OpenCode 是否已安装。'
@@ -613,6 +613,7 @@ function confirmCwdChange() {
             }
         })
     }, 1000)
+    START_POLL_TIMER = pollTimerId
 }
 
 // --- Server start / stop ---
@@ -638,6 +639,7 @@ function startOpenCode() {
 
     // 用户主动启动：清除旧停止标记，避免残留 STOPPING 阻断自动恢复（评审 P2）
     STOPPING = false
+    STOPPED_AT = 0   // 同步重置停止时刻，使语义清晰（评审 P4）
 
     var launcherUrl = 'http://127.0.0.1:14097'
     var launcherOk = false
@@ -653,20 +655,20 @@ function startOpenCode() {
 
     var retries = 0
     var maxRetries = 30
-    START_POLL_TIMER = setInterval(function() {
+    var pollTimerId = setInterval(function() {
         fetchJSON('GET', '/global/health', null, function(data) {
             // 在途回调防泄漏：若用户在轮询期间显式停止，不再恢复（评审 P1）
-            if (STOPPING) { clearInterval(START_POLL_TIMER); START_POLL_TIMER = null; return }
+            if (STOPPING) { clearInterval(pollTimerId); if (START_POLL_TIMER === pollTimerId) START_POLL_TIMER = null; return }
             if (data && data.healthy) {
-                clearInterval(START_POLL_TIMER)
-                START_POLL_TIMER = null
+                clearInterval(pollTimerId)
+                if (START_POLL_TIMER === pollTimerId) START_POLL_TIMER = null
                 onServerConnected()
             }
         }, function() {
             retries++
             if (retries >= maxRetries) {
-                clearInterval(START_POLL_TIMER)
-                START_POLL_TIMER = null
+                clearInterval(pollTimerId)
+                if (START_POLL_TIMER === pollTimerId) START_POLL_TIMER = null
                 $btnStart.disabled = false
                 $btnStart.innerHTML = '<span class="icon-play"></span>启动服务'
                 if (!launcherOk) $setupStatus.textContent = 'Launcher 未运行'
@@ -676,6 +678,7 @@ function startOpenCode() {
             }
         })
     }, 1000)
+    START_POLL_TIMER = pollTimerId
 }
 
 function stopOpenCode() {
@@ -740,7 +743,6 @@ function startHealthCheck() {
         HEALTH_CHECK_IN_FLIGHT = true
         // 记录本次请求发起时刻到闭包，用于丢弃 STOPPING 置位前的旧请求结果（评审 P3）
         var requestTs = Date.now()
-        HEALTH_CHECK_TS = requestTs   // 全局变量保留最近发起时刻供测试断言
         fetchJSON('GET', '/global/health', null, function(data) {
             healthCheckDone(function() {
                 // 丢弃在显式停止之前发起的旧请求结果：其重试由 setTimeout 驱动，无法被 clearInterval 取消（评审 P3）

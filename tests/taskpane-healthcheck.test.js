@@ -360,23 +360,34 @@ test('R5-P2: 启动失败后应恢复健康检查（startHealthCheck 被调用�
   var hcCalls = 0;
   var orig = s.startHealthCheck;
   s.startHealthCheck = function () { hcCalls++; orig(); };
-  // 模拟 startOpenCode 的轮询失败路径
-  s.STOPPING = false;
+  // 模拟 startOpenCode 完整流程：用户显式停止后重新启动
+  s.STOPPING = true;
   s.SERVER_RUNNING = false;
-  // 手动触发 startOpenCode 中的失败分支（通过设置 maxRetries 为 0 的轮询）
-  // 简化：直接调用 startHealthCheck 并断言被调用
-  // 实际上需要模拟完整的启动失败流程，这里验证 startOpenCode 启动后轮询失败会调用 startHealthCheck
-  // 由于测试环境复杂，直接验证 stopOpenCode 后再调 startOpenCode 的失败分支逻辑
-  s.stopOpenCode();
-  assertTrue(s.STOPPING === true, 'stopOpenCode 后 STOPPING 应为 true');
-  // 用户重新启动：START_POLL_TIMER 轮询失败
-  s.STOPPING = false;  // startOpenCode 会清除 STOPPING
-  // 启动失败路径应调用 startHealthCheck
-  s.startHealthCheck();
-  assertTrue(hcCalls >= 1, '启动失败后应恢复健康检查');
+  // 设置 fetchJSON 持续返回错误，模拟服务一直不可达
+  healthFailCount = 999;  // 足够大，确保 maxRetries 耗尽
+  // 调用 startOpenCode：应清除 STOPPING 并启动轮询
+  s.startOpenCode();
+  assertEqual(s.STOPPING, false, 'startOpenCode 应清除 STOPPING');
+  assertEqual(s.STOPPED_AT, 0, 'startOpenCode 应重置 STOPPED_AT');
+  // 触发足够多的轮询 tick 使 maxRetries 耗尽（maxRetries=30）
+  var triggerCount = 0;
+  var maxTicks = 40;
+  for (var i = 0; i < maxTicks && s.START_POLL_TIMER !== null; i++) {
+    s.__flushHealthChecks(0);  // 不会触发健康检查，只触发轮询
+    // 直接手动执行轮询回调
+    var timerIdx = s.__intervals.length - 1;  // 最新一个 interval（轮询）
+    var cb = s.__intervals[timerIdx];
+    if (cb) { cb(); triggerCount++; }
+    else break;
+  }
+  // 验证：轮询失败后应调用 startHealthCheck
+  assertTrue(hcCalls >= 1, '启动失败后应恢复健康检查（hcCalls=' + hcCalls + '）');
+  assertTrue(triggerCount > 0, '应触发轮询回调');
 });
 
 test('R5-P3: 健康检查旧请求时间戳检查——停止前发起的请求结果被丢弃', function () {
+  healthFailCount = 0;  // 重置，避免 R5-P2 的副作用
+  healthOverride = null;
   var s = loadTaskpaneScript();
   var connected = 0;
   s.onServerConnected = function () { connected++; };
