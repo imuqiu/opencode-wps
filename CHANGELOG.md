@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.4.0] - 2026-08-14
 
+### Fixed
+
+- **聊天报错 `UnknownError` 可排查（Issue #114 跟进）** — 用户在聊天发送消息时偶发 `Error: {"name":"UnknownError","ref":"err_xxx"}`，此为 **OpenCode 服务端**（`opencode serve`）生成回复时的内部错误（常见于模型 API key 失效/限流、模型不存在、provider 配置错误、文档上下文过大），非插件 bug。本轮改进：① `opencode-wps/launcher.js` 将 opencode serve 的 `stdio: 'ignore'` 改为**日志落盘**到 `~/.opencode/logs/opencode-serve.log`（追加模式），服务端 stdout/stderr 不再被丢弃，用户可搜索 `err_xxx` 定位真实根因；② `opencode-wps/taskpane.html` 新增 `formatSendError()`，发送消息出错时若识别到 `UnknownError`，给出含日志路径与常见原因的**可操作排查引导**（不再裸显示 JSON）；③ `docs/TROUBLESHOOTING.md` 新增「UnknownError 排查」章节。测试：`taskpane-healthcheck` 14/14、`taskpane-formatsenderror` 7/7、`launcher` 14/14、`taskpane` 内联脚本语法全部通过。
+  **评审修复（PR #126 第 1~2 轮）**：① 日志写流 `logStream` 提升为模块级变量并新增 `closeOpenCodeLogStream()`，在 `stopOpenCode()` 与子进程 `exit`/`error` 时统一关闭释放（仅 `end()` 先 flush 再关 fd，避免 destroy 丢数据），修复资源泄漏与末尾日志丢失；② 新增简单日志轮转（单文件超 5MB 先删旧 `.old` 再重命名，规避 Windows rename 目标已存在报错）；③ `formatSendError()` 日志路径提示改为「按实际用户目录定位」，不再硬编码 C 盘路径；④ `TROUBLESHOOTING.md` 同步补充日志路径与轮转清理说明；⑤ 新增 `tests/taskpane-formatsenderror.test.js`（7 用例）并接入 CI 门禁，覆盖 UnknownError/普通错误/空响应/网络错误/null-undefined 兜底等场景。
+
 ### Added
 
 - **校对数据服务端落盘持久化 + 必填字段校验 + 疑似问题机制（Issue #116，PR #124）** — 根治校对流程数据易失的核心问题：① 新增 `proofread-store.ts` 落盘存储模块，`proofreadAccumulate` 每次累加后增量写盘到 `~/.opencode-wps/proofread-sessions/{sessionId}.json`，报告生成优先读内存、缺失时从磁盘恢复（`getSessionOrLoad`），`releaseSession`/LRU 淘汰同步删除磁盘文件，存储目录 `0o700` 权限收敛——即使会话压缩（Compaction）或 MCP 服务重启，已累加校对问题不丢失、报告可完整生成；② `proofreadAccumulate` 入口对缺 `original`/`suggestion` 的 issue 明确报错，替代此前静默通过、到报告生成阶段 `.replace()` 读 `undefined` 崩溃的隐患；③ 报告生成器 `.replace()` 处统一 `(issue.original || '')` 兜底，历史坏数据漏过校验也不崩溃；④ 新增 `suspected_issues` 参数（AI 识别但未确认的问题），报告单独列出「⚠️ 待确认问题」节并标注「未修改，请人工核对」，不纳入五维评分，即使 issues 为空也列出该节。评审 10 轮 review-修复循环清零（含必填校验原子性、空 issues+疑似问题不丢失、权限收敛等）。

@@ -95,7 +95,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:-apple-system,Blink
 
 .msg-assistant{align-self:flex-start;max-width:100%;color:#1a1a1a;font-size:14px;line-height:1.7;word-wrap:break-word;overflow-wrap:break-word;padding:4px 0}
 .msg-assistant .msg-bubble{background:#fff;padding:12px 16px;border-radius:16px;border-bottom-left-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,0.06),0 1px 2px rgba(0,0,0,0.04)}
-.msg-system{align-self:center;font-size:12px;color:#999;padding:4px 12px}
+.msg-system{align-self:center;font-size:12px;color:#999;padding:4px 12px;white-space:pre-wrap;word-wrap:break-word;line-height:1.5;max-width:90%}
 
 /* Markdown in assistant */
 .msg-assistant p{margin:0 0 10px 0}
@@ -1603,6 +1603,23 @@ function updateStreamingBubble() {
     if (STREAMING_TEXT) { try { html += renderMarkdown(STREAMING_TEXT) } catch(e) { html += escapeHtml(STREAMING_TEXT) } html += '<span class="streaming-cursor"></span>' } else if (!STREAMING_REASONING) { html += '<span class="streaming-cursor"></span>' }
     el.innerHTML = html; scrollToBottom()
 }
+// 格式化发送消息的错误提示：识别 UnknownError 等服务端错误，给出可操作的排查引导
+function formatSendError(status, respText) {
+    var raw = respText || ('status ' + status);
+    var msg = 'Error: ' + raw;
+    try {
+        var obj = JSON.parse(respText || '');
+        if (obj && obj.name === 'UnknownError') {
+            var ref = obj.data && obj.data.ref ? obj.data.ref : '';
+            msg = 'Error: 服务端处理失败（' + (obj.data && obj.data.message ? obj.data.message : 'Unexpected server error') + '）' +
+                  (ref ? '，引用号 ' + ref + '。' : '。') +
+                  '\n\u256c OpenCode 服务端内部错误，非插件问题。请查看服务端日志定位根因（按实际用户目录查找）：\n' +
+                  '    <用户目录>\\.opencode\\logs\\opencode-serve.log（如 C:\\Users\\<你的用户名>，搜索 ' + (ref || '报错时间点') + '）\n' +
+                  '常见原因：模型 API key 失效/限流、模型不存在、provider 配置错误，或文档上下文过大。详见 docs/TROUBLESHOOTING.md「UnknownError 排查」。';
+        }
+    } catch (e) { /* 非 JSON 错误，保留原始信息 */ }
+    return msg;
+}
 function finalizeStreaming() {
     var el = document.getElementById('streaming-msg')
     if (el && (STREAMING_TEXT || STREAMING_REASONING)) {
@@ -1645,7 +1662,7 @@ function sendMessage() {
             var parts = CURRENT_MODEL.split('/')
             body.model = { providerID: parts[0], modelID: parts.slice(1).join('/') }
         }
-        postMessage('/session/' + SESSION_ID + '/message', body, function(s, t) { addSystemMessage('Error: ' + (t || 'status ' + s)); finalizeStreaming() })
+        postMessage('/session/' + SESSION_ID + '/message', body, function(s, t) { addSystemMessage(formatSendError(s, t)); finalizeStreaming() })
     })
 }
 function injectContext(cb) {
