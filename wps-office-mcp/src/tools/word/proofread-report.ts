@@ -695,6 +695,29 @@ export const proofreadAccumulateHandler: ToolHandler = async (
     };
   }
 
+  // 必填字段校验（#116 第 3 轮评审）：suspected_issues 同样要求 original/suggestion 非空
+  const rawSuspected = (args.suspected_issues as unknown as Array<Record<string, unknown>> | undefined) ?? [];
+  if (rawSuspected.length > 0) {
+    const missingSuspected = rawSuspected.filter((i) => {
+      const orig = i['original'];
+      const sugg = i['suggestion'];
+      return typeof orig !== 'string' || !(orig as string).trim() || typeof sugg !== 'string' || !(sugg as string).trim();
+    });
+    if (missingSuspected.length > 0) {
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [
+          {
+            type: 'text',
+            text: `suspected_issues 含 ${missingSuspected.length} 条缺少必填字段 original/suggestion（不能为空字符串）。请修正后重试。`,
+          },
+        ],
+        error: `suspected_issues 含 ${missingSuspected.length} 条缺 original/suggestion`,   
+      };
+    }
+  }
+
   // 获取或创建会话（优先内存 Map，未命中则尝试磁盘恢复 —— 服务重启后数据不丢）
   let session = getSessionOrLoad(session_id);
   if (!session) {
