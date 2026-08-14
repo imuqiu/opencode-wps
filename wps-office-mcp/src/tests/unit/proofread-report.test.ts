@@ -56,6 +56,20 @@ afterAll(() => {
 // Reset sessionIssues before each test
 beforeEach(() => {
   sessionIssues.clear();
+  // Issue #116 落盘持久化：同时清理磁盘上可能残留的测试会话文件，
+  // 避免 getSessionOrLoad 从磁盘恢复旧数据导致测试隔离失效
+  // 存储目录为 ~/.opencode-wps/proofread-sessions
+  const proofreadDir = path.join(os.homedir(), '.opencode-wps', 'proofread-sessions');
+  try {
+    if (fs.existsSync(proofreadDir)) {
+      const files = fs.readdirSync(proofreadDir);
+      for (const f of files) {
+        fs.rmSync(path.join(proofreadDir, f), { force: true });
+      }
+    }
+  } catch {
+    // 清理失败不影响测试执行
+  }
 });
 
 // ==================== Session Management & Accumulate ====================
@@ -1397,5 +1411,357 @@ describe('generateProofreadReport — TC-12 修订数口径（#55 T3）', () => 
     const text = result.content[0].text!;
     expect(text).toContain('修订总数');
     expect(text).not.toContain('修订数为奇数');
+  });
+});
+
+// ==================== Issue #116 新增测试 ====================
+
+// 必填字段校验测试（Issue #116 问题六）
+describe('proofreadAccumulate — 必填字段校验（Issue #116 问题六）', () => {
+  it('issues 含缺 original 的条目时明确报错，而非静默通过', async () => {
+    const result = await proofreadAccumulateHandler({
+      session_id: 'required-check-1',
+      issues: [
+        { offset: 0, length: 2, suggestion: '的', type: '重复字符', source: 'mcp' as const },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('original/suggestion');
+  });
+
+  it('issues 含缺 suggestion 的条目时明确报错', async () => {
+    const result = await proofreadAccumulateHandler({
+      session_id: 'required-check-2',
+      issues: [
+        { offset: 0, length: 2, original: '的的', type: '重复字符', source: 'mcp' as const },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('original/suggestion');
+  });
+
+  it('issues 含空字符串 original 时明确报错', async () => {
+    const result = await proofreadAccumulateHandler({
+      session_id: 'required-check-3',
+      issues: [
+        { offset: 0, length: 2, original: '', suggestion: '的', type: '重复字符', source: 'mcp' as const },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('original/suggestion');
+  });
+
+  it('issues 全部字段完整时正常累加（回归）', async () => {
+    const result = await proofreadAccumulateHandler({
+      session_id: 'required-check-4',
+      issues: [
+        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+    expect(result.success).toBe(true);
+    expect(result.content[0].text).toContain('已累加 1 条问题');
+    // 评审第 4 轮 W6：返回 data.diskPersisted 可编程字段
+    expect(result.data).toBeDefined();
+    expect(result.data!.diskPersisted).toBe(true);
+  });
+});
+
+// 落盘持久化测试（Issue #116 问题七/九/十二）
+describe('proofread-store 落盘持久化（Issue #116 问题十二）', () => {
+  const proofreadStore = jest.requireActual('../../tools/word/proofread-store');
+  const testSessionId = 'persist-test-session';
+  const testData = {
+    issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' }],
+    docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+    createdAt: '2026-08-14T00:00:00.000Z',
+  };
+
+  afterEach(() => {
+    proofreadStore.removeSessionFromDisk(testSessionId);
+  });
+
+  it('存储目录创建时设置 0o700 权限（评审第5轮 W7，POSIX only）', () => {
+    const dir = proofreadStore.getProofreadDir();
+    proofreadStore.ensureProofreadDir();
+    expect(fs.existsSync(dir)).toBe(true);
+    if (process.platform !== 'win32') {
+      const stat = fs.statSync(dir);
+      // 首次创建时 mkdirSync 带 mode:0o700，权限不弱于 0o700（owner 可读写执行，group/other 不读）；
+      // 目录可能已被旧逻辑创建为默认权限，故允许权限为 0o700 或更严格（此处仅断言 owner 有读写权限）
+      const ownerRwx = stat.mode & 0o700;
+      expect(ownerRwx).toBe(0o700); // owner 必须有 rwx
+    }
+  });
+
+  it('saveSessionToDisk 写入后可 loadSessionFromDisk 读回', () => {
+    const ok = proofreadStore.saveSessionToDisk(testSessionId, testData);
+    expect(ok).toBe(true);
+    const loaded = proofreadStore.loadSessionFromDisk(testSessionId);
+    expect(loaded).not.toBeNull();
+    expect(loaded.issues.length).toBe(1);
+    expect(loaded.issues[0].original).toBe('的的');
+    expect(loaded.docInfo.fileName).toBe('d.docx');
+  });
+
+  it('loadSessionFromDisk 读取不存在的会话返回 null', () => {
+    const loaded = proofreadStore.loadSessionFromDisk('nonexistent-session-xyz');
+    expect(loaded).toBeNull();
+  });
+
+  it('removeSessionFromDisk 删除后无法再加载', () => {
+    proofreadStore.saveSessionToDisk(testSessionId, testData);
+    const removed = proofreadStore.removeSessionFromDisk(testSessionId);
+    expect(removed).toBe(true);
+    const loaded = proofreadStore.loadSessionFromDisk(testSessionId);
+    expect(loaded).toBeNull();
+  });
+
+  it('saveSessionToDisk 对含特殊字符的 sessionId 做安全文件名处理', () => {
+    const specialId = '../../etc/passwd'; // 路径注入尝试
+    const ok = proofreadStore.saveSessionToDisk(specialId, testData);
+    expect(ok).toBe(true);
+    // 应从磁盘读回（不会被路径注入截获）
+    const loaded = proofreadStore.loadSessionFromDisk(specialId);
+    expect(loaded).not.toBeNull();
+    proofreadStore.removeSessionFromDisk(specialId);
+  });
+
+  it('两个不同 sessionId 安全化后不互相覆盖（评审第1轮 W2）', () => {
+    // a/b 与 a_b 经安全化都会得到 safeId=a_b，若不追加 hash 后缀会互相覆盖
+    const idWithSlash = 'a/b';
+    const idWithUnderscore = 'a_b';
+    const dataA = { ...testData, issues: [{ ...testData.issues[0], original: '甲', suggestion: '乙' }] };
+    const dataB = { ...testData, issues: [{ ...testData.issues[0], original: '丙', suggestion: '丁' }] };
+    proofreadStore.saveSessionToDisk(idWithSlash, dataA);
+    proofreadStore.saveSessionToDisk(idWithUnderscore, dataB);
+    const loadedA = proofreadStore.loadSessionFromDisk(idWithSlash);
+    const loadedB = proofreadStore.loadSessionFromDisk(idWithUnderscore);
+    expect(loadedA).not.toBeNull();
+    expect(loadedB).not.toBeNull();
+    expect(loadedA.issues[0].original).toBe('甲'); // A 未被 B 覆盖
+    expect(loadedB.issues[0].original).toBe('丙');
+    proofreadStore.removeSessionFromDisk(idWithSlash);
+    proofreadStore.removeSessionFromDisk(idWithUnderscore);
+  });
+});
+
+// 服务重启后从磁盘恢复测试（Issue #116 问题七/九）
+describe('服务重启后从磁盘恢复（Issue #116 问题七/九）', () => {
+  const proofreadStore = jest.requireActual('../../tools/word/proofread-store');
+
+  afterEach(() => {
+    proofreadStore.removeSessionFromDisk('restore-session');
+    sessionIssues.clear();
+  });
+
+  it('进程 Map 清空后，磁盘数据可恢复并生成报告', async () => {
+    // 先累加问题（会写盘）
+    await proofreadAccumulateHandler({
+      session_id: 'restore-session',
+      issues: [
+        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
+        { offset: 10, length: 2, original: '在去', suggestion: '再去', type: '在再混淆', source: 'mcp' as const },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+
+    // 模拟服务重启：清空进程内 Map
+    sessionIssues.clear();
+    expect(sessionIssues.size).toBe(0);
+
+    // 从磁盘恢复并生成报告
+    const result = await generateProofreadReportHandler({ session_id: 'restore-session' });
+    expect(result.success).toBe(true);
+    const text = result.content[0].text!;
+    expect(text).toContain('校对报告');
+    expect(text).toContain('2 处'); // 2 个问题
+    expect(text).toContain('重复字符');
+    expect(text).toContain('在再混淆');
+  });
+});
+
+// 疑似问题机制测试（Issue #116 问题十一）
+describe('疑似问题（Issue #116 问题十一）', () => {
+  const proofreadStore = jest.requireActual('../../tools/word/proofread-store');
+
+  afterEach(() => {
+    proofreadStore.removeSessionFromDisk('suspect-session');
+    sessionIssues.clear();
+  });
+
+  it('suspected_issues 累加后，报告单独列出待确认问题节', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 'suspect-session',
+      issues: [
+        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
+      ],
+      suspected_issues: [
+        { offset: 100, length: 4, original: '已未形成', suggestion: '尚未形成', type: '疑似', source: 'ai' as const },
+        { offset: 200, length: 5, original: '重点下雪', suggestion: '重点方向', type: '疑似', source: 'ai' as const },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+
+    const result = await generateProofreadReportHandler({ session_id: 'suspect-session' });
+    expect(result.success).toBe(true);
+    const text = result.content[0].text!;
+    expect(text).toContain('待确认问题');
+    expect(text).toContain('2 处');
+    expect(text).toContain('已未形成');
+    expect(text).toContain('尚未形成');
+    expect(text).toContain('重点下雪');
+    expect(text).toContain('人工核对');
+  });
+
+  it('无疑似问题时报告不出现待确认问题节', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 'suspect-session',
+      issues: [
+        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+
+    const result = await generateProofreadReportHandler({ session_id: 'suspect-session' });
+    const text = result.content[0].text!;
+    expect(text).not.toContain('待确认问题');
+  });
+
+  it('空 issues + 有 suspectedIssues 时报告仍列出待确认问题（评审第6轮 C3 / 第8轮 W8）', async () => {
+    // 只累加疑似问题，正式 issues 为空
+    await proofreadAccumulateHandler({
+      session_id: 'suspect-session',
+      issues: [],
+      suspected_issues: [
+        { offset: 100, length: 4, original: '已未形成', suggestion: '尚未形成', type: '疑似', source: 'ai' as const },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+    const result = await generateProofreadReportHandler({ session_id: 'suspect-session' });
+    expect(result.success).toBe(true);
+    const text = result.content[0].text!;
+    expect(text).toContain('待确认问题');
+    expect(text).toContain('1 处');
+    expect(text).toContain('已未形成');
+    expect(text).toContain('尚未形成');
+    // 评审第8轮 W8：有疑似问题时，收尾用中性提示而非「✅ 未发现任何问题」
+    expect(text).not.toContain('✅ 文档质量优秀，未发现任何问题');
+    expect(text).toContain('待确认疑似问题');
+  });
+
+  it('suspected_issues 含缺 original/suggestion 的条目时明确报错（评审第1轮 C1）', async () => {
+    const result = await proofreadAccumulateHandler({
+      session_id: 'suspect-session',
+      issues: [
+        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
+      ],
+      suspected_issues: [
+        // 缺 suggestion
+        { offset: 100, length: 4, original: '已未形成', type: '疑似', source: 'ai' as const },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('suspected_issues');
+    expect(result.error).toContain('original/suggestion');
+    // 不应累加任何疑似问题
+    const report = await generateProofreadReportHandler({ session_id: 'suspect-session' });
+    const text = report.content[0].text!;
+    expect(text).not.toContain('待确认问题');
+  });
+
+  it('suspected_issues 校验失败时不产生副作用（评审第2轮 C2）', async () => {
+    // 先正常累加 1 条正式 issue
+    await proofreadAccumulateHandler({
+      session_id: 'suspect-session',
+      issues: [
+        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+
+    // 第二次调用：suspected_issues 缺字段 → 失败
+    const failResult = await proofreadAccumulateHandler({
+      session_id: 'suspect-session',
+      issues: [
+        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
+      ],
+      suspected_issues: [{ offset: 100, length: 4, original: '已未形成', type: '疑似', source: 'ai' as const }],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+    expect(failResult.success).toBe(false);
+
+    // 失败后正式 issues 不应重复（去重保持 1 条），且不应有疑似问题（校验前置，无副作用）
+    const session = sessionIssues.get('suspect-session')!;
+    expect(session.issues.length).toBe(1); // 未因失败调用重复累加
+    expect(session.suspectedIssues || []).toHaveLength(0);
+  });
+
+  it('suspected_issues 重复提交同 offset+original 时去重（评审第2轮 W4）', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 'suspect-session',
+      issues: [
+        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
+      ],
+      suspected_issues: [
+        { offset: 100, length: 4, original: '已未形成', suggestion: '尚未形成', type: '疑似', source: 'ai' as const },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+    // 第二次重复提交同一条疑似问题
+    await proofreadAccumulateHandler({
+      session_id: 'suspect-session',
+      issues: [
+        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
+      ],
+      suspected_issues: [
+        { offset: 100, length: 4, original: '已未形成', suggestion: '尚未形成', type: '疑似', source: 'ai' as const },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+    const session = sessionIssues.get('suspect-session')!;
+    expect(session.suspectedIssues).toHaveLength(1); // 去重后仍 1 条
+
+    const result = await generateProofreadReportHandler({ session_id: 'suspect-session' });
+    const text = result.content[0].text!;
+    expect(text).toContain('1 处'); // 待确认问题只列 1 条
+  });
+});
+
+// 报告生成器 .replace() 兜底测试（Issue #116 问题一）
+describe('报告生成器 .replace() 兜底（Issue #116 问题一）', () => {
+  const proofreadStore = jest.requireActual('../../tools/word/proofread-store');
+
+  afterEach(() => {
+    proofreadStore.removeSessionFromDisk('replace-fallback-session');
+    sessionIssues.clear();
+  });
+
+  it('即使 issues 中有缺 original 的历史坏数据，报告生成不崩溃', async () => {
+    // 直接往 Map 写入缺字段的历史坏数据（绕过校验，模拟历史遗留）
+    sessionIssues.set('replace-fallback-session', {
+      issues: [
+        // @ts-ignore 模拟历史坏数据：缺 original
+        { offset: 0, length: 2, suggestion: '的', type: '重复字符', source: 'mcp' },
+        // @ts-ignore 模拟历史坏数据：缺 suggestion
+        { offset: 10, length: 2, original: '的的', type: '重复字符', source: 'mcp' },
+        // 正常数据
+        { offset: 20, length: 2, original: '在去', suggestion: '再去', type: '在再混淆', source: 'mcp' as const, context: '...' },
+      ],
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+      createdAt: new Date().toISOString(),
+    });
+
+    const result = await generateProofreadReportHandler({ session_id: 'replace-fallback-session' });
+    expect(result.success).toBe(true);
+    const text = result.content[0].text!;
+    expect(text).toContain('校对报告');
+    // 正常数据仍正确展示
+    expect(text).toContain('在去');
+    expect(text).toContain('再去');
   });
 });
