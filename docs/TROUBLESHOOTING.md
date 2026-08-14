@@ -245,8 +245,9 @@ Error: {"name":"UnknownError","data":{"message":"Unexpected server error. Check 
 **如何查看服务端日志（关键）**：
 
 1. 确保已升级到含 **日志落盘** 的版本（`opencode-wps/launcher.js` 已将 opencode serve 的 stdout/stderr 写入日志文件，而非丢弃）。
-2. 打开日志文件：`C:\Users\<你的用户名>\.opencode\logs\opencode-serve.log`
+2. 打开日志文件（按实际用户目录定位，Windows 默认为 `C:\Users\<你的用户名>`）：`<用户目录>\.opencode\logs\opencode-serve.log`
 3. 在日志中搜索 `err_xxxxxxxx` 或报错时间点前后的堆栈，即可定位真正原因。
+4. 日志采用**追加模式**，单文件超 5MB 会自动重命名为 `opencode-serve.log.old` 并重新开始记录，避免无限增长占满磁盘；如磁盘紧张可手动删除 `.old` 历史文件。
 
 **临时绕过 launcher 手动启动查看日志**：
 

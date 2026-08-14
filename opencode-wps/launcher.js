@@ -10,6 +10,19 @@ let opencodeProcess = null;
 let opencodeCwd = '';
 let dockedPid = 0;
 let stateLock = false;
+// opencode serve 服务端日志写流（模块级持有，便于 stop/exit 时统一关闭，避免资源泄漏）
+let opencodeLogStream = null;
+
+// 关闭并释放 opencode serve 日志写流（幂等，可安全重复调用）
+function closeOpenCodeLogStream() {
+    if (opencodeLogStream) {
+        try {
+            opencodeLogStream.end();
+            opencodeLogStream.destroy();
+        } catch (e) { /* 忽略关闭过程中的错误 */ }
+        opencodeLogStream = null;
+    }
+}
 
 // ===== 启动时清理孤儿 MCP 进程 =====
 function cleanupOrphanedMcp() {
@@ -141,20 +154,28 @@ function startOpenCode(cwd, port) {
     // 服务端日志落盘：stdio 由 'ignore' 改为管道，stdout/stderr 写入日志文件。
     // 之前 'ignore' 直接丢弃 opencode serve 的全部日志，导致用户无法查看
     // 服务端日志来定位 UnknownError（如 err_edae3507）等运行期错误。
+    // 先关闭上一次遗留的日志写流（防止重复启动时产生孤儿流，符合重入安全）
+    closeOpenCodeLogStream();
     var logFile = null;
-    var logStream = null;
     try {
         var logDir = path.join(os.homedir(), '.opencode', 'logs');
         if (!fs.existsSync(logDir)) { fs.mkdirSync(logDir, { recursive: true }); }
         logFile = path.join(logDir, 'opencode-serve.log');
+        // 简单大小轮转：超过阈值（如 5MB）时把旧日志重命名为 .old，避免无限增长占满磁盘
+        try {
+            var MAX_LOG_BYTES = 5 * 1024 * 1024;
+            if (fs.existsSync(logFile) && fs.statSync(logFile).size > MAX_LOG_BYTES) {
+                fs.renameSync(logFile, logFile + '.old');
+            }
+        } catch (e) { /* 轮转失败不影响日志落盘 */ }
         // 'a' 追加模式：保留历史日志，便于对比多次运行
-        logStream = fs.createWriteStream(logFile, { flags: 'a' });
+        opencodeLogStream = fs.createWriteStream(logFile, { flags: 'a' });
     } catch (e) {
         console.log('[launcher] Failed to init opencode log file: ' + e.message);
     }
 
     try {
-        var stdioArr = logStream ? ['ignore', logStream, logStream] : ['ignore', 'ignore', 'ignore'];
+        var stdioArr = opencodeLogStream ? ['ignore', opencodeLogStream, opencodeLogStream] : ['ignore', 'ignore', 'ignore'];
         opencodeProcess = spawn(
             isPs1 ? 'powershell.exe' : opencodeBin,
             isPs1 
@@ -176,11 +197,15 @@ function startOpenCode(cwd, port) {
         opencodeProcess.on('error', function(err) {
             console.log('[launcher] Error: ' + err.message);
             opencodeProcess = null;
+            // 子进程启动失败，释放日志写流
+            closeOpenCodeLogStream();
         });
 
         opencodeProcess.on('exit', function(code) {
             console.log('[launcher] Exited: ' + code);
             opencodeProcess = null;
+            // 子进程退出后释放日志写流，确保末尾日志落盘
+            closeOpenCodeLogStream();
             // 清理 PID 文件
             var pidFile = path.join(__dirname, 'opencode.pid');
             try { fs.unlinkSync(pidFile); } catch (e) {}
@@ -306,6 +331,8 @@ function stopOpenCode() {
         }
         opencodeProcess = null;
     }
+    // 关闭 opencode serve 日志写流，确保末尾日志落盘
+    closeOpenCodeLogStream();
 
     // 按端口关闭（14096 和 14097）- 精确杀，不全杀
     try {

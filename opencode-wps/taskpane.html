@@ -1365,9 +1365,9 @@ function formatSendError(status, respText) {
             var ref = obj.data && obj.data.ref ? obj.data.ref : '';
             msg = 'Error: 服务端处理失败（' + (obj.data && obj.data.message ? obj.data.message : 'Unexpected server error') + '）' +
                   (ref ? '，引用号 ' + ref + '。' : '。') +
-                  '\n\u256c OpenCode 服务端内部错误，非插件问题。请查看服务端日志定位根因：\n' +
-                  '    C:\\Users\\<你的用户名>\\.opencode\\logs\\opencode-serve.log（搜索 ' + (ref || '报错时间点') + '）\n' +
-                  '常见原因：模型 API key 失效/限流、模型不存在、provider 配置错误，或文档上下文过大。';
+                  '\n\u256c OpenCode 服务端内部错误，非插件问题。请查看服务端日志定位根因（按实际用户目录查找）：\n' +
+                  '    <用户目录>\\.opencode\\logs\\opencode-serve.log（如 C:\\Users\\<你的用户名>，搜索 ' + (ref || '报错时间点') + '）\n' +
+                  '常见原因：模型 API key 失效/限流、模型不存在、provider 配置错误，或文档上下文过大。详见 docs/TROUBLESHOOTING.md「UnknownError 排查」。';
         }
     } catch (e) { /* 非 JSON 错误，保留原始信息 */ }
     return msg;
