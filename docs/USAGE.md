@@ -282,7 +282,7 @@ curl http://127.0.0.1:14097/docinfo
 | `58890` | WPS 服务保活 | Win/Mac 内置 RelayHttpServer 探测口（`wps-keepalive.ts` 定期探测，断开自动重启） |
 | `3444` | 开发服务器 | `opencode-wps/serve.js` 静态开发服务器（仅开发用） |
 
-> 📚 **交叉参考**：端口对应的 MCP Server 三层工具体系与开发映射详见 [DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md#三层工具体系)；内置工具完整清单与两级网关调用规范详见 [SKILLS.md](./SKILLS.md#内置工具12个所有-skill-共用)。
+> 📚 **交叉参考**：端口对应的 MCP Server 三层工具体系与开发映射详见 [DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md#三层工具体系)；内置工具完整清单与两级网关调用规范详见 [SKILLS.md](./SKILLS.md#内置工具12-个所有-skill-共用)。
 
 ### 6.4 手动管理
 
