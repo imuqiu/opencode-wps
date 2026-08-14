@@ -1372,7 +1372,8 @@ function handleSSEEvent(data) {
  */
 function handlePermissionRequest(type, props) {
     // 从不同字段结构提取权限请求信息
-    var permissionID = props.permissionID || props.permission_id || props.id || props.requestID || (props.permission ? props.permission.id : '') || ''
+    // 优先取内嵌 permission.id（最可靠），其次取显式 ID 字段，最后才用 props.id 兑底
+    var permissionID = (props.permission ? props.permission.id : '') || props.permissionID || props.permission_id || props.requestID || props.id || ''
     var toolInfo = props.tool || props.request || props.permission || null
     var toolName = ''
     var toolArgs = ''
@@ -1429,6 +1430,7 @@ function respondPermission(response) {
         // 失败时回退：尝试 control/response 端点
         PENDING_PERMISSION = null
         console.error('[Permission] respond failed:', t)
+        addSystemMessage('⚠️ 权限响应失败，正在尝试通过 control 端点重试…')
         sendControlPermissionResponse(response, remember)
     })
 }
