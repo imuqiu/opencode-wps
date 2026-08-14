@@ -126,7 +126,8 @@ wps-office-mcp/
 │   ├── client/           # 跨平台路由（Win→PowerShell COM, Mac/Linux→HTTP poll）
 │   │   ├── wps-client.ts
 │   │   ├── mac-poll-server.ts   # Mac 反向轮询（Linux 复用本类）
-│   │   └── linux-poll-server.ts # Linux 轮询
+│   │   ├── linux-poll-server.ts # Linux 轮询
+│   │   └── wps-keepalive.ts    # 跨平台服务保活（Win/Mac 探测 :58890，Linux 探测 WPS 主进程）
 │   ├── tools/            # 三层工具
 │   │   ├── index.ts      # 注册工具（allTools）
 │   │   ├── gateway/      # Gateway（COM_ACTIONS 索引）

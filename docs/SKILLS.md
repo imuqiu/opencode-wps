@@ -96,7 +96,7 @@ node install-addons.js
 用户输入："帮我算一下 A 列的总和"
 
 AI 识别：使用 wps-excel skill
-1. 调用 `wps_excel_get_range` 获取 A 列数据
+1. 调用 `wps_excel_read_range` 获取 A 列数据
 2. 调用 `wps_excel_set_formula` 设置 =SUM(A:A) 公式
 3. 返回结果
 
@@ -190,7 +190,7 @@ AI 识别：使用 wps-ppt skill
 **能力**：公式编写、数据清洗、图表创建、透视表、条件格式、数据分析。
 
 **典型场景**：
-- 「帮我算一下 A 列的总和」（`wps_excel_get_range` + `wps_excel_set_formula` =SUM(A:A)）
+- 「帮我算一下 A 列的总和」（`wps_excel_read_range` + `wps_excel_set_formula` =SUM(A:A)）
 - 「删掉 A 列的空行」（数据清洗）
 - 「根据 1-6 月销量生成柱状图」（图表创建）
 
