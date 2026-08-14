@@ -649,6 +649,8 @@ var server = http.createServer(function(req, res) {
         // 但 launcher 重启后（opencodeProcess 复位为 null）而 14096 端口仍被占用时，
         // 进程其实仍在运行 —— 需回退探测端口，避免 UI 误显 stopped（Issue #114 回归）。
         var running = opencodeProcess !== null;
+        // 端口监听探测：仅 running=false 时才需实际 netstat；running=true 时端口必然占用，
+        // portOpen 恒 true（避免多余 netstat）。前端可用 running || portOpen 交叉判断。
         var portOpen = running ? true : isPortListening(OPENCODE_PORT);
         if (!running) {
             running = portOpen;

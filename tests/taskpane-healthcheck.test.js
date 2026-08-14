@@ -560,6 +560,40 @@ test('launcher-fallback: /global/health 持续失败但 launcher 确认端口监
   assertEqual(connected, 1, 'SSE 已被 close，launcher 确认后应重建连接（onServerConnected）');
 });
 
+test('probeLauncherRunning: launcher 返回 running 或 portOpen 任一为真即判定服务在跑', function () {
+  var s = loadTaskpaneScript();
+  // 场景 A：running=true（进程引用在）
+  var ra = null;
+  s.probeLauncherRunning(function (r) { ra = r; });
+  var xa = s.__lastXhr();
+  xa.status = 200;
+  xa.responseText = JSON.stringify({ running: true, portOpen: false });
+  xa.onload();
+  assertEqual(ra, true, 'running=true 时应判定运行中');
+  // 场景 B：running=false 但 portOpen=true（launcher 重启、端口仍监听）
+  var rb = null;
+  s.probeLauncherRunning(function (r) { rb = r; });
+  var xb = s.__lastXhr();
+  xb.status = 200;
+  xb.responseText = JSON.stringify({ running: false, portOpen: true });
+  xb.onload();
+  assertEqual(rb, true, 'portOpen=true 时应判定运行中');
+  // 场景 C：running=false 且 portOpen=false（服务真实停止）
+  var rc = null;
+  s.probeLauncherRunning(function (r) { rc = r; });
+  var xc = s.__lastXhr();
+  xc.status = 200;
+  xc.responseText = JSON.stringify({ running: false, portOpen: false });
+  xc.onload();
+  assertEqual(rc, false, 'running/portOpen 均 false 时应判定停止');
+});
+
+test('init-launcher-fallback: init 首屏含 launcher 回退分支（/global/health 失败 → 回退 launcher）', function () {
+  var src = fs.readFileSync(TASKPANE_HTML, 'utf-8');
+  assertTrue(/else if \(launcherOk\)/.test(src), 'init 应含 launcher 回退分支');
+  assertTrue(/probeLauncherRunning\(function\(launcherRunning\)/.test(src), 'launcher 回退分支应调用 probeLauncherRunning');
+});
+
 // ==================== 测试结果汇总 ====================
 
 console.log('\n========== 测试结果 ==========');
