@@ -216,10 +216,11 @@ test('/status: 存在 isPortListening 端口回退探测（launcher 重启后仍
   var src = fs.readFileSync(path.join(__dirname, '..', 'opencode-wps', 'launcher.js'), 'utf-8');
   // isPortListening 函数存在
   assertTrue(/function isPortListening\s*\(/.test(src), '应定义 isPortListening 函数');
-  // /status 中 opencodeProcess 为 null 时回退探测端口
-  assertTrue(/running = isPortListening\(OPENCODE_PORT\)/.test(src), '/status 应在 opencodeProcess 为空时回退探测端口');
+  // /status 中 opencodeProcess 为 null 时回退探测端口（portOpen 源），running 复用 portOpen
+  assertTrue(/portOpen = running \? true : isPortListening\(OPENCODE_PORT\)/.test(src), '/status 应通过 portOpen 回退探测端口');
+  assertTrue(/running = portOpen;/.test(src), '/status 中 running 应复用 portOpen（避免重复 netstat）');
   // 暴露 portOpen 字段供前端多源交叉验证
-  assertTrue(/portOpen: isPortListening\(OPENCODE_PORT\)/.test(src), '/status 应暴露 portOpen 字段');
+  assertTrue(/portOpen: portOpen/.test(src), '/status 应暴露 portOpen 字段');
   // OPENCODE_PORT 常量已定义
   assertTrue(/const OPENCODE_PORT = 14096;/.test(src), '应定义 OPENCODE_PORT=14096 常量');
 });
