@@ -8,6 +8,13 @@
  * - wps_word_proofread_accumulate: 累加校对问题到会话
  * - wps_word_generate_proofread_report: 生成五维校对报告
  *
+ * 落盘持久化配套：proofread-store.ts（Issue #116）
+ * - 校对数据落盘到 ~/.opencode-wps/proofread-sessions/{sessionId}.json
+ * - 服务重启后可从磁盘恢复（getSessionOrLoad）
+ * - 必填字段校验（original/suggestion）在 accumulate 入口拦截
+ * - 报告生成器 .replace() 处兜底，历史坏数据不崩溃
+ * - 疑似问题（suspectedIssues）单独列出待确认
+ *
  * ⚠️ 重要：这两个工具是 GATEWAY_ONLY（网关专用）——定义在 allTools 中
  * 仅用于 gateway HANDLER_MAP 路由映射（gateway/index.ts 遍历 allTools 建索引），
  * 并不直连注册为 MCP 工具。唯一入口是 wps_office_execute 网关
@@ -36,6 +43,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import {
+  saveSessionToDisk,
+  loadSessionFromDisk,
+  removeSessionFromDisk,
+} from './proofread-store';
 import {
   ToolDefinition,
   ToolHandler,
@@ -78,6 +90,8 @@ interface SessionData {
   docInfo: DocInfo;
   createdAt: string;
   totalRevisions?: number;
+  /** 疑似问题（Issue #116 问题十一）：AI 识别但未确认的问题，报告单独列出「待确认」 */
+  suspectedIssues?: ProofreadIssueEntry[];
 }
 
 // ==================== 会话 Map 与清理机制 ====================
@@ -101,6 +115,8 @@ function enforceSessionLimit(): void {
   for (const [sid] of evictable) {
     sessionIssues.delete(sid);
     sessionLastAccess.delete(sid);
+    // LRU 淘汰同步清理磁盘文件（Issue #116 问题十二）
+    removeSessionFromDisk(sid);
   }
 }
 
@@ -117,7 +133,27 @@ function touchSession(sessionId: string): void {
 export function releaseSession(sessionId: string): boolean {
   const removed = sessionIssues.delete(sessionId);
   sessionLastAccess.delete(sessionId);
+  // 同步清理磁盘文件（Issue #116 问题十二：服务端落盘持久化的清理口径）
+  removeSessionFromDisk(sessionId);
   return removed;
+}
+
+/**
+ * 获取会话数据，优先内存 Map，缺失时尝试从磁盘恢复（Issue #116 问题七/九/十二）
+ *
+ * 服务重启后进程内 Map 清空，但磁盘仍有该 session 的数据时，从磁盘加载恢复。
+ */
+function getSessionOrLoad(sessionId: string): SessionData | undefined {
+  const memSession = sessionIssues.get(sessionId);
+  if (memSession) return memSession;
+  const diskSession = loadSessionFromDisk<SessionData>(sessionId);
+  if (diskSession && diskSession.issues) {
+    // 恢复进内存 Map（保证后续操作一致），并刷新访问时间
+    sessionIssues.set(sessionId, diskSession);
+    touchSession(sessionId);
+    return diskSession;
+  }
+  return undefined;
 }
 
 // ==================== TYPE_METRIC_MAP ====================
@@ -528,8 +564,8 @@ export const proofreadAccumulateDefinition: ToolDefinition = {
           properties: {
             offset: { type: 'number', description: '文档绝对偏移位置（Layer 2 输出驼峰字段，缺失时报告位置列显示「位置未知」；兼容字符串数字如 "3"，自动归一化为数值）' },
             length: { type: 'number', description: '问题文本长度' },
-            original: { type: 'string', description: '原文' },
-            suggestion: { type: 'string', description: '建议修改' },
+            original: { type: 'string', description: '原文（必填）' },
+            suggestion: { type: 'string', description: '建议修改（必填）' },
             type: { type: 'string', description: '问题类型（如 的得混淆/重复字符/口语化 等）' },
             context: { type: 'string', description: '上下文' },
             source: { type: 'string', description: '检测来源: mcp（Layer 1）或 ai（Layer 2）' },
@@ -537,6 +573,7 @@ export const proofreadAccumulateDefinition: ToolDefinition = {
             paragraph_index: { type: 'number', description: '段落索引蛇形旧别名（兼容存量 AI 输出，自动归一化到 paragraphIndex；兼容字符串数字）' },
             reason: { type: 'string', description: 'AI 检测理由（仅 source=ai 时有效）' },
           },
+          required: ['original', 'suggestion'],
         },
       },
       doc_info: {
@@ -553,6 +590,24 @@ export const proofreadAccumulateDefinition: ToolDefinition = {
         type: 'number',
         description: '当前累计修订数（可选，用于报告统计）',
       },
+      suspected_issues: {
+        type: 'array',
+        description: '疑似问题列表（可选，Issue #116 问题十一）：AI 识别但未确认的问题，报告单独列出「待确认问题」节，不纳入五维评分',
+        items: {
+          type: 'object',
+          properties: {
+            offset: { type: 'number', description: '文档绝对偏移位置（可选）' },
+            length: { type: 'number', description: '问题文本长度' },
+            original: { type: 'string', description: '原文（必填）' },
+            suggestion: { type: 'string', description: '疑为的修改建议（必填）' },
+            type: { type: 'string', description: '问题类型（可选）' },
+            context: { type: 'string', description: '上下文（可选）' },
+            source: { type: 'string', description: '检测来源: mcp 或 ai' },
+            paragraphIndex: { type: 'number', description: '段落索引（可选）' },
+          },
+          required: ['original', 'suggestion'],
+        },
+      },
     },
     required: ['session_id', 'issues'],
   },
@@ -561,11 +616,13 @@ export const proofreadAccumulateDefinition: ToolDefinition = {
 export const proofreadAccumulateHandler: ToolHandler = async (
   args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  const { session_id, issues, doc_info, total_revisions } = args as {
+  const { session_id, issues, doc_info, total_revisions, suspected_issues } = args as {
     session_id: string;
     issues?: ProofreadIssueEntry[];
     doc_info?: DocInfo;
     total_revisions?: number;
+    /** 疑似问题（Issue #116 问题十一）：AI 识别但未确认的问题 */
+    suspected_issues?: ProofreadIssueEntry[];
   };
 
   if (!session_id || typeof session_id !== 'string') {
@@ -586,8 +643,8 @@ export const proofreadAccumulateHandler: ToolHandler = async (
     };
   }
 
-  // 获取或创建会话
-  let session = sessionIssues.get(session_id);
+  // 获取或创建会话（优先内存，磁盘兑底——服务重启后可从磁盘恢复，Issue #116 问题七/九/十二）
+  let session = getSessionOrLoad(session_id);
   if (!session) {
     if (!doc_info) {
       return {
@@ -611,6 +668,29 @@ export const proofreadAccumulateHandler: ToolHandler = async (
   }
   // 刷新最后访问时间并执行上限淘汰
   touchSession(session_id);
+
+  // 必填字段校验（Issue #116 问题六）：original/suggestion 缺失时明确报错，而非静默通过
+  // 早期暴露错误（而非报告阶段才因 .replace() 读 undefined 而崩溃）
+  const missingFields = issues.filter(
+    (i) =>
+      (typeof i.original !== 'string' || i.original.trim() === '') ||
+      (typeof i.suggestion !== 'string' || i.suggestion.trim() === '')
+  );
+  if (missingFields.length > 0) {
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [
+        {
+          type: 'text',
+          text:
+            `issues 含 ${missingFields.length} 条缺少必填字段 original/suggestion，未累加。\n` +
+            `每条校对问题必须携带 original（原文）和 suggestion（建议修改）两个必填字段。`,
+        },
+      ],
+      error: `issues 含 ${missingFields.length} 条缺少 original/suggestion`,
+    };
+  }
 
   // 更新 docInfo（如果提供了新的）
   if (doc_info) {
@@ -696,6 +776,22 @@ export const proofreadAccumulateHandler: ToolHandler = async (
   }
   const dedupedCount = batchDeduped;
 
+  // 疑似问题累加（Issue #116 问题十一）：AI 识别但未确认的问题，报告单独列出「待确认」
+  // 支持通过 suspected_issues 参数累加，与正式问题分开存储
+  if (suspected_issues && Array.isArray(suspected_issues)) {
+    const normalizedSuspected = suspected_issues.map((i) =>
+      normalizeIssueLocation(normalizeIssueSource(normalizeIssueType(i)))
+    );
+    if (!session.suspectedIssues) {
+      session.suspectedIssues = [];
+    }
+    session.suspectedIssues.push(...normalizedSuspected);
+  }
+
+  // 增量落盘（Issue #116 问题十二）：每次累加后同步到磁盘，服务重启后可恢复
+  // 落盘失败不阻塞主流程（返回警告而非失败），但需向 AI 暴露信号
+  const diskWriteSuccess = saveSessionToDisk(session_id, session);
+
   return {
     id: uuidv4(),
     success: true,
@@ -706,6 +802,11 @@ export const proofreadAccumulateHandler: ToolHandler = async (
           `已累加 ${issues.length} 条问题到会话 ${session_id}。\n` +
           `当前会话累计: ${session.issues.length} 条问题` +
           (dedupedCount > 0 ? `（本批去重 ${dedupedCount} 条）` : '') +
+          (session.suspectedIssues && session.suspectedIssues.length > 0
+            ? `；疑似问题 ${session.suspectedIssues.length} 条（待确认）`
+            : '') +
+          (diskWriteSuccess ? '' : `\n⚠️ 会话数据落盘失败（存储目录不可写），服务重启后数据可能丢失`)
+          +
           (missingOffsetCount > 0
             ? `；其中 ${missingOffsetCount} 条未携带绝对 offset，未参与去重（报告位置列显示「位置未知」）`
             : '') +
@@ -799,7 +900,8 @@ export const generateProofreadReportHandler: ToolHandler = async (
     };
   }
 
-  const session = sessionIssues.get(session_id);
+  // 获取会话数据（优先内存，磁盘兑底——服务重启后可从磁盘恢复，Issue #116 问题七/九/十二）
+  const session = getSessionOrLoad(session_id);
   if (!session) {
     return {
       id: uuidv4(),
@@ -1033,8 +1135,9 @@ export const generateProofreadReportHandler: ToolHandler = async (
 
     metricIssuesList.forEach((issue, idx) => {
       const location = formatIssueLocation(issue);
-      const escapedOriginal = issue.original.replace(/\|/g, '\\|').replace(/\n/g, ' ');
-      const escapedSuggestion = issue.suggestion.replace(/\|/g, '\\|').replace(/\n/g, ' ');
+      // Issue #116 问题一：original/suggestion 缺字段时兜底为空串，避免 .replace() 读 undefined 崩溃
+      const escapedOriginal = (issue.original || '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
+      const escapedSuggestion = (issue.suggestion || '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
       report += `| ${idx + 1} | ${location} | ${escapedOriginal} | ${escapedSuggestion} | ${issue.type} | ${issue.source === 'ai' ? 'AI' : 'MCP'} |\n`;
     });
 
@@ -1052,8 +1155,25 @@ export const generateProofreadReportHandler: ToolHandler = async (
     report += `|---|------|------|---------|------|------|\n`;
     unknownTypeIssues.forEach((issue, idx) => {
       const location = formatIssueLocation(issue);
-      const escapedOriginal = issue.original.replace(/\|/g, '\\|').replace(/\n/g, ' ');
-      const escapedSuggestion = issue.suggestion.replace(/\|/g, '\\|').replace(/\n/g, ' ');
+      // Issue #116 问题一：original/suggestion 缺字段时兜底为空串，避免 .replace() 读 undefined 崩溃
+      const escapedOriginal = (issue.original || '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
+      const escapedSuggestion = (issue.suggestion || '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
+      report += `| ${idx + 1} | ${location} | ${escapedOriginal} | ${escapedSuggestion} | ${issue.type || '（空）'} | ${issue.source === 'ai' ? 'AI' : 'MCP'} |\n`;
+    });
+    report += `\n`;
+  }
+
+  // 疑似问题（Issue #116 问题十一）：AI 识别但未确认的问题，单独列出「待确认」
+  if (session.suspectedIssues && session.suspectedIssues.length > 0) {
+    report += `### ⚠️ 待确认问题（未修改，请人工核对） — ${session.suspectedIssues.length} 处\n\n`;
+    report += `> **说明**：以下问题由 AI 在校对过程中识别为疑似问题，但尚未确认是否为真实错误，未进行修改。请人工核对后决定是否处理。\n\n`;
+    report += `| # | 位置 | 原文 | 疑为 | 类型 | 来源 |\n`;
+    report += `|---|------|------|------|------|------|\n`;
+    session.suspectedIssues.forEach((issue, idx) => {
+      const location = formatIssueLocation(issue);
+      // Issue #116 问题一：兜底为空串，避免 .replace() 读 undefined 崩溃
+      const escapedOriginal = (issue.original || '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
+      const escapedSuggestion = (issue.suggestion || '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
       report += `| ${idx + 1} | ${location} | ${escapedOriginal} | ${escapedSuggestion} | ${issue.type || '（空）'} | ${issue.source === 'ai' ? 'AI' : 'MCP'} |\n`;
     });
     report += `\n`;
@@ -1073,6 +1193,9 @@ export const generateProofreadReportHandler: ToolHandler = async (
   }
   report += `| **合计** | **${issues.length} 处** |\n`;
   report += `| 全部已修复 | ✅ |\n`;
+  if (session.suspectedIssues && session.suspectedIssues.length > 0) {
+    report += `| 待确认问题 | ${session.suspectedIssues.length} 处（见「待确认问题」节） |\n`;
+  }
   if (totalRevisions !== undefined) {
     const half = totalRevisions / 2;
     const isInteger = Number.isInteger(half);
