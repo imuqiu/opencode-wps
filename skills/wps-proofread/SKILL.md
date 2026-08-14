@@ -310,11 +310,13 @@ wps_office_execute({ tool_name: "getTrackChangesStatus", arguments: {} })
 **⚠️ 首次调用必须从第 1 段开始。** 插件强制校验：若 `lastBatchParaIndex === 0` 时 `start_paragraph !== 1` 则直接拒绝。
 
 ```javascript
+// 推荐每批 100 段（最多 200 段）。若文档特殊需超 100 段，请在分批计划中注明理由。
+var BATCH_SIZE = 100
 wps_office_execute({
   tool_name: "getDocumentParagraphs",
   arguments: {
-    start_paragraph: (batch - 1) * 200 + 1,  // 第1批: start=1
-    end_paragraph: Math.min(batch * 200, totalParagraphs)
+    start_paragraph: (batch - 1) * BATCH_SIZE + 1,  // 第1批: start=1
+    end_paragraph: Math.min(batch * BATCH_SIZE, totalParagraphs)
   }
 })
 ```
