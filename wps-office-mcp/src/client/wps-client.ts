@@ -198,8 +198,8 @@ async function execWpsAction(
 // 超时时间（毫秒）— 按工具类型区分
 const COM_TIMEOUT_DEFAULT = 30000;
 const COM_TIMEOUTS: Record<string, number> = {
-  getDocumentParagraphs: 30000, // 大批段落可能耗时较长
-  getDocumentTextByRange: 15000,
+  getDocumentParagraphs: 60000, // #116 问题八：大批段落 WPS COM 处理慢 + PowerShell 开销，30s 不够，提至 60s
+  getDocumentTextByRange: 30000, // #116 问题八：同样提至 30s
   proofreadBasic: 15000,
   replaceInParagraph: 10000,
   findReplace: 10000,
