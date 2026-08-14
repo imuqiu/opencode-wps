@@ -341,6 +341,7 @@ var HEALTH_CHECK_IN_FLIGHT = false
 var STOPPING = false   // 显式停止标记：防止在途健康检查在显式停止后错误触发自动重连（评审 R2-1）
 var STOPPED_AT = 0     // 显式停止时间戳：仅在 stopOpenCode() 中更新，不在启动/连接时重置，
                         // 用于时间戳过滤丢弃停止前发起的旧请求结果（评审 P3/P1）
+var HEALTH_CHECK_ACTIVE_TS = 0  // 当前在途健康检查请求的唯一标识（评审 P1）
 var START_POLL_TIMER = null   // 手动启动服务时的 1s 就绪轮询定时器（提升为模块级，供显式停止时清理，评审 R3-1）
 var INPUT_HISTORY = []
 var INPUT_HISTORY_INDEX = -1
@@ -731,8 +732,11 @@ function updateServerStatus(running) {
 }
 
 // 健康检查单一出口复位（评审 R2-3）：success/error 回调均经此收敛，避免分支内提前 return 遗漏复位
-function healthCheckDone(handler) {
-    HEALTH_CHECK_IN_FLIGHT = false
+// 仅复位与当前在途请求匹配的标记，避免旧请求返回时误清新请求的防重入状态（评审 P1）
+function healthCheckDone(requestTs, handler) {
+    if (requestTs === HEALTH_CHECK_ACTIVE_TS) {
+        HEALTH_CHECK_IN_FLIGHT = false
+    }
     if (handler) handler()
 }
 
@@ -746,8 +750,9 @@ function startHealthCheck() {
         HEALTH_CHECK_IN_FLIGHT = true
         // 记录本次请求发起时刻到闭包，用于丢弃 STOPPING 置位前的旧请求结果（评审 P3）
         var requestTs = Date.now()
+        HEALTH_CHECK_ACTIVE_TS = requestTs  // 标记当前在途请求标识（评审 P1）
         fetchJSON('GET', '/global/health', null, function(data) {
-            healthCheckDone(function() {
+            healthCheckDone(requestTs, function() {
                 // 丢弃在显式停止之前发起的旧请求结果：其重试由 setTimeout 驱动，无法被 clearInterval 取消（评审 P3）
                 // STOPPED_AT 仅在 stopOpenCode() 中更新，不随启动重置（评审 P1）
                 if (requestTs <= STOPPED_AT) return
@@ -773,7 +778,7 @@ function startHealthCheck() {
                 }
             })
         }, function() {
-            healthCheckDone(function() {
+            healthCheckDone(requestTs, function() {
                 // 丢弃在显式停止之前发起的旧请求结果（评审 P3）
                 // STOPPED_AT 仅在 stopOpenCode() 中更新，不随启动重置（评审 P1）
                 if (requestTs <= STOPPED_AT) return

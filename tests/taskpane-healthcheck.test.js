@@ -452,6 +452,37 @@ test('R8-P1: 定时器替换防误清理——旧定时器回调不误清新定�
   assertEqual(s.START_POLL_TIMER, null, 'stopOpenCode 应能清理 timer2');
 });
 
+test('R9-P1: 旧请求返回不误复位新请求的 HEALTH_CHECK_IN_FLIGHT（防重入保护）', function () {
+  healthFailCount = 0;
+  healthOverride = null;
+  var s = loadTaskpaneScript();
+  // 避免触发 onServerConnected 中的 fetchAvailableModels（测试环境不支持）
+  s.onServerConnected = function () {};
+  // 模拟：请求 A 发起后停止，重新启动后请求 B 发起
+  s.STOPPING = false;
+  s.STOPPED_AT = 0;
+  s.SERVER_RUNNING = false;
+  s.CONNECTED = false;
+  s.IN_SETUP_VIEW = true;
+  s.startHealthCheck();
+  // 触发健康检查请求
+  s.__flushHealthChecks(1);
+  // 验证：healthCheckDone 使用 requestTs 匹配，旧请求不会复位新请求的标记
+  // 直接验证 healthCheckDone 的匹配逻辑：
+  // 设置 HEALTH_CHECK_ACTIVE_TS 为当前值，然后用旧 requestTs 调用 healthCheckDone
+  var activeTs = s.HEALTH_CHECK_ACTIVE_TS;
+  // 模拟请求 A 已完成后，请求 B 在途（HEALTH_CHECK_IN_FLIGHT=true）
+  s.HEALTH_CHECK_IN_FLIGHT = true;
+  s.HEALTH_CHECK_ACTIVE_TS = activeTs + 1;  // 模拟请求 B 的标识
+  // 模拟旧请求 A 的 healthCheckDone 调用（使用旧的 requestTs）
+  s.healthCheckDone(activeTs, function() {});
+  // 旧请求 A 的 requestTs !== HEALTH_CHECK_ACTIVE_TS（请求 B），不应复位 HEALTH_CHECK_IN_FLIGHT
+  assertEqual(s.HEALTH_CHECK_IN_FLIGHT, true, '旧请求返回不应复位新请求的 HEALTH_CHECK_IN_FLIGHT');
+  // 模拟新请求 B 的 healthCheckDone 调用（匹配当前标识）
+  s.healthCheckDone(activeTs + 1, function() {});
+  assertEqual(s.HEALTH_CHECK_IN_FLIGHT, false, '当前请求完成应复位 HEALTH_CHECK_IN_FLIGHT');
+});
+
 // ==================== 测试结果汇总 ====================
 
 console.log('\n========== 测试结果 ==========');
