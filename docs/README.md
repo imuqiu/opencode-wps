@@ -13,6 +13,7 @@
 | [INSTALLATION.md](./INSTALLATION.md) | **三平台安装指南**（Win/Mac/Linux 完整步骤、路径速查、卸载） |
 | [USAGE.md](./USAGE.md) | **Wiki 级使用手册**（快速上手、完整对话操作、Agents 详解、场景操作、服务管理、配置参考） |
 | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | 问题排查与避坑指南 |
+| [cnbcool-codewiki-platform-feedback.md](./cnbcool-codewiki-platform-feedback.md) | CNB 平台反馈单：codewiki 插件 LLM 接入认证缺陷（供平台侧修复，Issue #117） |
 | [FEATURES.md](./FEATURES.md) | 特色功能详解（模板填值 + 校对铁律 3.0） |
 
 ## 🔧 开发贡献（面向开发者/贡献者）
