@@ -366,6 +366,8 @@ node tests/launcher.test.js
 node tests/e2e.test.js
 node tests/mac-bridge.test.js
 node tests/setcellformat-mac.test.js
+node tests/taskpane-dock.test.js
+node tests/validate-npc-team-prompt.test.js
 
 # 路径安全测试
 cd wps-office-mcp && npx jest src/tests/unit/path-safety.test.ts
