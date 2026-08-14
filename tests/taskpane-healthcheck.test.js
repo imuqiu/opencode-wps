@@ -115,6 +115,9 @@ function loadTaskpaneScript() {
   var elements = {};
   ELEMENT_IDS.forEach(function (id) { elements[id] = makeEl(id); });
 
+  // 记录最近一次创建的 XHR 实例，供测试手动触发 onload/onerror（init 回退 launcher 探测等）
+  var lastXhr = null;
+
   var sandbox = {
     CONFIG: {
       opencode: { apiBase: 'http://127.0.0.1:14096' },
@@ -145,6 +148,8 @@ function loadTaskpaneScript() {
     XMLHttpRequest: function () {
       this.open = function () {}; this.send = function () {};
       this.setRequestHeader = function () {}; this.readyState = 4; this.status = 0;
+      // 记录实例以便测试手动触发 onload/onerror（用于 init 回退 launcher 探测等场景）
+      lastXhr = this;
     },
     setTimeout: function (cb) { return 1; },
     clearTimeout: function () {},
@@ -175,6 +180,7 @@ function loadTaskpaneScript() {
   installFetchJSON(sandbox);
   // 暴露关键内部状态以便断言
   sandbox.__elements = elements;
+  sandbox.__lastXhr = function () { return lastXhr; };
   return sandbox;
 }
 
@@ -481,6 +487,111 @@ test('R9-P1: 旧请求返回不误复位新请求的 HEALTH_CHECK_IN_FLIGHT（�
   // 模拟新请求 B 的 healthCheckDone 调用（匹配当前标识）
   s.healthCheckDone(activeTs + 1, function() {});
   assertEqual(s.HEALTH_CHECK_IN_FLIGHT, false, '当前请求完成应复位 HEALTH_CHECK_IN_FLIGHT');
+});
+
+// ===== Issue #114 回归：服务运行中但状态误显 stopped 的多源兜底 =====
+test('SSE-onopen: /global/health 探测失败时，SSE 连接成功即同步恢复运行中状态', function () {
+  var s = loadTaskpaneScript();
+  var statusUpdated = null;
+  var orig = s.updateServerStatus;
+  s.updateServerStatus = function (running) { statusUpdated = running; orig(running); };
+  // 模拟服务在跑但 SERVER_RUNNING 仍为 false（健康检查 XHR 探测失败场景），且处于 setup 视图
+  s.SERVER_RUNNING = false;
+  s.STOPPING = false;
+  s.CONNECTED = false;
+  s.IN_SETUP_VIEW = true;
+  var chatShown = 0;
+  var origChat = s.showChat;
+  s.showChat = function () { chatShown++; origChat(); };
+  // 连接 SSE
+  s.connectSSE();
+  assertTrue(s.SSE != null, 'SSE 实例应已创建');
+  // 手动触发 SSE onopen（真实场景：EventSource 连接成功后由浏览器回调）
+  s.SSE.onopen();
+  assertEqual(statusUpdated, true, 'SSE onopen 应同步 updateServerStatus(true)');
+  assertEqual(s.SERVER_RUNNING, true, 'SSE onopen 应置 SERVER_RUNNING=true');
+  assertEqual(s.CONNECTED, true, 'SSE onopen 应保持 CONNECTED=true');
+  assertTrue(chatShown >= 1, 'setup 视图下 SSE onopen 应切回 chat（showChat 被调用）');
+  assertEqual(s.IN_SETUP_VIEW, false, 'showChat 应置 IN_SETUP_VIEW=false');
+});
+
+test('SSE-onopen-STOPPING: 显式停止（STOPPING=true）后 SSE onopen 不应误恢复运行状态', function () {
+  var s = loadTaskpaneScript();
+  var statusUpdates = [];
+  var orig = s.updateServerStatus;
+  s.updateServerStatus = function (running) { statusUpdates.push(running); orig(running); };
+  s.SERVER_RUNNING = false;
+  s.STOPPING = true;   // 用户已显式停止，不应自动重连
+  s.CONNECTED = false;
+  s.connectSSE();
+  s.SSE.onopen();
+  assertEqual(s.SERVER_RUNNING, false, 'STOPPING 时应保持 SERVER_RUNNING=false（不误恢复）');
+  assertEqual(statusUpdates.indexOf(true), -1, 'STOPPING 时不应调用 updateServerStatus(true)');
+});
+
+// ===== 核心场景：/global/health 持续失败但 launcher 确认服务在跑（Issue #114）=====
+test('launcher-fallback: /global/health 持续失败但 launcher 确认端口监听 → 状态恢复运行中', function () {
+  var s = loadTaskpaneScript();
+  var statuses = [];
+  var orig = s.updateServerStatus;
+  s.updateServerStatus = function (running) { statuses.push(running); orig(running); };
+  var connected = 0;
+  // 避免 onServerConnected 内部副作用，只计数
+  var origConn = s.onServerConnected;
+  s.onServerConnected = function () { connected++; };
+  s.SERVER_RUNNING = true;
+  s.CONNECTED = true;
+  s.IN_SETUP_VIEW = false;
+  s.STOPPING = false;
+  s.startHealthCheck();
+  // 触发一次健康检查：/global/health 返回失败
+  healthOverride = { healthy: false };
+  s.__flushHealthChecks(1);
+  // 此刻已同步降级（SERVER_RUNNING=false），probeLauncherRunning 已发出 XHR（lastXhr 已记录）
+  assertEqual(s.SERVER_RUNNING, false, '/global/health 失败应先同步降级');
+  // 模拟 launcher 响应：端口监听（服务实际在跑）
+  var xhr = s.__lastXhr();
+  assertTrue(xhr != null, 'probeLauncherRunning 应创建 XHR');
+  xhr.status = 200;
+  xhr.responseText = JSON.stringify({ running: true, portOpen: true });
+  xhr.onload();
+  assertEqual(s.SERVER_RUNNING, true, 'launcher 确认服务在跑后应恢复 SERVER_RUNNING=true');
+  assertEqual(statuses[statuses.length - 1], true, 'launcher 确认后应 updateServerStatus(true)');
+  assertEqual(connected, 1, 'SSE 已被 close，launcher 确认后应重建连接（onServerConnected）');
+});
+
+test('probeLauncherRunning: launcher 返回 running 或 portOpen 任一为真即判定服务在跑', function () {
+  var s = loadTaskpaneScript();
+  // 场景 A：running=true（进程引用在）
+  var ra = null;
+  s.probeLauncherRunning(function (r) { ra = r; });
+  var xa = s.__lastXhr();
+  xa.status = 200;
+  xa.responseText = JSON.stringify({ running: true, portOpen: false });
+  xa.onload();
+  assertEqual(ra, true, 'running=true 时应判定运行中');
+  // 场景 B：running=false 但 portOpen=true（launcher 重启、端口仍监听）
+  var rb = null;
+  s.probeLauncherRunning(function (r) { rb = r; });
+  var xb = s.__lastXhr();
+  xb.status = 200;
+  xb.responseText = JSON.stringify({ running: false, portOpen: true });
+  xb.onload();
+  assertEqual(rb, true, 'portOpen=true 时应判定运行中');
+  // 场景 C：running=false 且 portOpen=false（服务真实停止）
+  var rc = null;
+  s.probeLauncherRunning(function (r) { rc = r; });
+  var xc = s.__lastXhr();
+  xc.status = 200;
+  xc.responseText = JSON.stringify({ running: false, portOpen: false });
+  xc.onload();
+  assertEqual(rc, false, 'running/portOpen 均 false 时应判定停止');
+});
+
+test('init-launcher-fallback: init 首屏含 launcher 回退分支（/global/health 失败 → 回退 launcher）', function () {
+  var src = fs.readFileSync(TASKPANE_HTML, 'utf-8');
+  assertTrue(/else if \(launcherOk\)/.test(src), 'init 应含 launcher 回退分支');
+  assertTrue(/probeLauncherRunning\(function\(launcherRunning\)/.test(src), 'launcher 回退分支应调用 probeLauncherRunning');
 });
 
 // ==================== 测试结果汇总 ====================
