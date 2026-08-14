@@ -1464,6 +1464,9 @@ describe('proofreadAccumulate — 必填字段校验（Issue #116 问题六）',
     });
     expect(result.success).toBe(true);
     expect(result.content[0].text).toContain('已累加 1 条问题');
+    // 评审第 4 轮 W6：返回 data.diskPersisted 可编程字段
+    expect(result.data).toBeDefined();
+    expect(result.data!.diskPersisted).toBe(true);
   });
 });
 

@@ -852,6 +852,9 @@ export const proofreadAccumulateHandler: ToolHandler = async (
   return {
     id: uuidv4(),
     success: true,
+    // 评审第 4 轮 W6：增加可编程字段 data.diskPersisted，供 AI 程序化判断落盘状态，
+    // 而非仅解析文本警告
+    data: { diskPersisted: diskWriteSuccess },
     content: [
       {
         type: 'text',
