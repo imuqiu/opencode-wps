@@ -338,6 +338,7 @@ var SERVER_RUNNING = false
 var IN_SETUP_VIEW = false
 var HEALTH_CHECK_TIMER = null
 var HEALTH_CHECK_IN_FLIGHT = false
+var STOPPING = false   // 显式停止标记：防止在途健康检查在显式停止后错误触发自动重连（评审 R2-1）
 var INPUT_HISTORY = []
 var INPUT_HISTORY_INDEX = -1
 
@@ -391,6 +392,7 @@ var CONSTANTS = {
     SSE_RECONNECT_DELAY: 3000,
     MAX_MESSAGE_LENGTH: 10000,
     MAX_HISTORY: 100,
+    HEALTH_CHECK_INTERVAL: 10000,
     TOAST_DURATION: 3000,
     DEFAULT_SESSION_NAME: '新对话'
 };
@@ -659,7 +661,9 @@ function startOpenCode() {
 function stopOpenCode() {
     // 通过 main.js 命令通道停止
     setPS('opencode_command', JSON.stringify({cmd: 'stop', ts: Date.now()}))
-    // 显式停止：停止健康检测，避免服务退出窗口内被全局健康检查自动重连并切回 chat（评审 P1）
+    // 显式停止：置停止标记 + 放弃在途健康检查结果 + 停检测，避免服务退出窗口内被全局健康检查自动重连并切回 chat（评审 P1/R2-1）
+    STOPPING = true
+    HEALTH_CHECK_IN_FLIGHT = false   // 放弃在途 /global/health 请求的结果
     stopHealthCheck()
     SERVER_RUNNING = false
     CONNECTED = false
@@ -674,6 +678,8 @@ function stopOpenCode() {
 function onServerConnected() {
     // 幂等守卫：手动启动轮询与全局健康检测可能并发触发 onServerConnected，避免重复建会话/重连 SSE（评审 P2）
     if (SERVER_RUNNING && CONNECTED) return
+    // 服务已连接：清除显式停止标记，恢复自动探测（评审 R2-1）
+    STOPPING = false
     SERVER_RUNNING = true
     CONNECTED = true
     updateServerStatus(true)
@@ -695,6 +701,12 @@ function updateServerStatus(running) {
     $serverLabel.textContent = running ? '运行中' : '已停止'
 }
 
+// 健康检查单一出口复位（评审 R2-3）：success/error 回调均经此收敛，避免分支内提前 return 遗漏复位
+function healthCheckDone(handler) {
+    HEALTH_CHECK_IN_FLIGHT = false
+    if (handler) handler()
+}
+
 // --- Health check (detect server crash) ---
 function startHealthCheck() {
     stopHealthCheck()
@@ -704,38 +716,40 @@ function startHealthCheck() {
         if (HEALTH_CHECK_IN_FLIGHT) return
         HEALTH_CHECK_IN_FLIGHT = true
         fetchJSON('GET', '/global/health', null, function(data) {
-            HEALTH_CHECK_IN_FLIGHT = false
-            var ok = data && data.healthy
-            if (ok) {
-                // 服务恢复：setup 视图且未连接时自动切回 chat；
-                // 否则仅在状态变化时更新，避免每 10s 冗余写入（评审 R1-1）
-                if (IN_SETUP_VIEW && !SERVER_RUNNING) {
-                    onServerConnected()   // 自动切回 chat + 重启检测（内部含幂等守卫）
-                } else if (!SERVER_RUNNING) {
-                    SERVER_RUNNING = true; updateServerStatus(true)
+            healthCheckDone(function() {
+                var ok = data && data.healthy
+                if (ok) {
+                    // 服务恢复：setup 视图、未连接、且非显式停止时才自动切回 chat；
+                    // 否则仅在状态变化时更新，避免每 10s 冗余写入（评审 R1-1/R2-1）
+                    if (IN_SETUP_VIEW && !SERVER_RUNNING && !STOPPING) {
+                        onServerConnected()   // 自动切回 chat + 重启检测（内部含幂等守卫）
+                    } else if (!SERVER_RUNNING) {
+                        SERVER_RUNNING = true; updateServerStatus(true)
+                    }
+                } else {
+                    // 失败：标记断开 + 切 setup（若未在 setup），但【不停止检测】
+                    if (SERVER_RUNNING && !STOPPING) {
+                        SERVER_RUNNING = false; CONNECTED = false
+                        if (SSE) { SSE.close(); SSE = null }
+                        updateServerStatus(false)
+                        if (!IN_SETUP_VIEW) showSetup()   // 仅切视图，不再 stopHealthCheck
+                        $setupStatus.textContent = '服务已断开，请重新启动以继续。'
+                    }
                 }
-            } else {
-                // 失败：标记断开 + 切 setup（若未在 setup），但【不停止检测】
-                if (SERVER_RUNNING) {
+            })
+        }, function() {
+            healthCheckDone(function() {
+                // 网络错误分支：同样保持检测，等待恢复
+                if (SERVER_RUNNING && !STOPPING) {
                     SERVER_RUNNING = false; CONNECTED = false
                     if (SSE) { SSE.close(); SSE = null }
                     updateServerStatus(false)
-                    if (!IN_SETUP_VIEW) showSetup()   // 仅切视图，不再 stopHealthCheck
+                    if (!IN_SETUP_VIEW) showSetup()
                     $setupStatus.textContent = '服务已断开，请重新启动以继续。'
                 }
-            }
-        }, function() {
-            HEALTH_CHECK_IN_FLIGHT = false
-            // 网络错误分支：同样保持检测，等待恢复
-            if (SERVER_RUNNING) {
-                SERVER_RUNNING = false; CONNECTED = false
-                if (SSE) { SSE.close(); SSE = null }
-                updateServerStatus(false)
-                if (!IN_SETUP_VIEW) showSetup()
-                $setupStatus.textContent = '服务已断开，请重新启动以继续。'
-            }
+            })
         })
-    }, 10000)
+    }, CONSTANTS.HEALTH_CHECK_INTERVAL)
 }
 function stopHealthCheck() { if (HEALTH_CHECK_TIMER) { clearInterval(HEALTH_CHECK_TIMER); HEALTH_CHECK_TIMER = null } }
 
