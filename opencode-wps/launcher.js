@@ -137,8 +137,24 @@ function startOpenCode(cwd, port) {
     // 无扩展名（如 PATH 中的 'opencode'，npm 全局安装实为 .cmd 脚本）时，
     // spawn 不带 shell 无法启动 .cmd 文件，必须保留 shell。
     var needShell = !isPs1 && !isExe;
-    
+
+    // 服务端日志落盘：stdio 由 'ignore' 改为管道，stdout/stderr 写入日志文件。
+    // 之前 'ignore' 直接丢弃 opencode serve 的全部日志，导致用户无法查看
+    // 服务端日志来定位 UnknownError（如 err_edae3507）等运行期错误。
+    var logFile = null;
+    var logStream = null;
     try {
+        var logDir = path.join(os.homedir(), '.opencode', 'logs');
+        if (!fs.existsSync(logDir)) { fs.mkdirSync(logDir, { recursive: true }); }
+        logFile = path.join(logDir, 'opencode-serve.log');
+        // 'a' 追加模式：保留历史日志，便于对比多次运行
+        logStream = fs.createWriteStream(logFile, { flags: 'a' });
+    } catch (e) {
+        console.log('[launcher] Failed to init opencode log file: ' + e.message);
+    }
+
+    try {
+        var stdioArr = logStream ? ['ignore', logStream, logStream] : ['ignore', 'ignore', 'ignore'];
         opencodeProcess = spawn(
             isPs1 ? 'powershell.exe' : opencodeBin,
             isPs1 
@@ -146,12 +162,16 @@ function startOpenCode(cwd, port) {
                 : opencodeArgs,
             {
                 cwd: cwd,
-                stdio: 'ignore',
+                stdio: stdioArr,
                 detached: false,
                 windowsHide: true,
                 shell: needShell
             }
         );
+
+        if (logFile) {
+            console.log('[launcher] opencode serve logs → ' + logFile);
+        }
 
         opencodeProcess.on('error', function(err) {
             console.log('[launcher] Error: ' + err.message);

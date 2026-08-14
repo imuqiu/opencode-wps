@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **聊天报错 `UnknownError` 可排查（Issue #114 跟进）** — 用户在聊天发送消息时偶发 `Error: {"name":"UnknownError","ref":"err_xxx"}`，此为 **OpenCode 服务端**（`opencode serve`）生成回复时的内部错误（常见于模型 API key 失效/限流、模型不存在、provider 配置错误、文档上下文过大），非插件 bug。本轮改进：① `opencode-wps/launcher.js` 将 opencode serve 的 `stdio: 'ignore'` 改为**日志落盘**到 `~/.opencode/logs/opencode-serve.log`（追加模式），服务端 stdout/stderr 不再被丢弃，用户可搜索 `err_xxx` 定位真实根因；② `opencode-wps/taskpane.html` 新增 `formatSendError()`，发送消息出错时若识别到 `UnknownError`，给出含日志路径与常见原因的**可操作排查引导**（不再裸显示 JSON）；③ `docs/TROUBLESHOOTING.md` 新增「UnknownError 排查」章节。测试：`taskpane-healthcheck` 14/14、`launcher` 14/14、`taskpane` 内联脚本语法全部通过。
+
 ## [1.3.0] - 2026-08-14
 
 ### Added

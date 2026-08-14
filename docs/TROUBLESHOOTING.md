@@ -221,6 +221,41 @@ Get-Content "$env:APPDATA\kingsoft\wps\jsaddons\authaddin.json"
 | 服务启动了但连不上 | 检查 14096 端口是否正常 | 手动测试 /global/health |
 | 服务运行中但状态栏显示"已停止" | 健康检查"一次失败即永久放弃"（历史版本） | 升级到包含健康检查自动恢复的版本；健康检查已改为全局常驻，瞬时抖动后会≤1 周期内自动恢复为"运行中" |
 | Proxy 连接失败 | opencode-proxy.js 端口 14098 是否启动 | 检查 14098 端口 |
+| 聊天报 `Error: {"name":"UnknownError",...}` | OpenCode 服务端内部错误（模型调用失败等），非插件 bug | 见下方「UnknownError 排查」章节 |
+
+---
+
+### 六·补充：UnknownError 排查（聊天报错）
+
+**现象**：在聊天框发送消息后，插件顶部/聊天区提示：
+
+```json
+Error: {"name":"UnknownError","data":{"message":"Unexpected server error. Check server logs for details.","ref":"err_xxxxxxxx"}}
+```
+
+**结论先行**：`UnknownError` 是 **OpenCode 服务端**（`opencode serve` 进程）在生成回复时抛出的内部错误，**不是 WPS 插件代码问题**。`ref: err_xxxxxxxx` 是服务端生成、用于在服务端日志中定位具体错误的引用 ID。常见触发因素：
+
+| 因素 | 说明 | 处理 |
+|------|------|------|
+| 模型调用失败 | API key 失效 / 限流 / 模型不存在 / provider 配置错误 | 检查 `~/.config/opencode/opencode.json` 的 model/provider 配置与 API key |
+| 文档上下文过大 | `injectContext` 注入的 WPS 文档上下文超过模型上下文窗口 | 在插件中清空/精简当前文档上下文后再试 |
+| 会话状态异常 | 会话 `SESSION_ID` 失效或服务端会话损坏 | 在插件中「新建会话」重试 |
+| 服务端 bug | `opencode serve` 自身异常 | 查看服务端日志定位（见下） |
+
+**如何查看服务端日志（关键）**：
+
+1. 确保已升级到含 **日志落盘** 的版本（`opencode-wps/launcher.js` 已将 opencode serve 的 stdout/stderr 写入日志文件，而非丢弃）。
+2. 打开日志文件：`C:\Users\<你的用户名>\.opencode\logs\opencode-serve.log`
+3. 在日志中搜索 `err_xxxxxxxx` 或报错时间点前后的堆栈，即可定位真正原因。
+
+**临时绕过 launcher 手动启动查看日志**：
+
+```bash
+cd C:\path\to\your\workspace
+opencode serve --port 14096 --hostname 127.0.0.1 --cors file://
+```
+
+在终端复现报错，直接看服务端打印的详细错误。
 
 ---
 
