@@ -115,6 +115,9 @@ function loadTaskpaneScript() {
   var elements = {};
   ELEMENT_IDS.forEach(function (id) { elements[id] = makeEl(id); });
 
+  // 记录最近一次创建的 XHR 实例，供测试手动触发 onload/onerror（init 回退 launcher 探测等）
+  var lastXhr = null;
+
   var sandbox = {
     CONFIG: {
       opencode: { apiBase: 'http://127.0.0.1:14096' },
@@ -145,6 +148,8 @@ function loadTaskpaneScript() {
     XMLHttpRequest: function () {
       this.open = function () {}; this.send = function () {};
       this.setRequestHeader = function () {}; this.readyState = 4; this.status = 0;
+      // 记录实例以便测试手动触发 onload/onerror（用于 init 回退 launcher 探测等场景）
+      lastXhr = this;
     },
     setTimeout: function (cb) { return 1; },
     clearTimeout: function () {},
@@ -175,6 +180,7 @@ function loadTaskpaneScript() {
   installFetchJSON(sandbox);
   // 暴露关键内部状态以便断言
   sandbox.__elements = elements;
+  sandbox.__lastXhr = function () { return lastXhr; };
   return sandbox;
 }
 
@@ -481,6 +487,40 @@ test('R9-P1: 旧请求返回不误复位新请求的 HEALTH_CHECK_IN_FLIGHT（�
   // 模拟新请求 B 的 healthCheckDone 调用（匹配当前标识）
   s.healthCheckDone(activeTs + 1, function() {});
   assertEqual(s.HEALTH_CHECK_IN_FLIGHT, false, '当前请求完成应复位 HEALTH_CHECK_IN_FLIGHT');
+});
+
+// ===== Issue #114 回归：服务运行中但状态误显 stopped 的多源兜底 =====
+test('SSE-onopen: /global/health 探测失败时，SSE 连接成功即同步恢复运行中状态', function () {
+  var s = loadTaskpaneScript();
+  var statusUpdated = null;
+  var orig = s.updateServerStatus;
+  s.updateServerStatus = function (running) { statusUpdated = running; orig(running); };
+  // 模拟服务在跑但 SERVER_RUNNING 仍为 false（健康检查 XHR 探测失败场景）
+  s.SERVER_RUNNING = false;
+  s.STOPPING = false;
+  s.CONNECTED = false;
+  // 连接 SSE
+  s.connectSSE();
+  assertTrue(s.SSE != null, 'SSE 实例应已创建');
+  // 手动触发 SSE onopen（真实场景：EventSource 连接成功后由浏览器回调）
+  s.SSE.onopen();
+  assertEqual(statusUpdated, true, 'SSE onopen 应同步 updateServerStatus(true)');
+  assertEqual(s.SERVER_RUNNING, true, 'SSE onopen 应置 SERVER_RUNNING=true');
+  assertEqual(s.CONNECTED, true, 'SSE onopen 应保持 CONNECTED=true');
+});
+
+test('SSE-onopen-STOPPING: 显式停止（STOPPING=true）后 SSE onopen 不应误恢复运行状态', function () {
+  var s = loadTaskpaneScript();
+  var statusUpdates = [];
+  var orig = s.updateServerStatus;
+  s.updateServerStatus = function (running) { statusUpdates.push(running); orig(running); };
+  s.SERVER_RUNNING = false;
+  s.STOPPING = true;   // 用户已显式停止，不应自动重连
+  s.CONNECTED = false;
+  s.connectSSE();
+  s.SSE.onopen();
+  assertEqual(s.SERVER_RUNNING, false, 'STOPPING 时应保持 SERVER_RUNNING=false（不误恢复）');
+  assertEqual(statusUpdates.indexOf(true), -1, 'STOPPING 时不应调用 updateServerStatus(true)');
 });
 
 // ==================== 测试结果汇总 ====================

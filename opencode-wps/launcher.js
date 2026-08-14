@@ -6,6 +6,7 @@ const fs = require('fs');
 const os = require('os');
 
 const PORT = 14097;
+const OPENCODE_PORT = 14096;
 let opencodeProcess = null;
 let opencodeCwd = '';
 let dockedPid = 0;
@@ -355,6 +356,43 @@ function stopOpenCode() {
     return { success: true };
 }
 
+/**
+ * 探测指定端口当前是否被监听（同步）。
+ * 用于 /status 在 opencodeProcess 引用丢失（如 launcher 重启）时回退判断服务是否仍在运行。
+ * 基于 netstat -ano 匹配本地监听地址，与 stopOpenCodeByPort 同一套匹配规则。
+ * @param {number} port - 目标端口（1-65535）
+ * @returns {boolean} 端口是否被 LISTENING
+ */
+function isPortListening(port) {
+    port = parseInt(port, 10);
+    if (isNaN(port) || port < 1 || port > 65535) return false;
+    try {
+        var execSync = require('child_process').execSync;
+        // findstr 匹配 ":port "（带尾空格）减少 :140960/:114096 等子串误匹配
+        var output = execSync('netstat -ano | findstr ":' + port + ' "', {
+            shell: 'cmd.exe',
+            encoding: 'utf8',
+            timeout: 5000
+        });
+        var lines = output.split('\n');
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i].trim();
+            if (line.indexOf('LISTENING') > 0) {
+                var parts = line.split(/\s+/);
+                var localAddr = parts[1] || '';
+                // IPv6 地址 [::1]:14096 含多个冒号，用 lastIndexOf 取端口
+                var listenPort = parseInt(localAddr.substring(localAddr.lastIndexOf(':') + 1), 10);
+                if (listenPort === port) {
+                    return true;
+                }
+            }
+        }
+    } catch (e) {
+        // netstat 失败（极少数环境）不阻断，视为端口未监听
+    }
+    return false;
+}
+
 function loadOpenCodeConfig() {
     var configPath = path.join(process.env.APPDATA || process.env.USERPROFILE, 'opencode', 'config.json');
     var defaultConfig = { opencodePath: 'opencode' };
@@ -607,10 +645,19 @@ var server = http.createServer(function(req, res) {
     }
 
     if (req.method === 'GET' && url === '/status') {
+        // 状态判定：opencodeProcess 引用存在即 running；
+        // 但 launcher 重启后（opencodeProcess 复位为 null）而 14096 端口仍被占用时，
+        // 进程其实仍在运行 —— 需回退探测端口，避免 UI 误显 stopped（Issue #114 回归）。
+        var running = opencodeProcess !== null;
+        if (!running) {
+            running = isPortListening(OPENCODE_PORT);
+        }
         sendJSON(req, res, 200, {
-            running: opencodeProcess !== null,
+            running: running,
             cwd: opencodeCwd,
-            pid: opencodeProcess ? opencodeProcess.pid : null
+            pid: opencodeProcess ? opencodeProcess.pid : null,
+            // 额外暴露端口探测结果，便于前端多源交叉验证
+            portOpen: isPortListening(OPENCODE_PORT)
         });
         return;
     }

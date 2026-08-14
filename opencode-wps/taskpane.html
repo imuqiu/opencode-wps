@@ -799,6 +799,33 @@ function updateServerStatus(running) {
     $serverLabel.textContent = running ? '运行中' : '已停止'
 }
 
+/**
+ * 探测 launcher（14097）状态：/global/health 探测在 WPS Chromium 下可能因 CORS 或
+ * 环境差异失败，即使 opencode 实际运行（Issue #114 回归）。launcher /status 显式放行
+ * file:///null Origin，且会回退探测 14096 端口监听，作为可靠的第二信号源交叉验证。
+ * @param {function} cb - 回调，参数为 true=服务运行 / false=未运行
+ */
+function probeLauncherRunning(cb) {
+    try {
+        var xhr = new XMLHttpRequest()
+        xhr.timeout = 3000
+        xhr.open('GET', 'http://127.0.0.1:14097/status', true)
+        xhr.onload = function() {
+            var running = false
+            if (xhr.status === 200) {
+                try {
+                    var d = JSON.parse(xhr.responseText)
+                    running = !!(d && (d.running || d.portOpen))
+                } catch (e) { running = false }
+            }
+            cb(running)
+        }
+        xhr.onerror = function() { cb(false) }
+        xhr.ontimeout = function() { cb(false) }
+        xhr.send()
+    } catch (e) { cb(false) }
+}
+
 // 健康检查单一出口复位（评审 R2-3）：success/error 回调均经此收敛，避免分支内提前 return 遗漏复位
 // 仅复位与当前在途请求匹配的标记，避免旧请求返回时误清新请求的防重入状态（评审 P1）
 function healthCheckDone(requestTs, handler) {
@@ -836,6 +863,7 @@ function startHealthCheck() {
                     }
                 } else {
                     // 失败：标记断开 + 切 setup（若未在 setup），但【不停止检测】
+                    // 注：即使 /global/health 探测失败，若服务实际在跑，SSE onopen 会同步恢复状态（见 connectSSE）
                     if (SERVER_RUNNING && !STOPPING) {
                         SERVER_RUNNING = false; CONNECTED = false
                         if (SSE) { SSE.close(); SSE = null }
@@ -851,6 +879,7 @@ function startHealthCheck() {
                 // STOPPED_AT 仅在 stopOpenCode() 中更新，不随启动重置（评审 P1）
                 if (requestTs <= STOPPED_AT) return
                 // 网络错误分支：同样保持检测，等待恢复
+                // 注：即使探测失败，若服务实际在跑，SSE onopen 会同步恢复状态（见 connectSSE）
                 if (SERVER_RUNNING && !STOPPING) {
                     SERVER_RUNNING = false; CONNECTED = false
                     if (SSE) { SSE.close(); SSE = null }
@@ -1367,6 +1396,12 @@ function connectSSE() {
         SSE.onopen = function() {
             console.log('[SSE] Connected');
             CONNECTED = true;
+            // SSE 连接成功是「服务在跑」的最强证据（EventSource 不受 XHR CORS 差异影响），
+            // 同步状态条，避免 /global/health 探测失败时 UI 误显 stopped（Issue #114 回归）
+            if (!STOPPING) {
+                SERVER_RUNNING = true;
+                updateServerStatus(true);
+            }
             sseReconnectDelay = 1000;
             updateConnectionStatus();
             if (sseReconnectTimer) { clearTimeout(sseReconnectTimer); sseReconnectTimer = null; }
@@ -1886,6 +1921,20 @@ function scrollToBottom() { setTimeout(function() { if ($messages) $messages.scr
                 $topbarCwd.textContent = PROJECT_DIR.replace(/\\\\/g, '\\')
                 $topbarCwd.title = PROJECT_DIR.replace(/\\\\/g, '\\')
                 onServerConnected()
+            } else if (launcherOk) {
+                // /global/health 探测失败但 launcher 可达：回退看 launcher /status 是否确认服务在跑
+                probeLauncherRunning(function(launcherRunning) {
+                    if (launcherRunning) {
+                        PROJECT_DIR = lastCwd || ''
+                        $topbarCwd.textContent = PROJECT_DIR.replace(/\\\\/g, '\\')
+                        $topbarCwd.title = PROJECT_DIR.replace(/\\\\/g, '\\')
+                        onServerConnected()
+                    } else {
+                        updateServerStatus(false)
+                        showSetup()
+                        startHealthCheck()
+                    }
+                })
             } else {
                 // launcher 未运行或 opencode 未启动，都显示 setup；统一启动健康检测以支持自动恢复（评审 P3 合并重复分支）
                 updateServerStatus(false)
