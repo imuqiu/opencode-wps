@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **校对数据服务端落盘持久化 + 必填字段校验 + 疑似问题机制（Issue #116，PR #124）** — 根治校对流程数据易失的核心问题：① 新增 `proofread-store.ts` 落盘存储模块，`proofreadAccumulate` 每次累加后增量写盘到 `~/.opencode-wps/proofread-sessions/{sessionId}.json`，报告生成优先读内存、缺失时从磁盘恢复（`getSessionOrLoad`），`releaseSession`/LRU 淘汰同步删除磁盘文件，存储目录 `0o700` 权限收敛——即使会话压缩（Compaction）或 MCP 服务重启，已累加校对问题不丢失、报告可完整生成；② `proofreadAccumulate` 入口对缺 `original`/`suggestion` 的 issue 明确报错，替代此前静默通过、到报告生成阶段 `.replace()` 读 `undefined` 崩溃的隐患；③ 报告生成器 `.replace()` 处统一 `(issue.original || '')` 兜底，历史坏数据漏过校验也不崩溃；④ 新增 `suspected_issues` 参数（AI 识别但未确认的问题），报告单独列出「⚠️ 待确认问题」节并标注「未修改，请人工核对」，不纳入五维评分，即使 issues 为空也列出该节。评审 10 轮 review-修复循环清零（含必填校验原子性、空 issues+疑似问题不丢失、权限收敛等）。
+
+- **侧边栏权限确认 UI + 上下文用量条 + 等待审批状态（Issue #116，PR #120）** — 补齐侧边栏交互三个关键能力：① **权限确认模态框**：监听权限请求事件，弹出「工具调用权限确认」框（展示工具名/参数/说明），支持**允许 / 拒绝 / 记住选择**，通过 `POST /session/:id/permissions/:permissionID` 响应——解决此前「生成报告卡住」只能切 web 会话确认的问题；② **上下文用量条**：底部 3px 进度条随 SSE 实时更新，hover 显示详细 token 数，<70% 绿 / ≥70% 橙 / ≥90% 红，提示用户预判会话压缩；③ **等待审批状态**：`session.status` 新增 `waiting` 中间态，状态点橙色闪烁 + 底栏高亮提示「等待你确认工具调用」，与正常 busy 状态区分，避免用户误以为死循环。评审 5 轮 review-修复循环清零（含 props.id 提取优先级、SSE 断开状态清理、并发权限请求覆盖、会话切换状态清理等）。
+
+- **MCP 超时放大 + 校对批次建议 + TC-12 口径说明（Issue #116，PR #121）** — 性能与数据口径优化：① `getDocumentParagraphs` 超时 30s→60s、`getDocumentTextByRange` 15s→30s，减少大批量段落获取在 WPS COM 处理慢时的超时重试；② SKILL 推荐每批 100 段（此前默认 200），避免单次返回文本超过 MCP 输出限制被截断导致漏检；③ TC-12 口径明确：报告「发现问题 = issue 条数」「修订数 ÷ 2 仅修订模式等价」，修正此前口径混乱。评审 5 轮 review-修复循环清零（含 SKILL 批次计算示例、版本引用一致性）。
+
 ## [1.3.1] - 2026-08-14
 
 ### Fixed
