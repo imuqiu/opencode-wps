@@ -572,8 +572,8 @@ function confirmCwdChange() {
     }
 
     // 用户主动启动新 CWD 服务：清除旧停止标记，避免残留 STOPPING 阻断自动恢复（评审 P2）
+    // 注意：不重置 STOPPED_AT，保留停止时刻以维持时间戳过滤语义（评审 P1）
     STOPPING = false
-    STOPPED_AT = 0   // 同步重置停止时刻，使语义清晰（评审 P4）
 
     // 设置新的 CWD 并启动（PERSIST.cwd setter 自动调用 setPS）
     PROJECT_DIR = newCwd
@@ -638,8 +638,8 @@ function startOpenCode() {
     setPS('opencode_command', JSON.stringify({cmd: 'start:' + cwd, ts: Date.now()}))
 
     // 用户主动启动：清除旧停止标记，避免残留 STOPPING 阻断自动恢复（评审 P2）
+    // 注意：不重置 STOPPED_AT，保留停止时刻以维持时间戳过滤语义（评审 P1）
     STOPPING = false
-    STOPPED_AT = 0   // 同步重置停止时刻，使语义清晰（评审 P4）
 
     var launcherUrl = 'http://127.0.0.1:14097'
     var launcherOk = false
@@ -705,6 +705,8 @@ function onServerConnected() {
     // 幂等守卫：手动启动轮询与全局健康检测可能并发触发 onServerConnected，避免重复建会话/重连 SSE（评审 P2）
     if (SERVER_RUNNING && CONNECTED) return
     // 服务已连接：清除显式停止标记，恢复自动探测（评审 R2-1）
+    // 注意：不重置 STOPPED_AT——该字段仅在 stopOpenCode() 中更新，
+    // 保留旧值可维持时间戳过滤语义，阻止停止前发起的旧请求结果泄漏（评审 P1）
     STOPPING = false
     SERVER_RUNNING = true
     CONNECTED = true
@@ -746,6 +748,7 @@ function startHealthCheck() {
         fetchJSON('GET', '/global/health', null, function(data) {
             healthCheckDone(function() {
                 // 丢弃在显式停止之前发起的旧请求结果：其重试由 setTimeout 驱动，无法被 clearInterval 取消（评审 P3）
+                // STOPPED_AT 仅在 stopOpenCode() 中更新，不随启动重置（评审 P1）
                 if (requestTs <= STOPPED_AT) return
                 var ok = data && data.healthy
                 if (ok) {
@@ -771,6 +774,7 @@ function startHealthCheck() {
         }, function() {
             healthCheckDone(function() {
                 // 丢弃在显式停止之前发起的旧请求结果（评审 P3）
+                // STOPPED_AT 仅在 stopOpenCode() 中更新，不随启动重置（评审 P1）
                 if (requestTs <= STOPPED_AT) return
                 // 网络错误分支：同样保持检测，等待恢复
                 if (SERVER_RUNNING && !STOPPING) {

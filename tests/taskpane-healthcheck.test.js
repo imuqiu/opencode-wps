@@ -365,10 +365,10 @@ test('R5-P2: 启动失败后应恢复健康检查（startHealthCheck 被调用�
   s.SERVER_RUNNING = false;
   // 设置 fetchJSON 持续返回错误，模拟服务一直不可达
   healthFailCount = 999;  // 足够大，确保 maxRetries 耗尽
-  // 调用 startOpenCode：应清除 STOPPING 并启动轮询
+  // 调用 startOpenCode：应清除 STOPPING
   s.startOpenCode();
   assertEqual(s.STOPPING, false, 'startOpenCode 应清除 STOPPING');
-  assertEqual(s.STOPPED_AT, 0, 'startOpenCode 应重置 STOPPED_AT');
+  // STOPPED_AT 不重置（保留时间戳过滤语义，评审 P1）
   // 触发足够多的轮询 tick 使 maxRetries 耗尽（maxRetries=30）
   var triggerCount = 0;
   var maxTicks = 40;
@@ -383,6 +383,9 @@ test('R5-P2: 启动失败后应恢复健康检查（startHealthCheck 被调用�
   // 验证：轮询失败后应调用 startHealthCheck
   assertTrue(hcCalls >= 1, '启动失败后应恢复健康检查（hcCalls=' + hcCalls + '）');
   assertTrue(triggerCount > 0, '应触发轮询回调');
+  // 清理：重置全局状态避免影响后续测试（评审 P3）
+  healthFailCount = 0;
+  healthOverride = null;
 });
 
 test('R5-P3: 健康检查旧请求时间戳检查——停止前发起的请求结果被丢弃', function () {
