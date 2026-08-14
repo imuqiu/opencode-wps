@@ -370,9 +370,10 @@ export function getSessionOrLoad(sessionId: string): SessionData | undefined {
 
 /**
  * 统一持久化会话到磁盘（累加后调用）
+ * @returns 是否落盘成功（false 表示落盘失败，调用方应在响应中提示用户）
  */
-function persistSession(sessionId: string, session: SessionData): void {
-  saveSessionToDisk(sessionId, {
+function persistSession(sessionId: string, session: SessionData): boolean {
+  return saveSessionToDisk(sessionId, {
     issues: session.issues,
     suspectedIssues: session.suspectedIssues,
     docInfo: session.docInfo,
@@ -797,17 +798,34 @@ export const proofreadAccumulateHandler: ToolHandler = async (
   }
   const dedupedCount = batchDeduped;
 
-  // 疑似/待确认问题（#116 问题十一）：不参与去重，直接追加
+  // 疑似/待确认问题（#116 问题十一）：同样应用去重，避免 AI 重复累加
+  // 同 offset + 同 original 视为重复，只保留首次提交的疑似问题
+  let suspectedDeduped = 0;
   if (Array.isArray(suspected_issues) && suspected_issues.length > 0) {
     const normalizedSuspected = suspected_issues.map((i) =>
       normalizeIssueLocation(normalizeIssueSource(normalizeIssueType(i)))
     );
     if (!session.suspectedIssues) session.suspectedIssues = [];
-    session.suspectedIssues.push(...normalizedSuspected);
+    const existingKeys = new Set<string>(
+      session.suspectedIssues
+        .filter((s) => s.offset !== undefined)
+        .map((s) => dedupKey(s.offset as number, s.original))
+    );
+    for (const entry of normalizedSuspected) {
+      if (entry.offset !== undefined) {
+        const key = dedupKey(entry.offset, entry.original);
+        if (existingKeys.has(key)) {
+          suspectedDeduped++;
+          continue;
+        }
+        existingKeys.add(key);
+      }
+      session.suspectedIssues.push(entry);
+    }
   }
 
   // 落盘持久化（#116 问题十二）：每次累加后写磁盘，服务重启数据不丢
-  persistSession(session_id, session);
+  const persistOk = persistSession(session_id, session);
 
   return {
     id: uuidv4(),
@@ -822,8 +840,12 @@ export const proofreadAccumulateHandler: ToolHandler = async (
           (missingOffsetCount > 0
             ? `；其中 ${missingOffsetCount} 条未携带绝对 offset，未参与去重（报告位置列显示「位置未知」）`
             : '') +
+          (suspectedDeduped > 0 ? `；本批疑似问题去重 ${suspectedDeduped} 条` : '') +
           (session.suspectedIssues && session.suspectedIssues.length > 0
             ? `；疑似/待确认问题 ${session.suspectedIssues.length} 条（报告将单独列出）`
+            : '') +
+          (!persistOk
+            ? '；⚠️ 数据已累加但落盘失败（存储目录不可写？），服务重启后数据可能丢失'
             : '') +
           '。',
       },
