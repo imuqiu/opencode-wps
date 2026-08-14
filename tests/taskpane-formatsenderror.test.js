@@ -123,6 +123,11 @@ test('formatSendError: status 为 0（网络错误）且文本 Network error', f
   assertEqual(out, 'Error: Network error', '网络错误应原样返回');
 });
 
+test('formatSendError: respText 为 null/undefined 时回退到 status', function () {
+  assertEqual(formatSendError(500, null), 'Error: status 500', 'null 应回退到 status');
+  assertEqual(formatSendError(500, undefined), 'Error: status 500', 'undefined 应回退到 status');
+});
+
 console.log('\n========== 测试结果 ==========');
 console.log('总计: ' + testCount + ' 个测试');
 var fail = testResults.filter(function (r) { return r.status === 'FAIL'; }).length;
