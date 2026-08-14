@@ -26,7 +26,9 @@ const PROOFREAD_DIR = path.join(os.homedir(), '.opencode-wps', 'proofread-sessio
 export function ensureProofreadDir(): void {
   try {
     if (!fs.existsSync(PROOFREAD_DIR)) {
-      fs.mkdirSync(PROOFREAD_DIR, { recursive: true });
+      // 评审第 5 轮 W7：设置显式目录权限（POSIX 0o700，仅 owner 可读写执行），
+      // 收敛含文档路径/原文片段的敏感数据的可读范围
+      fs.mkdirSync(PROOFREAD_DIR, { recursive: true, mode: 0o700 });
     }
   } catch {
     // 目录创建失败时静默降级——调用方会捕获并返回错误

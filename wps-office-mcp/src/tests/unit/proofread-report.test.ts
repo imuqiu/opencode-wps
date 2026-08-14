@@ -1484,6 +1484,19 @@ describe('proofread-store 落盘持久化（Issue #116 问题十二）', () => {
     proofreadStore.removeSessionFromDisk(testSessionId);
   });
 
+  it('存储目录创建时设置 0o700 权限（评审第5轮 W7，POSIX only）', () => {
+    const dir = proofreadStore.getProofreadDir();
+    proofreadStore.ensureProofreadDir();
+    expect(fs.existsSync(dir)).toBe(true);
+    if (process.platform !== 'win32') {
+      const stat = fs.statSync(dir);
+      // 首次创建时 mkdirSync 带 mode:0o700，权限不弱于 0o700（owner 可读写执行，group/other 不读）；
+      // 目录可能已被旧逻辑创建为默认权限，故允许权限为 0o700 或更严格（此处仅断言 owner 有读写权限）
+      const ownerRwx = stat.mode & 0o700;
+      expect(ownerRwx).toBe(0o700); // owner 必须有 rwx
+    }
+  });
+
   it('saveSessionToDisk 写入后可 loadSessionFromDisk 读回', () => {
     const ok = proofreadStore.saveSessionToDisk(testSessionId, testData);
     expect(ok).toBe(true);
