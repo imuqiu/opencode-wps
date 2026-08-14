@@ -108,6 +108,23 @@ export function loadSessionFromDisk(sessionId: string): ProofreadSessionData | n
     if (!Array.isArray(data.issues) || !data.docInfo) {
       return null;
     }
+    // 深度校验（#116 第 2 轮评审）：每条 issue 的 original/suggestion 必须为非空字符串，
+    // 避免旧版本或手工编辑的磁盘 JSON 绕过 proofreadAccumulate 的必填字段校验
+    const invalidIssue = data.issues.find(
+      (i) => typeof i.original !== 'string' || !i.original.trim() || typeof i.suggestion !== 'string' || !i.suggestion.trim()
+    );
+    if (invalidIssue) {
+      return null;
+    }
+    // suspectedIssues 同样深度校验（若存在）
+    if (data.suspectedIssues) {
+      const invalidSuspected = data.suspectedIssues.find(
+        (i) => typeof i.original !== 'string' || !i.original.trim() || typeof i.suggestion !== 'string' || !i.suggestion.trim()
+      );
+      if (invalidSuspected) {
+        return null;
+      }
+    }
     return data;
   } catch {
     return null;

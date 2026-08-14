@@ -118,7 +118,11 @@ function enforceSessionLimit(): void {
   for (const [sid] of evictable) {
     sessionIssues.delete(sid);
     sessionLastAccess.delete(sid);
-    deleteSessionFromDisk(sid); // LRU 淘汰同步清理磁盘文件，防止磁盘膨胀
+    // #116 第 2 轮评审：LRU 淘汰同步清理磁盘文件，失败时打日志
+    const diskRemoved = deleteSessionFromDisk(sid);
+    if (!diskRemoved) {
+      console.warn(`[proofread-report] enforceSessionLimit: 会话 ${sid} 磁盘文件删除失败`);
+    }
   }
 }
 
@@ -136,7 +140,11 @@ function touchSession(sessionId: string): void {
 export function releaseSession(sessionId: string): boolean {
   const removed = sessionIssues.delete(sessionId);
   sessionLastAccess.delete(sessionId);
-  deleteSessionFromDisk(sessionId);
+  // #116 第 2 轮评审：检查磁盘删除结果，失败时打日志避免"幽灵会话"复活
+  const diskRemoved = deleteSessionFromDisk(sessionId);
+  if (!diskRemoved) {
+    console.warn(`[proofread-report] releaseSession(${sessionId}): 磁盘会话文件删除失败，存在"幽灵会话"复活风险`);
+  }
   return removed;
 }
 
