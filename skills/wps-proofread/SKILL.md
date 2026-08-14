@@ -208,15 +208,17 @@ deduped.sort((a, b) => (a.offset ?? Infinity) - (b.offset ?? Infinity) || (a.par
 **`getDocumentParagraphs` 的 end_paragraph - start_paragraph + 1 不得超过 200。**
 即每批最多请求 200 段。禁止一次性请求 500、1000 甚至 1600 段。
 
-违规后果：请求过多段落会导致 COM 调用超时（即使 30s 也不够），浪费时间和 token。
+**推荐每批 100 段**（#116 问题十）：大段请求输出易被 MCP 截断导致漏检，且 Windows COM + PowerShell 下 200 段可能触发超时（60s）。100 段是稳妥值，建议作为默认。
+
+违规后果：请求过多段落会导致 COM 调用超时（即使 60s 也不够），浪费时间和 token。
 
 ## 分批校对计划表（执行第一个工具前必须输出）
 
 ```
 分批校对计划
 文档总段数:    XX
-每批段数:      200（每批最多 200 段，不得超过）
-总批次数:      ceil(XX / 200)
+每批段数:      100（推荐；每批最多 200 段，不得超过）
+总批次数:      ceil(XX / 100)
 当前进度:      0 / N
 ```
 
@@ -243,7 +245,7 @@ deduped.sort((a, b) => (a.offset ?? Infinity) - (b.offset ?? Infinity) || (a.par
 │ 第2步：分批校对循环（batch = 1 到 N）                    │
 │ 循环体：                                                  │
 │ ┌────────────────────────────────────────────┐           │
-│ │ 2a. getDocumentParagraphs(本批 200 段)      │           │
+│ │ 2a. getDocumentParagraphs(本批 100 段)      │           │
 │ │     ⚠️ 首次调用 start_paragraph=1           │           │
 │ │ 2b. 取本批第一段的 [start] 做 startOffset   │           │
 │ │    getDocumentTextByRange 取精确文本         │           │
@@ -303,7 +305,7 @@ wps_office_execute({ tool_name: "getTrackChangesStatus", arguments: {} })
 
 ### Step 2: 分批校对循环
 
-**2a. 获取本批段落（每批最多 200 段）：**
+**2a. 获取本批段落（推荐每批 100 段，最多 200 段）：**
 
 **⚠️ 首次调用必须从第 1 段开始。** 插件强制校验：若 `lastBatchParaIndex === 0` 时 `start_paragraph !== 1` 则直接拒绝。
 
@@ -792,11 +794,11 @@ if (writeRes.success !== true) {
 
 ### 1. getDocumentParagraphs(200) 超时怎么办？
 
-COM 超时已从 5s 增加到 30s（MCP v2.2+），200 段应对大多数文档已足够。
+COM 超时已从 30s 增加到 60s（#116 问题八，MCP v1.1.2+），200 段应对大多数文档已足够。
 
-如果仍然超时，允许将单批段数从 200 降至 100（不能再低）。
+**推荐默认每批 100 段**（#116 问题十：大段请求输出易截断，且 200 段在 Windows COM + PowerShell 下可能超时）。若 100 段也超时，可降至 50 段。
 
-调整后必须在分批计划表中注明，如 `每批段数: 100（COM 超时限制）`。
+调整后必须在分批计划表中注明，如 `每批段数: 100（推荐）`。
 
 ### 2. 标题中的多余字符
 

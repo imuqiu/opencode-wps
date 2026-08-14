@@ -786,7 +786,7 @@ describe('TC-12 修订数口径（#55 P1-3）', () => {
     const text = result.content[0].text!;
     expect(text).toContain('修订总数');
     expect(text).toContain('2');
-    expect(text).toContain('问题数 = 修订记录数 ÷ 2');
+    expect(text).toContain('问题数 × 2');
   });
 });
 
@@ -1356,7 +1356,7 @@ describe('generateProofreadReport — TC-12 修订数口径（#55 T3）', () => 
     const text = result.content[0].text!;
     expect(text).toContain('修订总数');
     expect(text).toContain('60');
-    expect(text).toContain('修订记录数 ÷ 2');
+    expect(text).toContain('问题数 × 2');
     expect(text).toContain('30'); // 60 ÷ 2 = 30
   });
 
@@ -1377,10 +1377,10 @@ describe('generateProofreadReport — TC-12 修订数口径（#55 T3）', () => 
     // 评审建议：奇数修订显示 ≈31.5（63 ÷ 2），不再向下取整为 31
     expect(text).toContain('≈31.5');
     expect(text).toContain('修订数为奇数');
-    expect(text).toContain('换算不整除');
+    expect(text).toContain('不等价于问题数 × 2');
     expect(text).toContain('人工核对');
     // 不再出现误导性的"等价于修订记录数 ÷ 2"表述
-    expect(text).not.toContain('等价于修订记录数 ÷ 2');
+    expect(text).not.toContain('换算不整除');
   });
 
   it('偶数修订数时无奇数提示（回归：正常成对替换）', async () => {
