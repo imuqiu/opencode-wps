@@ -1,6 +1,6 @@
 {
   "name": "opencode-wps",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "OpenCode AI WPS Office 插件 - AI助手WPS插件",
   "scripts": {
     "build": "cd wps-office-mcp && npm run build",

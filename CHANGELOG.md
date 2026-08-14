@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-08-14
+
+### Fixed
+
+- **修复 codewiki 配置以正确激活 Wiki 入口（Issue #117，PR #127）** — 仓库首页 `showWiki=false`、Wiki 导航入口不显示、`/-/wikis` 报 404 的根因：codewiki 插件配置结构与插件 README 推荐模式不一致——旧配置把 `image` 放在任务级 `docker.image`、`git_doc_dir` 指向容器内 `/data/codewiki/${CNB_REPO_SLUG}` 路径且未声明 Docker 数据卷，插件生成的内容写入容器内部，流水线结束后即丢失，平台无法读取。按 codewiki 插件 README **Pattern 1（推荐模式）** 调整 `.cnb.yml`：① `image: cnbcool/codewiki:latest` 移至 `stages[].image`（阶段级）；② `git_doc_dir` 改为工作区路径 `/${CNB_BUILD_WORKSPACE}/${CNB_REPO_SLUG}/codewiki`，生成内容可被平台持久化读取；③ 保留 `knowledge_enabled: true`（Wiki 自动入库仓库知识库）。合并后打 `v1.3.1` tag 触发 `tag_push` → codewiki 重新生成 Wiki 并激活入口。Wiki 入口：https://cnb.cool/lnxsun/opencode-wps/-/wikis
+
 ## [1.3.0] - 2026-08-14
 
 ### Added
