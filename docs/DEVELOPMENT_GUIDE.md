@@ -141,13 +141,16 @@ wps-office-mcp/
 └── package.json
 ```
 
-**三层工具体系**（理解 MCP 开发的关键）：
+#### 三层工具体系（理解 MCP 开发的关键）
+<a id="三层工具体系"></a>
 
 | 层级 | 数量 | 命名 | 注册/调用方式 |
 |------|------|------|---------------|
 | 内置工具 | 12 | `wps_xxx` | 启动即注册，始终可用（含 `wps_office_search`/`wps_office_execute` Gateway） |
 | 注册工具 | ~240 | `wps_xxx_xxx` | 经 `tools/index.ts` 注册，Gateway 路由，有完整 TS handler |
 | COM Actions | ~257 | 短名称 | `wps_office_search` → `wps_office_execute` → PS1 兜底 |
+
+> 📚 **交叉参考**：内置工具完整清单与两级网关调用规范详见 [SKILLS.md](./SKILLS.md#内置工具12个所有-skill-共用)；运行时端口/Launcher 管理（14096/14097/14098）与使用侧配置详见 [USAGE.md](./USAGE.md#63-端口速查)。
 
 **开发流程**（新增一个工具）：
 1. 在 `src/tools/<category>/` 下新建 handler（类型安全 + 参数校验）

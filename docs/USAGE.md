@@ -272,6 +272,8 @@ curl -X POST http://127.0.0.1:14097/dock
 | `14098` | CORS 代理 | `opencode-proxy.js` 剥离 CSP 头，供 WPS Chromium 使用 |
 | `58891` | Mac/Linux 轮询桥 | 插件与 MCP 之间的反向轮询通道 |
 
+> 📚 **交叉参考**：端口对应的 MCP Server 三层工具体系与开发映射详见 [DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md#三层工具体系)；内置工具完整清单与两级网关调用规范详见 [SKILLS.md](./SKILLS.md#内置工具12个所有-skill-共用)。
+
 ### 6.4 手动管理
 
 ```bash

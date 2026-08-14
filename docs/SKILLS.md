@@ -163,6 +163,12 @@ AI 识别：使用 wps-ppt skill
 | 11 | `wps_office_search` | 搜索 COM Actions 索引（**必须先搜索**） |
 | 12 | `wps_office_execute` | 执行搜索到的工具（**搜索后用此执行**） |
 
+> 💡 **缓存管理工具补充**：除上述 12 个内置工具外，MCP Server 启动时还直接注册了 2 个缓存管理工具（见 `wps-office-mcp/src/server/mcp-server.ts`）：
+> - `wps_list_cache` —— 列出 MCP Server 当前缓存中的所有键值
+> - `wps_clear_cache` —— 清空 MCP Server 的缓存数据
+>
+> 两者与 `wps_cache_data`/`wps_get_cached_data` 同属启动即注册的内置工具，可直接调用（无需经过两级网关）。上表按仓库「12 内置工具」惯例统计核心 12 个，此处补充缓存管理 2 个，合并为完整的**启动即注册内置清单（14 个）**。
+
 ### 两级网关调用规范（所有 Skill 必须遵循）
 
 ```text
@@ -172,6 +178,8 @@ AI 识别：使用 wps-ppt skill
 ```
 
 > ⚠️ **禁止直接猜测工具名称**——必须经过 `wps_office_search` → `wps_office_execute` 两级网关，确保调用的是索引内真实存在的工具。
+
+> 📚 **交叉参考**：三层工具体系（内置/注册/COM Actions）的完整说明与新增工具流程详见 [DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md#三层工具体系)。
 
 ---
 
