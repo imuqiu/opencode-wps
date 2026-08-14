@@ -1635,6 +1635,63 @@ describe('疑似问题（Issue #116 问题十一）', () => {
     const text = report.content[0].text!;
     expect(text).not.toContain('待确认问题');
   });
+
+  it('suspected_issues 校验失败时不产生副作用（评审第2轮 C2）', async () => {
+    // 先正常累加 1 条正式 issue
+    await proofreadAccumulateHandler({
+      session_id: 'suspect-session',
+      issues: [
+        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+
+    // 第二次调用：suspected_issues 缺字段 → 失败
+    const failResult = await proofreadAccumulateHandler({
+      session_id: 'suspect-session',
+      issues: [
+        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
+      ],
+      suspected_issues: [{ offset: 100, length: 4, original: '已未形成', type: '疑似', source: 'ai' as const }],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+    expect(failResult.success).toBe(false);
+
+    // 失败后正式 issues 不应重复（去重保持 1 条），且不应有疑似问题（校验前置，无副作用）
+    const session = sessionIssues.get('suspect-session')!;
+    expect(session.issues.length).toBe(1); // 未因失败调用重复累加
+    expect(session.suspectedIssues || []).toHaveLength(0);
+  });
+
+  it('suspected_issues 重复提交同 offset+original 时去重（评审第2轮 W4）', async () => {
+    await proofreadAccumulateHandler({
+      session_id: 'suspect-session',
+      issues: [
+        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
+      ],
+      suspected_issues: [
+        { offset: 100, length: 4, original: '已未形成', suggestion: '尚未形成', type: '疑似', source: 'ai' as const },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+    // 第二次重复提交同一条疑似问题
+    await proofreadAccumulateHandler({
+      session_id: 'suspect-session',
+      issues: [
+        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
+      ],
+      suspected_issues: [
+        { offset: 100, length: 4, original: '已未形成', suggestion: '尚未形成', type: '疑似', source: 'ai' as const },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+    const session = sessionIssues.get('suspect-session')!;
+    expect(session.suspectedIssues).toHaveLength(1); // 去重后仍 1 条
+
+    const result = await generateProofreadReportHandler({ session_id: 'suspect-session' });
+    const text = result.content[0].text!;
+    expect(text).toContain('1 处'); // 待确认问题只列 1 条
+  });
 });
 
 // 报告生成器 .replace() 兜底测试（Issue #116 问题一）

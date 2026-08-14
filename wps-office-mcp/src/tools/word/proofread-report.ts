@@ -703,6 +703,32 @@ export const proofreadAccumulateHandler: ToolHandler = async (
     };
   }
 
+  // 疑似问题必填校验（评审第 2 轮 C2）：与 issues 对称，suspected_issues 也需校验
+  // original/suggestion；且校验必须前置到 issues 累加之前，保证校验失败时不产生任何副作用
+  // （正式 issues 未 push、磁盘未写），维持「全部成功或全部失败」的原子性。
+  if (suspected_issues && Array.isArray(suspected_issues)) {
+    const missingSuspectedFields = suspected_issues.filter(
+      (i) =>
+        (typeof i.original !== 'string' || i.original.trim() === '') ||
+        (typeof i.suggestion !== 'string' || i.suggestion.trim() === '')
+    );
+    if (missingSuspectedFields.length > 0) {
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [
+          {
+            type: 'text',
+            text:
+              `suspected_issues 含 ${missingSuspectedFields.length} 条缺少必填字段 original/suggestion，未累加。\n` +
+              `每条疑似问题必须携带 original（原文）和 suggestion（疑为的修改建议）两个必填字段。`,
+          },
+        ],
+        error: `suspected_issues 含 ${missingSuspectedFields.length} 条缺少 original/suggestion`,
+      };
+    }
+  }
+
   // 更新 docInfo（如果提供了新的）
   if (doc_info) {
     session.docInfo = doc_info;
@@ -789,36 +815,30 @@ export const proofreadAccumulateHandler: ToolHandler = async (
 
   // 疑似问题累加（Issue #116 问题十一）：AI 识别但未确认的问题，报告单独列出「待确认」
   // 支持通过 suspected_issues 参数累加，与正式问题分开存储
-  // 评审第 1 轮 C1：与 issues 对称，suspected_issues 也需必填字段校验（original/suggestion），
-  // 避免空原文/空建议的疑似问题静默进入报告「待确认问题」节
+  // 必填校验已前置（评审第 2 轮 C2），此处不再重复；
+  // 评审第 2 轮 W4：与正式 issues 一致，suspected_issues 也做去重（同 offset+original 不重复 push）
   if (suspected_issues && Array.isArray(suspected_issues)) {
-    const missingSuspectedFields = suspected_issues.filter(
-      (i) =>
-        (typeof i.original !== 'string' || i.original.trim() === '') ||
-        (typeof i.suggestion !== 'string' || i.suggestion.trim() === '')
-    );
-    if (missingSuspectedFields.length > 0) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [
-          {
-            type: 'text',
-            text:
-              `suspected_issues 含 ${missingSuspectedFields.length} 条缺少必填字段 original/suggestion，未累加。\n` +
-              `每条疑似问题必须携带 original（原文）和 suggestion（疑为的修改建议）两个必填字段。`,
-          },
-        ],
-        error: `suspected_issues 含 ${missingSuspectedFields.length} 条缺少 original/suggestion`,
-      };
-    }
     const normalizedSuspected = suspected_issues.map((i) =>
       normalizeIssueLocation(normalizeIssueSource(normalizeIssueType(i)))
     );
     if (!session.suspectedIssues) {
       session.suspectedIssues = [];
     }
-    session.suspectedIssues.push(...normalizedSuspected);
+    // 去重：仅对携带绝对 offset 的条目按 dedupKey 去重（与正式 issues 口径一致），
+    // offset 缺失时保守不去重（保留全部）
+    const existingKeys = new Set(
+      session.suspectedIssues.filter((i) => i.offset !== undefined).map((i) => dedupKey(i.offset!, i.original))
+    );
+    for (const entry of normalizedSuspected) {
+      if (entry.offset === undefined) {
+        session.suspectedIssues.push(entry);
+        continue;
+      }
+      const key = dedupKey(entry.offset, entry.original);
+      if (existingKeys.has(key)) continue;
+      existingKeys.add(key);
+      session.suspectedIssues.push(entry);
+    }
   }
 
   // 增量落盘（Issue #116 问题十二）：每次累加后同步到磁盘，服务重启后可恢复
