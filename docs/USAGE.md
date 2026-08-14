@@ -173,7 +173,7 @@ AI 回复**实时流式显示**（SSE，Server-Sent Events），边生成边展�
 
 ### 4.4 自定义 Agents
 
-- **定义位置**：`~/.config/opencode/agents/`（安装时由 `install-addons*.js` 从 `agents/` 同步）
+- **定义位置**：`~/.config/opencode/agents/` + `~/.opencode/agents/`（两处均由 `install-addons*.js` 从源目录 `agents/` 同步）
 - **修改方式**：编辑源目录 `agents/*.md`，运行 `node install-addons.js` 同步，重启 OpenCode 生效
 - **自定义新 Agent**：在 `agents/` 新建 `*.md`（含 frontmatter），同步后即可在 Agent 列表中选择
 
