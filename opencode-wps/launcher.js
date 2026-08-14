@@ -162,10 +162,12 @@ function startOpenCode(cwd, port) {
         var logDir = path.join(os.homedir(), '.opencode', 'logs');
         if (!fs.existsSync(logDir)) { fs.mkdirSync(logDir, { recursive: true }); }
         logFile = path.join(logDir, 'opencode-serve.log');
-        // 简单大小轮转：超过阈值（如 5MB）时把旧日志重命名为 .old，避免无限增长占满磁盘
+        // 简单大小轮转：超过阈值（如 5MB）时把旧日志重命名，避免无限增长占满磁盘。
+        // Windows 上 rename 目标已存在会抛错，故先删除上次的 .old（忽略其不存在）。
         try {
             var MAX_LOG_BYTES = 5 * 1024 * 1024;
             if (fs.existsSync(logFile) && fs.statSync(logFile).size > MAX_LOG_BYTES) {
+                try { if (fs.existsSync(logFile + '.old')) { fs.unlinkSync(logFile + '.old'); } } catch (e) {}
                 fs.renameSync(logFile, logFile + '.old');
             }
         } catch (e) { /* 轮转失败不影响日志落盘 */ }
