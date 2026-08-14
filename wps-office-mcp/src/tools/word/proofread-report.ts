@@ -1132,21 +1132,17 @@ export const generateProofreadReportHandler: ToolHandler = async (
   report += `- **总字数**: ${docInfo.totalWords}\n`;
   if (totalRevisions !== undefined) {
     // TC-12 口径：WPS 修订模式下每次替换 = 1 次删除 + 1 次插入，即 2 条修订记录。
-    // 报告「发现问题」与「修订总数」的换算口径：问题数 = 修订记录数 ÷ 2
-    // ⚠️ 验收遗留：删除类修复（如“存在着→空”）只产生 1 条修订，修订数可能为奇数。
-    // 此时 ÷2 换算不整除，需明示差异并提示人工核对，避免口径误判。
+    // 报告「发现问题」与「修订总数」是两个独立维度：发现问题按 issue 条数计；
+    // 修订总数是 WPS 实际修订记录数，二者非直接相等（仅全替换类修复时修订 ≈ 问题 × 2）。
     const half = totalRevisions / 2;
     const isInteger = Number.isInteger(half);
     // 评审建议：奇数修订时显示 ≈31.5 而非向下取整的 31，避免与"不整除"提示并存造成误导
     const halfDisplay = isInteger ? String(half) : `≈${half.toFixed(1)}`;
-    report += `- **修订总数**: ${totalRevisions}（TC-12 口径：问题数 = 修订记录数 ÷ 2 = ${halfDisplay}`;
+    report += `- **修订总数**: ${totalRevisions}（修订模式实际记录数；若全部为替换类修复，等价于问题数 × 2 = ${halfDisplay}`;
     report += isInteger
       ? `，每次替换产生删除+插入 2 条修订）\n`
-      : `；⚠️ 修订数为奇数（删除类修复只产生 1 条修订），换算不整除，请人工核对修订记录与问题清单是否一一对应）\n`;
-    report += `- **发现问题**: ${issues.length} 处（问题数按 issue 条数计；` +
-      (isInteger
-        ? `若开启修订模式，等价于修订记录数 ÷ 2）\n`
-        : `⚠️ 修订数为奇数时不等价于 ÷2，请人工核对）\n`);
+      : `；⚠️ 修订数为奇数（删除类修复只产生 1 条修订），不等价于问题数 × 2，请人工核对）\n`;
+    report += `- **发现问题**: ${issues.length} 处（按 AI 累计 issue 条数计）\n`;
   } else {
     report += `- **发现问题**: ${issues.length} 处（问题数按 issue 条数计）\n`;
   }
@@ -1265,12 +1261,10 @@ export const generateProofreadReportHandler: ToolHandler = async (
   if (totalRevisions !== undefined) {
     const half = totalRevisions / 2;
     const isInteger = Number.isInteger(half);
-    // 评审建议：奇数修订时显示 ≈31.5（与正文口径一致），不再向下取整
-    const halfDisplay = isInteger ? String(half) : `≈${half.toFixed(1)}`;
-    report += `\n> **TC-12 口径说明**：问题数 ${issues.length} 处对应修订记录数 ${totalRevisions} 条（每次替换 = 删除 + 插入各 1 条修订，即问题数 = 修订记录数 ÷ 2 = ${halfDisplay}）`;
+    report += `\n> **TC-12 口径说明**：本报告「发现问题」按 AI 累计的 issue 条数计（共 ${issues.length} 处）；「修订总数」${totalRevisions} 条为 WPS 修订模式实际记录数（每次替换 = 删除 + 插入各 1 条修订，即若全部为替换类修复，修订记录数 ≈ 问题数 × 2）`;
     report += isInteger
-      ? `。如不等，请检查是否有未跟踪修订的替换或人工修改。\n`
-      : `。⚠️ 当前修订数为奇数（删除类修复只产生 1 条修订，如“存在着→空”），换算不整除，请人工核对修订记录与问题清单是否一一对应。\n`;
+      ? `。二者非直接相等关系，修订数 = 问题数 × 2 仅在所有修复均为「替换」类时成立，请以「发现问题」清单为准。\n`
+      : `。⚠️ 当前修订数为奇数（删除类修复只产生 1 条修订，如“存在着→空”），修订数 ≠ 问题数 × 2，请人工核对修订记录与问题清单。\n`;
   }
 
   // 写入文件（如果指定）——仅当写入成功（或未指定 output_file）后才回收会话；
