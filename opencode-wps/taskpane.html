@@ -337,6 +337,7 @@ var DEFAULT_AGENT = 'wps-expert'
 var SERVER_RUNNING = false
 var IN_SETUP_VIEW = false
 var HEALTH_CHECK_TIMER = null
+var HEALTH_CHECK_IN_FLIGHT = false
 var INPUT_HISTORY = []
 var INPUT_HISTORY_INDEX = -1
 
@@ -698,13 +699,19 @@ function updateServerStatus(running) {
 function startHealthCheck() {
     stopHealthCheck()
     HEALTH_CHECK_TIMER = setInterval(function() {
+        // 防重入：单次探测最长约 48s（15s×3 重试 + 退避）> 10s 周期，
+        // 避免慢请求叠加并发多个 /global/health 造成状态竞态（评审 R1-2）
+        if (HEALTH_CHECK_IN_FLIGHT) return
+        HEALTH_CHECK_IN_FLIGHT = true
         fetchJSON('GET', '/global/health', null, function(data) {
+            HEALTH_CHECK_IN_FLIGHT = false
             var ok = data && data.healthy
             if (ok) {
-                // 服务恢复：无论当前视图，统一走恢复链路
+                // 服务恢复：setup 视图且未连接时自动切回 chat；
+                // 否则仅在状态变化时更新，避免每 10s 冗余写入（评审 R1-1）
                 if (IN_SETUP_VIEW && !SERVER_RUNNING) {
-                    onServerConnected()   // 自动切回 chat + 重启检测
-                } else {
+                    onServerConnected()   // 自动切回 chat + 重启检测（内部含幂等守卫）
+                } else if (!SERVER_RUNNING) {
                     SERVER_RUNNING = true; updateServerStatus(true)
                 }
             } else {
@@ -718,6 +725,7 @@ function startHealthCheck() {
                 }
             }
         }, function() {
+            HEALTH_CHECK_IN_FLIGHT = false
             // 网络错误分支：同样保持检测，等待恢复
             if (SERVER_RUNNING) {
                 SERVER_RUNNING = false; CONNECTED = false
