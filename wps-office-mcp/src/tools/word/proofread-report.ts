@@ -31,6 +31,15 @@
  *   奇数修订（删除类修复只产生 1 条）时提示"换算不整除、请人工核对"
  * - 缺 source 的 issue 兜底推断（normalizeIssueSource，TC-13）：Layer 1 规则命中→mcp、
  *   F11–F15 AI 专属模式→ai、无法判断→保守 mcp；报告"未标注来源"统计不再失真
+ *
+ * #116 增量：
+ * - 数据持久化：新增 proofread-store 模块（磁盘落盘），累加后增量写盘、报告生成前磁盘恢复，
+ *   彻底切断「数据依赖进程内存 + AI 上下文」两个易失点（服务重启/会话压缩均不丢数据）
+ * - 必填字段校验：proofreadAccumulate 入口校验 original/suggestion 非空，缺字段提前报错
+ *   （不再等到报告生成阶段才因 .replace(undefined) 崩溃）
+ * - 报告防御兜底：.replace() 调用处统一 (issue.original || '') 保护，历史坏数据不崩报告
+ * - 疑似/待确认问题机制：新增 suspected_issues 参数 + 报告「待确认问题」节，AI 可将
+ *   未确认的疑似问题单独列出供人工核实
  */
 
 import * as fs from 'fs';
@@ -44,6 +53,12 @@ import {
   RegisteredTool,
 } from '../../types/tools';
 import { validateFilePath, ALLOWED_WRITE_ROOTS } from '../../utils/path-safety';
+import {
+  saveSessionToDisk,
+  loadSessionFromDisk,
+  deleteSessionFromDisk,
+  ProofreadSessionData,
+} from './proofread-store';
 
 // ==================== 类型定义 ====================
 
@@ -75,6 +90,8 @@ interface ProofreadIssueEntry {
 /** 会话数据 */
 interface SessionData {
   issues: ProofreadIssueEntry[];
+  /** 疑似/待确认问题（未修改，仅供报告「待确认问题」节列出） */
+  suspectedIssues?: ProofreadIssueEntry[];
   docInfo: DocInfo;
   createdAt: string;
   totalRevisions?: number;
@@ -91,7 +108,7 @@ const SESSION_MAP_MAX_SIZE = 200;
 /** 最近一次访问时间戳（用于 LRU 淘汰） */
 const sessionLastAccess = new Map<string, number>();
 
-/** 淘汰最久未访问的会话（超过上限时） */
+/** 淘汰最久未访问的会话（超过上限时）；磁盘文件同步清理（LRU 淘汰会丢失内存数据，磁盘同删） */
 function enforceSessionLimit(): void {
   if (sessionIssues.size <= SESSION_MAP_MAX_SIZE) return;
   // 按最后访问时间升序（最旧优先），逐出超限部分
@@ -101,6 +118,7 @@ function enforceSessionLimit(): void {
   for (const [sid] of evictable) {
     sessionIssues.delete(sid);
     sessionLastAccess.delete(sid);
+    deleteSessionFromDisk(sid); // LRU 淘汰同步清理磁盘文件，防止磁盘膨胀
   }
 }
 
@@ -112,11 +130,13 @@ function touchSession(sessionId: string): void {
 
 /**
  * 报告生成后回收会话（报告是流程终点，问题数据已固化到报告文本）
+ * 同时删除磁盘持久化文件，防止磁盘文件膨胀
  * 导出供测试使用
  */
 export function releaseSession(sessionId: string): boolean {
   const removed = sessionIssues.delete(sessionId);
   sessionLastAccess.delete(sessionId);
+  deleteSessionFromDisk(sessionId);
   return removed;
 }
 
@@ -321,6 +341,45 @@ const sessionIssues = new Map<string, SessionData>();
 
 /** 导出供测试使用 */
 export { sessionIssues };
+
+/**
+ * 统一获取会话入口（内存 Map → 磁盘恢复兜底）：
+ * - Map 命中则直接返回（快路径）
+ * - Map 未命中则尝试从磁盘加载（MCP 服务重启后恢复）
+ * - 磁盘无则返回 undefined
+ */
+export function getSessionOrLoad(sessionId: string): SessionData | undefined {
+  const cached = sessionIssues.get(sessionId);
+  if (cached) return cached;
+  // 磁盘兜底：服务重启后按 session_id 恢复
+  const diskData = loadSessionFromDisk(sessionId);
+  if (diskData) {
+    const restored: SessionData = {
+      issues: diskData.issues as ProofreadIssueEntry[],
+      suspectedIssues: diskData.suspectedIssues as ProofreadIssueEntry[] | undefined,
+      docInfo: diskData.docInfo as DocInfo,
+      createdAt: diskData.createdAt,
+      totalRevisions: diskData.totalRevisions,
+    };
+    sessionIssues.set(sessionId, restored);
+    touchSession(sessionId);
+    return restored;
+  }
+  return undefined;
+}
+
+/**
+ * 统一持久化会话到磁盘（累加后调用）
+ */
+function persistSession(sessionId: string, session: SessionData): void {
+  saveSessionToDisk(sessionId, {
+    issues: session.issues,
+    suspectedIssues: session.suspectedIssues,
+    docInfo: session.docInfo,
+    createdAt: session.createdAt,
+    totalRevisions: session.totalRevisions,
+  } as ProofreadSessionData);
+}
 
 // ==================== 兜底类型推断（#55 T2） ====================
 
@@ -553,6 +612,24 @@ export const proofreadAccumulateDefinition: ToolDefinition = {
         type: 'number',
         description: '当前累计修订数（可选，用于报告统计）',
       },
+      suspected_issues: {
+        type: 'array',
+        description: '疑似/待确认问题（可选）。这些问题未实际修改，仅供报告「待确认问题」节列出，供人工核实。字段结构与 issues 相同。',
+        items: {
+          type: 'object',
+          properties: {
+            offset: { type: 'number', description: '文档绝对偏移位置' },
+            length: { type: 'number', description: '问题文本长度' },
+            original: { type: 'string', description: '原文' },
+            suggestion: { type: 'string', description: '建议修改' },
+            type: { type: 'string', description: '问题类型' },
+            context: { type: 'string', description: '上下文' },
+            source: { type: 'string', description: '检测来源: mcp 或 ai' },
+            paragraphIndex: { type: 'number', description: '段落索引' },
+            reason: { type: 'string', description: '检测理由' },
+          },
+        },
+      },
     },
     required: ['session_id', 'issues'],
   },
@@ -561,11 +638,12 @@ export const proofreadAccumulateDefinition: ToolDefinition = {
 export const proofreadAccumulateHandler: ToolHandler = async (
   args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  const { session_id, issues, doc_info, total_revisions } = args as {
+  const { session_id, issues, doc_info, total_revisions, suspected_issues } = args as {
     session_id: string;
     issues?: ProofreadIssueEntry[];
     doc_info?: DocInfo;
     total_revisions?: number;
+    suspected_issues?: ProofreadIssueEntry[];
   };
 
   if (!session_id || typeof session_id !== 'string') {
@@ -586,8 +664,30 @@ export const proofreadAccumulateHandler: ToolHandler = async (
     };
   }
 
-  // 获取或创建会话
-  let session = sessionIssues.get(session_id);
+  // 必填字段校验（#116 问题六）：original/suggestion 缺失时提前暴露，避免报告阶段才崩
+  // 从原始 args 中检查字段（运行时数据可能缺字段，TypeScript 类型无法覆盖）
+  const rawIssues = (args.issues as unknown as Array<Record<string, unknown>>) ?? [];
+  const missing = rawIssues.filter((i) => {
+    const orig = i['original'];
+    const sugg = i['suggestion'];
+    return typeof orig !== 'string' || !(orig as string).trim() || typeof sugg !== 'string' || !(sugg as string).trim();
+  });
+  if (missing.length > 0) {
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [
+        {
+          type: 'text',
+          text: `issues 含 ${missing.length} 条缺少必填字段 original/suggestion（不能为空字符串）。请检查 AI 层输出结构（应为 { offset, length, original, suggestion, type, context, source }），修正后重试。`,
+        },
+      ],
+      error: `issues 含 ${missing.length} 条缺 original/suggestion`,   
+    };
+  }
+
+  // 获取或创建会话（优先内存 Map，未命中则尝试磁盘恢复 —— 服务重启后数据不丢）
+  let session = getSessionOrLoad(session_id);
   if (!session) {
     if (!doc_info) {
       return {
@@ -604,6 +704,7 @@ export const proofreadAccumulateHandler: ToolHandler = async (
     }
     session = {
       issues: [],
+      suspectedIssues: [],
       docInfo: doc_info,
       createdAt: new Date().toISOString(),
     };
@@ -696,6 +797,18 @@ export const proofreadAccumulateHandler: ToolHandler = async (
   }
   const dedupedCount = batchDeduped;
 
+  // 疑似/待确认问题（#116 问题十一）：不参与去重，直接追加
+  if (Array.isArray(suspected_issues) && suspected_issues.length > 0) {
+    const normalizedSuspected = suspected_issues.map((i) =>
+      normalizeIssueLocation(normalizeIssueSource(normalizeIssueType(i)))
+    );
+    if (!session.suspectedIssues) session.suspectedIssues = [];
+    session.suspectedIssues.push(...normalizedSuspected);
+  }
+
+  // 落盘持久化（#116 问题十二）：每次累加后写磁盘，服务重启数据不丢
+  persistSession(session_id, session);
+
   return {
     id: uuidv4(),
     success: true,
@@ -708,6 +821,9 @@ export const proofreadAccumulateHandler: ToolHandler = async (
           (dedupedCount > 0 ? `（本批去重 ${dedupedCount} 条）` : '') +
           (missingOffsetCount > 0
             ? `；其中 ${missingOffsetCount} 条未携带绝对 offset，未参与去重（报告位置列显示「位置未知」）`
+            : '') +
+          (session.suspectedIssues && session.suspectedIssues.length > 0
+            ? `；疑似/待确认问题 ${session.suspectedIssues.length} 条（报告将单独列出）`
             : '') +
           '。',
       },
@@ -799,7 +915,8 @@ export const generateProofreadReportHandler: ToolHandler = async (
     };
   }
 
-  const session = sessionIssues.get(session_id);
+  // 统一获取会话（优先内存 Map，未命中则尝试磁盘恢复 —— 服务重启后报告仍可生成）
+  const session = getSessionOrLoad(session_id);
   if (!session) {
     return {
       id: uuidv4(),
@@ -807,14 +924,14 @@ export const generateProofreadReportHandler: ToolHandler = async (
       content: [
         {
           type: 'text',
-          text: `未找到会话 ${session_id}。请先使用 wps_word_proofread_accumulate 累加校对问题。`,
+          text: `未找到会话 ${session_id}（内存与磁盘均无记录）。请先使用 wps_word_proofread_accumulate 累加校对问题。`,
         },
       ],
       error: '会话不存在',
     };
   }
 
-  const { issues, docInfo, createdAt, totalRevisions } = session;
+  const { issues, docInfo, createdAt, totalRevisions, suspectedIssues } = session;
 
   if (issues.length === 0) {
     const emptyReport = buildEmptyReport(docInfo, createdAt);
@@ -1033,8 +1150,9 @@ export const generateProofreadReportHandler: ToolHandler = async (
 
     metricIssuesList.forEach((issue, idx) => {
       const location = formatIssueLocation(issue);
-      const escapedOriginal = issue.original.replace(/\|/g, '\\|').replace(/\n/g, ' ');
-      const escapedSuggestion = issue.suggestion.replace(/\|/g, '\\|').replace(/\n/g, ' ');
+      // 防御兜底（#116 问题一）：即使历史坏数据漏过校验，报告生成也不崩溃
+      const escapedOriginal = (issue.original || '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
+      const escapedSuggestion = (issue.suggestion || '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
       report += `| ${idx + 1} | ${location} | ${escapedOriginal} | ${escapedSuggestion} | ${issue.type} | ${issue.source === 'ai' ? 'AI' : 'MCP'} |\n`;
     });
 
@@ -1052,8 +1170,25 @@ export const generateProofreadReportHandler: ToolHandler = async (
     report += `|---|------|------|---------|------|------|\n`;
     unknownTypeIssues.forEach((issue, idx) => {
       const location = formatIssueLocation(issue);
-      const escapedOriginal = issue.original.replace(/\|/g, '\\|').replace(/\n/g, ' ');
-      const escapedSuggestion = issue.suggestion.replace(/\|/g, '\\|').replace(/\n/g, ' ');
+      // 防御兜底（#116 问题一）：即使历史坏数据漏过校验，报告生成也不崩溃
+      const escapedOriginal = (issue.original || '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
+      const escapedSuggestion = (issue.suggestion || '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
+      report += `| ${idx + 1} | ${location} | ${escapedOriginal} | ${escapedSuggestion} | ${issue.type || '（空）'} | ${issue.source === 'ai' ? 'AI' : 'MCP'} |\n`;
+    });
+    report += `\n`;
+  }
+
+  // 疑似/待确认问题（#116 问题十一）：单独列出，标注未修改，供人工核实
+  if (suspectedIssues && suspectedIssues.length > 0) {
+    report += `## ⚠️ 待确认问题（未修改，需人工核实） — ${suspectedIssues.length} 处\n\n`;
+    report += `> **提示**：以下问题为 AI 检测到的疑似问题，尚未实际修改。请人工核实后决定是否修复。\n\n`;
+    report += `| # | 位置 | 原文 | 建议修改 | 类型 | 来源 |\n`;
+    report += `|---|------|------|---------|------|------|\n`;
+    suspectedIssues.forEach((issue, idx) => {
+      const location = formatIssueLocation(issue);
+      // 防御兜底（#116 问题一）：即使历史坏数据漏过校验，报告生成也不崩溃
+      const escapedOriginal = (issue.original || '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
+      const escapedSuggestion = (issue.suggestion || '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
       report += `| ${idx + 1} | ${location} | ${escapedOriginal} | ${escapedSuggestion} | ${issue.type || '（空）'} | ${issue.source === 'ai' ? 'AI' : 'MCP'} |\n`;
     });
     report += `\n`;
