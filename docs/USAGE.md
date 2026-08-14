@@ -121,7 +121,7 @@ AI 回复**实时流式显示**（SSE，Server-Sent Events），边生成边展�
 
 ## 四、WPS 专用 Agents
 
-项目内置 4 个 WPS Office 智能助手（定义见 `agents/`，安装到 `~/.config/opencode/agents/`）：
+项目内置 4 个 WPS Office 智能助手（定义见 `agents/`，安装到 `~/.config/opencode/agents/` + `~/.opencode/agents/`）：
 
 | Agent | 类型 | 说明 | 调用方式 |
 |-------|------|------|----------|
