@@ -14,11 +14,12 @@ let stateLock = false;
 let opencodeLogStream = null;
 
 // 关闭并释放 opencode serve 日志写流（幂等，可安全重复调用）
+// 注意：用 end() 会先 flush 缓冲区再关闭 fd，避免 destroy() 丢弃未落盘数据；
+// 由于写流只被子进程 stdout/stderr 使用，子进程退出后这里即可安全关闭。
 function closeOpenCodeLogStream() {
     if (opencodeLogStream) {
         try {
             opencodeLogStream.end();
-            opencodeLogStream.destroy();
         } catch (e) { /* 忽略关闭过程中的错误 */ }
         opencodeLogStream = null;
     }
