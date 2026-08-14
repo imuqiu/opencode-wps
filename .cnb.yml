@@ -21,6 +21,7 @@ main:
             node scripts/sync-npc-team-skill.js --check
             node tests/validate-npc-team-prompt.test.js
             node tests/taskpane-dock.test.js
+            node tests/taskpane-healthcheck.test.js
             # Windows 侧安全/Launcher 回归测试（PR #87 评审迭代新增）
             node tests/security.test.js
             node tests/launcher.test.js
