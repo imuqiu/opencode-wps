@@ -95,4 +95,6 @@ $:
           image: cnbcool/codewiki:latest
           settings:
             git_doc_dir: /${CNB_BUILD_WORKSPACE}/${CNB_REPO_SLUG}/codewiki
+            use_codebuddy: 0   # 使用 CNB AI 接入点（默认 CodeBuddy 接入点在本环境返回空响应，见 Issue #117）
+            llm_model_name: 'hy3-preview'   # 插件 README 示例模型
             knowledge_enabled: true   # 生成的 Wiki 自动入库仓库知识库
