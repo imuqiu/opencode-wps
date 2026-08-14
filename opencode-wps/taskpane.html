@@ -1127,7 +1127,7 @@ function openSidebar() {
     })
 }
 function closeSidebar() { var els = document.querySelectorAll('.sidebar-backdrop,.sidebar'); for (var i = 0; i < els.length; i++) els[i].parentNode.removeChild(els[i]) }
-function switchSession(id) { closeSidebar(); SESSION_ID = id; setPS('opencode_session_id', id); LAST_INJECTED_CONTEXT = ''; loadSessionMessages(id) }
+function switchSession(id) { closeSidebar(); SESSION_ID = id; setPS('opencode_session_id', id); LAST_INJECTED_CONTEXT = ''; loadSessionMessages(id); clearPendingPermission() }
 
 // --- Status ---
 // s: 'busy' | 'idle' | 'waiting'（等待权限确认）
@@ -1220,6 +1220,7 @@ function postMessage(path, body, onError, timeout) {
 
 // --- Session ---
 function createNewSession(cb) {
+    clearPendingPermission()
     fetchJSON('POST', '/session', { title: '新会话' }, function(resp) {
         var data = resp && resp.data ? resp.data : resp
         if (data && data.id) { SESSION_ID = data.id; setPS('opencode_session_id', SESSION_ID); $sessionTitle.textContent = data.title || data.slug || '新会话'; $messages.innerHTML = ''; LAST_INJECTED_CONTEXT = ''; if (cb) cb() }
@@ -1462,6 +1463,14 @@ function sendControlPermissionResponse(response, remember) {
 function hidePermissionDialog() {
     $permModal.style.display = 'none'
     PERMISSION_MODAL_VISIBLE = false
+}
+
+/** #116 第 4 轮评审：切换会话 / 新建会话时清理待响应的权限请求 */
+function clearPendingPermission() {
+    if (PENDING_PERMISSION || PERMISSION_MODAL_VISIBLE) {
+        PENDING_PERMISSION = null
+        if (PERMISSION_MODAL_VISIBLE) hidePermissionDialog()
+    }
 }
 
 /**
