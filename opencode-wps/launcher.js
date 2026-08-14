@@ -649,15 +649,16 @@ var server = http.createServer(function(req, res) {
         // 但 launcher 重启后（opencodeProcess 复位为 null）而 14096 端口仍被占用时，
         // 进程其实仍在运行 —— 需回退探测端口，避免 UI 误显 stopped（Issue #114 回归）。
         var running = opencodeProcess !== null;
+        var portOpen = running ? true : isPortListening(OPENCODE_PORT);
         if (!running) {
-            running = isPortListening(OPENCODE_PORT);
+            running = portOpen;
         }
         sendJSON(req, res, 200, {
             running: running,
             cwd: opencodeCwd,
             pid: opencodeProcess ? opencodeProcess.pid : null,
-            // 额外暴露端口探测结果，便于前端多源交叉验证
-            portOpen: isPortListening(OPENCODE_PORT)
+            // 额外暴露端口探测结果，便于前端多源交叉验证（与 running 同源复用，避免重复 netstat）
+            portOpen: portOpen
         });
         return;
     }

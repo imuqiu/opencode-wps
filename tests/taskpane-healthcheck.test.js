@@ -495,10 +495,14 @@ test('SSE-onopen: /global/health 探测失败时，SSE 连接成功即同步恢�
   var statusUpdated = null;
   var orig = s.updateServerStatus;
   s.updateServerStatus = function (running) { statusUpdated = running; orig(running); };
-  // 模拟服务在跑但 SERVER_RUNNING 仍为 false（健康检查 XHR 探测失败场景）
+  // 模拟服务在跑但 SERVER_RUNNING 仍为 false（健康检查 XHR 探测失败场景），且处于 setup 视图
   s.SERVER_RUNNING = false;
   s.STOPPING = false;
   s.CONNECTED = false;
+  s.IN_SETUP_VIEW = true;
+  var chatShown = 0;
+  var origChat = s.showChat;
+  s.showChat = function () { chatShown++; origChat(); };
   // 连接 SSE
   s.connectSSE();
   assertTrue(s.SSE != null, 'SSE 实例应已创建');
@@ -507,6 +511,8 @@ test('SSE-onopen: /global/health 探测失败时，SSE 连接成功即同步恢�
   assertEqual(statusUpdated, true, 'SSE onopen 应同步 updateServerStatus(true)');
   assertEqual(s.SERVER_RUNNING, true, 'SSE onopen 应置 SERVER_RUNNING=true');
   assertEqual(s.CONNECTED, true, 'SSE onopen 应保持 CONNECTED=true');
+  assertTrue(chatShown >= 1, 'setup 视图下 SSE onopen 应切回 chat（showChat 被调用）');
+  assertEqual(s.IN_SETUP_VIEW, false, 'showChat 应置 IN_SETUP_VIEW=false');
 });
 
 test('SSE-onopen-STOPPING: 显式停止（STOPPING=true）后 SSE onopen 不应误恢复运行状态', function () {

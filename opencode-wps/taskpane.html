@@ -1401,6 +1401,10 @@ function connectSSE() {
             if (!STOPPING) {
                 SERVER_RUNNING = true;
                 updateServerStatus(true);
+                // 若处于 setup 视图则同步切回 chat，与健康检查成功分支的恢复行为保持一致
+                if (IN_SETUP_VIEW) {
+                    showChat();
+                }
             }
             sseReconnectDelay = 1000;
             updateConnectionStatus();
@@ -1895,6 +1899,14 @@ function scrollToBottom() { setTimeout(function() { if ($messages) $messages.scr
     var lastCwd = getPS('opencode_cwd')
     if (lastCwd) $setupCwd.value = lastCwd.replace(/\\\\/g, '\\')
 
+    // 进入 chat 视图：设置项目目录并走 onServerConnected（幂等）——两处探测成功共用此逻辑（评审 P3 去重）
+    var enterChat = function(cwd) {
+        PROJECT_DIR = cwd || ''
+        $topbarCwd.textContent = PROJECT_DIR.replace(/\\\\/g, '\\')
+        $topbarCwd.title = PROJECT_DIR.replace(/\\\\/g, '\\')
+        onServerConnected()
+    }
+
     // 并行检查 launcher 和 opencode 服务
     var checkLauncher = function(cb) {
         var xhr = new XMLHttpRequest()
@@ -1917,18 +1929,12 @@ function scrollToBottom() { setTimeout(function() { if ($messages) $messages.scr
         checkOpenCode(function(opencodeOk) {
             if (opencodeOk) {
                 // 服务已运行，直接进 chat
-                PROJECT_DIR = lastCwd || ''
-                $topbarCwd.textContent = PROJECT_DIR.replace(/\\\\/g, '\\')
-                $topbarCwd.title = PROJECT_DIR.replace(/\\\\/g, '\\')
-                onServerConnected()
+                enterChat(lastCwd)
             } else if (launcherOk) {
                 // /global/health 探测失败但 launcher 可达：回退看 launcher /status 是否确认服务在跑
                 probeLauncherRunning(function(launcherRunning) {
                     if (launcherRunning) {
-                        PROJECT_DIR = lastCwd || ''
-                        $topbarCwd.textContent = PROJECT_DIR.replace(/\\\\/g, '\\')
-                        $topbarCwd.title = PROJECT_DIR.replace(/\\\\/g, '\\')
-                        onServerConnected()
+                        enterChat(lastCwd)
                     } else {
                         updateServerStatus(false)
                         showSetup()
@@ -1943,6 +1949,7 @@ function scrollToBottom() { setTimeout(function() { if ($messages) $messages.scr
             }
         })
     })
+
 
     // 在线状态监听：断网时标记，恢复后重连SSE
     window.addEventListener('online', function() {
