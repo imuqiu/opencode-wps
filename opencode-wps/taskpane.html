@@ -876,6 +876,9 @@ function startHealthCheck() {
                         probeLauncherRunning(function(launcherRunning) {
                             // 丢弃显式停止前发起的在途探测结果（与健康检查回调的 STOPPED_AT 过滤语义一致，双保险）
                             if (requestTs <= STOPPED_AT) return
+                            // 语义说明：/global/health 失败/不健康时，launcher 确认「进程/端口在监听」作为兜底信号，
+                            // 显示运行中（进程活着）而非 stopped —— 满足用户核心诉求「进程在跑却显示停止」。
+                            // 若服务持续不健康（healthy=false）但仍被 launcher 判定 running，UI 显示运行中属进程级语义。
                             if (launcherRunning && !STOPPING) {
                                 SERVER_RUNNING = true
                                 updateServerStatus(true)
@@ -902,6 +905,7 @@ function startHealthCheck() {
                     probeLauncherRunning(function(launcherRunning) {
                         // 丢弃显式停止前发起的在途探测结果（与健康检查回调的 STOPPED_AT 过滤语义一致，双保险）
                         if (requestTs <= STOPPED_AT) return
+                        // 语义说明：见上方成功分支失败处理 —— 进程/端口监听作为进程级 running 兜底
                         if (launcherRunning && !STOPPING) {
                             SERVER_RUNNING = true
                             updateServerStatus(true)
