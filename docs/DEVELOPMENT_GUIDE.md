@@ -147,7 +147,7 @@ wps-office-mcp/
 
 | 层级 | 数量 | 命名 | 注册/调用方式 |
 |------|------|------|---------------|
-| 内置工具 | 12 | `wps_xxx` | 启动即注册，始终可用（含 `wps_office_search`/`wps_office_execute` Gateway） |
+| 内置工具 | 12 | `wps_xxx` | 启动即注册，始终可用（含 `wps_office_search`/`wps_office_execute` Gateway；另含 2 个缓存内置工具 `wps_list_cache`/`wps_clear_cache`，完整清单见 [SKILLS.md](./SKILLS.md#内置工具12个所有-skill-共用)） |
 | 注册工具 | ~240 | `wps_xxx_xxx` | 经 `tools/index.ts` 注册，Gateway 路由，有完整 TS handler |
 | COM Actions | ~257 | 短名称 | `wps_office_search` → `wps_office_execute` → PS1 兜底 |
 
