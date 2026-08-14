@@ -24,6 +24,8 @@ Word 工具定义与处理器目录，含内容操作/文档管理/格式化/校
 - **落盘失败语义**（#70）：generate 指定 `output_file` 时，写盘失败返回 `success=false` + 失败原因
   （含目标路径），会话保留供修正路径后重试；成功（或未指定）才回收会话。空报告/主报告两分支
   均自动创建父目录，行为一致
+- **报告生成后会话释放**（评审第 3 轮 I3）：报告生成成功即 `releaseSession`（清内存+磁盘文件），
+  「报告是流程终点」。如需二次生成（换路径/格式），需重新 `proofreadAccumulate` 累加后再生成
 - **报告生成**：五维评分（fluency/conciseness/accuracy/consistency/completeness）原始分 [1,5]
   → 归一化 [0,2] → X.X/10 展示，含雷达图 JSON、按维度问题详情、统计摘要（MCP/AI 来源计数）
 

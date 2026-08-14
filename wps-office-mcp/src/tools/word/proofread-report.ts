@@ -138,7 +138,11 @@ export function releaseSession(sessionId: string): boolean {
   const removed = sessionIssues.delete(sessionId);
   sessionLastAccess.delete(sessionId);
   // 同步清理磁盘文件（Issue #116 问题十二：服务端落盘持久化的清理口径）
-  removeSessionFromDisk(sessionId);
+  // 评审第 3 轮 W5：检查删除返回值，失败时打日志，避免磁盘文件残留
+  const diskRemoved = removeSessionFromDisk(sessionId);
+  if (!diskRemoved) {
+    console.warn(`[proofread] releaseSession 清理磁盘文件失败: ${sessionId}`);
+  }
   return removed;
 }
 
