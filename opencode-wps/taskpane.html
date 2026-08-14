@@ -863,13 +863,24 @@ function startHealthCheck() {
                     }
                 } else {
                     // 失败：标记断开 + 切 setup（若未在 setup），但【不停止检测】
-                    // 注：即使 /global/health 探测失败，若服务实际在跑，SSE onopen 会同步恢复状态（见 connectSSE）
                     if (SERVER_RUNNING && !STOPPING) {
                         SERVER_RUNNING = false; CONNECTED = false
                         if (SSE) { SSE.close(); SSE = null }
                         updateServerStatus(false)
                         if (!IN_SETUP_VIEW) showSetup()   // 仅切视图，不再 stopHealthCheck
                         $setupStatus.textContent = '服务已断开，请重新启动以继续。'
+                        // 交叉验证：/global/health 失败但 launcher 确认端口在监听（服务实际在跑）时，
+                        // 视为探测抖动而非真实停止 —— 立即恢复运行状态 + 重建 SSE（覆盖 SSE 已被 close
+                        // 的场景，Issue #114 核心场景）。同步降级已先执行，故测试环境（launcher 探测
+                        // 不回调）不影响既有降级断言。
+                        probeLauncherRunning(function(launcherRunning) {
+                            if (launcherRunning && !STOPPING) {
+                                SERVER_RUNNING = true
+                                updateServerStatus(true)
+                                if (IN_SETUP_VIEW) showChat()
+                                if (!SSE) onServerConnected()
+                            }
+                        })
                     }
                 }
             })
@@ -879,13 +890,21 @@ function startHealthCheck() {
                 // STOPPED_AT 仅在 stopOpenCode() 中更新，不随启动重置（评审 P1）
                 if (requestTs <= STOPPED_AT) return
                 // 网络错误分支：同样保持检测，等待恢复
-                // 注：即使探测失败，若服务实际在跑，SSE onopen 会同步恢复状态（见 connectSSE）
                 if (SERVER_RUNNING && !STOPPING) {
                     SERVER_RUNNING = false; CONNECTED = false
                     if (SSE) { SSE.close(); SSE = null }
                     updateServerStatus(false)
                     if (!IN_SETUP_VIEW) showSetup()
                     $setupStatus.textContent = '服务已断开，请重新启动以继续。'
+                    // 与成功分支失败一致：launcher 确认服务在跑则立即恢复 + 重建 SSE
+                    probeLauncherRunning(function(launcherRunning) {
+                        if (launcherRunning && !STOPPING) {
+                            SERVER_RUNNING = true
+                            updateServerStatus(true)
+                            if (IN_SETUP_VIEW) showChat()
+                            if (!SSE) onServerConnected()
+                        }
+                    })
                 }
             })
         })

@@ -529,6 +529,37 @@ test('SSE-onopen-STOPPING: 显式停止（STOPPING=true）后 SSE onopen 不应�
   assertEqual(statusUpdates.indexOf(true), -1, 'STOPPING 时不应调用 updateServerStatus(true)');
 });
 
+// ===== 核心场景：/global/health 持续失败但 launcher 确认服务在跑（Issue #114）=====
+test('launcher-fallback: /global/health 持续失败但 launcher 确认端口监听 → 状态恢复运行中', function () {
+  var s = loadTaskpaneScript();
+  var statuses = [];
+  var orig = s.updateServerStatus;
+  s.updateServerStatus = function (running) { statuses.push(running); orig(running); };
+  var connected = 0;
+  // 避免 onServerConnected 内部副作用，只计数
+  var origConn = s.onServerConnected;
+  s.onServerConnected = function () { connected++; };
+  s.SERVER_RUNNING = true;
+  s.CONNECTED = true;
+  s.IN_SETUP_VIEW = false;
+  s.STOPPING = false;
+  s.startHealthCheck();
+  // 触发一次健康检查：/global/health 返回失败
+  healthOverride = { healthy: false };
+  s.__flushHealthChecks(1);
+  // 此刻已同步降级（SERVER_RUNNING=false），probeLauncherRunning 已发出 XHR（lastXhr 已记录）
+  assertEqual(s.SERVER_RUNNING, false, '/global/health 失败应先同步降级');
+  // 模拟 launcher 响应：端口监听（服务实际在跑）
+  var xhr = s.__lastXhr();
+  assertTrue(xhr != null, 'probeLauncherRunning 应创建 XHR');
+  xhr.status = 200;
+  xhr.responseText = JSON.stringify({ running: true, portOpen: true });
+  xhr.onload();
+  assertEqual(s.SERVER_RUNNING, true, 'launcher 确认服务在跑后应恢复 SERVER_RUNNING=true');
+  assertEqual(statuses[statuses.length - 1], true, 'launcher 确认后应 updateServerStatus(true)');
+  assertEqual(connected, 1, 'SSE 已被 close，launcher 确认后应重建连接（onServerConnected）');
+});
+
 // ==================== 测试结果汇总 ====================
 
 console.log('\n========== 测试结果 ==========');
