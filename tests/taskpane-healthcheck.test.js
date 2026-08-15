@@ -794,6 +794,55 @@ test('SSE-probe-model-agent-refresh: setup 探测恢复应刷新模型/智能体
   assertTrue(agentRefreshed >= 1, 'setup 探测恢复应刷新智能体列表（fetchAvailableAgents 被调用）');
 });
 
+test('healthcheck-SSE-connected-sticky: SSE 已连接时 /global/health 失败不应拆除运行中状态（第 2 轮评审，防振荡）', function () {
+  var s = loadTaskpaneScript();
+  s.onServerConnected = function () {};
+  s.fetchAvailableModels = function (cb) { if (cb) cb(); };
+  s.fetchAvailableAgents = function (cb) { if (cb) cb(); };
+  // 已通过 SSE 探测恢复：SSE 已连接，SERVER_RUNNING=true（chat 视图）
+  s.SERVER_RUNNING = true;
+  s.CONNECTED = true;
+  s.IN_SETUP_VIEW = false;
+  s.STOPPING = false;
+  s.connectSSE();   // 建立真实 SSE 连接
+  s.SSE.onopen();
+  assertEqual(s.SERVER_RUNNING, true, 'SSE onopen 后应 SERVER_RUNNING=true');
+  assertTrue(s.SSE != null, 'SSE 应已连接');
+  var statuses = [];
+  var orig = s.updateServerStatus;
+  s.updateServerStatus = function (running) { statuses.push(running); orig(running); };
+  // 启动健康检查，触发一次 /global/health 失败（CORS 持续失败场景）
+  s.startHealthCheck();
+  healthOverride = { healthy: false };
+  s.__flushHealthChecks(1);
+  // SSE 已连接，不应因 /global/health 失败拆除运行中状态（防每 10s 振荡）
+  assertEqual(s.SERVER_RUNNING, true, 'SSE 已连接时 /global/health 失败不应置 SERVER_RUNNING=false');
+  assertEqual(s.SSE != null, true, 'SSE 已连接时 /global/health 失败不应 close SSE');
+  assertEqual(statuses.indexOf(false), -1, 'SSE 已连接时 /global/health 失败不应 updateServerStatus(false)');
+});
+
+test('healthcheck-SSE-closed-then-fail: SSE 断开后 /global/health 失败仍正常降级（第 2 轮评审回归，不损失响应性）', function () {
+  var s = loadTaskpaneScript();
+  s.onServerConnected = function () {};
+  s.fetchAvailableModels = function (cb) { if (cb) cb(); };
+  s.fetchAvailableAgents = function (cb) { if (cb) cb(); };
+  s.SERVER_RUNNING = true;
+  s.CONNECTED = true;
+  s.IN_SETUP_VIEW = false;
+  s.STOPPING = false;
+  s.connectSSE();
+  s.SSE.onopen();
+  // 模拟真实崩溃：SSE.onerror 关闭连接、CONNECTED=false
+  s.SSE.onerror();
+  assertEqual(s.SSE, null, 'SSE.onerror 后应 close SSE');
+  assertEqual(s.CONNECTED, false, 'SSE.onerror 后应 CONNECTED=false');
+  // 此时 /global/health 失败应正常降级（SSE 已断开，守卫不拦截）
+  s.startHealthCheck();
+  healthOverride = { healthy: false };
+  s.__flushHealthChecks(1);
+  assertEqual(s.SERVER_RUNNING, false, 'SSE 断开后 /global/health 失败应正常降级为 SERVER_RUNNING=false');
+});
+
 // ==================== 测试结果汇总 ====================
 
 console.log('\n========== 测试结果 ==========');

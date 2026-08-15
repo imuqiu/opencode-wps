@@ -868,7 +868,11 @@ function startHealthCheck() {
                     }
                 } else {
                     // 失败：标记断开 + 切 setup（若未在 setup），但【不停止检测】
-                    if (SERVER_RUNNING && !STOPPING) {
+                    // 第 2 轮评审：加 !SSE 守卫——SSE.onopen 已是最强「服务在跑」证据，若 SSE 已连接
+                    // （onopen 已证明服务在跑），则信任 SSE 信号、不以 /global/health 失败拆除运行中状态，
+                    // 避免与持续 CORS 失败的 /global/health 形成每 10s 反复振荡（chat↔setup 闪烁）。
+                    // 真实崩溃时 SSE.onerror 会先关连接置 CONNECTED=false，下一周期即可正常降级。
+                    if (SERVER_RUNNING && !STOPPING && !SSE) {
                         SERVER_RUNNING = false; CONNECTED = false
                         if (SSE) { SSE.close(); SSE = null }
                         updateServerStatus(false)
@@ -908,7 +912,8 @@ function startHealthCheck() {
                 // STOPPED_AT 仅在 stopOpenCode() 中更新，不随启动重置（评审 P1）
                 if (requestTs <= STOPPED_AT) return
                 // 网络错误分支：同样保持检测，等待恢复
-                if (SERVER_RUNNING && !STOPPING) {
+                // 第 2 轮评审：加 !SSE 守卫——SSE 已连接则信任 SSE 信号，不以 /global/health 失败反复拆解刚恢复的状态。
+                if (SERVER_RUNNING && !STOPPING && !SSE) {
                     SERVER_RUNNING = false; CONNECTED = false
                     if (SSE) { SSE.close(); SSE = null }
                     updateServerStatus(false)
