@@ -895,7 +895,8 @@ function startHealthCheck() {
                                 // onopen 成功即证明服务在跑（覆盖 /global/health CORS 失败 + launcher 未运行场景）。
                                 // 服务真停时 SSE onerror 且不自动重连（SESSION_ID 为空），不会误报；
                                 // 加冷却守卫，避免每 10s 健康检查周期都创建一次注定失败的 EventSource（评审建议 2）。
-                                if (sseProbeAllowed()) connectSSE()
+                                // 第 1 轮评审：标记为探测性连接（connectSSE(true)），失败时不自动重连（SSE.onerror 见上）。
+                                if (sseProbeAllowed()) connectSSE(true)
                             }
                         })
                     }
@@ -926,7 +927,8 @@ function startHealthCheck() {
                         } else if (!launcherReachable && !STOPPING && !SERVER_RUNNING && !SSE) {
                             // launcher 不可达：见上方成功分支失败处理的 SSE 最终探测说明（Issue #114 回归）
                             // 冷却守卫：避免每 10s 健康检查周期都创建注定失败的 EventSource（评审建议 2）
-                            if (sseProbeAllowed()) connectSSE()
+                            // 第 1 轮评审：标记为探测性连接（connectSSE(true)），失败时不自动重连。
+                            if (sseProbeAllowed()) connectSSE(true)
                         }
                     })
                 }
@@ -1426,6 +1428,10 @@ var sseReconnectDelay = 1000;
 // 避免无谓的周期性失败连接。仅守卫「健康检查失败分支的探测性 connectSSE」，不影响正常建连。
 var LAST_SSE_PROBE_TS = 0
 var SSE_PROBE_COOLDOWN = 8000   // 冷却窗口：距上次探测不足 8s（健康检查周期 10s）则跳过本轮探测
+// SSE 探测连接标记（第 1 轮评审）：健康检查失败分支 / init 兜底分支用 connectSSE(true) 建立的
+// 探测性 EventSource。探测连接失败时（服务真停）不应走标准指数退避自动重连——那会绕过
+// sseProbeAllowed() 冷却守卫反复向已停止服务建连。探测失败应仅靠健康检查下一周期再触发。
+var SSE_IS_PROBE = false
 /**
  * 更新 SSE 连接状态 UI
  */
@@ -1449,14 +1455,17 @@ function sseProbeAllowed() {
 /**
  * 连接 SSE 事件流接收服务端推送
  */
-function connectSSE() {
+function connectSSE(isProbe) {
     if (SSE) { SSE.close(); SSE = null }
+    // 第 1 轮评审：记录是否为探测性连接，onerror 时据此决定是否走自动重连（见下方 SSE.onerror）
+    SSE_IS_PROBE = !!isProbe
     try {
         SSE = new EventSource(API_BASE + '/global/event')
 
         SSE.onopen = function() {
             console.log('[SSE] Connected');
             CONNECTED = true;
+            SSE_IS_PROBE = false;   // 连接成功即转为真实连接，后续异常应走标准重连
             // SSE 连接成功是「服务在跑」的最强证据（EventSource 不受 XHR CORS 差异影响），
             // 同步状态条，避免 /global/health 探测失败时 UI 误显 stopped（Issue #114 回归）
             if (!STOPPING) {
@@ -1465,6 +1474,10 @@ function connectSSE() {
                 // 若处于 setup 视图则同步切回 chat，与健康检查成功分支的恢复行为保持一致
                 if (IN_SETUP_VIEW) {
                     showChat();
+                    // 第 1 轮评审：SSE 探测恢复路径未走 onServerConnected()，补齐模型/智能体下拉框数据，
+                    // 避免与 launcher 可达时走 onServerConnected() 的完整恢复行为不一致（顶部下拉框为默认占位值）。
+                    fetchAvailableModels(function() { $modelName.textContent = CURRENT_MODEL || 'AI 模型' });
+                    fetchAvailableAgents(function() { $agentName.textContent = CURRENT_AGENT || '智能体' });
                     // setup 探测场景（launcher 不可达 / /global/health CORS 失败）下，服务确认在跑但
                     // 未走完整 onServerConnected 流程，可能无 SESSION_ID。补建会话，避免进入 chat 无法聊天。
                     // 注意：createNewSession 仅建会话、不再回调 connectSSE() —— connectSSE() 开头会 close 当前
@@ -1496,6 +1509,9 @@ function connectSSE() {
             }
             if (SSE) { SSE.close(); SSE = null; }
             // 自动重连（指数退避，最大30秒）
+            // 第 1 轮评审：探测性连接（SSE_IS_PROBE=true）失败时不自动重连——服务可能真停，
+            // 应交给健康检查下一周期按 sseProbeAllowed() 冷却节奏重新探测，避免绕过冷却反复向已停止服务建连。
+            if (SSE_IS_PROBE) { SSE_IS_PROBE = false; return }
             if (!sseReconnectTimer) {
                 sseReconnectTimer = setTimeout(function() {
                     sseReconnectTimer = null;
@@ -2020,7 +2036,8 @@ function scrollToBottom() { setTimeout(function() { if ($messages) $messages.scr
                 // EventSource 不受 XHR CORS 差异影响，onopen 成功即证明服务在跑并自动恢复；
                 // 服务真停时 onerror 且不自动重连（SESSION_ID 为空），不会误报也不会连接风暴。
                 // 该 connectSSE 会在 SSE onopen 中经 showChat/updateServerStatus 恢复状态。
-                connectSSE()
+                // 第 1 轮评审：标记为探测性连接（connectSSE(true)），失败时不自动重连（服务真停时只靠健康检查周期再探）。
+                connectSSE(true)
             }
         })
     })

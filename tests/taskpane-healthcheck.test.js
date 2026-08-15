@@ -503,6 +503,9 @@ test('SSE-onopen: /global/health 探测失败时，SSE 连接成功即同步恢�
   var chatShown = 0;
   var origChat = s.showChat;
   s.showChat = function () { chatShown++; origChat(); };
+  // 第 1 轮评审：setup 探测恢复路径会刷新模型/智能体下拉框，这里 stub 避免触发真实 fetch
+  s.fetchAvailableModels = function (cb) { if (cb) cb(); };
+  s.fetchAvailableAgents = function (cb) { if (cb) cb(); };
   // 连接 SSE
   s.connectSSE();
   assertTrue(s.SSE != null, 'SSE 实例应已创建');
@@ -624,6 +627,9 @@ test('probeLauncherRunning: launcher 不可达（XHR 错误/超时）时 reachab
 test('healthcheck-launcher-unreachable: /global/health 失败且 launcher 不可达 → 用 SSE 探测服务（Issue #114）', function () {
   var s = loadTaskpaneScript();
   s.onServerConnected = function () {};  // 避免内部副作用
+  // 第 1 轮评审：SSE 探测恢复路径会刷新模型/智能体下拉框，这里 stub 避免触发真实 fetch
+  s.fetchAvailableModels = function (cb) { if (cb) cb(); };
+  s.fetchAvailableAgents = function (cb) { if (cb) cb(); };
   // 进入运行中 chat 状态
   s.SERVER_RUNNING = true;
   s.CONNECTED = true;
@@ -672,7 +678,7 @@ test('init-launcher-unreachable: init 时 launcher 未运行 + /global/health �
   var src = fs.readFileSync(TASKPANE_HTML, 'utf-8');
   // 验证 init 的 else 分支（launcher 未运行）包含 connectSSE 探测
   assertTrue(/launcher 未运行或 opencode 未启动/.test(src), 'init 应含 launcher 未运行分支');
-  assertTrue(/startHealthCheck\(\)   \/\/ setup 下也启动健康检测[\s\S]*?connectSSE\(\)/.test(src), 'init else 分支应在 startHealthCheck 后调用 connectSSE 探测');
+  assertTrue(/startHealthCheck\(\)   \/\/ setup 下也启动健康检测[\s\S]*?connectSSE\(true\)/.test(src), 'init else 分支应在 startHealthCheck 后调用 connectSSE(true) 探测');
 });
 
 test('SSE-onopen-noselfreconnect: setup 补建会话时不再回调 connectSSE 拆除当前 SSE（评审建议 1）', function () {
@@ -682,6 +688,9 @@ test('SSE-onopen-noselfreconnect: setup 补建会话时不再回调 connectSSE �
   s.CONNECTED = false;
   s.IN_SETUP_VIEW = true;
   s.SESSION_ID = '';   // 无会话 → onopen 应补建会话
+  // 第 1 轮评审：SSE 探测恢复路径会刷新模型/智能体下拉框，这里 stub 避免触发真实 fetch
+  s.fetchAvailableModels = function (cb) { if (cb) cb(); };
+  s.fetchAvailableAgents = function (cb) { if (cb) cb(); };
   // 拦截 createNewSession：捕获回调，验证不再以 connectSSE() 作为回调（避免 close 刚建立的 SSE 再重连）
   var sessionCallback = 'not-captured';
   var origCreate = s.createNewSession;
@@ -728,6 +737,61 @@ test('healthcheck-launcher-unreachable-cooldown: launcher 不可达触发 SSE �
   var x = s.__lastXhr();
   x.onerror();  // launcher 不可达
   assertEqual(s.SSE, null, '冷却窗口内健康检查失败分支不应创建注定失败的 EventSource（无连接风暴）');
+});
+
+// ===== 第 1 轮评审新增：SSE 探测连接失败不自动重连（不绕过冷却守卫） =====
+test('SSE-probe-noreconnect: 探测性连接（connectSSE(true)）失败时不走自动重连（评审第 1 轮）', function () {
+  var s = loadTaskpaneScript();
+  s.SESSION_ID = 'abc';   // 模拟先前已建会话（正常场景 SESSION_ID 非空，旧逻辑会走自动重连）
+  s.SSE_IS_PROBE = false;
+  // 以探测模式建连
+  s.connectSSE(true);
+  assertEqual(s.SSE_IS_PROBE, true, '探测性 connectSSE(true) 应标记 SSE_IS_PROBE=true');
+  // 触发 onerror（服务真停/连接失败）
+  s.SSE.onerror();
+  assertEqual(s.sseReconnectTimer, null, '探测性连接失败不应排程自动重连（避免绕过冷却向已停止服务反复建连）');
+  assertEqual(s.SSE_IS_PROBE, false, 'onerror 后应复位 SSE_IS_PROBE 标记');
+});
+
+test('SSE-probe-normal-reconnect-kept: 正常连接（connectSSE()）失败仍走标准自动重连（评审第 1 轮回归）', function () {
+  var s = loadTaskpaneScript();
+  s.SESSION_ID = 'abc';
+  s.SSE_IS_PROBE = false;
+  s.connectSSE();   // 正常连接
+  assertEqual(s.SSE_IS_PROBE, false, '正常 connectSSE() 不应标记为探测连接');
+  s.SSE.onerror();
+  assertTrue(s.sseReconnectTimer != null, '正常连接失败应保留标准自动重连（不影响既有重连逻辑）');
+});
+
+test('SSE-probe-onopen-clears-probe: 探测连接成功后转为真实连接（SSE_IS_PROBE 复位）（评审第 1 轮）', function () {
+  var s = loadTaskpaneScript();
+  s.SESSION_ID = 'abc';
+  s.SERVER_RUNNING = false;
+  s.STOPPING = false;
+  s.CONNECTED = false;
+  s.IN_SETUP_VIEW = true;
+  s.fetchAvailableModels = function (cb) { if (cb) cb(); };
+  s.fetchAvailableAgents = function (cb) { if (cb) cb(); };
+  s.connectSSE(true);   // 探测建连
+  assertEqual(s.SSE_IS_PROBE, true, '建连时 SSE_IS_PROBE=true');
+  s.SSE.onopen();   // 连接成功 → 服务在跑
+  assertEqual(s.SSE_IS_PROBE, false, 'onopen 成功后应复位 SSE_IS_PROBE=false（转为真实连接）');
+});
+
+test('SSE-probe-model-agent-refresh: setup 探测恢复应刷新模型/智能体下拉框（评审第 1 轮）', function () {
+  var s = loadTaskpaneScript();
+  s.SERVER_RUNNING = false;
+  s.STOPPING = false;
+  s.CONNECTED = false;
+  s.IN_SETUP_VIEW = true;
+  s.SESSION_ID = '';
+  var modelRefreshed = 0, agentRefreshed = 0;
+  s.fetchAvailableModels = function (cb) { modelRefreshed++; if (cb) cb(); };
+  s.fetchAvailableAgents = function (cb) { agentRefreshed++; if (cb) cb(); };
+  s.connectSSE(true);
+  s.SSE.onopen();
+  assertTrue(modelRefreshed >= 1, 'setup 探测恢复应刷新模型列表（fetchAvailableModels 被调用）');
+  assertTrue(agentRefreshed >= 1, 'setup 探测恢复应刷新智能体列表（fetchAvailableAgents 被调用）');
 });
 
 // ==================== 测试结果汇总 ====================
