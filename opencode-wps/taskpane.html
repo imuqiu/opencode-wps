@@ -803,7 +803,10 @@ function updateServerStatus(running) {
  * 探测 launcher（14097）状态：/global/health 探测在 WPS Chromium 下可能因 CORS 或
  * 环境差异失败，即使 opencode 实际运行（Issue #114 回归）。launcher /status 显式放行
  * file:///null Origin，且会回退探测 14096 端口监听，作为可靠的第二信号源交叉验证。
- * @param {function} cb - 回调，参数为 true=服务运行 / false=未运行
+ * @param {function} cb - 回调，(launcherRunning, launcherReachable)。
+ *   launcherRunning:    true=服务在跑（launcher 确认 running 或 14096 端口在监听）
+ *   launcherReachable:  true=launcher /status 响应成功（200）；false=launcher 不可达
+ *   （XHR 网络错误/超时，无法区分「服务真停」与「launcher 未运行」）
  */
 function probeLauncherRunning(cb) {
     try {
@@ -812,18 +815,20 @@ function probeLauncherRunning(cb) {
         xhr.open('GET', 'http://127.0.0.1:14097/status', true)
         xhr.onload = function() {
             var running = false
+            var reachable = false
             if (xhr.status === 200) {
+                reachable = true
                 try {
                     var d = JSON.parse(xhr.responseText)
                     running = !!(d && (d.running || d.portOpen))
                 } catch (e) { running = false }
             }
-            cb(running)
+            cb(running, reachable)
         }
-        xhr.onerror = function() { cb(false) }
-        xhr.ontimeout = function() { cb(false) }
+        xhr.onerror = function() { cb(false, false) }
+        xhr.ontimeout = function() { cb(false, false) }
         xhr.send()
-    } catch (e) { cb(false) }
+    } catch (e) { cb(false, false) }
 }
 
 // 健康检查单一出口复位（评审 R2-3）：success/error 回调均经此收敛，避免分支内提前 return 遗漏复位
@@ -873,7 +878,7 @@ function startHealthCheck() {
                         // 视为探测抖动而非真实停止 —— 立即恢复运行状态 + 重建 SSE（覆盖 SSE 已被 close
                         // 的场景，Issue #114 核心场景）。同步降级已先执行，故测试环境（launcher 探测
                         // 不回调）不影响既有降级断言。
-                        probeLauncherRunning(function(launcherRunning) {
+                        probeLauncherRunning(function(launcherRunning, launcherReachable) {
                             // 丢弃显式停止前发起的在途探测结果（与健康检查回调的 STOPPED_AT 过滤语义一致，双保险）
                             if (requestTs <= STOPPED_AT) return
                             // 语义说明：/global/health 失败/不健康时，launcher 确认「进程/端口在监听」作为兜底信号，
@@ -884,6 +889,12 @@ function startHealthCheck() {
                                 updateServerStatus(true)
                                 if (IN_SETUP_VIEW) showChat()
                                 if (!SSE) onServerConnected()
+                            } else if (!launcherReachable && !STOPPING && !SERVER_RUNNING && !SSE) {
+                                // launcher 不可达（XHR 失败/超时）时无法区分「服务真停」与「launcher 未运行但服务在跑」。
+                                // 用 SSE（EventSource）作第三信号源最终探测 —— EventSource 不受 XHR CORS 差异影响，
+                                // onopen 成功即证明服务在跑（覆盖 /global/health CORS 失败 + launcher 未运行场景）。
+                                // 服务真停时 SSE onerror 且不自动重连（SESSION_ID 为空），不会误报也不会连接风暴。
+                                connectSSE()
                             }
                         })
                     }
@@ -902,7 +913,7 @@ function startHealthCheck() {
                     if (!IN_SETUP_VIEW) showSetup()
                     $setupStatus.textContent = '服务已断开，请重新启动以继续。'
                     // 与成功分支失败一致：launcher 确认服务在跑则立即恢复 + 重建 SSE
-                    probeLauncherRunning(function(launcherRunning) {
+                    probeLauncherRunning(function(launcherRunning, launcherReachable) {
                         // 丢弃显式停止前发起的在途探测结果（与健康检查回调的 STOPPED_AT 过滤语义一致，双保险）
                         if (requestTs <= STOPPED_AT) return
                         // 语义说明：见上方成功分支失败处理 —— 进程/端口监听作为进程级 running 兜底
@@ -911,6 +922,9 @@ function startHealthCheck() {
                             updateServerStatus(true)
                             if (IN_SETUP_VIEW) showChat()
                             if (!SSE) onServerConnected()
+                        } else if (!launcherReachable && !STOPPING && !SERVER_RUNNING && !SSE) {
+                            // launcher 不可达：见上方成功分支失败处理的 SSE 最终探测说明（Issue #114 回归）
+                            connectSSE()
                         }
                     })
                 }
@@ -1431,6 +1445,11 @@ function connectSSE() {
                 // 若处于 setup 视图则同步切回 chat，与健康检查成功分支的恢复行为保持一致
                 if (IN_SETUP_VIEW) {
                     showChat();
+                    // setup 探测场景（launcher 不可达 / /global/health CORS 失败）下，服务确认在跑但
+                    // 未走完整 onServerConnected 流程，可能无 SESSION_ID。补建会话，避免进入 chat 无法聊天。
+                    if (!SESSION_ID && !STOPPING) {
+                        createNewSession(function() { connectSSE(); });
+                    }
                 }
             }
             sseReconnectDelay = 1000;
@@ -1973,6 +1992,12 @@ function scrollToBottom() { setTimeout(function() { if ($messages) $messages.scr
                 updateServerStatus(false)
                 showSetup()
                 startHealthCheck()   // setup 下也启动健康检测，支持自动恢复
+                // launcher 未运行 + /global/health 探测失败时，无法区分「服务真停」与
+                // 「launcher 挂了但 opencode 在跑」。用 SSE 作第三信号源最终探测：
+                // EventSource 不受 XHR CORS 差异影响，onopen 成功即证明服务在跑并自动恢复；
+                // 服务真停时 onerror 且不自动重连（SESSION_ID 为空），不会误报也不会连接风暴。
+                // 该 connectSSE 会在 SSE onopen 中经 showChat/updateServerStatus 恢复状态。
+                connectSSE()
             }
         })
     })

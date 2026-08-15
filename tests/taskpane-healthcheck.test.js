@@ -594,6 +594,87 @@ test('init-launcher-fallback: init 首屏含 launcher 回退分支（/global/hea
   assertTrue(/probeLauncherRunning\(function\(launcherRunning\)/.test(src), 'launcher 回退分支应调用 probeLauncherRunning');
 });
 
+// ===== Issue #114 回归修复：launcher 不可达时用 SSE 作第三信号源探测服务 =====
+test('probeLauncherRunning: launcher 不可达（XHR 错误/超时）时 reachable=false', function () {
+  var s = loadTaskpaneScript();
+  var result = null;
+  s.probeLauncherRunning(function (running, reachable) { result = { running: running, reachable: reachable }; });
+  var x = s.__lastXhr();
+  // 模拟 launcher 未运行：XHR 网络错误（onerror）
+  x.onerror();
+  assertEqual(result.running, false, 'launcher 不可达时应 running=false');
+  assertEqual(result.reachable, false, 'launcher 不可达时应 reachable=false');
+  // 场景 B：XHR 超时
+  result = null;
+  s.probeLauncherRunning(function (running, reachable) { result = { running: running, reachable: reachable }; });
+  var x2 = s.__lastXhr();
+  x2.ontimeout();
+  assertEqual(result.reachable, false, 'XHR 超时时应 reachable=false');
+  // 场景 C：launcher 可达但确认服务停止
+  result = null;
+  s.probeLauncherRunning(function (running, reachable) { result = { running: running, reachable: reachable }; });
+  var x3 = s.__lastXhr();
+  x3.status = 200;
+  x3.responseText = JSON.stringify({ running: false, portOpen: false });
+  x3.onload();
+  assertEqual(result.running, false, 'launcher 可达但服务停时应 running=false');
+  assertEqual(result.reachable, true, 'launcher 可达时应 reachable=true');
+});
+
+test('healthcheck-launcher-unreachable: /global/health 失败且 launcher 不可达 → 用 SSE 探测服务（Issue #114）', function () {
+  var s = loadTaskpaneScript();
+  s.onServerConnected = function () {};  // 避免内部副作用
+  // 进入运行中 chat 状态
+  s.SERVER_RUNNING = true;
+  s.CONNECTED = true;
+  s.IN_SETUP_VIEW = false;
+  s.STOPPING = false;
+  s.startHealthCheck();
+  // /global/health 失败
+  healthOverride = { healthy: false };
+  s.__flushHealthChecks(1);
+  // 此刻应已同步降级并发出 probeLauncherRunning XHR
+  assertEqual(s.SERVER_RUNNING, false, '/global/health 失败应先同步降级');
+  var x = s.__lastXhr();
+  assertTrue(x != null, '应发起 probeLauncherRunning 探测');
+  // 模拟 launcher 不可达：XHR 网络错误 → 应触发 connectSSE 探测
+  x.onerror();
+  assertTrue(s.SSE != null, 'launcher 不可达时应建立 SSE 连接探测服务');
+  // 服务实际在跑：SSE onopen → 恢复运行中 + 切回 chat
+  var statuses = [];
+  var origUpd = s.updateServerStatus;
+  s.updateServerStatus = function (running) { statuses.push(running); origUpd(running); };
+  s.SSE.onopen();
+  assertEqual(s.SERVER_RUNNING, true, 'SSE onopen 确认服务在跑应恢复 SERVER_RUNNING=true');
+  assertEqual(statuses[statuses.length - 1], true, 'SSE onopen 应 updateServerStatus(true)');
+});
+
+test('healthcheck-launcher-reachable-stop: /global/health 失败但 launcher 确认服务停 → 不触发 SSE 探测', function () {
+  var s = loadTaskpaneScript();
+  s.onServerConnected = function () {};
+  s.SERVER_RUNNING = true;
+  s.CONNECTED = true;
+  s.IN_SETUP_VIEW = false;
+  s.STOPPING = false;
+  s.startHealthCheck();
+  healthOverride = { healthy: false };
+  s.__flushHealthChecks(1);
+  var x = s.__lastXhr();
+  // launcher 可达但确认服务停止：不应触发 SSE 探测（服务真停，SSE 也会失败）
+  x.status = 200;
+  x.responseText = JSON.stringify({ running: false, portOpen: false });
+  x.onload();
+  assertEqual(s.SSE, null, 'launcher 可达且确认服务停时不应建立 SSE 探测连接');
+  assertEqual(s.SERVER_RUNNING, false, '服务真停时应保持 SERVER_RUNNING=false');
+});
+
+test('init-launcher-unreachable: init 时 launcher 未运行 + /global/health 失败 → 建立 SSE 探测', function () {
+  var src = fs.readFileSync(TASKPANE_HTML, 'utf-8');
+  // 验证 init 的 else 分支（launcher 未运行）包含 connectSSE 探测
+  assertTrue(/launcher 未运行或 opencode 未启动/.test(src), 'init 应含 launcher 未运行分支');
+  assertTrue(/startHealthCheck\(\)   \/\/ setup 下也启动健康检测[\s\S]*?connectSSE\(\)/.test(src), 'init else 分支应在 startHealthCheck 后调用 connectSSE 探测');
+});
+
 // ==================== 测试结果汇总 ====================
 
 console.log('\n========== 测试结果 ==========');
