@@ -169,6 +169,17 @@ WPS 的 taskpane 是特殊的运行环境，document 对象和浏览器不一致
    dir "C:\Users\<你的用户名>\.trae-cn\sdks\versions\node\current\opencode.*"
    ```
 
+5. **一键诊断 `/diag`（推荐）**
+   launcher 提供 `GET /diag` 诊断接口，把二进制探测、配置文件、日志落盘与最终 spawn 命令一次性暴露出来，无需去计划任务/VBS 控制台翻日志：
+   ```powershell
+   Invoke-RestMethod "http://127.0.0.1:14097/diag" | Format-List opencodeBin, config, logFile, logExists, logSize, homedir, userprofile, spawnCommand
+   ```
+   - `opencodeBin`：launcher 解析出的 opencode 可执行绝对路径（`.exe/.cmd/.ps1`），裸 `opencode` 表示未探测到真实路径、仍依赖运行期 PATH（此时多半会启动失败）。
+   - `config.path`：命中的配置文件路径（`null` = 未找到，会走 PATH 探测）。
+   - `logFile` / `logExists` / `logSize`：`opencode-serve.log` 路径与存在性/大小（`logSize=0` 说明尚未落盘日志）。
+   - `spawnCommand`：最终启动命令预览（`.ps1` 会显示为 `powershell.exe -ExecutionPolicy Bypass -File ...`）。
+   - `homedir` / `userprofile`：帮助确认环境变量解析是否符合预期。
+
 ---
 
 ## 四、修改后必须验证的清单

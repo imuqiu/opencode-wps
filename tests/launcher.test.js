@@ -16,6 +16,9 @@ var findOpenCodeInDir = launcher.findOpenCodeInDir;
 var getOpenCodeBinDirs = launcher.getOpenCodeBinDirs;
 var findOpenCodeBin = launcher.findOpenCodeBin;
 var parseWhereOutput = launcher.parseWhereOutput;
+var buildSpawnCommand = launcher.buildSpawnCommand;
+var getDiagInfo = launcher.getDiagInfo;
+var configPathUsed = launcher.configPathUsed;
 var validateCwd = launcher.validateCwd;
 
 // 进程管理（模拟）
@@ -187,6 +190,68 @@ test('parseWhereOutput: 收紧正则拒绝相邻文件误命中（评审建议�
   assertEqual(parseWhereOutput('C:\\bin\\opencode-tool.cmd'), null, 'opencode-tool.cmd 不应命中');
   assertEqual(parseWhereOutput('C:\\bin\\my-opencode.bin'), null, 'my-opencode.bin 不应命中');
   assertEqual(parseWhereOutput('C:\\bin\\opencode.exe'), 'C:\\bin\\opencode.exe', '精确 opencode.exe 应命中');
+});
+
+// --- buildSpawnCommand：spawn 命令预览（GET /diag 自检）---
+console.log('\n--- spawn 命令构造（buildSpawnCommand）---');
+
+test('buildSpawnCommand: .ps1 → powershell.exe -File（脱离运行期 PATH，Issue #134）', function() {
+  var r = buildSpawnCommand('C:\\bin\\opencode.ps1');
+  assertEqual(r.command, 'powershell.exe', '.ps1 应由 powershell.exe 拉起');
+  assertTrue(r.args.indexOf('-ExecutionPolicy') !== -1, '应带 -ExecutionPolicy');
+  assertEqual(r.args[r.args.indexOf('-File') + 1], 'C:\\bin\\opencode.ps1', '-File 后应为 ps1 绝对路径');
+  assertEqual(r.needShell, false, '.ps1 不需要 shell');
+  assertTrue(r.args.indexOf('serve') !== -1, '应含 serve 子命令');
+});
+
+test('buildSpawnCommand: .exe → 直接执行，无需 shell', function() {
+  var r = buildSpawnCommand('C:\\bin\\opencode.exe');
+  assertEqual(r.command, 'C:\\bin\\opencode.exe', '.exe 应直接作为 command');
+  assertEqual(r.needShell, false, '.exe 不需要 shell');
+  assertTrue(r.args.indexOf('--port') !== -1, '应含 --port');
+});
+
+test('buildSpawnCommand: 无扩展名（PATH 裸 opencode）→ 依赖 shell 启动 .cmd shim', function() {
+  var r = buildSpawnCommand('opencode');
+  assertEqual(r.command, 'opencode', '裸 opencode 作为 command');
+  assertEqual(r.needShell, true, '无扩展名需要 shell 启动 .cmd shim');
+});
+
+test('buildSpawnCommand: 空值默认回退裸 opencode', function() {
+  var r = buildSpawnCommand(null);
+  assertEqual(r.command, 'opencode', '空值应回退裸 opencode');
+});
+
+// --- getDiagInfo / configPathUsed：GET /diag 自检 ---
+console.log('\n--- 诊断信息（getDiagInfo / configPathUsed）---');
+
+test('getDiagInfo: 返回关键字段且结构稳定', function() {
+  var info = getDiagInfo();
+  assertNotNull(info.opencodeBin, '应包含 opencodeBin');
+  assertTrue(typeof info.opencodeBin === 'string' && info.opencodeBin.length > 0, 'opencodeBin 应为非空字符串');
+  assertTrue(typeof info.logFile === 'string' && info.logFile.length > 0, 'logFile 应为非空字符串');
+  assertTrue(typeof info.logExists === 'boolean', 'logExists 应为布尔');
+  assertTrue(typeof info.logSize === 'number' && info.logSize >= 0, 'logSize 应为非负数字');
+  assertTrue(typeof info.homedir === 'string' && info.homedir.length > 0, 'homedir 应为非空字符串');
+  assertTrue('userprofile' in info, '应包含 userprofile 字段');
+  assertTrue(typeof info.spawnCommand === 'string' && info.spawnCommand.length > 0, 'spawnCommand 应为非空字符串');
+  assertNotNull(info.config, '应包含 config 信息');
+});
+
+test('getDiagInfo: spawnCommand 与 buildSpawnCommand 一致', function() {
+  var info = getDiagInfo();
+  var cmd = buildSpawnCommand(info.opencodeBin);
+  var expected = cmd.needShell
+    ? (cmd.command + ' ' + cmd.args.join(' '))
+    : ((cmd.command === 'powershell.exe' ? 'powershell.exe ' : '') + cmd.args.join(' '));
+  assertEqual(info.spawnCommand, expected, 'spawnCommand 应与 buildSpawnCommand 输出一致');
+});
+
+test('configPathUsed: 返回字符串或 null（不抛错）', function() {
+  var p = configPathUsed();
+  if (p !== null) {
+    assertTrue(typeof p === 'string' && p.length > 0, '应为非空字符串');
+  }
 });
 
 // --- 2. cwd 验证测试（真实 validateCwd）---
