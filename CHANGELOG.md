@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **opencode 运行中但 UI 状态误显「已停止」（Issue #114 跟进）** — 用户反馈 opencode 实际运行中，WPS 插件顶部状态栏仍显示「已停止」。根因：插件状态判定过度依赖两个信号源——`/global/health`（14096 直连，在 WPS Chromium 下可能因 CORS 差异持续失败，Issue #114 已确认）与 launcher `/status`（14097）。当 **launcher 未运行** 时，`probeLauncherRunning()` 交叉验证失效，前端失去所有兜底信号，即使 opencode 进程在跑（14096 端口监听）也误显「已停止」，且健康检查（每 10s 探测 /global/health）持续失败无法自动恢复。本轮修复引入 **SSE（EventSource）作为第三信号源**（EventSource 不受 XHR CORS 差异影响）：① `probeLauncherRunning()` 新增 `launcherReachable` 回调参数，区分「launcher 可达但服务停止」与「launcher 不可达」；② 健康检查失败分支：当 launcher 不可达时主动 `connectSSE()` 探测——SSE onopen 成功即证明服务在跑并恢复「运行中」+ 切回 chat；③ `init()` 首屏 launcher 未运行分支同样触发 SSE 探测；④ `SSE.onopen` 在 setup 探测场景下补建会话（避免进入 chat 后 SESSION_ID 为空无法聊天）；⑤ 服务真停时 SSE onerror 且不自动重连（SESSION_ID 为空），不会误报也不会连接风暴。测试：`taskpane-healthcheck` 新增 4 用例共 23/23 通过。
+- **评审建议落实（Issue #114 跟进）**：依据 PR #141 评审 2 条非阻塞质量建议进一步完善——① `SSE.onopen` 补建会话时不再回调 `connectSSE()`（`connectSSE()` 开头会 close 刚建立成功的这条 SSE 再重连，造成不必要连接拆除/重建），仅建会话、保留当前已建立 SSE 继续接收消息；② 健康检查失败分支的探测性 `connectSSE()` 增加冷却守卫（`sseProbeAllowed()`，8s 冷却窗口）——服务真停 + launcher 不可达时避免每 10s 健康检查周期都创建一次注定失败的 EventSource，收敛无谓周期性失败连接。测试：`taskpane-healthcheck` 新增 3 用例，共 **26/26 通过**。
 
 ## [1.5.2] - 2026-08-14
 

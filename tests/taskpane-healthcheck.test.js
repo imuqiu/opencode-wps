@@ -675,6 +675,61 @@ test('init-launcher-unreachable: init 时 launcher 未运行 + /global/health �
   assertTrue(/startHealthCheck\(\)   \/\/ setup 下也启动健康检测[\s\S]*?connectSSE\(\)/.test(src), 'init else 分支应在 startHealthCheck 后调用 connectSSE 探测');
 });
 
+test('SSE-onopen-noselfreconnect: setup 补建会话时不再回调 connectSSE 拆除当前 SSE（评审建议 1）', function () {
+  var s = loadTaskpaneScript();
+  s.SERVER_RUNNING = false;
+  s.STOPPING = false;
+  s.CONNECTED = false;
+  s.IN_SETUP_VIEW = true;
+  s.SESSION_ID = '';   // 无会话 → onopen 应补建会话
+  // 拦截 createNewSession：捕获回调，验证不再以 connectSSE() 作为回调（避免 close 刚建立的 SSE 再重连）
+  var sessionCallback = 'not-captured';
+  var origCreate = s.createNewSession;
+  s.createNewSession = function (cb) { sessionCallback = cb; };
+  // 拦截 connectSSE：验证 onopen 补建会话时不会再次调用 connectSSE（自拆除/重连）
+  var connCalls = 0;
+  var origConn = s.connectSSE;
+  s.connectSSE = function () { connCalls++; origConn(); };
+  // 连接并触发 onopen
+  s.connectSSE();
+  var currentSSE = s.SSE;
+  assertTrue(currentSSE != null, 'SSE 实例应已创建');
+  s.SSE.onopen();
+  assertEqual(sessionCallback, undefined, 'createNewSession 应被调用且不传 connectSSE 回调（建议 1）');
+  // 关键断言：SSE 实例未被拆除/重建（createNewSession 不应触发 connectSSE 去 close 当前 SSE）
+  assertTrue(s.SSE === currentSSE, '补建会话后应保留当前已建立的 SSE，不因自拆除而重建');
+  assertEqual(connCalls, 1, '补建会话过程中不应额外调用 connectSSE（仅 onopen 前那次）');
+});
+
+test('SSE-probe-cooldown: 健康检查失败分支的 SSE 探测受冷却守卫约束（评审建议 2）', function () {
+  var s = loadTaskpaneScript();
+  // 首次探测应放行（LAST_SSE_PROBE_TS=0 远早于冷却窗口）
+  s.LAST_SSE_PROBE_TS = 0;
+  assertEqual(s.sseProbeAllowed(), true, '首次 SSE 探测应放行');
+  // 冷却窗口内（紧随其后）应拦截：首次调用已把 LAST_SSE_PROBE_TS 更新为当前时间
+  assertEqual(s.sseProbeAllowed(), false, '冷却窗口内的第二次 SSE 探测应被拦截');
+  // 模拟冷却窗口已过（9s 前探测）应再次放行
+  s.LAST_SSE_PROBE_TS = Date.now() - 9000;
+  assertEqual(s.sseProbeAllowed(), true, '冷却窗口结束后应再次放行 SSE 探测');
+});
+
+test('healthcheck-launcher-unreachable-cooldown: launcher 不可达触发 SSE 探测受冷却约束，不会每 10s 连接风暴（评审建议 2）', function () {
+  var s = loadTaskpaneScript();
+  s.onServerConnected = function () {};
+  s.SERVER_RUNNING = true;
+  s.CONNECTED = true;
+  s.IN_SETUP_VIEW = false;
+  s.STOPPING = false;
+  // 预置 LAST_SSE_PROBE_TS 为当前时间，使首次健康检查失败分支的 SSE 探测被冷却拦截
+  s.LAST_SSE_PROBE_TS = Date.now();
+  s.startHealthCheck();
+  healthOverride = { healthy: false };
+  s.__flushHealthChecks(1);
+  var x = s.__lastXhr();
+  x.onerror();  // launcher 不可达
+  assertEqual(s.SSE, null, '冷却窗口内健康检查失败分支不应创建注定失败的 EventSource（无连接风暴）');
+});
+
 // ==================== 测试结果汇总 ====================
 
 console.log('\n========== 测试结果 ==========');

@@ -893,8 +893,9 @@ function startHealthCheck() {
                                 // launcher 不可达（XHR 失败/超时）时无法区分「服务真停」与「launcher 未运行但服务在跑」。
                                 // 用 SSE（EventSource）作第三信号源最终探测 —— EventSource 不受 XHR CORS 差异影响，
                                 // onopen 成功即证明服务在跑（覆盖 /global/health CORS 失败 + launcher 未运行场景）。
-                                // 服务真停时 SSE onerror 且不自动重连（SESSION_ID 为空），不会误报也不会连接风暴。
-                                connectSSE()
+                                // 服务真停时 SSE onerror 且不自动重连（SESSION_ID 为空），不会误报；
+                                // 加冷却守卫，避免每 10s 健康检查周期都创建一次注定失败的 EventSource（评审建议 2）。
+                                if (sseProbeAllowed()) connectSSE()
                             }
                         })
                     }
@@ -924,7 +925,8 @@ function startHealthCheck() {
                             if (!SSE) onServerConnected()
                         } else if (!launcherReachable && !STOPPING && !SERVER_RUNNING && !SSE) {
                             // launcher 不可达：见上方成功分支失败处理的 SSE 最终探测说明（Issue #114 回归）
-                            connectSSE()
+                            // 冷却守卫：避免每 10s 健康检查周期都创建注定失败的 EventSource（评审建议 2）
+                            if (sseProbeAllowed()) connectSSE()
                         }
                     })
                 }
@@ -1419,12 +1421,30 @@ function renderHistoryMessage(msg) {
 // --- SSE ---
 var sseReconnectTimer = null;
 var sseReconnectDelay = 1000;
+// SSE 探测冷却（评审建议 2）：服务真停 + launcher 不可达时，健康检查每 10s 周期都会走到失败分支
+// 调用 connectSSE() 作最终探测，会每 10s 创建一次注定失败的 EventSource。用时间戳冷却守卫收敛，
+// 避免无谓的周期性失败连接。仅守卫「健康检查失败分支的探测性 connectSSE」，不影响正常建连。
+var LAST_SSE_PROBE_TS = 0
+var SSE_PROBE_COOLDOWN = 8000   // 冷却窗口：距上次探测不足 8s（健康检查周期 10s）则跳过本轮探测
 /**
  * 更新 SSE 连接状态 UI
  */
 function updateConnectionStatus() {
     // SSE 连接状态变化时更新 UI（目前由健康检查自动处理）
     // 状态变量 CONNECTED 已同步，无需额外 UI 操作
+}
+/**
+ * 健康检查失败分支的探测性 connectSSE 冷却守卫（评审建议 2）：
+ * 服务真停 + launcher 不可达时，避免每 10s 健康检查周期都创建一次注定失败的 EventSource。
+ * 通过则记录探测时间戳并返回 true；冷却期内返回 false（调用方跳过本轮探测）。
+ */
+function sseProbeAllowed() {
+    var now = Date.now()
+    if (now - LAST_SSE_PROBE_TS >= SSE_PROBE_COOLDOWN) {
+        LAST_SSE_PROBE_TS = now
+        return true
+    }
+    return false
 }
 /**
  * 连接 SSE 事件流接收服务端推送
@@ -1447,8 +1467,11 @@ function connectSSE() {
                     showChat();
                     // setup 探测场景（launcher 不可达 / /global/health CORS 失败）下，服务确认在跑但
                     // 未走完整 onServerConnected 流程，可能无 SESSION_ID。补建会话，避免进入 chat 无法聊天。
+                    // 注意：createNewSession 仅建会话、不再回调 connectSSE() —— connectSSE() 开头会 close 当前
+                    // 刚建立成功的这条 SSE 再重连，造成不必要的连接拆除/重建（评审建议 1）。当前 SSE 已在
+                    // onopen 中，保留即可继续接收消息。
                     if (!SESSION_ID && !STOPPING) {
-                        createNewSession(function() { connectSSE(); });
+                        createNewSession();
                     }
                 }
             }
