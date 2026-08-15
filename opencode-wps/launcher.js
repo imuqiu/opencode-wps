@@ -576,6 +576,77 @@ function findOpenCodeBin() {
 }
 
 /**
+ * 构造实际 spawn 用的启动命令（与 startOpenCode 同一套逻辑，供 /diag 自检预览）。
+ * .ps1 → powershell.exe -ExecutionPolicy Bypass -File <bin> serve ...（脱离运行期 PATH）；
+ * .exe → 直接 <bin> serve ...；无扩展名（PATH 中裸 'opencode'）→ 依赖 shell 启动 .cmd shim。
+ * @param {string} opencodeBin - findOpenCodeBin 解析出的可执行路径
+ * @returns {{command: string, args: string[], needShell: boolean}} spawn 命令构成
+ */
+function buildSpawnCommand(opencodeBin) {
+    var bin = opencodeBin || 'opencode';
+    var isPs1 = bin.endsWith('.ps1');
+    var isExe = /\.exe$/i.test(bin);
+    var args = ['serve', '--port', String(OPENCODE_PORT), '--hostname', '127.0.0.1', '--cors', 'file://'];
+    var needShell = !isPs1 && !isExe;
+    if (isPs1) {
+        return { command: 'powershell.exe', args: ['-ExecutionPolicy', 'Bypass', '-File', bin].concat(args), needShell: false };
+    }
+    return { command: bin, args: args, needShell: needShell };
+}
+
+/**
+ * 收集 launcher 诊断信息（GET /diag），用于在无法查看计划任务/VBS 控制台时
+ * 快速定位 opencode 二进制探测、配置文件与日志落盘问题（Issue #134 空日志难排查）。
+ * 返回的每个字段都不应 throw——单字段失败降级为默认/异常标记，保证 /diag 永远可达。
+ * @returns {object} 诊断信息对象
+ */
+function getDiagInfo() {
+    var info = {};
+    // opencode 二进制探测结果
+    try { info.opencodeBin = findOpenCodeBin(); } catch (e) { info.opencodeBin = '<error: ' + (e && e.message) + '>'; }
+    // 配置文件探测
+    try {
+        var config = loadOpenCodeConfig();
+        info.config = {
+            path: configPathUsed(),
+            opencodePath: config.opencodePath
+        };
+    } catch (e) { info.config = { error: (e && e.message) }; }
+    // 服务端日志落盘
+    var logFile = path.join(os.homedir(), '.opencode', 'logs', 'opencode-serve.log');
+    info.logFile = logFile;
+    try {
+        info.logExists = fs.existsSync(logFile);
+        info.logSize = info.logExists ? fs.statSync(logFile).size : 0;
+    } catch (e) { info.logExists = false; info.logSize = 0; }
+    // 环境信息
+    info.homedir = os.homedir();
+    info.userprofile = process.env.USERPROFILE || '';
+    // spawn 命令预览（不实际启动）
+    var spawnCmd = buildSpawnCommand(info.opencodeBin);
+    info.spawnCommand = spawnCmd.needShell
+        ? (spawnCmd.command + ' ' + spawnCmd.args.join(' '))
+        : ((spawnCmd.command === 'powershell.exe' ? 'powershell.exe ' : '') + spawnCmd.args.join(' '));
+    return info;
+}
+
+/**
+ * 返回 loadOpenCodeConfig 实际命中的配置文件路径（供 /diag 展示）。
+ * 与 loadOpenCodeConfig 共用同一候选顺序：真实全局配置 > 旧路径兜底。
+ * @returns {string|null} 命中返回路径，未命中返回 null
+ */
+function configPathUsed() {
+    var candidates = [
+        path.join(process.env.USERPROFILE || os.homedir(), '.config', 'opencode', 'opencode.json'),
+        path.join(process.env.APPDATA || process.env.USERPROFILE || os.homedir(), 'opencode', 'config.json')
+    ];
+    for (var ci = 0; ci < candidates.length; ci++) {
+        if (fs.existsSync(candidates[ci])) return candidates[ci];
+    }
+    return null;
+}
+
+/**
  * 校验工作目录路径合法性
  * 拒绝 UNC 路径、DOS 设备路径、路径穿越。
  * 统一返回 { valid, resolved/error } 对象，绝不 throw——
@@ -790,6 +861,18 @@ var server = http.createServer(function(req, res) {
         return;
     }
 
+    if (req.method === 'GET' && url === '/diag') {
+        // 诊断接口：暴露 opencode 二进制探测、配置文件、日志落盘、spawn 命令预览，
+        // 便于计划任务/VBS 拉起且控制台不可见时远程自检（Issue #134 空日志难排查）。
+        try {
+            sendJSON(req, res, 200, getDiagInfo());
+        } catch (e) {
+            console.error('[launcher] /diag failed:', e);
+            sendJSON(req, res, 500, { error: 'Internal error: ' + e.message });
+        }
+        return;
+    }
+
     if (req.method === 'POST' && url === '/dock') {
         parseBody(req, function(body) {
             if (body === BODY_TOO_LARGE) {
@@ -860,6 +943,9 @@ module.exports = {
     findOpenCodeInDir: findOpenCodeInDir,
     getOpenCodeBinDirs: getOpenCodeBinDirs,
     loadOpenCodeConfig: loadOpenCodeConfig,
+    buildSpawnCommand: buildSpawnCommand,
+    getDiagInfo: getDiagInfo,
+    configPathUsed: configPathUsed,
     validateCwd: validateCwd,
     isPortListening: isPortListening
 };
