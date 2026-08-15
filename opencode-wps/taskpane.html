@@ -782,15 +782,20 @@ function onServerConnected() {
     CONNECTED = true
     updateServerStatus(true)
     showChat()
-    fetchAvailableModels(function() { $modelName.textContent = CURRENT_MODEL || 'AI 模型' })
-    fetchAvailableAgents(function() { 
-        var displayName = CURRENT_AGENT || '智能体'
-        $agentName.textContent = displayName
-    })
+    refreshModelAgentLabels()
     var sid = getPS('opencode_session_id')
     if (sid) { SESSION_ID = sid; loadSessionMessages(sid) } else { createNewSession(function() { connectSSE() }); return }
     connectSSE()
     startHealthCheck()
+}
+
+// 第 5 轮评审：抽离「刷新模型/智能体 topbar 标签」为统一 helper，供 onServerConnected 与
+// SSE 探测恢复路径共用，消除两处重复逻辑、集中维护点（纯重构，不改行为）。
+function refreshModelAgentLabels() {
+    fetchAvailableModels(function() { $modelName.textContent = CURRENT_MODEL || 'AI 模型' })
+    fetchAvailableAgents(function() {
+        $agentName.textContent = CURRENT_AGENT || '智能体'
+    })
 }
 
 function updateServerStatus(running) {
@@ -1484,8 +1489,8 @@ function connectSSE(isProbe) {
                     showChat();
                     // 第 1 轮评审：SSE 探测恢复路径未走 onServerConnected()，补齐模型/智能体下拉框数据，
                     // 避免与 launcher 可达时走 onServerConnected() 的完整恢复行为不一致（顶部下拉框为默认占位值）。
-                    fetchAvailableModels(function() { $modelName.textContent = CURRENT_MODEL || 'AI 模型' });
-                    fetchAvailableAgents(function() { $agentName.textContent = CURRENT_AGENT || '智能体' });
+                    // 第 5 轮评审：改用统一 helper refreshModelAgentLabels() 与 onServerConnected 共用刷新逻辑。
+                    refreshModelAgentLabels();
                     // setup 探测场景（launcher 不可达 / /global/health CORS 失败）下，服务确认在跑但
                     // 未走完整 onServerConnected 流程，可能无 SESSION_ID。补建会话，避免进入 chat 无法聊天。
                     // 注意：createNewSession 仅建会话、不再回调 connectSSE() —— connectSSE() 开头会 close 当前
