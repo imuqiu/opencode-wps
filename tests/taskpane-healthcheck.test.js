@@ -717,9 +717,12 @@ test('SSE-probe-cooldown: 健康检查失败分支的 SSE 探测受冷却守卫�
   assertEqual(s.sseProbeAllowed(), true, '首次 SSE 探测应放行');
   // 冷却窗口内（紧随其后）应拦截：首次调用已把 LAST_SSE_PROBE_TS 更新为当前时间
   assertEqual(s.sseProbeAllowed(), false, '冷却窗口内的第二次 SSE 探测应被拦截');
-  // 模拟冷却窗口已过（9s 前探测）应再次放行
-  s.LAST_SSE_PROBE_TS = Date.now() - 9000;
+  // 模拟冷却窗口已过（31s 前探测，> 30s 冷却窗口）应再次放行
+  s.LAST_SSE_PROBE_TS = Date.now() - 31000;
   assertEqual(s.sseProbeAllowed(), true, '冷却窗口结束后应再次放行 SSE 探测');
+  // 冷却窗口内（如 20s 前探测，< 30s）应拦截
+  s.LAST_SSE_PROBE_TS = Date.now() - 20000;
+  assertEqual(s.sseProbeAllowed(), false, '冷却窗口内（20s < 30s）应拦截 SSE 探测');
 });
 
 test('healthcheck-launcher-unreachable-cooldown: launcher 不可达触发 SSE 探测受冷却约束，不会每 10s 连接风暴（评审建议 2）', function () {

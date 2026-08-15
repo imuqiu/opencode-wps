@@ -1432,7 +1432,10 @@ var sseReconnectDelay = 1000;
 // 调用 connectSSE() 作最终探测，会每 10s 创建一次注定失败的 EventSource。用时间戳冷却守卫收敛，
 // 避免无谓的周期性失败连接。仅守卫「健康检查失败分支的探测性 connectSSE」，不影响正常建连。
 var LAST_SSE_PROBE_TS = 0
-var SSE_PROBE_COOLDOWN = 8000   // 冷却窗口：距上次探测不足 8s（健康检查周期 10s）则跳过本轮探测
+var SSE_PROBE_COOLDOWN = 30000   // 第 3 轮评审：冷却窗口需大于健康检查周期（10s）才能真正限流。
+// 设为 30s（约 3 个健康周期）：服务真停 + launcher 不可达时，最多每 30s 探一次注定失败的 EventSource，
+// 避免每 10s 刷一次无谓网络请求与 [SSE] Connection error 日志。若 /global/health 恢复正常，
+// 健康检查成功分支会立即恢复，不依赖此探测，故 30s 内恢复延迟可接受。
 // SSE 探测连接标记（第 1 轮评审）：健康检查失败分支 / init 兜底分支用 connectSSE(true) 建立的
 // 探测性 EventSource。探测连接失败时（服务真停）不应走标准指数退避自动重连——那会绕过
 // sseProbeAllowed() 冷却守卫反复向已停止服务建连。探测失败应仅靠健康检查下一周期再触发。
