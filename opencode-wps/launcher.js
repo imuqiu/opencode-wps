@@ -179,20 +179,48 @@ function startOpenCode(cwd, port) {
     }
 
     try {
-        var stdioArr = opencodeLogStream ? ['ignore', opencodeLogStream, opencodeLogStream] : ['ignore', 'ignore', 'ignore'];
-        opencodeProcess = spawn(
-            isPs1 ? 'powershell.exe' : opencodeBin,
-            isPs1 
-                ? ['-ExecutionPolicy', 'Bypass', '-File', opencodeBin, ...opencodeArgs]
-                : opencodeArgs,
-            {
-                cwd: cwd,
-                stdio: stdioArr,
-                detached: false,
-                windowsHide: true,
-                shell: needShell
+        // stdio 处理与 shell 模式解耦：shell 模式（如 npm 全局安装的 opencode.cmd，
+        // needShell=true）下 Node 不允许向 stdio 传流对象（WriteStream），否则抛
+        // "The argument 'stdio' is invalid. Received WriteStream {fd:null,...}" 导致
+        // spawn 前直接 throw（Issue #134 回归，用户 .cmd 场景启动必失败）。
+        // 因此 shell 模式改用 ['ignore','pipe','pipe'] + 手动 pipe 到日志写流；
+        // 非 shell 模式（.exe/.ps1 直接 CreateProcess）才可把日志写流直接作为 stdio。
+        if (needShell) {
+            opencodeProcess = spawn(
+                opencodeBin,
+                opencodeArgs,
+                {
+                    cwd: cwd,
+                    stdio: ['ignore', 'pipe', 'pipe'],
+                    detached: false,
+                    windowsHide: true,
+                    shell: true
+                }
+            );
+            // 手动把子进程 stdout/stderr pipe 进日志写流（shell 模式无法直接作为 stdio）。
+            // 失败不阻断：即便日志流异常，opencode serve 仍能正常启动并运行。
+            if (opencodeLogStream) {
+                if (opencodeProcess.stdout) {
+                    opencodeProcess.stdout.on('data', function(d) { try { opencodeLogStream.write(d); } catch (e) {} });
+                }
+                if (opencodeProcess.stderr) {
+                    opencodeProcess.stderr.on('data', function(d) { try { opencodeLogStream.write(d); } catch (e) {} });
+                }
             }
-        );
+        } else {
+            var stdioArr = opencodeLogStream ? ['ignore', opencodeLogStream, opencodeLogStream] : ['ignore', 'ignore', 'ignore'];
+            opencodeProcess = spawn(
+                opencodeBin,
+                opencodeArgs,
+                {
+                    cwd: cwd,
+                    stdio: stdioArr,
+                    detached: false,
+                    windowsHide: true,
+                    shell: false
+                }
+            );
+        }
 
         if (logFile) {
             console.log('[launcher] opencode serve logs → ' + logFile);
