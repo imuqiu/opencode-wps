@@ -248,8 +248,30 @@ function startOpenCode(cwd, port) {
             closeOpenCodeLogStream();
         });
 
+        // 把实际执行的 spawn 命令写进日志：便于用户在 opencode-serve.log 里核对
+        // launcher 到底用哪个二进制、怎么启动的（Issue #134 空日志难排查的增强）。
+        // 注意日志写流可能在 spawn 前被下方 catch 替换，故在此闭包内用局部引用。
+        var spawnCmdLog = (isPs1 ? 'powershell.exe -ExecutionPolicy Bypass -File ' + opencodeBin
+            : opencodeBin) + ' ' + opencodeArgs.join(' ');
+        try {
+            if (opencodeLogStream && opencodeLogStream.writable) {
+                opencodeLogStream.write('[launcher] spawn: ' + spawnCmdLog + '\n');
+            }
+        } catch (e) { /* 日志写入失败不阻断 */ }
+
         opencodeProcess.on('exit', function(code) {
             console.log('[launcher] Exited: ' + code);
+            // 把退出码写进 opencode-serve.log：若进程能 spawn 但立即非零退出
+            //（如 .ps1 内部 node 找不到、opencode 参数错误等），error 事件不会触发，
+            // 只有这里能留下痕迹，否则日志又变回“空日志”无法定位。
+            var exitMsg = '[launcher] process exited: code=' + code +
+                ' (opencodeBin=' + (opencodeBin || '<empty>') + ')';
+            try {
+                if (opencodeLogStream && opencodeLogStream.writable) {
+                    opencodeLogStream.end(exitMsg + '\n');
+                }
+            } catch (e) { /* 日志写入失败不阻断 */ }
+            console.log(exitMsg);
             opencodeProcess = null;
             // 子进程退出后释放日志写流，确保末尾日志落盘
             closeOpenCodeLogStream();
