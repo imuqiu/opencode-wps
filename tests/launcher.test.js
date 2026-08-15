@@ -1,51 +1,22 @@
 /**
  * Launcher 测试套件
  * 测试 Launcher 的路径查找、进程管理等功能
+ * 直接 require ../opencode-wps/launcher.js 的真实实现（评审建议 #2：避免本地副本与交付代码脱节）。
  */
 
 var path = require('path');
 var fs = require('fs');
 
-// ==================== 待测试的 Launcher 函数 ====================
+// ==================== 加载真实 Launcher 实现 ====================
+// launcher.js 通过 require.main === module 保护，被 require 时不会启动 HTTP 服务，
+// 仅暴露纯函数（findOpenCodeBin/findOpenCodeInDir/getOpenCodeBinDirs/loadOpenCodeConfig/validateCwd/isPortListening）。
+var launcher = require(path.join(__dirname, '..', 'opencode-wps', 'launcher.js'));
 
-// 模拟 findOpenCodeBin（实际会读取配置文件或尝试常见路径）
-function findOpenCodeBin(configPath) {
-  // 模拟从配置读取
-  if (configPath && fs.existsSync(configPath)) {
-    try {
-      var config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-      if (config.opencodePath && (config.opencodePath === 'opencode' || fs.existsSync(config.opencodePath))) {
-        return config.opencodePath;
-      }
-    } catch (e) {}
-  }
-  // 模拟常见路径
-  var paths = [
-    path.join(process.env.USERPROFILE || 'C:\\Users\\test', '.trae-cn', 'bin', 'opencode.exe'),
-    path.join(process.env.LOCALAPPDATA || 'C:\\Users\\test\\AppData\\Local', 'Programs', 'opencode', 'opencode.exe'),
-    'opencode'
-  ];
-  // 返回第一个（模拟存在）
-  return paths[2]; // 返回 'opencode' 表示在 PATH 中
-}
-
-// 验证 cwd 安全性
-function validateCwd(cwd) {
-  if (!cwd || typeof cwd !== 'string') {
-    return { valid: false, error: 'cwd 不能为空' };
-  }
-  // 防止路径遍历
-  if (cwd.includes('..')) {
-    return { valid: false, error: '无效的工作目录：不允许路径遍历' };
-  }
-  // 检查非法字符
-  if (/[<>"|?*]/.test(cwd)) {
-    return { valid: false, error: '无效的工作目录：包含非法字符' };
-  }
-  // 规范化路径
-  var resolved = path.resolve(cwd);
-  return { valid: true, resolved: resolved };
-}
+var findOpenCodeInDir = launcher.findOpenCodeInDir;
+var getOpenCodeBinDirs = launcher.getOpenCodeBinDirs;
+var findOpenCodeBin = launcher.findOpenCodeBin;
+var parseWhereOutput = launcher.parseWhereOutput;
+var validateCwd = launcher.validateCwd;
 
 // 进程管理（模拟）
 var mockChildProcess = null;
@@ -113,25 +84,112 @@ function assertNotNull(actual, msg) {
   }
 }
 
-console.log('\n========== Launcher 测试套件 ==========\n');
+console.log('\n========== Launcher 测试套件（真实实现） ==========\n');
 
-// --- 1. 路径查找测试 ---
+// --- 1. 路径查找测试（真实 findOpenCodeInDir / getOpenCodeBinDirs / findOpenCodeBin）---
 console.log('--- 路径查找测试 ---');
 
-test('findOpenCodeBin: 返回有效路径', function() {
-  var result = findOpenCodeBin(null);
+test('findOpenCodeInDir: 识别 .trae-cn 下的 opencode.ps1（Issue #134 实测形态）', function() {
+  var binDir = path.join(__dirname, 'fakehome');
+  fs.mkdirSync(binDir, { recursive: true });
+  var ps1 = path.join(binDir, 'opencode.ps1');
+  fs.writeFileSync(ps1, '# fake ps1\n');
+  try {
+    var result = findOpenCodeInDir(binDir);
+    assertEqual(path.basename(result), 'opencode.ps1', '应命中 .ps1');
+    assertEqual(path.dirname(result), binDir, '应返回所在目录');
+  } finally {
+    fs.unlinkSync(ps1);
+    try { fs.rmdirSync(binDir, { recursive: true }); } catch (e) {}
+  }
+});
+
+test('findOpenCodeInDir: 目录下同时有 .exe 时优先 .exe（其次 .cmd/.ps1）', function() {
+  var binDir = path.join(__dirname, 'fakehome2');
+  fs.mkdirSync(binDir, { recursive: true });
+  var exe = path.join(binDir, 'opencode.exe');
+  var cmd = path.join(binDir, 'opencode.cmd');
+  var ps1 = path.join(binDir, 'opencode.ps1');
+  fs.writeFileSync(exe, '\x00');
+  fs.writeFileSync(cmd, '@echo off');
+  fs.writeFileSync(ps1, 'x');
+  try {
+    assertEqual(path.basename(findOpenCodeInDir(binDir)), 'opencode.exe', '应优先 .exe');
+    fs.unlinkSync(exe);
+    assertEqual(path.basename(findOpenCodeInDir(binDir)), 'opencode.cmd', '无 .exe 时应退而取 .cmd');
+    fs.unlinkSync(cmd);
+    assertEqual(path.basename(findOpenCodeInDir(binDir)), 'opencode.ps1', '仅剩 .ps1 时应命中 .ps1');
+  } finally {
+    try { fs.unlinkSync(exe); } catch (e) {}
+    try { fs.unlinkSync(cmd); } catch (e) {}
+    try { fs.unlinkSync(ps1); } catch (e) {}
+    try { fs.rmdirSync(binDir, { recursive: true }); } catch (e) {}
+  }
+});
+
+test('findOpenCodeInDir: 目录为空或不存在时返回 null', function() {
+  assertEqual(findOpenCodeInDir(null), null, 'null 目录应返回 null');
+  assertEqual(findOpenCodeInDir(''), null, '空目录应返回 null');
+  assertEqual(findOpenCodeInDir(123), null, '非字符串应返回 null');
+  var missing = path.join(__dirname, 'no_such_dir_xyz');
+  assertEqual(findOpenCodeInDir(missing), null, '不存在的目录应返回 null');
+});
+
+test('getOpenCodeBinDirs: 覆盖 .trae-cn/npm/Program Files 常见目录且去重', function() {
+  var dirs = getOpenCodeBinDirs();
+  assertTrue(Array.isArray(dirs), '应返回数组');
+  assertTrue(dirs.length >= 7, '至少包含 7 个候选目录');
+  // 关键目录必须覆盖
+  var joined = dirs.join('\n');
+  assertTrue(/\.trae-cn[\\/]sdks[\\/]versions[\\/]node[\\/]current/.test(joined), '应包含 Trae node 的 current bin 目录');
+  assertTrue(/\.trae-cn[\\/]bin/.test(joined), '应包含 .trae-cn/bin');
+  assertTrue(/npm/.test(joined), '应包含 npm 全局 bin');
+  assertTrue(/Programs[\\/]opencode/.test(joined), '应包含 opencode 官方安装目录');
+  // 去重校验
+  var lower = dirs.map(function(d){ return d.toLowerCase(); });
+  assertEqual(new Set(lower).size, dirs.length, '候选目录不应有重复');
+});
+
+test('findOpenCodeBin: 返回有效路径字符串（冒烟）', function() {
+  var result = findOpenCodeBin();
   assertNotNull(result, '应返回路径');
+  assertTrue(typeof result === 'string' && result.length > 0, '应返回非空字符串');
 });
 
-test('findOpenCodeBin: 读取配置文件', function() {
-  var configPath = path.join(__dirname, 'test-config.json');
-  fs.writeFileSync(configPath, JSON.stringify({ opencodePath: 'opencode' }));
-  var result = findOpenCodeBin(configPath);
-  fs.unlinkSync(configPath);
-  assertEqual(result, 'opencode', '应从配置读取');
+// --- step 3 `where opencode` 输出解析（评审建议：补单测拦截 .cmd 正则 bug）---
+console.log('\n--- where 输出解析（parseWhereOutput）---');
+
+test('parseWhereOutput: 命中 .cmd 路径（回归 Issue #134 / 评审 bug）', function() {
+  var out = 'C:\\Users\\Administrator\\.trae-cn\\sdks\\versions\\node\\current\\opencode.cmd';
+  assertEqual(parseWhereOutput(out), out, '应识别 .cmd 绝对路径（\\.cmd 正则不再误配）');
 });
 
-// --- 2. cwd 验证测试 ---
+test('parseWhereOutput: 命中 .ps1 / .exe 路径', function() {
+  assertEqual(parseWhereOutput('D:\\tools\\opencode.ps1'), 'D:\\tools\\opencode.ps1', '应识别 .ps1');
+  assertEqual(parseWhereOutput('C:\\npm\\opencode.exe'), 'C:\\npm\\opencode.exe', '应识别 .exe');
+});
+
+test('parseWhereOutput: 多行输出取第一个命中的 opencode', function() {
+  var out = 'C:\\a\\some_other.exe\r\nC:\\b\\opencode.cmd\r\nC:\\c\\opencode.ps1';
+  assertEqual(parseWhereOutput(out), 'C:\\b\\opencode.cmd', '应跳过无关行、取第一个命中的 opencode');
+});
+
+test('parseWhereOutput: 未命中/空输入返回 null', function() {
+  assertEqual(parseWhereOutput(null), null, 'null 应返回 null');
+  assertEqual(parseWhereOutput(''), null, '空串应返回 null');
+  assertEqual(parseWhereOutput('C:\\a\\other.exe'), null, '不含 opencode 的路径应返回 null');
+  assertEqual(parseWhereOutput('C:\\a\\opencode.txt'), null, '非 .exe/.cmd/.ps1 扩展名应返回 null');
+});
+
+test('parseWhereOutput: 收紧正则拒绝相邻文件误命中（评审建议）', function() {
+  // 仅文件名精确为 opencode.<ext> 才命中，避免误收 opencodehelper.exe / opencode-tool.cmd
+  assertEqual(parseWhereOutput('C:\\bin\\opencodehelper.exe'), null, 'opencodehelper.exe 不应命中');
+  assertEqual(parseWhereOutput('C:\\bin\\opencode-tool.cmd'), null, 'opencode-tool.cmd 不应命中');
+  assertEqual(parseWhereOutput('C:\\bin\\my-opencode.bin'), null, 'my-opencode.bin 不应命中');
+  assertEqual(parseWhereOutput('C:\\bin\\opencode.exe'), 'C:\\bin\\opencode.exe', '精确 opencode.exe 应命中');
+});
+
+// --- 2. cwd 验证测试（真实 validateCwd）---
 console.log('\n--- cwd 验证测试 ---');
 
 test('validateCwd: 合法 Windows 路径', function() {

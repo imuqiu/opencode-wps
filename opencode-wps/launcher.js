@@ -200,8 +200,23 @@ function startOpenCode(cwd, port) {
 
         opencodeProcess.on('error', function(err) {
             console.log('[launcher] Error: ' + err.message);
+            // 把启动失败原因写进 opencode-serve.log：计划任务/VBS 启动的 launcher 控制台不可见，
+            // 若不落盘则失败原因完全丢失（Issue #134 的 opencode-serve.log 曾为空）。
+            // 常见 ENOENT = 找不到 opencode 二进制；EACCES = 权限不足。
+            // 直接复用闭包中已算好的 opencodeBin，避免在此失败关键路径上再次触发
+            // findOpenCodeBin() 里同步阻塞的 execSync('where opencode', {timeout:5000})。
+            var errMsg = '[launcher] spawn error: ' + err.message +
+                ' (opencodeBin=' + (opencodeBin || '<empty>') + ')';
+            try {
+                if (opencodeLogStream && opencodeLogStream.writable) {
+                    // 用 end(errMsg) 而非 write()+closeOpenCodeLogStream()：end 会在 flush
+                    // 缓冲区后关闭 fd，避免依赖隐式 flush 行为导致失败原因丢日志。
+                    opencodeLogStream.end(errMsg + '\n');
+                }
+            } catch (e) { /* 日志写入失败不阻断 */ }
+            console.log(errMsg);
             opencodeProcess = null;
-            // 子进程启动失败，释放日志写流
+            // 子进程启动失败，释放日志写流（end 已触发，closeOpenCodeLogStream 幂等置空）
             closeOpenCodeLogStream();
         });
 
@@ -394,10 +409,23 @@ function isPortListening(port) {
 }
 
 function loadOpenCodeConfig() {
-    var configPath = path.join(process.env.APPDATA || process.env.USERPROFILE, 'opencode', 'config.json');
+    // 优先读取 opencode 的真实全局配置位置（与 install-addons.js 写入一致）：
+    //   Windows: %USERPROFILE%\.config\opencode\opencode.json
+    //   POSIX:   ~/.config/opencode/opencode.json
+    // 兼容旧路径 %APPDATA%\opencode\config.json（历史遗留），两者都读不到再走 PATH 探测。
+    var candidates = [
+        path.join(process.env.USERPROFILE || os.homedir(), '.config', 'opencode', 'opencode.json'),
+        // 旧路径兜底：APPDATA/USERPROFILE 均未定义（如裸 Linux 环境）时退回 os.homedir()，避免 path.join(undefined) 抛错
+        path.join(process.env.APPDATA || process.env.USERPROFILE || os.homedir(), 'opencode', 'config.json')
+    ];
     var defaultConfig = { opencodePath: 'opencode' };
 
-    if (!fs.existsSync(configPath)) {
+    var configPath = null;
+    for (var ci = 0; ci < candidates.length; ci++) {
+        if (fs.existsSync(candidates[ci])) { configPath = candidates[ci]; break; }
+    }
+
+    if (!configPath) {
         console.log('[launcher] Config file not found, using defaults (run install-addons.js)');
         return defaultConfig;
     }
@@ -415,8 +443,92 @@ function loadOpenCodeConfig() {
 }
 
 /**
- * 查找可用的 opencode CLI 可执行文件
- * @returns {string|null} 找到的路径，未找到返回 null
+ * 在指定目录里探测 opencode 可执行文件（兼容 .exe/.cmd/.ps1 三种形态）。
+ * npm 全局安装会同时生成 opencode、opencode.cmd、opencode.ps1 三个 shim，
+ * 交互 PowerShell 的 Get-Command 优先解析 .ps1，而 cmd.exe 只会解析 .exe/.cmd/.bat。
+ * 统一在此按扩展名探测，避免依赖 launcher 运行期（计划任务/VBS）的 PATH。
+ * @param {string} dir - 待探测目录
+ * @returns {string|null} 命中返回绝对路径，未命中返回 null
+ */
+function findOpenCodeInDir(dir) {
+    if (!dir || typeof dir !== 'string') return null;
+    // 优先 .exe，其次 .cmd（cmd 可直接执行），最后 .ps1（走 powershell -File）
+    var exts = ['.exe', '.cmd', '.ps1'];
+    for (var ei = 0; ei < exts.length; ei++) {
+        var candidate = path.join(dir, 'opencode' + exts[ei]);
+        try {
+            if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+                return candidate;
+            }
+        } catch (e) { /* 单个候选探测失败不阻断 */ }
+    }
+    return null;
+}
+
+/**
+ * 收集 opencode 可能所在的 bin 目录（Windows）。
+ * 覆盖 npm 全局安装、Trae 自带 node、以及 Program Files 等常见位置，
+ * 供 findOpenCodeBin 按扩展名逐一探测。
+ * @returns {string[]} 候选目录列表（去重、按优先级排序）
+ */
+function getOpenCodeBinDirs() {
+    var user = process.env.USERPROFILE || os.homedir() || '';
+    var appdata = process.env.APPDATA || path.join(user, 'AppData', 'Roaming');
+    var localAppData = process.env.LOCALAPPDATA || path.join(user, 'AppData', 'Local');
+    var dirs = [
+        // Trae 自带 node 的全局 bin（用户机器实测：opencode.ps1 位于此）
+        path.join(user, '.trae-cn', 'sdks', 'versions', 'node', 'current'),
+        path.join(user, '.trae-cn', 'bin'),
+        // npm 全局 bin
+        path.join(appdata, 'npm'),
+        path.join(localAppData, 'npm'),
+        // opencode 官方安装器
+        path.join(localAppData, 'Programs', 'opencode'),
+        'C:\\Program Files\\opencode',
+        'C:\\Program Files (x86)\\opencode'
+    ];
+    var seen = {};
+    var out = [];
+    for (var i = 0; i < dirs.length; i++) {
+        if (!dirs[i]) continue;
+        var key = dirs[i].toLowerCase();
+        if (seen[key]) continue;
+        seen[key] = true;
+        out.push(dirs[i]);
+    }
+    return out;
+}
+
+/**
+ * 解析 `where opencode` 命令输出，返回第一个命中的 opencode 可执行文件绝对路径。
+ * 逐行过滤：文件名含 opencode 且以 .exe/.cmd/.ps1 结尾（Windows 扩展名判定）。
+ * @param {string} output - `where opencode` 的原始输出（可含 \r\n 换行）
+ * @returns {string|null} 命中返回绝对路径；未命中返回 null
+ */
+function parseWhereOutput(output) {
+    if (typeof output !== 'string' || !output) return null;
+    var lines = output.split(/\r?\n/);
+    for (var li = 0; li < lines.length; li++) {
+        var line = (lines[li] || '').trim();
+        if (!line) continue;
+        // 提取文件名：兼容 / 与 \ 分隔符（path.basename 在非 Windows 上不识别
+        // 反斜杠路径，故手动取最后一个分隔符后的片段，保证单测跨平台可跑）。
+        var base = line.split(/[\/\\]/).pop();
+        // 取第一个命中的 opencode（.exe/.cmd/.ps1 均可）。
+        // 用 ^opencode\.(...)$ 精确匹配文件名，避免误命中相邻文件（如
+        // opencodehelper.exe / opencode-tool.cmd / my-opencode.bin）。`where opencode`
+        // 虽只返回精确同名项，收紧后更稳，且不受基线路径影响。
+        if (/^opencode\.(exe|cmd|ps1)$/i.test(base)) {
+            return line;
+        }
+    }
+    return null;
+}
+
+/**
+ * 查找可用的 opencode CLI 可执行文件（绝对路径）。
+ * 优先级：显式配置 > 常见 bin 目录探测（.exe/.cmd/.ps1）> PATH 解析 > 裸 'opencode'。
+ * @returns {string} 找到的 opencode 可执行路径；未找到时返回裸 'opencode'（依赖运行期 PATH）
  */
 function findOpenCodeBin() {
     // 1. 从配置读取（有防御性检查）
@@ -435,22 +547,30 @@ function findOpenCodeBin() {
         }
     }
 
-    // 2. 尝试常见安装路径
-    var commonPaths = [
-        path.join(process.env.USERPROFILE || os.homedir(), '.trae-cn', 'bin', 'opencode.exe'),
-        path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'Programs', 'opencode', 'opencode.exe'),
-        'C:\\Program Files\\opencode\\opencode.exe',
-        'C:\\Program Files (x86)\\opencode\\opencode.exe'
-    ];
-    for (var i = 0; i < commonPaths.length; i++) {
-        if (fs.existsSync(commonPaths[i])) {
-            console.log('[launcher] Found: ' + commonPaths[i]);
-            return commonPaths[i];
+    // 2. 在常见 bin 目录按扩展名探测（.exe/.cmd/.ps1）
+    var dirs = getOpenCodeBinDirs();
+    for (var di = 0; di < dirs.length; di++) {
+        var found = findOpenCodeInDir(dirs[di]);
+        if (found) {
+            console.log('[launcher] Found: ' + found);
+            return found;
         }
     }
 
-    // 3. 回退到 PATH 中的 opencode
-    console.log('[launcher] ⚠️ OpenCode not found, searching PATH');
+    // 3. 用 `where opencode` 从 PATH 解析真实路径（where 依赖本进程运行期 PATH，
+    //    计划任务/VBS 拉起的 launcher 不含 .trae-cn；真正覆盖 #134 的是第 2 步目录探测）
+    try {
+        var execSync = require('child_process').execSync;
+        var out = execSync('where opencode', { shell: 'cmd.exe', encoding: 'utf8', timeout: 5000 });
+        var viaWhere = parseWhereOutput(out);
+        if (viaWhere) {
+            console.log('[launcher] Found via PATH: ' + viaWhere);
+            return viaWhere;
+        }
+    } catch (e) { /* where 未命中或命令失败，继续回退 */ }
+
+    // 4. 回退到裸 'opencode'（依赖运行期 PATH，最后手段）
+    console.log('[launcher] ⚠️ OpenCode not found in known paths/PATH');
     console.log('[launcher] Tip: ensure opencode is installed or run install-addons.js');
     return 'opencode';
 }
@@ -725,6 +845,21 @@ var server = http.createServer(function(req, res) {
     sendJSON(req, res, 404, { error: 'Not found' });
 });
 
-server.listen(PORT, '127.0.0.1', function() {
-    console.log('[launcher] Running on http://127.0.0.1:' + PORT);
-});
+// 仅在作为主模块运行时才启动 HTTP 服务（require 用于单测时跳过监听）
+if (require.main === module) {
+    server.listen(PORT, '127.0.0.1', function() {
+        console.log('[launcher] Running on http://127.0.0.1:' + PORT);
+    });
+}
+
+// 导出纯函数供单测 require 真实实现（避免测试文件里维护一份与交付代码脱节的副本）。
+// 被 require 时跳过上面 server.listen，仅暴露函数。
+module.exports = {
+    parseWhereOutput: parseWhereOutput,
+    findOpenCodeBin: findOpenCodeBin,
+    findOpenCodeInDir: findOpenCodeInDir,
+    getOpenCodeBinDirs: getOpenCodeBinDirs,
+    loadOpenCodeConfig: loadOpenCodeConfig,
+    validateCwd: validateCwd,
+    isPortListening: isPortListening
+};
