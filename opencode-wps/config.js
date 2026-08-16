@@ -85,6 +85,17 @@ var CONFIG = {
         maxMessageLength: 10000
     },
 
+    // 工具权限确认配置（Issue #116 权限自动确认需求）
+    permission: {
+        // 权限确认模式：
+        //   'auto'   — 自动允许所有工具权限请求（长任务如 97 批校对不再因权限确认卡住）
+        //   'manual' — 手动弹窗确认（保留原交互，需要人工审批工具调用）
+        mode: 'auto',
+        // 启动 opencode serve 时是否追加 --permission allow（仅 mode='auto' 时生效）：
+        // 从服务端源头自动放行工具权限，根治「侧边栏收不到权限请求导致任务静默卡住」问题
+        autoAllowOnLaunch: true
+    },
+
     // 网络配置
     network: {
         // 请求超时（毫秒）

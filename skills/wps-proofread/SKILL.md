@@ -311,6 +311,12 @@ const docInfo = await wps_office_execute({
 > **⚠️ session_id 是必填参数**，由 AI 手动生成并传入 `proofreadAccumulate` 和 `generateProofreadReport`。
 > 两个工具**统一走网关**：通过 `wps_office_execute({ tool_name: "proofreadAccumulate" / "generateProofreadReport", ... })` 调用，网关会自动路由到对应的 MCP handler（见下方 Step 2h / Step 3 示例）。
 
+> **⚠️🔴 全流程必须使用同一个 session_id（Issue #116 session_ff63 问题四/五）**：
+> - 所有批次、所有 subagent（子任务/子代理）必须共用校对开始时生成的**同一个 `session_id`**，**严禁**各 subagent 各自新生成或传不同 session_id。
+> - subagent 之间状态不共享，若各自累加会产生多份互相矛盾的报告（本会话曾出现同一文档 3 份报告数据完全不同的严重不一致）。
+> - 凡调用 `proofreadAccumulate` / `generateProofreadReport`，必须显式携带这个统一的 `session_id`，遗漏即被服务端拒绝并报错。
+> - 若确实需要多 agent 并行校对不同段落，也必须把同一个 `session_id` 传给每个 agent，由服务端统一累加合并，最终一份报告。
+
 ### Step 1: 开启修订模式
 
 ```javascript

@@ -694,8 +694,14 @@ export const proofreadAccumulateHandler: ToolHandler = async (
   const invalidIssues: Array<{ i: ProofreadIssueEntry; reason: string }> = [];
   for (const i of issues) {
     const missing: string[] = [];
-    if (typeof i.original !== 'string' || i.original.trim() === '') missing.push('original');
-    if (typeof i.suggestion !== 'string' || i.suggestion.trim() === '') missing.push('suggestion');
+    // Issue #116 session_ff63 问题一（P0）：原实现用 trim() 判断字段缺失，
+    // 导致「异常空格 / 多余空格 / 全角空格」这类空白内容的合法校对问题（original="  "，
+    // suggestion=" "）被误判为「缺字段」而整批拒绝，第一批校对结果永久丢失。
+    // 修复：不再 trim 判断内容——只拒绝「字段不存在」（undefined/null/非字符串）或
+    // 「真正为空字符串」（''，无原文可校对）；空白字符本身可能是文档的真实问题（异常空格），
+    // 属合法校对发现，必须允许累加。
+    if (i.original === undefined || i.original === null || typeof i.original !== 'string' || i.original === '') missing.push('original');
+    if (i.suggestion === undefined || i.suggestion === null || typeof i.suggestion !== 'string' || i.suggestion === '') missing.push('suggestion');
     if (missing.length > 0) {
       invalidIssues.push({ i, reason: `缺 ${missing.join('/')}` });
     } else {
@@ -736,8 +742,10 @@ export const proofreadAccumulateHandler: ToolHandler = async (
     const validSuspected: ProofreadIssueEntry[] = [];
     for (const i of suspected_issues) {
       const missing: string[] = [];
-      if (typeof i.original !== 'string' || i.original.trim() === '') missing.push('original');
-      if (typeof i.suggestion !== 'string' || i.suggestion.trim() === '') missing.push('suggestion');
+      // Issue #116 session_ff63 问题一（P0）：与 issues 主校验一致——不再 trim 判断，
+      // 只拒绝「字段不存在」或「真正为空字符串」；空白内容（异常空格等）是合法疑似问题，允许累加。
+      if (i.original === undefined || i.original === null || typeof i.original !== 'string' || i.original === '') missing.push('original');
+      if (i.suggestion === undefined || i.suggestion === null || typeof i.suggestion !== 'string' || i.suggestion === '') missing.push('suggestion');
       if (missing.length > 0) {
         skippedSuspectedCount++;
       } else {
@@ -974,10 +982,22 @@ export const generateProofreadReportHandler: ToolHandler = async (
   };
 
   if (!session_id || typeof session_id !== 'string') {
+    // Issue #116 session_ff63 问题五（P3）：AI 多次漏传 session_id。
+    // 错误提示补充示例用法，引导 AI 传入正确的必填参数（用校对开始时生成的 UUID v4）。
     return {
       id: uuidv4(),
       success: false,
-      content: [{ type: 'text', text: 'session_id 不能为空！' }],
+      content: [{
+        type: 'text',
+        text:
+          `session_id 不能为空！请在 arguments 中传入必填参数 session_id（校对开始时生成的 UUID v4）。\n` +
+          `正确示例：\n` +
+          `  wps_office_execute({\n` +
+          `    action: \"generateProofreadReport\",\n` +
+          `    arguments: { session_id: \"这里填校对开始时的 UUID v4，如 550e8400-e29b-41d4-a716-446655440000\" }\n` +
+          `  })\n` +
+          `session_id 必须在调用 proofreadAccumulate 累加问题后保持不变，用于汇总已累加的问题生成报告。`,
+      }],
       error: '缺少 session_id',
     };
   }

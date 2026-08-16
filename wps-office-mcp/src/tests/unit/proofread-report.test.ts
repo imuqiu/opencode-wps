@@ -1454,6 +1454,32 @@ describe('proofreadAccumulate — 必填字段校验（Issue #116 问题六）',
     expect(result.error).toContain('original/suggestion');
   });
 
+  it('issues 含空白字符 original（异常空格）时正常累加（session_ff63 问题一 P0 回归）', async () => {
+    // 回归：原实现用 trim() 判断字段缺失，把 original='  '（异常空格）误判为缺字段整批拒绝。
+    // 空白字符本身是合法校对发现（异常空格/多余空格），必须允许累加。
+    const result = await proofreadAccumulateHandler({
+      session_id: 'required-check-blank-1',
+      issues: [
+        { offset: 10, length: 2, original: '  ', suggestion: ' ', type: '异常空格', source: 'mcp' as const },
+      ],
+      doc_info: { fileName: 'blank.docx', filePath: '/p/blank.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+    expect(result.success).toBe(true);
+    expect(result.content[0].text).toContain('已累加 1 条问题');
+  });
+
+  it('issues 含全角空格 original 时正常累加（session_ff63 问题一 P0 回归）', async () => {
+    const result = await proofreadAccumulateHandler({
+      session_id: 'required-check-blank-2',
+      issues: [
+        { offset: 20, length: 2, original: '\u3000\u3000', suggestion: ' ', type: '异常空格', source: 'mcp' as const },
+      ],
+      doc_info: { fileName: 'blank2.docx', filePath: '/p/blank2.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+    expect(result.success).toBe(true);
+    expect(result.content[0].text).toContain('已累加 1 条问题');
+  });
+
   it('issues 全部字段完整时正常累加（回归）', async () => {
     const result = await proofreadAccumulateHandler({
       session_id: 'required-check-4',

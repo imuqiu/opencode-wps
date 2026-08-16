@@ -5,6 +5,28 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
+// 读取共享配置（config.js 与 launcher.js 同目录）。
+// 权限自动确认（Issue #116）：若配置为 auto + autoAllowOnLaunch，
+// 启动 opencode serve 时追加 --permission allow，从服务端源头自动放行工具权限，
+// 根治「侧边栏收不到权限请求导致长任务静默卡住、只能切 web 确认」的问题。
+// 加载失败时降级为安全默认（manual，不追加 --permission，避免误放行）。
+function loadWpsConfig() {
+    try {
+        var cfgPath = path.join(__dirname, 'config.js');
+        if (fs.existsSync(cfgPath)) {
+            var cfg = require(cfgPath);
+            return (cfg && cfg.permission) ? cfg.permission : null;
+        }
+    } catch (e) { /* 配置损坏时降级为 manual */ }
+    return null;
+}
+
+// 判断是否应追加 --permission allow（服务端自动放行工具权限）
+function shouldAutoAllowPermission() {
+    var perm = loadWpsConfig();
+    return !!perm && perm.mode === 'auto' && perm.autoAllowOnLaunch !== false;
+}
+
 // 统一的隐藏窗口 execSync：强制 windowsHide:true（CREATE_NO_WINDOW）。
 // Windows 上若未隐藏，execSync 拉起的 cmd.exe / powershell / wmic 子进程会闪现可见控制台窗口
 // （Issue #143 关闭服务时闪 13 次黑窗的根因）。集中在此封装，新增子进程调用统一走它，防遗漏。
@@ -171,6 +193,11 @@ function startOpenCode(cwd, port) {
     var isExe = /\.exe$/i.test(opencodeBin);
     var finalPort = parsedPort || 14096;
     var opencodeArgs = ['serve', '--port', String(finalPort), '--hostname', '127.0.0.1', '--cors', 'file://'];
+    // Issue #116 权限自动确认：配置为 auto 时追加 --permission allow，
+    // 从服务端源头自动放行工具权限（根治侧边栏收不到权限请求导致长任务静默卡住）。
+    if (shouldAutoAllowPermission()) {
+        opencodeArgs.push('--permission', 'allow');
+    }
     // .ps1 用 powershell.exe 直接执行、.exe 直接 CreateProcess，均无需 shell；
     // 无扩展名（如 PATH 中的 'opencode'，npm 全局安装实为 .cmd 脚本）时，
     // spawn 不带 shell 无法启动 .cmd 文件，必须保留 shell。
@@ -670,6 +697,10 @@ function buildSpawnCommand(opencodeBin) {
     var isPs1 = bin.endsWith('.ps1');
     var isExe = /\.exe$/i.test(bin);
     var args = ['serve', '--port', String(OPENCODE_PORT), '--hostname', '127.0.0.1', '--cors', 'file://'];
+    // Issue #116 权限自动确认：配置为 auto 时追加 --permission allow（与 startOpenCode 一致）。
+    if (shouldAutoAllowPermission()) {
+        args.push('--permission', 'allow');
+    }
     var needShell = !isPs1 && !isExe;
     if (isPs1) {
         return { command: 'powershell.exe', args: ['-ExecutionPolicy', 'Bypass', '-File', bin].concat(args), needShell: false };

@@ -335,6 +335,93 @@ describe('WpsClient', () => {
       expect(mockMacModule.macPollServer.executeCommand).toHaveBeenCalledWith('createDocument', {}, 30000);
       expect(result).toBe(true);
     });
+
+    it('getDocumentParagraphs 前段批次（<=500段）用基础 60s 超时（session_ff63 问题三）', async () => {
+      mockMacModule.macPollServer.executeCommand.mockResolvedValue({
+        success: true,
+        data: { paragraphs: [], totalCount: 9652, returnedCount: 0 },
+      });
+      const client = new WpsClient();
+      const result = await client.executeMethod('getDocumentParagraphs', { startParagraph: 1, endParagraph: 100 }, WpsAppType.WRITER);
+      expect(mockMacModule.macPollServer.executeCommand).toHaveBeenCalledWith(
+        'getDocumentParagraphs',
+        { startParagraph: 1, endParagraph: 100 },
+        60000
+      );
+      expect(result).toBeDefined();
+    });
+
+    it('getDocumentParagraphs 后段批次（>8000段）动态放大到 150s（session_ff63 问题三）', async () => {
+      mockMacModule.macPollServer.executeCommand.mockResolvedValue({
+        success: true,
+        data: { paragraphs: [], totalCount: 9652, returnedCount: 0 },
+      });
+      const client = new WpsClient();
+      const result = await client.executeMethod('getDocumentParagraphs', { startParagraph: 9500, endParagraph: 9600 }, WpsAppType.WRITER);
+      expect(mockMacModule.macPollServer.executeCommand).toHaveBeenCalledWith(
+        'getDocumentParagraphs',
+        { startParagraph: 9500, endParagraph: 9600 },
+        150000
+      );
+      expect(result).toBeDefined();
+    });
+
+    it('getDocumentParagraphs 中段批次（3001-8000段）动态放大到 120s（session_ff63 问题三）', async () => {
+      mockMacModule.macPollServer.executeCommand.mockResolvedValue({
+        success: true,
+        data: { paragraphs: [], totalCount: 9652, returnedCount: 0 },
+      });
+      const client = new WpsClient();
+      const result = await client.executeMethod('getDocumentParagraphs', { startParagraph: 5000, endParagraph: 5100 }, WpsAppType.WRITER);
+      expect(mockMacModule.macPollServer.executeCommand).toHaveBeenCalledWith(
+        'getDocumentParagraphs',
+        { startParagraph: 5000, endParagraph: 5100 },
+        120000
+      );
+      expect(result).toBeDefined();
+    });
+    it('getDocumentParagraphs 边界值：正好 500/3000/8000 段归属正确档位（session_ff63 问题三）', async () => {
+      const client = new WpsClient();
+      mockMacModule.macPollServer.executeCommand.mockResolvedValue({
+        success: true,
+        data: { paragraphs: [], totalCount: 9652, returnedCount: 0 },
+      });
+      // 500 段 → 基础 60s
+      await client.executeMethod('getDocumentParagraphs', { startParagraph: 500, endParagraph: 500 }, WpsAppType.WRITER);
+      expect(mockMacModule.macPollServer.executeCommand).toHaveBeenLastCalledWith(
+        'getDocumentParagraphs', { startParagraph: 500, endParagraph: 500 }, 60000
+      );
+      // 3000 段 → 90s
+      await client.executeMethod('getDocumentParagraphs', { startParagraph: 3000, endParagraph: 3000 }, WpsAppType.WRITER);
+      expect(mockMacModule.macPollServer.executeCommand).toHaveBeenLastCalledWith(
+        'getDocumentParagraphs', { startParagraph: 3000, endParagraph: 3000 }, 90000
+      );
+      // 8000 段 → 120s
+      await client.executeMethod('getDocumentParagraphs', { startParagraph: 8000, endParagraph: 8000 }, WpsAppType.WRITER);
+      expect(mockMacModule.macPollServer.executeCommand).toHaveBeenLastCalledWith(
+        'getDocumentParagraphs', { startParagraph: 8000, endParagraph: 8000 }, 120000
+      );
+      // 8001 段 → 150s
+      await client.executeMethod('getDocumentParagraphs', { startParagraph: 8001, endParagraph: 8001 }, WpsAppType.WRITER);
+      expect(mockMacModule.macPollServer.executeCommand).toHaveBeenLastCalledWith(
+        'getDocumentParagraphs', { startParagraph: 8001, endParagraph: 8001 }, 150000
+      );
+    });
+
+    it('getDocumentParagraphs 字符串数字参数（"9500"）也能正确动态放大超时（第2轮 W1 容错回归）', async () => {
+      mockMacModule.macPollServer.executeCommand.mockResolvedValue({
+        success: true,
+        data: { paragraphs: [], totalCount: 9652, returnedCount: 0 },
+      });
+      const client = new WpsClient();
+      const result = await client.executeMethod('getDocumentParagraphs', { startParagraph: '9500', endParagraph: '9600' }, WpsAppType.WRITER);
+      expect(mockMacModule.macPollServer.executeCommand).toHaveBeenCalledWith(
+        'getDocumentParagraphs',
+        { startParagraph: '9500', endParagraph: '9600' },
+        150000
+      );
+      expect(result).toBeDefined();
+    });
   });
 
   describe('Linux模式', () => {

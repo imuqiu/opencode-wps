@@ -9,7 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-（本版本无待发布内容，见 [1.5.5]）
+- **修复校对问题空白内容被误判缺字段（Issue #116 session_ff63，P0）** — `proofreadAccumulate` 原用 `trim()` 判断 `original`/`suggestion` 是否缺失，导致「异常空格 / 多余空格 / 全角空格」这类空白内容的合法校对问题（如 `original="  "`）被误判为缺字段而整批拒绝，第一批校对结果永久丢失。修复：不再 trim 判断，只拒绝「字段不存在」（undefined/null/非字符串）或「真正为空字符串」（`''`）；空白字符属合法校对发现，允许累加。疑似问题（suspected_issues）同步修复。新增 2 个回归测试（半角空格/全角空格）。
+- **修复上下文用量条仍看不到（Issue #116 session_ff63，P1）** — SSE 事件（`session.status` / `message.updated`）取不到用量数据时静默跳过，用量条停在初始状态。修复：`extractCtxUsage` 返回 null 且从未获取过真实数据时调用 `ctxMeterNoData()` 诚实降级提示（`CTX_DATA_SEEN` 标记避免覆盖已展示的真实数据）。
+- **修复超大型文档段落获取超时（Issue #116 session_ff63，P1）** — 9652 段超大型文档请求靠后批次时固定 60s 仍超时（WPS COM 需遍历前面所有段落定位）。修复：`getDocumentParagraphs` 按目标段落号分段动态放大超时（≤500段:60s / 301-3000段:90s / 3001-8000段:120s / >8000段:150s），Mac/Linux/Windows 三平台一致，并对字符串数字参数容错。新增 5 个测试（含边界值）。
+- **强化全流程同一 session_id（Issue #116 session_ff63，P2/P3）** — SKILL 明确强调所有批次、所有 subagent 必须共用校对开始时生成的同一个 `session_id`，避免 subagent 各自累加产生多份矛盾报告；`generateProofreadReport` 缺 session_id 错误提示补充示例用法，引导 AI 传入正确必填参数。
+- **新增工具权限自动确认（Issue #116 补充需求）** — 侧边栏看不到权限确认（serve web 能看到）导致长任务（如 97 批校对）卡住。修复（三保险）：① launcher 启动 `opencode serve` 时按配置追加 `--permission allow`（服务端源头放行）；② 前端 `handlePermissionRequest` 检测 config `permission.mode==='auto'` 时自动 `respondPermission('allow')` 不弹窗；③ 新增 `/tui/control/next` 长轮询兜底通道（serve web 走此通道），收到权限请求时 auto 自动允许。可配置：config.js 新增 `permission.mode`（`auto`/`manual`，默认 `auto`）+ `autoAllowOnLaunch`；governance.js 的 G1-G7 安全规则仍生效，不会被绕过。新增 launcher 权限自动确认测试。
 
 ## [1.5.5] - 2026-08-16
 

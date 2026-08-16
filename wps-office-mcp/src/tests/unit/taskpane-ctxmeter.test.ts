@@ -27,12 +27,33 @@ function findRepoRoot(startDir: string): string {
   throw new Error('未找到仓库根目录（taskpane.html）');
 }
 
-// 提取 extractCtxUsage 函数定义
-const fnMatch = html.match(/function extractCtxUsage\([\s\S]*?\n}/);
-if (!fnMatch) {
-  throw new Error('taskpane.html 中未找到 extractCtxUsage 函数');
+// 提取 extractCtxUsage 函数定义。
+// 用「大括号配对」做健壮提取（Prettier 格式化后函数内部含嵌套函数 readTokens 与空行，
+// 简单 /function extractCtxUsage\\([\s\S]*?\n}/ 正则会在第一个嵌套函数结束的 \n} 处截断，
+// 导致函数体不完整）。这里从 `function extractCtxUsage(` 起点起按大括号深度配对，
+// 完整提取到函数结束的 `}`，对格式变化免疫。
+function extractFunctionSource(htmlSource: string, funcName: string): string {
+  const startMarker = 'function ' + funcName + '(';
+  const startIdx = htmlSource.indexOf(startMarker);
+  if (startIdx < 0) throw new Error('taskpane.html 中未找到 ' + funcName + ' 函数');
+  // 定位函数体第一个 `{`
+  let braceStart = htmlSource.indexOf('{', startIdx);
+  if (braceStart < 0) throw new Error('taskpane.html 中 ' + funcName + ' 函数缺少 {');
+  let depth = 0;
+  let i = braceStart;
+  const len = htmlSource.length;
+  for (; i < len; i++) {
+    const ch = htmlSource[i];
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) break;
+    }
+  }
+  if (depth !== 0) throw new Error('taskpane.html 中 ' + funcName + ' 函数大括号不配对');
+  return htmlSource.slice(startIdx, i + 1);
 }
-const fnSource = fnMatch[0];
+const fnSource = extractFunctionSource(html, 'extractCtxUsage');
 
 function runExtractCtxUsage(obj: unknown): any {
   const sandbox: Record<string, unknown> = {};

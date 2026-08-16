@@ -405,8 +405,12 @@ var INPUT_HISTORY_INDEX = -1
 // #116 权限确认 & 上下文用量
 var PENDING_PERMISSION = null       // 待响应的权限请求 { permissionID, tool }
 var PERMISSION_MODAL_VISIBLE = false
+var CONTROL_POLLING = false         // 是否正在 /tui/control/next 长轮询（Issue #116 权限确认兜底）
+var CONTROL_POLL_XHR = null         // 当前长轮询的 XHR 句柄（用于停止时 abort）
+var CONTROL_POLL_RETRY = null       // 长轮询断开后的重连定时器
 var CTX_PERCENT = 0                 // 当前上下文用量百分比（0-100）
 var CTX_TOOLTIP_VISIBLE = false
+var CTX_DATA_SEEN = false           // 是否已获取到真实上下文用量数据（session_ff63 问题二）
 
 var $messages = document.getElementById('messages')
 var $input = document.getElementById('input-box')
@@ -766,6 +770,8 @@ function stopOpenCode() {
     if (START_POLL_TIMER) { clearInterval(START_POLL_TIMER); START_POLL_TIMER = null }
     SERVER_RUNNING = false
     CONNECTED = false
+    // Issue #116 权限确认：停止 /tui/control/next 长轮询（服务已停止不再轮询）
+    stopControlNextPoll()
     if (SSE) { SSE.close(); SSE = null }
     // 清理 SSE 自动重连定时器：服务已停止时若仍有排程中的重连回调，
     // 会继续向已停止的服务发起连接（浪费资源 + 触发错误日志）
@@ -787,9 +793,16 @@ function onServerConnected() {
     showChat()
     refreshModelAgentLabels()
     var sid = getPS('opencode_session_id')
-    if (sid) { SESSION_ID = sid; loadSessionMessages(sid) } else { createNewSession(function() { connectSSE() }); return }
+    if (sid) { SESSION_ID = sid; loadSessionMessages(sid) } else {
+        // W4 修复：首次使用无历史会话时 createNewSession 后 return，原代码会跳过 control/next 轮询启动。
+        // 在回调中也启动轮询（连同 connectSSE），保证 control/next 兜底通道始终可用。
+        createNewSession(function() { connectSSE(); startControlNextPoll() })
+        return
+    }
     connectSSE()
     startHealthCheck()
+    // Issue #116 权限确认：启动 /tui/control/next 长轮询兜底（SSE 收不到权限请求时的备用通道）
+    startControlNextPoll()
 }
 
 // 第 5 轮评审：抽离「刷新模型/智能体 topbar 标签」为统一 helper，供 onServerConnected 与
@@ -1555,8 +1568,10 @@ function handleSSEEvent(data) {
                 else if (st === 'idle') { if (PENDING_PERMISSION) { setStatus('waiting') } else { setStatus('idle'); finalizeStreaming() } }
                 else setStatus(st === 'waiting' || st === 'waiting-for-input' ? 'waiting' : (st === 'idle' ? 'idle' : 'busy'))
                 // #116 问题三 + session_ffa9 假修复：多路径防御性提取上下文用量
+                // session_ff63 问题二：SSE 事件取不到数据时诚实降级提示（但若已展示过真实数据则不覆盖）
                 var usage = extractCtxUsage(props.status)
                 if (usage && typeof usage.percent === 'number') updateCtxMeter(usage.percent, usage)
+                else if (!CTX_DATA_SEEN) ctxMeterNoData()
             }
             break
         case 'session.permission':
@@ -1574,8 +1589,10 @@ function handleSSEEvent(data) {
             }
             if (props.info && props.info.role === 'assistant' && props.info.finish) finalizeStreaming()
             // #116 问题三 + session_ffa9 假修复：消息更新时多路径提取上下文用量
+            // session_ff63 问题二：取不到数据时诚实降级提示（但若已展示过真实数据则不覆盖）
             var msgUsage = extractCtxUsage(props)
             if (msgUsage && typeof msgUsage.percent === 'number') updateCtxMeter(msgUsage.percent, msgUsage)
+            else if (!CTX_DATA_SEEN) ctxMeterNoData()
             break
         case 'message.part.updated':
             if (props.part) {
@@ -1643,6 +1660,16 @@ function handlePermissionRequest(type, props) {
     }
 
     PENDING_PERMISSION = { id: permissionID, toolName: toolName, toolArgs: toolArgs }
+    // Issue #116 权限自动确认：配置为 auto 时直接自动允许，不再弹窗，避免长任务（如 97 批校对）
+    // 因权限确认而卡住（此前只能切到 serve web 会话确认，侧边栏静默等待）。
+    // manual 模式才弹窗人工确认。
+    var permCfg = CONFIG && CONFIG.permission ? CONFIG.permission : null
+    if (permCfg && permCfg.mode === 'auto') {
+        console.log('[Permission] auto-allow (config mode=auto):', toolName)
+        setStatus('busy')
+        respondPermission('allow')
+        return
+    }
     setStatus('waiting')
     showPermissionDialog(toolName, toolArgs, toolDesc)
 }
@@ -1699,6 +1726,101 @@ function sendControlPermissionResponse(response, remember) {
     })
 }
 
+
+// ===== /tui/control/next 长轮询兜底（Issue #116 权限确认） =====
+// 背景：OpenCode headless serve 的权限/控制请求可能经 GET /tui/control/next 长轮询下发
+// （serve web 页面走此通道），而侧边栏此前只监听 SSE 事件，收不到 → 权限请求静默等待、任务卡住。
+// 这里实现 control/next 长轮询作为兜底通道：收到控制请求时，若配置为 auto 则自动允许，
+// manual 则弹窗。与 SSE 事件通道互为双保险。
+
+/** 启动 /tui/control/next 长轮询（幂等，同一时刻只有一个轮询在跑） */
+function startControlNextPoll() {
+    if (CONTROL_POLLING) return
+    CONTROL_POLLING = true
+    controlNextPollOnce()
+}
+
+/** 停止 /tui/control/next 长轮询（会话切换/服务停止时调用） */
+function stopControlNextPoll() {
+    CONTROL_POLLING = false
+    if (CONTROL_POLL_XHR) {
+        try { CONTROL_POLL_XHR.abort() } catch (e) { /* 忽略 abort 异常 */ }
+        CONTROL_POLL_XHR = null
+    }
+    if (CONTROL_POLL_RETRY) {
+        clearTimeout(CONTROL_POLL_RETRY)
+        CONTROL_POLL_RETRY = null
+    }
+}
+
+/** 单次长轮询：GET /tui/control/next，返回后递归下一次 */
+function controlNextPollOnce() {
+    if (!CONTROL_POLLING || STOPPING || !SERVER_RUNNING) return
+    // 用原生 XHR 做长连接（timeout=0 不超时，保持挂起直到服务端下发控制请求）
+    var xhr = new XMLHttpRequest()
+    CONTROL_POLL_XHR = xhr
+    xhr.timeout = 0
+    xhr.open('GET', API_BASE + '/tui/control/next', true)
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState !== 4) return
+        CONTROL_POLL_XHR = null
+        if (xhr.status === 200) {
+            var req = null
+            try { req = JSON.parse(xhr.responseText) } catch (e) { req = null }
+            if (req) handleControlRequest(req)
+        } else if (xhr.status === 204) {
+            // 204 无内容：服务端无待处理控制请求，正常，继续下一轮
+        } else if (xhr.status === 0) {
+            // 请求被中断（stopControlNextPoll abort / 网络断开），不重连
+        } else {
+            // 其他错误状态：短暂延迟后重连（避免热循环）
+            scheduleControlNextPoll(2000)
+            return
+        }
+        // 正常完成本轮，继续下一轮
+        scheduleControlNextPoll(0)
+    }
+    xhr.onerror = function() {
+        CONTROL_POLL_XHR = null
+        // 网络错误：若仍应轮询，延迟重连
+        if (CONTROL_POLLING && SERVER_RUNNING && !STOPPING) scheduleControlNextPoll(3000)
+    }
+    xhr.ontimeout = function() {
+        CONTROL_POLL_XHR = null
+        if (CONTROL_POLLING && SERVER_RUNNING && !STOPPING) scheduleControlNextPoll(0)
+    }
+    xhr.send()
+}
+
+/** 安排下一轮长轮询（延迟 delayMs 毫秒） */
+function scheduleControlNextPoll(delayMs) {
+    if (!CONTROL_POLLING || STOPPING || !SERVER_RUNNING) return
+    if (CONTROL_POLL_RETRY) clearTimeout(CONTROL_POLL_RETRY)
+    CONTROL_POLL_RETRY = setTimeout(function() {
+        CONTROL_POLL_RETRY = null
+        controlNextPollOnce()
+    }, delayMs)
+}
+
+/** 处理 control/next 返回的控制请求（含权限请求） */
+function handleControlRequest(req) {
+    var type = req && (req.type || (req.body && req.body.type)) || ''
+    var data = req && (req.data || req.body || req) || null
+    // 识别权限请求：type 为 permission，或请求体含权限相关字段（覆盖多种字段命名）
+    // W2 加固：除 tool/permission/permissionID 外，兼容 permission_id/requestID/toolName 等命名，
+    // 避免 OpenCode 不同版本字段命名差异导致权限请求被漏过、任务静默卡住。
+    var isPermission =
+        type === 'permission' ||
+        (data && data.response === undefined &&
+            (data.tool || data.permission || data.permissionID || data.permission_id || data.requestID || data.toolName))
+    if (isPermission) {
+        // 权限类控制请求 → 按配置 auto 自动允许 / manual 弹窗
+        handlePermissionRequest(type || 'control.request', data || req)
+    } else {
+        // 非权限控制请求（如系统提示），当前侧边栏无需处理，静默忽略避免阻塞后续
+    }
+}
+
 /** 关闭权限确认对话框 */
 function hidePermissionDialog() {
     $permModal.style.display = 'none'
@@ -1722,6 +1844,7 @@ function updateCtxMeter(percent, usage) {
     if (typeof percent !== 'number' || isNaN(percent)) return
     percent = Math.max(0, Math.min(100, percent))
     CTX_PERCENT = percent
+    CTX_DATA_SEEN = true // 已获取到真实用量数据（session_ff63 问题二：后续无数据事件不再降级覆盖）
     $ctxMeterFill.style.width = percent + '%'
     $ctxMeter.className = 'ctx-meter' + (percent >= 90 ? ' danger' : (percent >= 70 ? ' warn' : ''))
     if (usage) {

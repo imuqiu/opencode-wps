@@ -119,6 +119,36 @@ test('launcher.js 源码：spawn 统一经 hiddenSpawn 强制 windowsHide（修�
   assertTrue(!/opencodeProcess = spawn\(/.test(src), '不允许再裸用 spawn 启动 opencode');
 });
 
+
+// --- 权限自动确认（Issue #116）：launcher 追加 --permission allow ---
+test('权限自动确认：shouldAutoAllowPermission 存在且 config 有 permission 配置（Issue #116）', function() {
+  var src = fs.readFileSync(LAUNCHER, 'utf-8');
+  assertTrue(/function shouldAutoAllowPermission\(\)/.test(src), 'launcher 应有 shouldAutoAllowPermission 函数');
+  assertTrue(/--permission'/.test(src), 'launcher 应能追加 --permission 参数');
+  var cfgSrc = fs.readFileSync(path.join(__dirname, '..', 'config.js'), 'utf-8');
+  assertTrue(/permission\s*:\s*\{/.test(cfgSrc), 'config.js 应有 permission 配置段');
+  assertTrue(/mode: 'auto'/.test(cfgSrc), 'config.js permission.mode 默认应为 auto');
+  assertTrue(/autoAllowOnLaunch/.test(cfgSrc), 'config.js 应有 autoAllowOnLaunch 配置');
+});
+
+// --- 权限自动确认：buildSpawnCommand 在 auto 配置下追加 --permission allow ---
+test('权限自动确认：buildSpawnCommand 在 auto 配置下追加 --permission allow（Issue #116）', function() {
+  try {
+    var launcher = require(LAUNCHER);
+    // config.js 当前为 auto 模式，buildSpawnCommand 应包含 --permission allow
+    var cmd = launcher.buildSpawnCommand('opencode');
+    var hasPerm = cmd.args.indexOf('--permission') !== -1;
+    assertTrue(hasPerm, 'auto 模式下 buildSpawnCommand args 应含 --permission allow（实际: ' + JSON.stringify(cmd.args) + '）');
+    // --permission 之后应为 allow（而非 deny/ask）
+    var permIdx = cmd.args.indexOf('--permission');
+    assertTrue(permIdx >= 0 && cmd.args[permIdx + 1] === 'allow', '--permission 后应为 allow');
+  } catch (e) {
+    // launcher require 可能因环境（如 findOpenCodeBin 探测 powershell）报错，降级为源码检查
+    failed++; failures.push('权限自动确认 buildSpawnCommand 测试异常: ' + e.message);
+    console.log('  ✗ ' + e.message);
+  }
+});
+
 // ==================== 测试结果汇总 ====================
 console.log('\n============================================');
 console.log('测试结果: ' + passed + ' 通过, ' + failed + ' 失败');

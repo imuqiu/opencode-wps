@@ -63,7 +63,7 @@ async function execMacPoll(action: string, params: Record<string, unknown> = {})
     // 传 getTimeout(action) 与 Windows 分支的超时契约一致（findReplace=10s/getActiveDocument=10s 等），
     // 避免同一命令 Windows 10s vs Mac/Linux 30s 的跨平台漂移（第 21 轮终审 warning）。
     // 注意：该超时从命令入队后计时，不含切换耗时（第 11 轮修复语义）。
-    const result = await macPollServer.executeCommand(action, params, getTimeout(action));
+    const result = await macPollServer.executeCommand(action, params, getTimeout(action, params));
     return result;
   } catch (error) {
     log.error('Mac Poll call failed', { action, error });
@@ -89,7 +89,7 @@ async function execLinuxPoll(
     }
 
     // 通过轮询服务器执行命令（超时与 Windows 契约一致，见 execMacPoll 注释）
-    const result = await linuxPollServer.executeCommand(action, params, getTimeout(action));
+    const result = await linuxPollServer.executeCommand(action, params, getTimeout(action, params));
     return result;
   } catch (error) {
     log.error('Linux Poll call failed', { action, error });
@@ -208,8 +208,30 @@ const COM_TIMEOUTS: Record<string, number> = {
   confirmBatchAiProofread: 5000,
   getActiveDocument: 10000,
 };
-function getTimeout(action: string): number {
-  return COM_TIMEOUTS[action] ?? COM_TIMEOUT_DEFAULT;
+/**
+ * 计算工具调用超时（毫秒）。
+ * 基础值取 COM_TIMEOUTS 配置，但 getDocumentParagraphs 对超大型文档做动态放大：
+ * 该工具在 wps-com.ps1 中用 for 循环逐个访问 $doc.Paragraphs.Item($i)，
+ * WPS COM 需从文档第 1 段遍历到目标段落才能定位，耗时与「目标段落号」正相关。
+ * 对 9652 段超大型文档（Issue #116 session_ff63 问题三），固定 60s 在请求靠后批次时仍不够，
+ * 故按 startParagraph/endParagraph 所在位置分段线性放大，越靠后放大越明显。
+ */
+function getTimeout(action: string, params: Record<string, unknown> = {}): number {
+  const base = COM_TIMEOUTS[action] ?? COM_TIMEOUT_DEFAULT;
+  if (action !== 'getDocumentParagraphs') return base;
+  // 容错：AI 可能传字符串数字（如 "9500"），统一转 number；非有限数/负数回退默认 1
+  const parsePara = (v: unknown): number => {
+    if (typeof v === 'number' && isFinite(v) && v > 0) return Math.floor(v);
+    if (typeof v === 'string' && v.trim() !== '' && isFinite(Number(v)) && Number(v) > 0) return Math.floor(Number(v));
+    return 0;
+  };
+  const start = parsePara(params.startParagraph) || 1;
+  const end = parsePara(params.endParagraph) || start;
+  const target = Math.max(start, end); // 目标段落号（决定 WPS COM 遍历开销）
+  if (target <= 500) return base;                 // 前段批次：基础 60s
+  if (target <= 3000) return Math.round(base * 1.5);   // 中段批次（301-3000）：90s
+  if (target <= 8000) return Math.round(base * 2);     // 后段批次（3001-8000）：120s
+  return Math.round(base * 2.5);                       // 极后段批次（>8000）：150s
 }
 
 /**
@@ -234,7 +256,7 @@ async function execWpsActionWithRetry(
       if (isWin) {
         // Windows: 通过 spawnPowerShell 拿到进程引用，超时时 kill
         const { process: ps, result } = spawnPowerShell(action, params);
-        const timeout = getTimeout(action);
+        const timeout = getTimeout(action, params);
         const timeoutPromise = new Promise((_, reject) => {
           setTimeout(() => {
             ps.kill('SIGTERM');
