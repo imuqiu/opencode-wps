@@ -503,6 +503,9 @@ test('SSE-onopen: /global/health 探测失败时，SSE 连接成功即同步恢�
   var chatShown = 0;
   var origChat = s.showChat;
   s.showChat = function () { chatShown++; origChat(); };
+  // 第 1 轮评审：setup 探测恢复路径会刷新模型/智能体下拉框，这里 stub 避免触发真实 fetch
+  s.fetchAvailableModels = function (cb) { if (cb) cb(); };
+  s.fetchAvailableAgents = function (cb) { if (cb) cb(); };
   // 连接 SSE
   s.connectSSE();
   assertTrue(s.SSE != null, 'SSE 实例应已创建');
@@ -592,6 +595,255 @@ test('init-launcher-fallback: init 首屏含 launcher 回退分支（/global/hea
   var src = fs.readFileSync(TASKPANE_HTML, 'utf-8');
   assertTrue(/else if \(launcherOk\)/.test(src), 'init 应含 launcher 回退分支');
   assertTrue(/probeLauncherRunning\(function\(launcherRunning\)/.test(src), 'launcher 回退分支应调用 probeLauncherRunning');
+});
+
+// ===== Issue #114 回归修复：launcher 不可达时用 SSE 作第三信号源探测服务 =====
+test('probeLauncherRunning: launcher 不可达（XHR 错误/超时）时 reachable=false', function () {
+  var s = loadTaskpaneScript();
+  var result = null;
+  s.probeLauncherRunning(function (running, reachable) { result = { running: running, reachable: reachable }; });
+  var x = s.__lastXhr();
+  // 模拟 launcher 未运行：XHR 网络错误（onerror）
+  x.onerror();
+  assertEqual(result.running, false, 'launcher 不可达时应 running=false');
+  assertEqual(result.reachable, false, 'launcher 不可达时应 reachable=false');
+  // 场景 B：XHR 超时
+  result = null;
+  s.probeLauncherRunning(function (running, reachable) { result = { running: running, reachable: reachable }; });
+  var x2 = s.__lastXhr();
+  x2.ontimeout();
+  assertEqual(result.reachable, false, 'XHR 超时时应 reachable=false');
+  // 场景 C：launcher 可达但确认服务停止
+  result = null;
+  s.probeLauncherRunning(function (running, reachable) { result = { running: running, reachable: reachable }; });
+  var x3 = s.__lastXhr();
+  x3.status = 200;
+  x3.responseText = JSON.stringify({ running: false, portOpen: false });
+  x3.onload();
+  assertEqual(result.running, false, 'launcher 可达但服务停时应 running=false');
+  assertEqual(result.reachable, true, 'launcher 可达时应 reachable=true');
+});
+
+test('healthcheck-launcher-unreachable: /global/health 失败且 launcher 不可达 → 用 SSE 探测服务（Issue #114）', function () {
+  var s = loadTaskpaneScript();
+  s.onServerConnected = function () {};  // 避免内部副作用
+  // 第 1 轮评审：SSE 探测恢复路径会刷新模型/智能体下拉框，这里 stub 避免触发真实 fetch
+  s.fetchAvailableModels = function (cb) { if (cb) cb(); };
+  s.fetchAvailableAgents = function (cb) { if (cb) cb(); };
+  // 进入运行中 chat 状态
+  s.SERVER_RUNNING = true;
+  s.CONNECTED = true;
+  s.IN_SETUP_VIEW = false;
+  s.STOPPING = false;
+  s.startHealthCheck();
+  // /global/health 失败
+  healthOverride = { healthy: false };
+  s.__flushHealthChecks(1);
+  // 此刻应已同步降级并发出 probeLauncherRunning XHR
+  assertEqual(s.SERVER_RUNNING, false, '/global/health 失败应先同步降级');
+  var x = s.__lastXhr();
+  assertTrue(x != null, '应发起 probeLauncherRunning 探测');
+  // 模拟 launcher 不可达：XHR 网络错误 → 应触发 connectSSE 探测
+  x.onerror();
+  assertTrue(s.SSE != null, 'launcher 不可达时应建立 SSE 连接探测服务');
+  // 服务实际在跑：SSE onopen → 恢复运行中 + 切回 chat
+  var statuses = [];
+  var origUpd = s.updateServerStatus;
+  s.updateServerStatus = function (running) { statuses.push(running); origUpd(running); };
+  s.SSE.onopen();
+  assertEqual(s.SERVER_RUNNING, true, 'SSE onopen 确认服务在跑应恢复 SERVER_RUNNING=true');
+  assertEqual(statuses[statuses.length - 1], true, 'SSE onopen 应 updateServerStatus(true)');
+});
+
+test('healthcheck-launcher-reachable-stop: /global/health 失败但 launcher 确认服务停 → 不触发 SSE 探测', function () {
+  var s = loadTaskpaneScript();
+  s.onServerConnected = function () {};
+  s.SERVER_RUNNING = true;
+  s.CONNECTED = true;
+  s.IN_SETUP_VIEW = false;
+  s.STOPPING = false;
+  s.startHealthCheck();
+  healthOverride = { healthy: false };
+  s.__flushHealthChecks(1);
+  var x = s.__lastXhr();
+  // launcher 可达但确认服务停止：不应触发 SSE 探测（服务真停，SSE 也会失败）
+  x.status = 200;
+  x.responseText = JSON.stringify({ running: false, portOpen: false });
+  x.onload();
+  assertEqual(s.SSE, null, 'launcher 可达且确认服务停时不应建立 SSE 探测连接');
+  assertEqual(s.SERVER_RUNNING, false, '服务真停时应保持 SERVER_RUNNING=false');
+});
+
+test('init-launcher-unreachable: init 时 launcher 未运行 + /global/health 失败 → 建立 SSE 探测', function () {
+  var src = fs.readFileSync(TASKPANE_HTML, 'utf-8');
+  // 验证 init 的 else 分支（launcher 未运行）包含 connectSSE 探测
+  assertTrue(/launcher 未运行或 opencode 未启动/.test(src), 'init 应含 launcher 未运行分支');
+  assertTrue(/startHealthCheck\(\)   \/\/ setup 下也启动健康检测[\s\S]*?connectSSE\(true\)/.test(src), 'init else 分支应在 startHealthCheck 后调用 connectSSE(true) 探测');
+});
+
+test('SSE-onopen-noselfreconnect: setup 补建会话时不再回调 connectSSE 拆除当前 SSE（评审建议 1）', function () {
+  var s = loadTaskpaneScript();
+  s.SERVER_RUNNING = false;
+  s.STOPPING = false;
+  s.CONNECTED = false;
+  s.IN_SETUP_VIEW = true;
+  s.SESSION_ID = '';   // 无会话 → onopen 应补建会话
+  // 第 1 轮评审：SSE 探测恢复路径会刷新模型/智能体下拉框，这里 stub 避免触发真实 fetch
+  s.fetchAvailableModels = function (cb) { if (cb) cb(); };
+  s.fetchAvailableAgents = function (cb) { if (cb) cb(); };
+  // 拦截 createNewSession：捕获回调，验证不再以 connectSSE() 作为回调（避免 close 刚建立的 SSE 再重连）
+  var sessionCallback = 'not-captured';
+  var origCreate = s.createNewSession;
+  s.createNewSession = function (cb) { sessionCallback = cb; };
+  // 拦截 connectSSE：验证 onopen 补建会话时不会再次调用 connectSSE（自拆除/重连）
+  var connCalls = 0;
+  var origConn = s.connectSSE;
+  s.connectSSE = function () { connCalls++; origConn(); };
+  // 连接并触发 onopen
+  s.connectSSE();
+  var currentSSE = s.SSE;
+  assertTrue(currentSSE != null, 'SSE 实例应已创建');
+  s.SSE.onopen();
+  assertEqual(sessionCallback, undefined, 'createNewSession 应被调用且不传 connectSSE 回调（建议 1）');
+  // 关键断言：SSE 实例未被拆除/重建（createNewSession 不应触发 connectSSE 去 close 当前 SSE）
+  assertTrue(s.SSE === currentSSE, '补建会话后应保留当前已建立的 SSE，不因自拆除而重建');
+  assertEqual(connCalls, 1, '补建会话过程中不应额外调用 connectSSE（仅 onopen 前那次）');
+});
+
+test('SSE-probe-cooldown: 健康检查失败分支的 SSE 探测受冷却守卫约束（评审建议 2）', function () {
+  var s = loadTaskpaneScript();
+  // 首次探测应放行（LAST_SSE_PROBE_TS=0 远早于冷却窗口）
+  s.LAST_SSE_PROBE_TS = 0;
+  assertEqual(s.sseProbeAllowed(), true, '首次 SSE 探测应放行');
+  // 冷却窗口内（紧随其后）应拦截：首次调用已把 LAST_SSE_PROBE_TS 更新为当前时间
+  assertEqual(s.sseProbeAllowed(), false, '冷却窗口内的第二次 SSE 探测应被拦截');
+  // 模拟冷却窗口已过（31s 前探测，> 30s 冷却窗口）应再次放行
+  s.LAST_SSE_PROBE_TS = Date.now() - 31000;
+  assertEqual(s.sseProbeAllowed(), true, '冷却窗口结束后应再次放行 SSE 探测');
+  // 冷却窗口内（如 20s 前探测，< 30s）应拦截
+  s.LAST_SSE_PROBE_TS = Date.now() - 20000;
+  assertEqual(s.sseProbeAllowed(), false, '冷却窗口内（20s < 30s）应拦截 SSE 探测');
+});
+
+test('healthcheck-launcher-unreachable-cooldown: launcher 不可达触发 SSE 探测受冷却约束，不会每 10s 连接风暴（评审建议 2）', function () {
+  var s = loadTaskpaneScript();
+  s.onServerConnected = function () {};
+  s.SERVER_RUNNING = true;
+  s.CONNECTED = true;
+  s.IN_SETUP_VIEW = false;
+  s.STOPPING = false;
+  // 预置 LAST_SSE_PROBE_TS 为当前时间，使首次健康检查失败分支的 SSE 探测被冷却拦截
+  s.LAST_SSE_PROBE_TS = Date.now();
+  s.startHealthCheck();
+  healthOverride = { healthy: false };
+  s.__flushHealthChecks(1);
+  var x = s.__lastXhr();
+  x.onerror();  // launcher 不可达
+  assertEqual(s.SSE, null, '冷却窗口内健康检查失败分支不应创建注定失败的 EventSource（无连接风暴）');
+});
+
+// ===== 第 1 轮评审新增：SSE 探测连接失败不自动重连（不绕过冷却守卫） =====
+test('SSE-probe-noreconnect: 探测性连接（connectSSE(true)）失败时不走自动重连（评审第 1 轮）', function () {
+  var s = loadTaskpaneScript();
+  s.SESSION_ID = 'abc';   // 模拟先前已建会话（正常场景 SESSION_ID 非空，旧逻辑会走自动重连）
+  s.SSE_IS_PROBE = false;
+  // 以探测模式建连
+  s.connectSSE(true);
+  assertEqual(s.SSE_IS_PROBE, true, '探测性 connectSSE(true) 应标记 SSE_IS_PROBE=true');
+  // 触发 onerror（服务真停/连接失败）
+  s.SSE.onerror();
+  assertEqual(s.sseReconnectTimer, null, '探测性连接失败不应排程自动重连（避免绕过冷却向已停止服务反复建连）');
+  assertEqual(s.SSE_IS_PROBE, false, 'onerror 后应复位 SSE_IS_PROBE 标记');
+});
+
+test('SSE-probe-normal-reconnect-kept: 正常连接（connectSSE()）失败仍走标准自动重连（评审第 1 轮回归）', function () {
+  var s = loadTaskpaneScript();
+  s.SESSION_ID = 'abc';
+  s.SSE_IS_PROBE = false;
+  s.connectSSE();   // 正常连接
+  assertEqual(s.SSE_IS_PROBE, false, '正常 connectSSE() 不应标记为探测连接');
+  s.SSE.onerror();
+  assertTrue(s.sseReconnectTimer != null, '正常连接失败应保留标准自动重连（不影响既有重连逻辑）');
+});
+
+test('SSE-probe-onopen-clears-probe: 探测连接成功后转为真实连接（SSE_IS_PROBE 复位）（评审第 1 轮）', function () {
+  var s = loadTaskpaneScript();
+  s.SESSION_ID = 'abc';
+  s.SERVER_RUNNING = false;
+  s.STOPPING = false;
+  s.CONNECTED = false;
+  s.IN_SETUP_VIEW = true;
+  s.fetchAvailableModels = function (cb) { if (cb) cb(); };
+  s.fetchAvailableAgents = function (cb) { if (cb) cb(); };
+  s.connectSSE(true);   // 探测建连
+  assertEqual(s.SSE_IS_PROBE, true, '建连时 SSE_IS_PROBE=true');
+  s.SSE.onopen();   // 连接成功 → 服务在跑
+  assertEqual(s.SSE_IS_PROBE, false, 'onopen 成功后应复位 SSE_IS_PROBE=false（转为真实连接）');
+});
+
+test('SSE-probe-model-agent-refresh: setup 探测恢复应刷新模型/智能体下拉框（评审第 1 轮）', function () {
+  var s = loadTaskpaneScript();
+  s.SERVER_RUNNING = false;
+  s.STOPPING = false;
+  s.CONNECTED = false;
+  s.IN_SETUP_VIEW = true;
+  s.SESSION_ID = '';
+  var modelRefreshed = 0, agentRefreshed = 0;
+  s.fetchAvailableModels = function (cb) { modelRefreshed++; if (cb) cb(); };
+  s.fetchAvailableAgents = function (cb) { agentRefreshed++; if (cb) cb(); };
+  s.connectSSE(true);
+  s.SSE.onopen();
+  assertTrue(modelRefreshed >= 1, 'setup 探测恢复应刷新模型列表（fetchAvailableModels 被调用）');
+  assertTrue(agentRefreshed >= 1, 'setup 探测恢复应刷新智能体列表（fetchAvailableAgents 被调用）');
+});
+
+test('healthcheck-SSE-connected-sticky: SSE 已连接时 /global/health 失败不应拆除运行中状态（第 2 轮评审，防振荡）', function () {
+  var s = loadTaskpaneScript();
+  s.onServerConnected = function () {};
+  s.fetchAvailableModels = function (cb) { if (cb) cb(); };
+  s.fetchAvailableAgents = function (cb) { if (cb) cb(); };
+  // 已通过 SSE 探测恢复：SSE 已连接，SERVER_RUNNING=true（chat 视图）
+  s.SERVER_RUNNING = true;
+  s.CONNECTED = true;
+  s.IN_SETUP_VIEW = false;
+  s.STOPPING = false;
+  s.connectSSE();   // 建立真实 SSE 连接
+  s.SSE.onopen();
+  assertEqual(s.SERVER_RUNNING, true, 'SSE onopen 后应 SERVER_RUNNING=true');
+  assertTrue(s.SSE != null, 'SSE 应已连接');
+  var statuses = [];
+  var orig = s.updateServerStatus;
+  s.updateServerStatus = function (running) { statuses.push(running); orig(running); };
+  // 启动健康检查，触发一次 /global/health 失败（CORS 持续失败场景）
+  s.startHealthCheck();
+  healthOverride = { healthy: false };
+  s.__flushHealthChecks(1);
+  // SSE 已连接，不应因 /global/health 失败拆除运行中状态（防每 10s 振荡）
+  assertEqual(s.SERVER_RUNNING, true, 'SSE 已连接时 /global/health 失败不应置 SERVER_RUNNING=false');
+  assertEqual(s.SSE != null, true, 'SSE 已连接时 /global/health 失败不应 close SSE');
+  assertEqual(statuses.indexOf(false), -1, 'SSE 已连接时 /global/health 失败不应 updateServerStatus(false)');
+});
+
+test('healthcheck-SSE-closed-then-fail: SSE 断开后 /global/health 失败仍正常降级（第 2 轮评审回归，不损失响应性）', function () {
+  var s = loadTaskpaneScript();
+  s.onServerConnected = function () {};
+  s.fetchAvailableModels = function (cb) { if (cb) cb(); };
+  s.fetchAvailableAgents = function (cb) { if (cb) cb(); };
+  s.SERVER_RUNNING = true;
+  s.CONNECTED = true;
+  s.IN_SETUP_VIEW = false;
+  s.STOPPING = false;
+  s.connectSSE();
+  s.SSE.onopen();
+  // 模拟真实崩溃：SSE.onerror 关闭连接、CONNECTED=false
+  s.SSE.onerror();
+  assertEqual(s.SSE, null, 'SSE.onerror 后应 close SSE');
+  assertEqual(s.CONNECTED, false, 'SSE.onerror 后应 CONNECTED=false');
+  // 此时 /global/health 失败应正常降级（SSE 已断开，守卫不拦截）
+  s.startHealthCheck();
+  healthOverride = { healthy: false };
+  s.__flushHealthChecks(1);
+  assertEqual(s.SERVER_RUNNING, false, 'SSE 断开后 /global/health 失败应正常降级为 SERVER_RUNNING=false');
 });
 
 // ==================== 测试结果汇总 ====================
