@@ -151,6 +151,10 @@ function createSessionState() {
     proofreadHadIssues: false,
     proofreadIssueOriginals: [],
     replaceCountThisBatch: 0,
+    // P17（session_ffa8 问题一）：记录服务端是否已成功生成过校对报告，
+    // 用于区分「合法 writeFile 落盘服务端报告」与「AI 手动 write 伪造报告」。
+    reportGenerated: false,
+    reportSessionId: '',
     appReadState: {
       word: { activeDocRead: false },
       excel: { activeWorkbookRead: false },
@@ -451,6 +455,25 @@ export const WpsGovernancePlugin = async () => {
           return;
         }
 
+        // P17（session_ffa8 问题一）：记录服务端报告生成成功状态与校对会话 ID，
+        // 供 write 拦截规则区分「合法落盘服务端报告」与「AI 手动 write 伪造报告」。
+        // 关键：必须区分 generateProofreadReport 的「成功」与「失败」（如未找到会话/落盘失败），
+        // 否则 AI 在报告失败后仍可 write 伪造——故同时检查 success 与失败标记文本。
+        if (toolName === "generateProofreadReport") {
+          const outText = getOutputText(output);
+          const failureMarkers = ['未找到会话', '写入文件失败', '落盘失败', 'success:false', '生成报告失败', '写文件失败'];
+          const hasFailureMarker = failureMarkers.some((m) => outText.indexOf(m) !== -1);
+          const ok = output && !output.isError && output.success !== false && !hasFailureMarker;
+          st.reportGenerated = !!ok;
+          st.reportSessionId = (innerArgs.session_id || st.reportSessionId || '');
+          return;
+        }
+        if (toolName === "proofreadAccumulate") {
+          // 记录会话 ID（用于识别校对流程会话），即便未生成报告也便于 P17 判断在校对流程中
+          st.reportSessionId = (innerArgs.session_id || st.reportSessionId || '');
+          return;
+        }
+
         if (toolName === "smartFillField") {
           st.templateFilling.active = true;
           st.templateFilling.fieldsFilled++;
@@ -556,6 +579,33 @@ export const WpsGovernancePlugin = async () => {
       // ==================== 规则 G7：参数范围校验 ====================
       checkParamRange(toolName, innerArgs);
 
+      // ── 规则 P17：禁止 AI 手动 write 伪造校对报告（session_ffa8 问题一，P0） ──
+      // 背景：真实会话中 AI 在 generateProofreadReport 失败后，直接用 writeFile/write 手动
+      // 构造 Markdown 报告写入桌面（3 份数据互相矛盾），绕过了服务端真实累计的数据。
+      // 处理：写「校对报告」路径时，除非服务端已成功生成报告（reportGenerated=true，
+      // 即合法方案 B 落盘服务端返回文本），否则一律拦截——强制走 generateProofreadReport
+      // 网关（返回 success=true 才算报告完成），而非手动 write 拼报告。
+      const isReportPath = (pathStr) =>
+        typeof pathStr === 'string' && pathStr.indexOf('校对报告') !== -1;
+      const reportPathArg = innerArgs.filePath || innerArgs.path || innerArgs.file_path;
+      if (toolName === 'writeFile' || toolName === 'write' || toolName === 'writeText') {
+        if (isReportPath(reportPathArg)) {
+          // 区分两种场景：
+          // 1. 合法：服务端已成功生成报告（generateProofreadReport 返回 success），
+          //    writeFile 落盘其返回文本（SKILL Step 3 方案 B）——放行。
+          // 2. 非法：AI 从未让服务端生成报告就手动 write 自拼 Markdown 到校对报告路径
+          //    （session_ffa8 问题一，AI 伪造 3 份矛盾报告）——拦截。
+          if (!st.reportGenerated) {
+            throw new Error(
+              `【执行治理】【P17】检测到直接写入“校对报告”路径（${reportPathArg}），但服务端尚未成功生成报告。\n` +
+              `校对报告必须由服务端真实累计的数据生成，禁止 AI 手动 write 伪造报告。\n` +
+              `请先调用 generateProofreadReport（走 wps_office_execute 网关，传 session_id + output_file）\n` +
+              `由服务端生成并落盘；若需自行落盘，请用其返回的 content 文本（不得手动构造报告体）。`
+            );
+          }
+        }
+      }
+
       // ── 以下为分批校对专用规则（P1-P11） ──
 
       if (toolName === "getActiveDocument" || toolName === "enableTrackChanges") {
@@ -623,6 +673,18 @@ export const WpsGovernancePlugin = async () => {
               `当前批从段落 ${start} 开始。批次必须连续或从第 1 段重新开始。`
             );
           }
+        }
+        // ── 规则 P18：禁止重复获取已处理段落范围（session_ffa8 问题四）──
+        // 真实会话中 AI 在已处理完第 1-2 批后，再次 getDocumentParagraphs(start=1, end=201)
+        // 把已检查过的段落重复跑了一遍，浪费 token 且使批次语义混乱。
+        // 这里拦截「start=1 且已有已处理批次」的重复回卷获取；如需重新开始请先 getActiveDocument 重置。
+        if (st.lastBatchParaIndex > 0 && start === 1) {
+          throw new Error(
+            `【执行治理】【P18】禁止重复获取已处理段落：已处理到段落 ${st.lastBatchParaIndex}，` +
+            `当前又从段落 1 重新获取。\n` +
+            `批次必须严格连续（从段落 ${st.lastBatchParaIndex + 1} 继续），` +
+            `禁止回卷重复扫描已检查过的段落范围。`
+          );
         }
         return;
       }

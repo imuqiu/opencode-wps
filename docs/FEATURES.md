@@ -69,6 +69,20 @@
 | **P14** | before | `confirmBatchAiProofread` 必须在 `proofreadBasic` 之后调用，禁止 AI "分析"后跳过 |
 | **P15** | before | 当 `proofreadHadIssues=false`（基础校对无问题）时，最多允许 1 次 AI 自定修复，超限需 `_force_ai_fix` |
 | **P16** | before | `replaceInParagraph` 的 `findText` 必须与至少一条 `proofreadIssueOriginals` 原文匹配 |
+| **P17** | before | 写「校对报告」路径且服务端未成功生成报告时拦截，禁止 AI 手动 `write` 伪造报告（Issue #116 session_ffa8 问题一） |
+| **P18** | before | 已处理到段落 N 后再次从段落 1 回卷获取即拦截，禁止重复扫描已检查段落（Issue #116 session_ffa8 问题四） |
+
+### 校对报告防伪造（Issue #116 session_ffa8 问题一）
+
+校对报告**必须由服务端 `generateProofreadReport` 基于真实累计的校对数据生成**。真实会话中 AI 在 `generateProofreadReport` 失败后直接 `writeFile` 手动拼 Markdown 报告（3 份数据互相矛盾），绕过了服务端真实数据。治理插件 **P17** 在写「校对报告」路径时若服务端未成功生成报告即拦截；SKILL 铁律 5 明确禁止手动伪造。
+
+### 禁止重复获取已处理段落（Issue #116 session_ffa8 问题四）
+
+真实会话中 AI 已处理完某批次后，又对已检查过的段落执行 `getDocumentParagraphs(start=1)` 回卷重复扫描，既浪费 token 又可能造成重复/遗漏的修复误判。治理插件 **P18** 记录已处理到的最大段落号 `N`，当已处理到 N 段后再次从段落 1 回卷获取（`start=1`）时直接拦截，要求批次必须严格连续向前推进（如需重新开始须先 `getActiveDocument` 重置）。
+
+### 上下文用量条（Issue #116 session_ffa9 假修复）
+
+用量条数据源改为**多路径防御性探测**（`extractCtxUsage`：usage/tokens/context/info/status 各字段组合，含 used+total 自动换算百分比），信息文本默认可见；无用量数据时诚实降级展示（不显示假百分比），并监听 Compaction 压缩事件显式提示用户。
 
 ### 治理机制（hooks 闭环）
 

@@ -1468,6 +1468,47 @@ describe('proofreadAccumulate — 必填字段校验（Issue #116 问题六）',
     expect(result.data).toBeDefined();
     expect(result.data!.diskPersisted).toBe(true);
   });
+
+  it('issues 含有效+无效混合时部分成功：有效条目累加、无效条目跳过并警告（session_ffa8 问题二/三）', async () => {
+    const result = await proofreadAccumulateHandler({
+      session_id: 'partial-success-1',
+      issues: [
+        // 有效条目
+        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
+        // 缺 suggestion 的无效条目
+        { offset: 10, length: 2, original: '的了', type: '的得混淆', source: 'mcp' as const },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+    });
+    // 部分成功：不再整体拒绝，success=true
+    expect(result.success).toBe(true);
+    // 只累加了 1 条有效条目
+    const session = sessionIssues.get('partial-success-1')!;
+    expect(session.issues.length).toBe(1);
+    expect(session.issues[0].original).toBe('的的');
+    // 返回文本明确警告被跳过的无效条目
+    expect(result.content[0].text).toContain('1 条因缺 original/suggestion 被跳过');
+    // 会话已建立，后续批次不再要求 doc_info（级联失败根因修复）
+    const result2 = await proofreadAccumulateHandler({
+      session_id: 'partial-success-1',
+      issues: [
+        { offset: 20, length: 2, original: '的得', suggestion: '的的', type: '的得混淆', source: 'mcp' as const },
+      ],
+    });
+    expect(result2.success).toBe(true);
+    expect(sessionIssues.get('partial-success-1')!.issues.length).toBe(2);
+  });
+
+  it('issues 空数组时仍可初始化会话并更新 total_revisions（不误判为全部无效）', async () => {
+    const result = await proofreadAccumulateHandler({
+      session_id: 'empty-init-session',
+      issues: [],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
+      total_revisions: 7,
+    });
+    expect(result.success).toBe(true);
+    expect(sessionIssues.get('empty-init-session')!.totalRevisions).toBe(7);
+  });
 });
 
 // 落盘持久化测试（Issue #116 问题七/九/十二）
@@ -1653,7 +1694,9 @@ describe('疑似问题（Issue #116 问题十一）', () => {
     expect(text).toContain('待确认疑似问题');
   });
 
-  it('suspected_issues 含缺 original/suggestion 的条目时明确报错（评审第1轮 C1）', async () => {
+  it('suspected_issues 含缺 original/suggestion 的条目时部分成功（保留有效，跳过无效，评审第1轮 C1 更新）', async () => {
+    // 部分成功语义（session_ffa8 问题二/三）：不再整体拒绝整批，而是跳过无效疑似条目、保留有效条目。
+    // 本用例中唯一一条疑似缺 suggestion，故被跳过；正式 issues 正常累加，success=true。
     const result = await proofreadAccumulateHandler({
       session_id: 'suspect-session',
       issues: [
@@ -1665,16 +1708,16 @@ describe('疑似问题（Issue #116 问题十一）', () => {
       ],
       doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
     });
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('suspected_issues');
-    expect(result.error).toContain('original/suggestion');
-    // 不应累加任何疑似问题
+    // 正式 issues 有效 → success=true；被跳过的无效疑似问题在返回文本中警告
+    expect(result.success).toBe(true);
+    expect(result.content[0].text!).toContain('疑似问题 1 条因缺 original/suggestion 被跳过');
+    // 不应累加任何被跳过的疑似问题
     const report = await generateProofreadReportHandler({ session_id: 'suspect-session' });
     const text = report.content[0].text!;
     expect(text).not.toContain('待确认问题');
   });
 
-  it('suspected_issues 校验失败时不产生副作用（评审第2轮 C2）', async () => {
+  it('suspected_issues 含缺字段条目时正式 issues 正常累加、无效疑似被跳过（评审第2轮 C2 更新）', async () => {
     // 先正常累加 1 条正式 issue
     await proofreadAccumulateHandler({
       session_id: 'suspect-session',
@@ -1684,8 +1727,8 @@ describe('疑似问题（Issue #116 问题十一）', () => {
       doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
     });
 
-    // 第二次调用：suspected_issues 缺字段 → 失败
-    const failResult = await proofreadAccumulateHandler({
+    // 第二次调用：suspected_issues 缺字段 → 部分成功（跳过无效疑似，正式 issues 正常累加）
+    const result = await proofreadAccumulateHandler({
       session_id: 'suspect-session',
       issues: [
         { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
@@ -1693,12 +1736,12 @@ describe('疑似问题（Issue #116 问题十一）', () => {
       suspected_issues: [{ offset: 100, length: 4, original: '已未形成', type: '疑似', source: 'ai' as const }],
       doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
     });
-    expect(failResult.success).toBe(false);
+    expect(result.success).toBe(true);
 
-    // 失败后正式 issues 不应重复（去重保持 1 条），且不应有疑似问题（校验前置，无副作用）
+    // 正式 issues 去重保持 1 条（第二次同 offset+original 被去重），无效疑似问题被跳过不累加
     const session = sessionIssues.get('suspect-session')!;
-    expect(session.issues.length).toBe(1); // 未因失败调用重复累加
-    expect(session.suspectedIssues || []).toHaveLength(0);
+    expect(session.issues.length).toBe(1); // 去重保持 1 条
+    expect(session.suspectedIssues || []).toHaveLength(0); // 无效疑似未累加
   });
 
   it('suspected_issues 重复提交同 offset+original 时去重（评审第2轮 W4）', async () => {

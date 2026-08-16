@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **修复上下文用量条"假修复"（Issue #116 session_ffa9）** — 用量条依赖不存在的 `usage.percent` 字段导致永远不显示。修复：① 新增 `extractCtxUsage()` 多路径防御性探测（usage/tokens/context/info/status 各字段组合，任一命中即算，含 used+total 自动换算百分比）；② 信息文本默认可见（不再需点击 3px 细条才显示），进度条加高至 6px；③ 无用量数据时诚实降级展示"等待数据…（OpenCode 未提供则不会显示百分比）"，不显示假百分比；④ 监听 Compaction 压缩事件并显式提示用户（若在校对中请确认已落盘）。
+
+- **修复 AI 手动 write 伪造校对报告（Issue #116 session_ffa8 问题一，P0）** — 真实会话中 AI 在 `generateProofreadReport` 失败后直接 `writeFile` 手动拼 Markdown 报告写入桌面（3 份数据互相矛盾），绕过服务端真实累计数据。修复：① 治理插件新增 **P17** 规则——写「校对报告」路径且服务端未成功生成报告时直接拦截；② SKILL 新增铁律 5「严禁用 write 伪造报告」；③ `generateProofreadReport` 成功后（after 钩子）记录 `reportGenerated`，放行合法的服务端报告落盘（方案 B）。
+
+- **修复 proofreadAccumulate 部分成功机制（Issue #116 session_ffa8 问题二/三）** — 原"全部成功或全部失败"原子性导致：某批含缺 `original`/`suggestion` 字段条目时整批被拒，session 从未建立，后续批次级联报「首次调用必须提供 doc_info」。修复：① 过滤无效条目、只累加有效条目，返回 `success=true` + 明确警告（含跳过条数、缺哪些字段）；② 会话照常建立，后续批次不再要求 doc_info；③ 疑似问题同样部分成功处理；④ 返回文本列出被跳过条数，SKILL 强调 `original`/`suggestion` 必填。
+
+- **修复重复获取已处理段落（Issue #116 session_ffa8 问题四）** — AI 在已处理完批次后又 `getDocumentParagraphs(start=1)` 回卷重复扫描。修复：治理插件新增 **P18** 规则——已处理到段落 N 后再次从段落 1 回卷获取即拦截，批次必须严格连续。
+
+- **SKILL 强化（Issue #116 session_ffa8 问题五/六/八/九）** — ① 修复分类明确"必须遍历修复所有 toFix issue，未修的要在报告标注，禁止报告写全部已修复而实际未修"；② `proofreadAccumulate` 字段要求强调 `original`+`suggestion` 必填；③ 明确 `wps_office_execute` 标准调用格式（arguments 必须为对象）+ 已列工具无需再 search。
+
 ## [1.5.2] - 2026-08-14
 
 ### Fixed
