@@ -323,6 +323,18 @@ curl -X POST http://127.0.0.1:14097/docinfo -H 'Content-Type: application/json' 
 curl http://127.0.0.1:14097/docinfo
 ```
 
+### 6.1b 服务状态自动探测与自愈
+
+侧边栏顶部状态栏会**自动探测** OpenCode 服务状态并**自愈恢复**（无需手动干预）：
+
+- **多信号源交叉验证**：状态判定不单一依赖某一路信号，而是综合**多个可靠信号源**——`/global/health` 健康检查（14096 直连）+ Launcher `/status`（14097）+ **SSE 连接**（EventSource，`/event` 流）。任一可靠信号源确认服务在跑即恢复「运行中」。
+- **SSE 第三信号源兜底**：`/global/health` 在 WPS Chromium 下可能因 CORS/环境差异持续失败，且 Launcher（14097）未运行时 `/status` 交叉验证也失效。此时前端自动改用 **SSE 探测**（EventSource 不受 XHR CORS 差异影响）——SSE 连接成功即证明服务在跑，自动恢复「运行中」并切回对话视图。
+- **自动恢复**：服务恢复后状态栏在 ≤1 个检测周期（约 10s）内自动切回「运行中」，无需重启插件。
+- **防误报/防振荡**：服务真实停止时不会误报「运行中」；SSE 已连接时信任该最强信号，避免每 10s 的 chat↔setup 状态闪烁。
+- **探测冷却**：服务真停 + Launcher 不可达时，探测性 SSE 连接最多每 30s 创建一次（冷却守卫），避免周期性失败连接风暴。
+
+> 📖 若状态栏长期显示「已停止」而服务实际在跑，见 [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)「服务运行中但状态栏显示已停止」。
+
 ### 6.2 各平台 Launcher 与自启
 
 | 平台 | Launcher 文件 | 自启机制 |
