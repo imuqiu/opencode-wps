@@ -35,7 +35,7 @@ var CONFIG = {
         // 加载项名称
         addonName: 'OpenCode AI',
         // 插件版本
-        version: '1.5.5',
+        version: '1.5.6',
         // 用户主目录（安装时由 install-addons.js 注入，WPS 浏览器上下文有额外 fallback）
         userHome: (function() {
             var v = '__OPCODE_WPS_USER_HOME__';
