@@ -1281,7 +1281,7 @@ test('负向：删【流水线】段 0/12 与 1/12 节点字面量应拦截（ex
     const head = p.slice(0, secStart);
     const section = p
       .slice(secStart, secEnd)
-      .replace('0/12 需求接收+PO澄清 → ', '')
+      .replace('0/12 需求接收+PO澄清(+RES调研) → ', '')
       .replace('1/12 拆解分派(PM) → ', '');
     return head + section + p.slice(secEnd);
   });
@@ -1645,7 +1645,7 @@ test('负向：删任务书用户命令记录 CP3 确认合并说明应拦截（
 test('负向：删流水线 0/12 与 11/12 边界节点应拦截（exit 1）', function () {
   const { code, output } = runValidateCapture(p =>
     p
-      .replace('0/12 需求接收+PO澄清 → ', '需求接收+PO澄清 → ')
+      .replace('0/12 需求接收+PO澄清(+RES调研) → ', '需求接收+PO澄清 → ')
       .replace(' → 11/12 复盘(全员)', ' → 复盘(全员)')
   );
   assertEqual(code, 1, '删 0/12 与 11/12 应拦截（exit 1）');
@@ -1664,6 +1664,143 @@ test('负向：runValidateCaptureFull 不污染 SKILL.md（工作区还原回归
   const after = fs.readFileSync(SKILL_FILE, 'utf8');
   assertEqual(code, 1, '删 PM 合并职责应拦截（exit 1）');
   assertEqual(after, before, '测试后 SKILL.md 必须与测试前完全一致（不得被变异提示词污染）');
+});
+
+// ---- Issue #147 补充：6 个改造点门禁回归用例 ----
+// 改造点 1：暂停点不得静默跳过
+test('负向：删铁律 6「任何模式不得静默跳过」应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace(
+      '**无论接力/全程/自动连续模式，到 ⏸CP1/⏸CP2/⏸CP3 必须输出对应暂停卡停下等用户命令，任何模式不得静默跳过**',
+      ''
+    )
+  );
+  assertEqual(code, 1, '删「任何模式不得静默跳过」应拦截（exit 1）');
+  assertTrue(/暂停点不得静默跳过/.test(output), '应命中改造点 1 门禁，实际输出：' + output);
+});
+
+// 改造点 2：未设暂停点自动接续
+test('负向：删运行模式「未设暂停点自动触发下一步」应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace(
+      '**未设 ⏸CP1/⏸CP2/⏸CP3 暂停点的步骤，执行完输出接力卡后由系统按接力卡自动触发下一步，无需用户逐棒手动复制召唤话术；用户可在任意暂停点确认/纠正/停止。**',
+      ''
+    )
+  );
+  assertEqual(code, 1, '删自动接续声明应拦截（exit 1）');
+  assertTrue(/未设暂停点自动接续/.test(output), '应命中改造点 2 门禁，实际输出：' + output);
+});
+
+// 改造点 2 门禁正则加固回归：门禁须锚定「运行模式原句」独有的「无需用户逐棒手动复制召唤话术」短语，
+// 不得因铁律 11 澄清句（含「未设…暂停点的步骤…自动触发下一步」）而误命中放行。
+// 正路径验证：仅删除铁律 11 澄清句、保留运行模式原句时，改造点 2 门禁不应报错（不得过度收紧）。
+test('正路径：删铁律 11 澄清句但保留运行模式原句，改造点 2 门禁不误报（exit 1 仅因双源不一致）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace(
+      '**自动接续由系统触发（见运行模式）**：未设 ⏸CP 暂停点的步骤执行完输出接力卡后，由系统按接力卡自动触发下一步，**Agent 自身仍只执行一步即停下，不自行继续、不代替用户召唤下一棒**；用户也可在任意暂停点手动确认/纠正/停止。',
+      ''
+    )
+  );
+  // 删除 docs 正文铁律 11 澄清句后，docs 与 SKILL 双源不一致 → exit 1（属预期双源拦截）；
+  // 但改造点 2 门禁依赖运行模式原句，不应因此误报「未设暂停点自动接续」。
+  assertEqual(code, 1, '删铁律 11 澄清句应双源不一致 exit 1');
+  assertTrue(
+    !/未设暂停点自动接续/.test(output),
+    '铁律 11 澄清句不应满足改造点 2 门禁（门禁应锚定运行模式原句），实际输出：' + output
+  );
+});
+
+// 改造点 3：每步留痕粒度强化
+test('负向：删铁律 7「缺任一步即视为假装执行」应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace(
+      '**评审-修复循环中，评审棒/修复棒/复评棒每一步各自独立留痕，缺任一步即视为假装执行。**',
+      ''
+    )
+  );
+  assertEqual(code, 1, '删「缺任一步即视为假装执行」应拦截（exit 1）');
+  assertTrue(/每步留痕粒度强化/.test(output), '应命中改造点 3 门禁，实际输出：' + output);
+});
+
+// 改造点 4：新增研究员 RES 角色
+test('负向：删研究员 RES 角色卡片应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace(
+      '\n🔬 研究员 RES：需求背景调研、问题根因定位、方案可行性研究、bug 复现定位；与 PO 配合强化需求分析（0/12、2/12 介入）、与 CR 配合强化 bug 复现定位（5/12 介入）。',
+      ''
+    )
+  );
+  assertEqual(code, 1, '删 RES 角色卡片应拦截（exit 1）');
+  assertTrue(
+    /角色卡片缺失：研究员 RES/.test(output),
+    '应命中角色卡片缺失校验，实际输出：' + output
+  );
+});
+
+// 补充（Issue #147 用户补充：RES 角色介入 5/12）：RES 5/12 介入独立留痕门禁
+// 背景：RES 在 5/12 介入不能只“名义挂名”（角色卡片/工作流程标注 CR+RES 但 RES 不真正执行评审、
+// 无独立留痕即视为未介入）。本用例验证：删除角色卡片 RES 卡中的独立留痕声明（唯一锚点）应拦截。
+test('负向：删 RES 5/12 介入独立留痕声明应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace(
+      '**RES 5/12 介入必须独立执行研究员视角评审并单独留痕**：① 需求背景核实（改造点是否真解决原始需求）；② 方案可行性复核（改动是否引入新风险/破坏既有行为）；③ 问题根因定位（对 CR 发现的问题复核根因是否准确）；④ 复现定位（对可疑缺陷给出复现路径）。RES 在 5/12 的评审结论须以「🔬 RES 研究员评审」独立留痕于 PR，缺任一项独立留痕即视为 RES 未介入（假介入）。',
+      ''
+    )
+  );
+  assertEqual(code, 1, '删 RES 5/12 介入独立留痕声明应拦截（exit 1）');
+  assertTrue(
+    /RES 5\/12 介入独立留痕|RES 研究员评审独立留痕锚点/.test(output),
+    '应命中 RES 5/12 介入独立留痕门禁，实际输出：' + output
+  );
+});
+
+// 负向：仅删除工作流程 5/12 的「🔬 RES 研究员评审」独立留痕锚点（角色卡片保留），应命中 RES 研究员评审锚点门禁
+// 说明：锚点短语「以「🔬 RES 研究员评审」独立留痕于 PR」在角色卡片与工作流程各出现一次，
+// 本用例同时删除两处以精确验证该锚点门禁独立生效（不依赖 RES 5/12 介入独立留痕声明门禁）。
+test('负向：删「🔬 RES 研究员评审」独立留痕锚点应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p
+      .replace(
+        'RES 在 5/12 的评审结论须以「🔬 RES 研究员评审」独立留痕于 PR',
+        'RES 在 5/12 的评审结论须独立留痕于 PR'
+      )
+      .replace(
+        '（需求背景核实/方案可行性复核/根因定位/复现定位，以「🔬 RES 研究员评审」独立留痕于 PR）',
+        '（需求背景核实/方案可行性复核/根因定位/复现定位，独立留痕于 PR）'
+      )
+  );
+  assertEqual(code, 1, '删「🔬 RES 研究员评审」独立留痕锚点应拦截（exit 1）');
+  assertTrue(
+    /RES 研究员评审独立留痕锚点/.test(output),
+    '应命中 RES 研究员评审独立留痕锚点门禁，实际输出：' + output
+  );
+});
+
+// 改造点 5：评审范围纪律
+test('负向：删铁律 15「评审范围纪律」应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace(
+      '\n15. 评审范围纪律：CR 只评审 PR diff 新增/改动行，不得评审历史代码、无关文件、或发表与 diff 无关的泛化意见；评审记录仅针对 PR 内变更；RES 定位问题只能针对 PR diff 范围内的代码，不得借调研之名泛化到无关模块。',
+      ''
+    )
+  );
+  assertEqual(code, 1, '删评审范围纪律应拦截（exit 1）');
+  assertTrue(
+    /评审范围纪律|RES 定位范围纪律/.test(output),
+    '应命中改造点 5 门禁，实际输出：' + output
+  );
+});
+
+// 改造点 6：N 轮评审-修复循环验收标准
+test('负向：删铁律 8「有效下限 = max(10, 用户指定 N)」应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace(
+      '**本次改造产物 PR 将跑至少 10 轮评审-修复循环直至问题清零，有效下限 = max(10, 用户指定 N)，可核实验收。**',
+      ''
+    )
+  );
+  assertEqual(code, 1, '删 N 轮验收标准应拦截（exit 1）');
+  assertTrue(/N 轮评审-修复验收标准/.test(output), '应命中改造点 6 门禁，实际输出：' + output);
 });
 
 // ---- 汇总 ----
