@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.7] - 2026-08-16
+
+### Added
+
+- **NPC_TEAM skill 6 改造点（Issue #76/#147，PR #148）** — 依据 Issue #76 提出的 6 个使用问题，对 `docs/NPC_TEAM.md` / `.codebuddy/skills/npc-team/SKILL.md` / `scripts/validate-npc-team-prompt.js` / `scripts/lib/npc-team-triggers.js` / `tests/validate-npc-team-prompt.test.js` 落地 6 项改造，并同步更新 `docs/README.md`：
+  - **恢复 CP1/CP2 强制暂停点**（铁律 6 强化）：任何模式（接力/全程/自动连续）到 ⏸CP1/⏸CP2/⏸CP3 必须输出对应暂停卡停下等用户命令，不得静默跳过；配套校验门禁。
+  - **每步独立调用 + 自动接续**（运行模式）：未设 ⏸CP 暂停点的步骤执行完输出接力卡后由系统按接力卡自动触发下一步，无需用户逐棒手动复制召唤话术；手动接力仍兜底可用。
+  - **每步留痕粒度强化**（铁律 7）：评审棒/修复棒/复评棒每一步各自独立留痕，缺任一步即视为假装执行。
+  - **新增🔬研究员 RES 第 7 角色**：角色卡片 7 张强校验；RES 介入 0/12、2/12、5/12、11/12 流水线；`description` 触发词补「研究员」。
+  - **评审严格限定 PR 范围**（新增铁律 15）：CR 只评审 PR diff 新增/改动行，RES 定位只针对 PR diff 范围，不得泛化到无关模块。
+  - **跑 N 轮 review-修复循环**（铁律 8 固化）：本次产物 PR 至少跑 10 轮评审-修复循环直至问题清零，有效下限 = max(10, 用户指定 N)，可核实验收。
+- **RES 介入 5/12 研究员独立评审固化（Issue #147 补充，PR #148 commit a1bfeb1）** — 明确 RES 在 5/12 的四维独立评审职责（需求背景核实 / 方案可行性复核 / 根因定位 / 复现定位），评审结论须以「🔬 RES 研究员评审」独立留痕于 PR，缺任一项独立留痕即视为 RES 未介入（假介入）；配套 2 道校验门禁 + 2 个负向回归用例（validate-npc-team-prompt 用例 124/124）。
+- **NPC Team 流水线模拟动画（Issue #147，commit 881e57f）** — 新增 `npc-team-pipeline-animation.html` 自包含 HTML/JS 动画，可视化演示 12 阶段 / 7 角色 / 3 暂停点 / 10 轮评审-修复循环自动连续执行，浏览器直接打开即可播放，用于核验流水线流程设计。
+
+### Changed
+
+- **版本号升级至 1.5.7** — 根 `package.json` / `package-lock.json` / `opencode-wps/`（package.json、config.js、manifest.xml）/ `opencode-wps-linux/`（package.json、manifest.xml）/ `wps-office-mcp/`（package.json、package-lock.json）版本一致升级至 1.5.7，`validate-versions` 校验通过。
+
 ## [1.5.6] - 2026-08-16
 
 ### Fixed
