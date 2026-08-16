@@ -1670,25 +1670,25 @@ test('负向：runValidateCaptureFull 不污染 SKILL.md（工作区还原回归
 // 改造点 1：暂停点不得静默跳过
 test('负向：删铁律 6「任何模式不得静默跳过」应拦截（exit 1）', function () {
   const { code, output } = runValidateCapture(p =>
-    p.replace('**无论接力/全程/自动连续模式，到 ⏸CP1/⏸CP2/⏸CP3 必须输出对应暂停卡停下等用户命令，任何模式不得静默跳过**', '')
+    p.replace(
+      '**无论接力/全程/自动连续模式，到 ⏸CP1/⏸CP2/⏸CP3 必须输出对应暂停卡停下等用户命令，任何模式不得静默跳过**',
+      ''
+    )
   );
   assertEqual(code, 1, '删「任何模式不得静默跳过」应拦截（exit 1）');
-  assertTrue(
-    /暂停点不得静默跳过/.test(output),
-    '应命中改造点 1 门禁，实际输出：' + output
-  );
+  assertTrue(/暂停点不得静默跳过/.test(output), '应命中改造点 1 门禁，实际输出：' + output);
 });
 
 // 改造点 2：未设暂停点自动接续
 test('负向：删运行模式「未设暂停点自动触发下一步」应拦截（exit 1）', function () {
   const { code, output } = runValidateCapture(p =>
-    p.replace('**未设 ⏸CP1/⏸CP2/⏸CP3 暂停点的步骤，执行完输出接力卡后由系统按接力卡自动触发下一步，无需用户逐棒手动复制召唤话术；用户可在任意暂停点确认/纠正/停止。**', '')
+    p.replace(
+      '**未设 ⏸CP1/⏸CP2/⏸CP3 暂停点的步骤，执行完输出接力卡后由系统按接力卡自动触发下一步，无需用户逐棒手动复制召唤话术；用户可在任意暂停点确认/纠正/停止。**',
+      ''
+    )
   );
   assertEqual(code, 1, '删自动接续声明应拦截（exit 1）');
-  assertTrue(
-    /未设暂停点自动接续/.test(output),
-    '应命中改造点 2 门禁，实际输出：' + output
-  );
+  assertTrue(/未设暂停点自动接续/.test(output), '应命中改造点 2 门禁，实际输出：' + output);
 });
 
 // 改造点 2 门禁正则加固回归：门禁须锚定「运行模式原句」独有的「无需用户逐棒手动复制召唤话术」短语，
@@ -1696,7 +1696,10 @@ test('负向：删运行模式「未设暂停点自动触发下一步」应拦�
 // 正路径验证：仅删除铁律 11 澄清句、保留运行模式原句时，改造点 2 门禁不应报错（不得过度收紧）。
 test('正路径：删铁律 11 澄清句但保留运行模式原句，改造点 2 门禁不误报（exit 1 仅因双源不一致）', function () {
   const { code, output } = runValidateCapture(p =>
-    p.replace('**自动接续由系统触发（见运行模式）**：未设 ⏸CP 暂停点的步骤执行完输出接力卡后，由系统按接力卡自动触发下一步，**Agent 自身仍只执行一步即停下，不自行继续、不代替用户召唤下一棒**；用户也可在任意暂停点手动确认/纠正/停止。', '')
+    p.replace(
+      '**自动接续由系统触发（见运行模式）**：未设 ⏸CP 暂停点的步骤执行完输出接力卡后，由系统按接力卡自动触发下一步，**Agent 自身仍只执行一步即停下，不自行继续、不代替用户召唤下一棒**；用户也可在任意暂停点手动确认/纠正/停止。',
+      ''
+    )
   );
   // 删除 docs 正文铁律 11 澄清句后，docs 与 SKILL 双源不一致 → exit 1（属预期双源拦截）；
   // 但改造点 2 门禁依赖运行模式原句，不应因此误报「未设暂停点自动接续」。
@@ -1710,19 +1713,22 @@ test('正路径：删铁律 11 澄清句但保留运行模式原句，改造点 
 // 改造点 3：每步留痕粒度强化
 test('负向：删铁律 7「缺任一步即视为假装执行」应拦截（exit 1）', function () {
   const { code, output } = runValidateCapture(p =>
-    p.replace('**评审-修复循环中，评审棒/修复棒/复评棒每一步各自独立留痕，缺任一步即视为假装执行。**', '')
+    p.replace(
+      '**评审-修复循环中，评审棒/修复棒/复评棒每一步各自独立留痕，缺任一步即视为假装执行。**',
+      ''
+    )
   );
   assertEqual(code, 1, '删「缺任一步即视为假装执行」应拦截（exit 1）');
-  assertTrue(
-    /每步留痕粒度强化/.test(output),
-    '应命中改造点 3 门禁，实际输出：' + output
-  );
+  assertTrue(/每步留痕粒度强化/.test(output), '应命中改造点 3 门禁，实际输出：' + output);
 });
 
 // 改造点 4：新增研究员 RES 角色
 test('负向：删研究员 RES 角色卡片应拦截（exit 1）', function () {
   const { code, output } = runValidateCapture(p =>
-    p.replace('\n🔬 研究员 RES：需求背景调研、问题根因定位、方案可行性研究、bug 复现定位；与 PO 配合强化需求分析（0/12、2/12 介入）、与 CR 配合强化 bug 复现定位（5/12 介入）。', '')
+    p.replace(
+      '\n🔬 研究员 RES：需求背景调研、问题根因定位、方案可行性研究、bug 复现定位；与 PO 配合强化需求分析（0/12、2/12 介入）、与 CR 配合强化 bug 复现定位（5/12 介入）。',
+      ''
+    )
   );
   assertEqual(code, 1, '删 RES 角色卡片应拦截（exit 1）');
   assertTrue(
@@ -1734,7 +1740,10 @@ test('负向：删研究员 RES 角色卡片应拦截（exit 1）', function () 
 // 改造点 5：评审范围纪律
 test('负向：删铁律 15「评审范围纪律」应拦截（exit 1）', function () {
   const { code, output } = runValidateCapture(p =>
-    p.replace('\n15. 评审范围纪律：CR 只评审 PR diff 新增/改动行，不得评审历史代码、无关文件、或发表与 diff 无关的泛化意见；评审记录仅针对 PR 内变更；RES 定位问题只能针对 PR diff 范围内的代码，不得借调研之名泛化到无关模块。', '')
+    p.replace(
+      '\n15. 评审范围纪律：CR 只评审 PR diff 新增/改动行，不得评审历史代码、无关文件、或发表与 diff 无关的泛化意见；评审记录仅针对 PR 内变更；RES 定位问题只能针对 PR diff 范围内的代码，不得借调研之名泛化到无关模块。',
+      ''
+    )
   );
   assertEqual(code, 1, '删评审范围纪律应拦截（exit 1）');
   assertTrue(
@@ -1746,13 +1755,13 @@ test('负向：删铁律 15「评审范围纪律」应拦截（exit 1）', funct
 // 改造点 6：N 轮评审-修复循环验收标准
 test('负向：删铁律 8「有效下限 = max(10, 用户指定 N)」应拦截（exit 1）', function () {
   const { code, output } = runValidateCapture(p =>
-    p.replace('**本次改造产物 PR 将跑至少 10 轮评审-修复循环直至问题清零，有效下限 = max(10, 用户指定 N)，可核实验收。**', '')
+    p.replace(
+      '**本次改造产物 PR 将跑至少 10 轮评审-修复循环直至问题清零，有效下限 = max(10, 用户指定 N)，可核实验收。**',
+      ''
+    )
   );
   assertEqual(code, 1, '删 N 轮验收标准应拦截（exit 1）');
-  assertTrue(
-    /N 轮评审-修复验收标准/.test(output),
-    '应命中改造点 6 门禁，实际输出：' + output
-  );
+  assertTrue(/N 轮评审-修复验收标准/.test(output), '应命中改造点 6 门禁，实际输出：' + output);
 });
 
 // ---- 汇总 ----
