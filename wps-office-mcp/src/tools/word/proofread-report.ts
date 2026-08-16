@@ -631,7 +631,7 @@ export const proofreadAccumulateDefinition: ToolDefinition = {
 export const proofreadAccumulateHandler: ToolHandler = async (
   args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  const { session_id, issues, doc_info, total_revisions, suspected_issues } = args as {
+  let { session_id, issues, doc_info, total_revisions, suspected_issues } = args as {
     session_id: string;
     issues?: ProofreadIssueEntry[];
     doc_info?: DocInfo;
@@ -684,14 +684,30 @@ export const proofreadAccumulateHandler: ToolHandler = async (
   // 刷新最后访问时间并执行上限淘汰
   touchSession(session_id);
 
-  // 必填字段校验（Issue #116 问题六）：original/suggestion 缺失时明确报错，而非静默通过
-  // 早期暴露错误（而非报告阶段才因 .replace() 读 undefined 而崩溃）
-  const missingFields = issues.filter(
-    (i) =>
-      (typeof i.original !== 'string' || i.original.trim() === '') ||
-      (typeof i.suggestion !== 'string' || i.suggestion.trim() === '')
-  );
-  if (missingFields.length > 0) {
+  // 必填字段校验（Issue #116 问题六 + session_ffa8 问题二/三 部分成功机制）：
+  // original/suggestion 缺失时**不再整体拒绝整批**，而是过滤掉无效条目、只累加有效条目，
+  // 返回 success=true + 明确警告（列出跳过条数、缺哪些字段、示例 original），
+  // 从而避免：① AI 在批次累加失败后 session 从未建立、后续批次级联报「首次调用必须提供 doc_info」；
+  // ② 一条坏数据导致整批有价值的校对结果丢失。
+  // 早期暴露错误（而非报告阶段才因 .replace() 读 undefined 而崩溃）的目标由警告文本承担。
+  const validIssues: ProofreadIssueEntry[] = [];
+  const invalidIssues: Array<{ i: ProofreadIssueEntry; reason: string }> = [];
+  for (const i of issues) {
+    const missing: string[] = [];
+    if (typeof i.original !== 'string' || i.original.trim() === '') missing.push('original');
+    if (typeof i.suggestion !== 'string' || i.suggestion.trim() === '') missing.push('suggestion');
+    if (missing.length > 0) {
+      invalidIssues.push({ i, reason: `缺 ${missing.join('/')}` });
+    } else {
+      validIssues.push(i);
+    }
+  }
+  // 空 issues 数组：无校验项，直接跳过（仍可更新 total_revisions / docInfo / 初始化会话，
+  // 兼容「仅携带 total_revisions / doc_info 的会话初始化调用」）。
+  // 有效条目为空且确有无效条目（issues 非空但全部缺字段）时返回失败，给出更明确错误（含示例）。
+  if (validIssues.length === 0 && invalidIssues.length > 0) {
+    const example =
+      ` 首条: { original: "${(invalidIssues[0].i.original || '').slice(0, 30)}", 缺字段: ${invalidIssues[0].reason} }`;
     return {
       id: uuidv4(),
       success: false,
@@ -699,38 +715,38 @@ export const proofreadAccumulateHandler: ToolHandler = async (
         {
           type: 'text',
           text:
-            `issues 含 ${missingFields.length} 条缺少必填字段 original/suggestion，未累加。\n` +
-            `每条校对问题必须携带 original（原文）和 suggestion（建议修改）两个必填字段。`,
+            `issues 中 ${invalidIssues.length} 条全部缺少必填字段 original/suggestion，无有效条目可累加。\n` +
+            `每条校对问题必须携带 original（原文）和 suggestion（建议修改）两个必填字段。\n` +
+            example.trim() + `\n` +
+            `请补充缺失字段后重试；若为首次调用还需携带 doc_info 初始化会话。`,
         },
       ],
-      error: `issues 含 ${missingFields.length} 条缺少 original/suggestion`,
+      error: `issues ${invalidIssues.length} 条全部缺 original/suggestion`,
     };
   }
+  const skippedInvalidCount = invalidIssues.length;
+  // 部分成功：用有效条目替换 issues 供后续累加（空数组时保持空，正常走后续 total_revisions 更新）
+  issues = validIssues;
 
   // 疑似问题必填校验（评审第 2 轮 C2）：与 issues 对称，suspected_issues 也需校验
-  // original/suggestion；且校验必须前置到 issues 累加之前，保证校验失败时不产生任何副作用
-  // （正式 issues 未 push、磁盘未写），维持「全部成功或全部失败」的原子性。
+  // original/suggestion；同样采用「部分成功」语义——过滤无效疑似条目、保留有效条目，
+  // 避免一条坏数据导致整批疑似问题丢失（session_ffa8 问题三 级联失败的同类根因）。
+  let skippedSuspectedCount = 0;
   if (suspected_issues && Array.isArray(suspected_issues)) {
-    const missingSuspectedFields = suspected_issues.filter(
-      (i) =>
-        (typeof i.original !== 'string' || i.original.trim() === '') ||
-        (typeof i.suggestion !== 'string' || i.suggestion.trim() === '')
-    );
-    if (missingSuspectedFields.length > 0) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [
-          {
-            type: 'text',
-            text:
-              `suspected_issues 含 ${missingSuspectedFields.length} 条缺少必填字段 original/suggestion，未累加。\n` +
-              `每条疑似问题必须携带 original（原文）和 suggestion（疑为的修改建议）两个必填字段。`,
-          },
-        ],
-        error: `suspected_issues 含 ${missingSuspectedFields.length} 条缺少 original/suggestion`,
-      };
+    const validSuspected: ProofreadIssueEntry[] = [];
+    for (const i of suspected_issues) {
+      const missing: string[] = [];
+      if (typeof i.original !== 'string' || i.original.trim() === '') missing.push('original');
+      if (typeof i.suggestion !== 'string' || i.suggestion.trim() === '') missing.push('suggestion');
+      if (missing.length > 0) {
+        skippedSuspectedCount++;
+      } else {
+        validSuspected.push(i);
+      }
     }
+    // 部分成功：过滤无效疑似条目，保留有效条目（含整批无效时置空）；
+    // 不再因一条坏疑似数据拒绝整批（session_ffa8 问题三 级联失败的同类根因）。
+    suspected_issues = validSuspected;
   }
 
   // 更新 docInfo（如果提供了新的）
@@ -861,6 +877,12 @@ export const proofreadAccumulateHandler: ToolHandler = async (
         text:
           `已累加 ${issues.length} 条问题到会话 ${session_id}。\n` +
           `当前会话累计: ${session.issues.length} 条问题` +
+          (skippedInvalidCount > 0
+            ? `\n⚠️ 本批 ${skippedInvalidCount} 条因缺 original/suggestion 被跳过（有效条目已累加）；请 AI 补充缺失字段后重新累加这些被跳过的问题`
+            : '') +
+          (skippedSuspectedCount > 0
+            ? `\n⚠️ 疑似问题 ${skippedSuspectedCount} 条因缺 original/suggestion 被跳过`
+            : '') +
           (dedupedCount > 0 ? `（本批去重 ${dedupedCount} 条）` : '') +
           (session.suspectedIssues && session.suspectedIssues.length > 0
             ? `；疑似问题 ${session.suspectedIssues.length} 条（待确认）`

@@ -262,10 +262,10 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:-apple-system,Blink
         <span id="level-label"> 中</span><span class="chevron">&#9662;</span>
       </button>
     </div>
-    <!-- 上下文用量条（#116 问题三）：随 SSE 事件更新，hover 显示详细 token 数 -->
+    <!-- 上下文用量条（#116 问题三 + session_ffa9 假修复）：SSE 事件更新，信息默认可见（不再需点击 3px 细条） -->
     <div class="ctx-meter" id="ctx-meter" title="上下文用量" onclick="toggleCtxTooltip(event)">
       <div class="ctx-meter-fill" id="ctx-meter-fill" style="width:0%"></div>
-      <span class="ctx-meter-info" id="ctx-meter-info" style="display:none"></span>
+      <span class="ctx-meter-info" id="ctx-meter-info"></span>
     </div>
   </div>
 </div>
@@ -346,12 +346,15 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:-apple-system,Blink
 .btn-perm-allow{padding:8px 18px;border:none;border-radius:8px;background:#2563eb;color:#fff;cursor:pointer;font-size:13px;font-weight:500}
 .btn-perm-allow:hover{background:#1d4ed8}
 
-/* ===== 上下文用量条（#116 问题三）===== */
-.ctx-meter{height:3px;background:#f0f0f0;position:relative;flex-shrink:0;cursor:pointer}
+/* ===== 上下文用量条（#116 问题三 + session_ffa9 假修复）=====
+ * 修复：信息文本默认可见（不再需点击 3px 细条才显示），加大可视性；
+ * 数据源改为多路径防御性探测（见 extractCtxUsage），数据未到/无用量数据时降级展示。 */
+.ctx-meter{height:6px;background:#f0f0f0;position:relative;flex-shrink:0;cursor:pointer;border-bottom:1px solid #eee}
 .ctx-meter-fill{height:100%;background:#2563eb;transition:width 0.3s ease}
 .ctx-meter.warn .ctx-meter-fill{background:#f59e0b}
 .ctx-meter.danger .ctx-meter-fill{background:#ef4444}
-.ctx-meter-info{position:absolute;bottom:6px;right:12px;font-size:10px;color:#9ca3af;background:rgba(255,255,255,0.95);padding:1px 6px;border-radius:4px;pointer-events:none;white-space:nowrap;font-family:Consolas,monospace}
+.ctx-meter.nodata .ctx-meter-fill{background:#e5e7eb}
+.ctx-meter-info{position:absolute;top:100%;right:12px;margin-top:1px;font-size:10px;color:#6b7280;background:rgba(255,255,255,0.95);padding:1px 6px;border-radius:4px;pointer-events:none;white-space:nowrap;font-family:Consolas,monospace;z-index:5}
 
 /* ===== 等待权限确认状态 ===== */
 .session-status .dot.waiting{background:#ea580c;animation:pulse-dot 0.8s ease-in-out infinite}
@@ -1409,9 +1412,10 @@ function loadSessionMessages(sid) {
         var d = sess && sess.data ? sess.data : sess
         if (d) {
             $sessionTitle.textContent = d.title || d.slug || '新会话'
-            // #116 问题三：从会话详情读取上下文用量
-            var usage = d.usage || d.tokens || null
+            // #116 问题三 + session_ffa9 假修复：多路径防御性提取上下文用量
+            var usage = extractCtxUsage(d)
             if (usage && typeof usage.percent === 'number') updateCtxMeter(usage.percent, usage)
+            else ctxMeterNoData()  // 无可用用量数据时诚实降级展示，不再空空白条
         }
     })
 }
@@ -1550,8 +1554,9 @@ function handleSSEEvent(data) {
                 if (st === 'busy') setStatus('busy')
                 else if (st === 'idle') { if (PENDING_PERMISSION) { setStatus('waiting') } else { setStatus('idle'); finalizeStreaming() } }
                 else setStatus(st === 'waiting' || st === 'waiting-for-input' ? 'waiting' : (st === 'idle' ? 'idle' : 'busy'))
-                // #116 问题三：从 status 中读取上下文用量（OpenCode 会话状态可含 token 用量）
-                if (props.status.usage && typeof props.status.usage.percent === 'number') updateCtxMeter(props.status.usage.percent, props.status.usage)
+                // #116 问题三 + session_ffa9 假修复：多路径防御性提取上下文用量
+                var usage = extractCtxUsage(props.status)
+                if (usage && typeof usage.percent === 'number') updateCtxMeter(usage.percent, usage)
             }
             break
         case 'session.permission':
@@ -1568,9 +1573,9 @@ function handleSSEEvent(data) {
                 if (props.info.modelID && !CURRENT_MODEL) { CURRENT_MODEL = props.info.modelID; $modelName.textContent = CURRENT_MODEL }
             }
             if (props.info && props.info.role === 'assistant' && props.info.finish) finalizeStreaming()
-            // #116 问题三：消息更新时若带 usage 信息则同步上下文用量条
-            if (props.info && props.info.usage && typeof props.info.usage.percent === 'number') updateCtxMeter(props.info.usage.percent, props.info.usage)
-            else if (props.usage && typeof props.usage.percent === 'number') updateCtxMeter(props.usage.percent, props.usage)
+            // #116 问题三 + session_ffa9 假修复：消息更新时多路径提取上下文用量
+            var msgUsage = extractCtxUsage(props)
+            if (msgUsage && typeof msgUsage.percent === 'number') updateCtxMeter(msgUsage.percent, msgUsage)
             break
         case 'message.part.updated':
             if (props.part) {
@@ -1588,6 +1593,21 @@ function handleSSEEvent(data) {
                 else STREAMING_TEXT += props.delta
                 updateStreamingBubble()
             }
+            break
+        case 'session.summary':
+        case 'message.summary':
+        case 'session.compacted':
+        case 'session.compaction':
+            // session_ffa9 补充：会话压缩事件显式提示（原「压缩无感知」体验缺口）。
+            // 压缩后上下文被摘要替代，此前已累加的关键校对数据若未落盘将不可恢复，
+            // 故这里提示用户：若在校对流程中，请确认数据已通过 proofreadAccumulate 落盘。
+            addSystemMessage('⚠️ 会话上下文已压缩（Compaction），长上下文被摘要替代。' +
+                '若正在校对，请确认各批问题已通过 proofreadAccumulate 累加（数据已落盘）；' +
+                '必要时可手动开新会话保留完整上下文。')
+            // 压缩后用量应归零重新累计，重置显示
+            $ctxMeterFill.style.width = '0%'
+            $ctxMeterInfo.textContent = '上下文已压缩'
+            $ctxMeterInfo.style.display = ''
             break
     }
 }
@@ -1705,15 +1725,70 @@ function updateCtxMeter(percent, usage) {
     $ctxMeterFill.style.width = percent + '%'
     $ctxMeter.className = 'ctx-meter' + (percent >= 90 ? ' danger' : (percent >= 70 ? ' warn' : ''))
     if (usage) {
-        var used = usage.used || usage.tokens || ''
-        var max = usage.total || usage.limit || ''
+        var used = usage.used || usage.tokens || usage.usedTokens || ''
+        var max = usage.total || usage.limit || usage.totalTokens || ''
         var label = Math.round(percent) + '%'
         if (used && max) label += ' · ' + formatTokens(used) + '/' + formatTokens(max)
         $ctxMeterInfo.textContent = label
     } else {
         $ctxMeterInfo.textContent = Math.round(percent) + '%'
     }
-    if (CTX_TOOLTIP_VISIBLE) $ctxMeterInfo.style.display = ''
+    // 信息默认可见（session_ffa9 假修复：不再需要点击 3px 细条才显示）
+    $ctxMeterInfo.style.display = ''
+}
+
+/**
+ * 从会话/消息数据中防御性提取上下文用量（session_ffa9 假修复根因）。
+ * OpenCode 服务在 headless serve 模式下实际下发的用量字段名未经真实抓包确认，
+ * 故多路径探测以下字段组合，任一命中即返回 { percent, used, total }：
+ *   - usage.percent / usage.used+total / usage.usedTokens+totalTokens
+ *   - tokens.percent / tokens.used+total
+ *   - context.percent / context.tokens.used+total / context.tokens.percent
+ *   - info.usage / info.tokens / status.usage / status.tokens（由调用方传入对应对象）
+ * 返回 null 表示未探测到可用用量数据（调用方应降级展示）。
+ */
+function extractCtxUsage(obj) {
+    if (!obj || typeof obj !== 'object') return null
+    function readTokens(node) {
+        if (!node || typeof node !== 'object') return null
+        var pct = node.percent
+        var used = node.used || node.usedTokens || node.tokensUsed
+        var total = node.total || node.limit || node.totalTokens || node.tokensTotal
+        if (typeof pct === 'number' && !isNaN(pct)) {
+            if (typeof total === 'number' && total > 0 && typeof used !== 'number') {
+                used = total * pct / 100
+            }
+            return { percent: pct, used: used, total: total }
+        }
+        if (typeof used === 'number' && typeof total === 'number' && total > 0) {
+            return { percent: (used / total) * 100, used: used, total: total }
+        }
+        return null
+    }
+    // 直接命中 usage/tokens/context 节点
+    var direct = readTokens(obj.usage) || readTokens(obj.tokens) || readTokens(obj.context && obj.context.tokens)
+    if (direct) return direct
+    // 嵌套在 info / status 下
+    var nested = readTokens(obj.info && (obj.info.usage || obj.info.tokens)) ||
+                 readTokens(obj.status && (obj.status.usage || obj.status.tokens))
+    if (nested) return nested
+    // context 顶层含 percent/used/total
+    if (obj.context && typeof obj.context === 'object') {
+        var ctx = readTokens(obj.context)
+        if (ctx) return ctx
+    }
+    return null
+}
+
+/**
+ * 上下文用量条降级展示：无可用用量数据时明确提示（session_ffa9 假修复的诚实降级）。
+ * 既不显示假的百分比，也不隐瞒「数据未到」——提示用户 OpenCode 未提供用量数据。
+ */
+function ctxMeterNoData() {
+    $ctxMeterFill.style.width = '0%'
+    $ctxMeter.className = 'ctx-meter nodata'
+    $ctxMeterInfo.textContent = '上下文用量: 等待数据…（OpenCode 未提供则不会显示百分比）'
+    $ctxMeterInfo.style.display = ''
 }
 
 /** 切换上下文用量提示显隐 */

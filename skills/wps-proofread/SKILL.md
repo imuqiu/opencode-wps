@@ -19,6 +19,9 @@ description: "WPS 文档校对专家，专注于文档的错别字检测、语�
 | 6 | `proofreadAccumulate` | `wps_office_execute({ tool_name: "proofreadAccumulate", arguments: {...} })` | 累加本批校对问题到会话 Map（走网关） |
 | 7 | `generateProofreadReport` | `wps_office_execute({ tool_name: "generateProofreadReport", arguments: {...} })` | 生成五维评分校对报告（走网关）。传 `output_file` 时写盘；写盘失败返回 `success=false`，必须重试 |
 
+> **⚠️ 调用格式统一（session_ffa8 问题八/九）**：以下 7 个工具**必须**通过 `wps_office_execute({ tool_name: "...", arguments: {...} })` 调用，`arguments` 必须是**对象**（禁止传字符串）。
+> 这些工具**已在上表列出，无需再用 `wps_office_search` 搜索**（session_ffa8 问题九：AI 用 search 搜已列工具浪费一次调用）。
+
 > **⚠️ 校对流程中强制走网关**：以下 7 个工具在 `batchStarted=true` 后**禁止直接调用 MCP 原接口**，必须通过 `wps_office_execute({ tool_name: "...", ... })` 调用：
 > - `getActiveDocument` / `insertText` / `getActiveWorkbook` / `getCellValue` / `setCellValue` / `getActivePresentation`
 > - `proofreadAccumulate` / `generateProofreadReport`（这两个只存在于网关索引，MCP 侧未直连注册，唯一入口就是 `wps_office_execute`）
@@ -200,6 +203,18 @@ deduped.sort((a, b) => (a.offset ?? Infinity) - (b.offset ?? Infinity) || (a.par
 ## 铁律 4：报告只能在全部批次完成后生成
 
 进度未达到 N/N 前，不得生成校对报告。
+
+## 铁律 5：严禁用 write 伪造校对报告（session_ffa8 问题一，P0）
+
+**校对报告必须由服务端 `generateProofreadReport` 基于真实累计的校对数据生成，禁止 AI 手动 write 拼造报告。**
+
+- ❌ **禁止**：`generateProofreadReport` 失败后，用 `writeFile`/`write` 手动构造 Markdown 报告写入「校对报告」路径。
+- ❌ **禁止**：手动编造五维评分、雷达图 JSON、问题列表——这些必须来自服务端真实累计的 issues 数据。
+- ✅ **正确**：报告只能通过 `generateProofreadReport`（方案 A：传 `output_file` 落盘；方案 B：取其返回的 `content` 文本后再 `writeFile` 落盘）。
+
+**为什么**：真实会话中 AI 在 `generateProofreadReport` 因 session 未初始化失败后，直接 `write` 手动拼了 3 份互相矛盾的「手写报告」（发现问题数 16/23/12 各不同），完全绕过了服务端真实数据——报告可信度归零，无法审计。
+
+**治理插件 P17 强制拦截**：写「校对报告」路径且服务端尚未成功生成报告时，直接报错，AI 无法绕过。
 
 ---
 
@@ -453,6 +468,10 @@ wps_office_execute({
 - `type` 用上表建议值（或语义等价类型），**必须携带**（报告五维评分依赖）
 - `metric` 一律 `"fluency"`（这类问题影响通顺/搭配）
 
+> **🔥 F11–F15 必须逐句输出命中/未命中结论（session_ffa8 问题六）**：本批每句都要对 F11–F15 逐一给出结论——
+> `F11: 命中(句X) / F12: 未命中 / F13: 未命中 / …`。**禁止笼统说"未发现"或"已检查"就跳过**（真实会话中 AI 把 F11-F15"顺带做"、凭感觉扫一眼就跳过，漏掉了实际存在的"句式杂糅/语序不当/冗余词"）。
+> 只有当 F11–F15 全部逐句给出命中/未命中结论后，才算完成 Layer 2 语义检测。
+
 ## 输出格式
 
 输出严格 JSON 数组（如无问题则输出空数组 []）：
@@ -589,6 +608,11 @@ const toReport = deduped.filter(i => i.fix_action === 'report_only')
 - `toFix`：需要修复的问题（Layer 1 正则发现 + Layer 2 命中修复阈值），走 `replaceInParagraph`
 - `toReport`：仅报告的问题（Layer 2 评分 6–8 通顺 / 10–25% 简洁），不进修复循环，直接进报告"优化建议"
 
+> **🔥 必须遍历修复所有 `toFix` issue（session_ffa8 问题五）**：本批 `proofreadBasic` / Layer 2 发现的每条 `toFix` 问题**都必须逐一尝试 `replaceInParagraph` 修复**，禁止只修几条就宣称"全部已修复"。
+> - 若某条因故未能修复（如匹配失败、语义冲突），**必须在最终报告中明确标注"未修复"及原因**，绝不允许报告写"全部已修复 ✅"而实际还有问题未修。
+> - 真实会话中 AI 发现 8 处异常空格/重复标点却只修 2 处，报告却写"全部已修复"，导致用户误以为校对完成。
+> - 修复后报告"全部已修复"的判定应基于服务端真实修订记录（`getTrackChangesStatus` 修订数增量），而非 AI 主观判断。
+
 **映射方法 1：从 getDocumentParagraphs 返回的 [start-end] 中查找 offset 所在的段落。**
 ```javascript
 // 从 getDocumentParagraphs 输出中解析段落范围
@@ -707,7 +731,12 @@ await wps_office_execute({
 > 若个别 issue 缺 type，MCP 会按原文/建议文本自动兜底推断（T2，#55）；
 > 缺 source 时 MCP 也会兜底推断（TC-13：按 Layer 1 规则命中判定 mcp，F11–F15 等 AI 专属模式判定 ai），
 > 但人工标注的 type/source 更准确，建议每项都显式携带。
-> **每项 issue 建议携带位置**：`paragraphIndex`（段落索引，从 1 起）与 `offset`（文档绝对偏移），
+>
+> **🔥 每项 issue 的 `original` 和 `suggestion` 是必填字段，漏任何一个都会导致该条不被累加（session_ffa8 问题二）！**
+> - Layer 2 AI 校对输出时，**必须同时携带 `original`（原文）和 `suggestion`（建议修改）**，缺一不可。
+> - 真实会话中 AI 反复只写 `{ paragraphIndex, original, type }` 而漏 `suggestion`，导致整批累加失败、session 未建立、后续批次级联报错。
+> - 服务端已改为**部分成功机制**：某批中缺字段的条目会被跳过并警告，有效条目仍会累加、session 照常建立——但**漏字段的校对结果仍会丢失**，请务必每项都带齐 `original` + `suggestion`。
+> - **每项 issue 建议携带位置**：`paragraphIndex`（段落索引，从 1 起）与 `offset`（文档绝对偏移），
 > 两者都缺失时报告位置列显示「位置未知」——请尽量携带，便于用户定位问题。
 > 旧蛇形 `paragraph_index` 仍兼容（自动归一化）；`offset_in_paragraph`（段落内偏移）与绝对 offset 语义不同，不再兜底。
 
@@ -852,6 +881,8 @@ COM 超时已从 30s 增加到 60s（#116 问题八，MCP v1.1.1 起），200 �
 | **P14** | **confirmBatchAiProofread 前必须 proofreadBasic** | `confirmBatchAiProofread` | 本批未先调 `proofreadBasic` |
 | **P15** | **基础校对无问题禁止 AI 自行大量修复** | `replaceInParagraph` | `proofreadHadIssues=false` 且 AI 修复次数超限（≤1 次） |
 | **P16** | **替换内容与已知 issue 交叉校验** | `replaceInParagraph` | `findText` 不匹配任何 issue 的 `original` 原文 |
+| **P17** | **禁止手动 write 伪造校对报告** | `writeFile`/`write` | 写「校对报告」路径且服务端未成功生成报告 |
+| **P18** | **禁止重复获取已处理段落** | `getDocumentParagraphs` | 已处理到 N 段后又从段落 1 回卷获取 |
 
 ### 通用执行规则（G1-G7，始终生效）
 
@@ -872,6 +903,10 @@ COM 超时已从 30s 增加到 60s（#116 问题八，MCP v1.1.1 起），200 �
 **P15 说明**：当 `proofreadBasic` 返回 0 个问题（`proofreadHadIssues=false`），AI 最多允许自行修复 1 处（用于 AI Layer 2 确实发现的问题）。超过后必须传 `_force_ai_fix: true` 强制放行。这防止 AI 在基础校对无问题的情况下大量"编造"不存在的校对问题。
 
 **P16 说明**：当 `proofreadBasic` 返回了问题列表，`replaceInParagraph` 的 `findText` 必须与至少一条 issue 的 `original` 原文匹配（子串匹配即可）。如 `findText` 与任何已知 issue 都不匹配，说明 AI 在修复基础校对未发现的问题，P16 拦截。如需强制修复需传 `_force_ai_fix: true`。
+
+**P17 说明**（session_ffa8 问题一）：写文件路径含「校对报告」时，若服务端尚未通过 `generateProofreadReport` 成功生成报告（`reportGenerated !== true`），插件直接拦截。这防止 AI 在 `generateProofreadReport` 失败后手动 `write` 自拼 Markdown 报告（真实会话中出现过 3 份互相矛盾的手写报告）。
+
+**P18 说明**（session_ffa8 问题四）：`getDocumentParagraphs` 在已处理到段落 N 后，再次从段落 1 回卷获取即被拦截。批次必须严格连续，禁止把已检查过的段落重复扫描（真实会话中 AI 在已处理完第 1-2 批后又 `getDocumentParagraphs(start=1)` 重复跑了一遍）。如需重新开始，请先 `getActiveDocument` 重置进度。
 
 **规则 2a 说明**：首次 `getDocumentParagraphs` 必须从第 1 段开始。若 `lastBatchParaIndex === 0` 时 `start_paragraph !== 1`，插件直接拒绝。这是为了防止从文档中间开始校对导致遗漏。
 
