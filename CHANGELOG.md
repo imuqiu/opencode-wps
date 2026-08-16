@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **修复点击「关闭服务」闪现 13 个黑色命令行窗口（Issue #143）** — 点击 ChatUI 右上角「关闭服务」（黑色方块）时闪现 13 个黑窗。根因：`stopOpenCode()` → `stopOpenCodeByPort(14096)` 通过多个 `execSync` 子进程（`netstat` 查端口 → `powershell`/`wmic` 验证进程名 → `taskkill` 结束进程）停止服务，端口 14096 上同时存在主进程与多个 SSE 连接，逐 PID 验证+kill 未设 `windowsHide` 时弹出可见控制台窗口。修复：① 抽离 `hiddenExecSync()` 帮助函数统一强制 `windowsHide:true`（`CREATE_NO_WINDOW`）；② 全部 9+ 处 `execSync` 子进程调用统一走它，并为各调用点显式加 `windowsHide:true` 双保险。测试：`opencode-wps/tests/launcher.test.js` 新增「所有 execSync 均显式 windowsHide:true」+ 兜底计数（execSync 数 ≤ windowsHide 数），17/17 通过。
+
+- **修复点击「启动服务」闪现 1 次黑窗（Issue #143 跟进）** — 用户反馈点击启动服务也会闪 1 次黑色命令行窗口（与关闭服务闪 13 次同类问题）。根因：`startOpenCode()` 的 `spawn` 在 `needShell=true`（npm 全局安装的 `opencode.cmd` shim / 无扩展名 PATH shim）时依赖 Node `shell:true`，`windowsHide` 仅间接传给外层 `cmd.exe`，无法彻底覆盖 `.cmd` 批处理为脚本启动的嵌套控制台进程。修复：① 新增 `hiddenSpawn()` 帮助函数统一强制 `windowsHide:true`（与 `hiddenExecSync` 同风格）；② `.cmd` shim 分支改为**显式 `cmd.exe /d /s /c` 包装**（`shell:false` + `windowsHide:true` + `windowsVerbatimArguments:true`），让 `CREATE_NO_WINDOW` 直接作用于 cmd.exe 进程树，与关闭服务修复验证过的隐藏机制一致；③ `.exe`/`.ps1` 直启分支统一走 `hiddenSpawn`。测试：`opencode-wps/tests/launcher.test.js` 新增「spawn 统一经 hiddenSpawn 强制 windowsHide」专项，22/22 通过；`tests/launcher.test.js` 30/30 通过。
+
 - **修复上下文用量条"假修复"（Issue #116 session_ffa9）** — 用量条依赖不存在的 `usage.percent` 字段导致永远不显示。修复：① 新增 `extractCtxUsage()` 多路径防御性探测（usage/tokens/context/info/status 各字段组合，任一命中即算，含 used+total 自动换算百分比）；② 信息文本默认可见（不再需点击 3px 细条才显示），进度条加高至 6px；③ 无用量数据时诚实降级展示"等待数据…（OpenCode 未提供则不会显示百分比）"，不显示假百分比；④ 监听 Compaction 压缩事件并显式提示用户（若在校对中请确认已落盘）。
 
 - **修复 AI 手动 write 伪造校对报告（Issue #116 session_ffa8 问题一，P0）** — 真实会话中 AI 在 `generateProofreadReport` 失败后直接 `writeFile` 手动拼 Markdown 报告写入桌面（3 份数据互相矛盾），绕过服务端真实累计数据。修复：① 治理插件新增 **P17** 规则——写「校对报告」路径且服务端未成功生成报告时直接拦截；② SKILL 新增铁律 5「严禁用 write 伪造报告」；③ `generateProofreadReport` 成功后（after 钩子）记录 `reportGenerated`，放行合法的服务端报告落盘（方案 B）。

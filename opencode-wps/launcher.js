@@ -5,6 +5,27 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
+// 统一的隐藏窗口 execSync：强制 windowsHide:true（CREATE_NO_WINDOW）。
+// Windows 上若未隐藏，execSync 拉起的 cmd.exe / powershell / wmic 子进程会闪现可见控制台窗口
+// （Issue #143 关闭服务时闪 13 次黑窗的根因）。集中在此封装，新增子进程调用统一走它，防遗漏。
+function hiddenExecSync(command, options) {
+    options = options || {};
+    options.windowsHide = true;
+    return require('child_process').execSync(command, options);
+}
+
+// 统一的隐藏窗口 spawn：强制 windowsHide:true（CREATE_NO_WINDOW）。
+// 启动服务时 startOpenCode 用 spawn 拉起 opencode 进程（.exe/.ps1 直启、.cmd shim 走 cmd）。
+// Issue #143 后续反馈：仅靠 Node shell:true 内部传给 cmd.exe 的 windowsHide，无法彻底覆盖
+// .cmd 批处理 shim 为脚本启动的嵌套控制台进程，导致“点击启动服务也闪 1 次黑窗”。
+// 因此对需 shell 的 .cmd shim 改用显式 `cmd.exe /d /s /c` 包装（shell:false + windowsHide:true），
+// 让 CREATE_NO_WINDOW 直接作用于 cmd.exe 进程树，与 hiddenExecSync（关闭服务修复）验证过的机制一致。
+function hiddenSpawn(command, args, options) {
+    options = options || {};
+    options.windowsHide = true;
+    return require('child_process').spawn(command, args, options);
+}
+
 const PORT = 14097;
 const OPENCODE_PORT = 14096;
 let opencodeProcess = null;
@@ -29,18 +50,20 @@ function closeOpenCodeLogStream() {
 // ===== 启动时清理孤儿 MCP 进程 =====
 function cleanupOrphanedMcp() {
     try {
-        var execSync = require('child_process').execSync;
+        // 统一走 hiddenExecSync（强制 windowsHide，防黑窗闪现）
+        var execSync = hiddenExecSync;
         // 用 PowerShell Get-Process 按命令行路径查找，无 % 转义问题
         var psCmd = "Get-Process -Name node | Where-Object { $_.CommandLine -match 'wps-office-mcp\\\\dist\\\\index\\.js' } | ForEach-Object { $_.Id }";
         var out = execSync('powershell -NoProfile -Command "' + psCmd + '"', {
             encoding: 'utf8',
-            timeout: 5000
+            timeout: 5000,
+            windowsHide: true
         });
         var lines = out.split('\n');
         for (var i = 0; i < lines.length; i++) {
             var pid = parseInt(lines[i].trim(), 10);
             if (pid > 0 && !isNaN(pid)) {
-                try { execSync('taskkill /F /PID ' + pid + ' 2>nul', { shell: 'cmd.exe', stdio: 'ignore', timeout: 3000 }); } catch(e) {}
+                try { execSync('taskkill /F /PID ' + pid + ' 2>nul', { shell: 'cmd.exe', stdio: 'ignore', timeout: 3000, windowsHide: true }); } catch(e) {}
             }
         }
     } catch(e) { /* no orphaned processes */ }
@@ -186,15 +209,23 @@ function startOpenCode(cwd, port) {
         // 因此 shell 模式改用 ['ignore','pipe','pipe'] + 手动 pipe 到日志写流；
         // 非 shell 模式（.exe/.ps1 直接 CreateProcess）才可把日志写流直接作为 stdio。
         if (needShell) {
-            opencodeProcess = spawn(
-                opencodeBin,
-                opencodeArgs,
+            // 需 shell 的 .cmd shim（npm 全局安装的 opencode.cmd / 无扩展名 PATH shim）：
+            // 显式通过 `cmd.exe /d /s /c` 启动，而非依赖 Node 的 shell:true。
+            // 理由（Issue #143 后续反馈）：Node shell:true 的 windowsHide 仅间接传给外层 cmd.exe，
+            // 无法彻底覆盖 .cmd 批处理为脚本启动的嵌套控制台进程，导致“点击启动服务也闪 1 次黑窗”。
+            // 改显式 cmd.exe 后 windowsHide（CREATE_NO_WINDOW）直接作用于 cmd.exe 进程树，
+            // 与 hiddenExecSync（关闭服务修复）验证过的隐藏机制一致，彻底消除黑窗。
+            // windowsVerbatimArguments:true 让 Node 不对 args 二次加引号，避免含空格路径被破坏。
+            var shellCmd = '"' + opencodeBin + '" ' + opencodeArgs.join(' ');
+            opencodeProcess = hiddenSpawn(
+                'cmd.exe',
+                ['/d', '/s', '/c', shellCmd],
                 {
                     cwd: cwd,
                     stdio: ['ignore', 'pipe', 'pipe'],
                     detached: false,
-                    windowsHide: true,
-                    shell: true
+                    shell: false,
+                    windowsVerbatimArguments: true
                 }
             );
             // 手动把子进程 stdout/stderr pipe 进日志写流（shell 模式无法直接作为 stdio）。
@@ -209,14 +240,13 @@ function startOpenCode(cwd, port) {
             }
         } else {
             var stdioArr = opencodeLogStream ? ['ignore', opencodeLogStream, opencodeLogStream] : ['ignore', 'ignore', 'ignore'];
-            opencodeProcess = spawn(
+            opencodeProcess = hiddenSpawn(
                 opencodeBin,
                 opencodeArgs,
                 {
                     cwd: cwd,
                     stdio: stdioArr,
                     detached: false,
-                    windowsHide: true,
                     shell: false
                 }
             );
@@ -307,14 +337,15 @@ function stopOpenCodeByPort(port) {
     console.log('[launcher] stopOpenCodeByPort called for port: ' + port);
     
     try {
-        var execSync = require('child_process').execSync;
+        var execSync = hiddenExecSync;
         
         // 查找占用指定端口的进程 PID
         // findstr 匹配 ":port "（带尾空格）减少 :140960/:114096 等子串误匹配
         var output = execSync('netstat -ano | findstr ":' + port + ' "', { 
             shell: 'cmd.exe',
             encoding: 'utf8',
-            timeout: 5000
+            timeout: 5000,
+            windowsHide: true
         });
         
         var lines = output.split('\n');
@@ -338,7 +369,7 @@ function stopOpenCodeByPort(port) {
                         var isOpenCode = false;
                         try {
                             var psNameCmd = "powershell -NoProfile -Command \"(Get-CimInstance Win32_Process -Filter 'ProcessId=" + pid + "').Name\"";
-                            var nameOut = execSync(psNameCmd, { encoding: 'utf8', timeout: 3000 });
+                            var nameOut = execSync(psNameCmd, { encoding: 'utf8', timeout: 3000, windowsHide: true });
                             var procName = (nameOut.split('\n')[0] || '').trim().toLowerCase();
                             isOpenCode = (procName === 'node.exe' || procName === 'opencode.exe' || procName === '');
                             if (!isOpenCode) {
@@ -348,7 +379,7 @@ function stopOpenCodeByPort(port) {
                         } catch(e) {
                             // PowerShell 也失败（极少数环境）：回退尝试 wmic（老系统），再失败则保守跳过
                             try {
-                                var wmicOut = execSync('wmic process where ProcessId=' + pid + ' get Name /format:csv', { encoding: 'utf8', timeout: 3000, shell: 'cmd.exe' });
+                                var wmicOut = execSync('wmic process where ProcessId=' + pid + ' get Name /format:csv', { encoding: 'utf8', timeout: 3000, shell: 'cmd.exe', windowsHide: true });
                                 var wmicName = (wmicOut.split('\n')[1] || '').trim().toLowerCase();
                                 isOpenCode = (wmicName === 'node.exe' || wmicName === 'opencode.exe' || wmicName === '');
                                 if (!isOpenCode) {
@@ -365,7 +396,8 @@ function stopOpenCodeByPort(port) {
                             execSync('taskkill /F /PID ' + pid + ' 2>nul', { 
                                 shell: 'cmd.exe',
                                 stdio: 'ignore',
-                                timeout: 5000
+                                timeout: 5000,
+                                windowsHide: true
                             });
                             console.log('[launcher] Terminated PID: ' + pid);
                             killed = true;
@@ -432,12 +464,13 @@ function isPortListening(port) {
     port = parseInt(port, 10);
     if (isNaN(port) || port < 1 || port > 65535) return false;
     try {
-        var execSync = require('child_process').execSync;
+        var execSync = hiddenExecSync;
         // findstr 匹配 ":port "（带尾空格）减少 :140960/:114096 等子串误匹配
         var output = execSync('netstat -ano | findstr ":' + port + ' "', {
             shell: 'cmd.exe',
             encoding: 'utf8',
-            timeout: 5000
+            timeout: 5000,
+            windowsHide: true
         });
         var lines = output.split('\n');
         for (var i = 0; i < lines.length; i++) {
@@ -610,8 +643,8 @@ function findOpenCodeBin() {
     // 3. 用 `where opencode` 从 PATH 解析真实路径（where 依赖本进程运行期 PATH，
     //    计划任务/VBS 拉起的 launcher 不含 .trae-cn；真正覆盖 #134 的是第 2 步目录探测）
     try {
-        var execSync = require('child_process').execSync;
-        var out = execSync('where opencode', { shell: 'cmd.exe', encoding: 'utf8', timeout: 5000 });
+        var execSync = hiddenExecSync;
+        var out = execSync('where opencode', { shell: 'cmd.exe', encoding: 'utf8', timeout: 5000, windowsHide: true });
         var viaWhere = parseWhereOutput(out);
         if (viaWhere) {
             console.log('[launcher] Found via PATH: ' + viaWhere);
@@ -806,8 +839,8 @@ function dockWindow(callback, data) {
             // 探测"带 --app= 且指向 14096 的 msedge 进程"是否出现（避免误判用户已开的普通 Edge 浏览器）
             console.error('[launcher] dockWindow exec error: ' + (err.message || err));
             try {
-                var execSync = require('child_process').execSync;
-                var edgeCheck = execSync('powershell -NoProfile -Command "(Get-CimInstance Win32_Process -Filter \"Name=\'msedge.exe\'\" | Where-Object { $_.CommandLine -match \'14096\' } | Measure-Object).Count"', { encoding: 'utf8', timeout: 3000 });
+                var execSync = hiddenExecSync;
+                var edgeCheck = execSync('powershell -NoProfile -Command "(Get-CimInstance Win32_Process -Filter \"Name=\'msedge.exe\'\" | Where-Object { $_.CommandLine -match \'14096\' } | Measure-Object).Count"', { encoding: 'utf8', timeout: 3000, windowsHide: true });
                 var count = parseInt(edgeCheck.trim(), 10);
                 if (count > 0) {
                     console.log('[launcher] dockWindow exec timed out but Edge app process detected (' + count + '), treating as success');

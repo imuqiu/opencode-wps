@@ -372,6 +372,15 @@ node launcher-linux.js
 
 > 📖 更详细的平台特定服务管理见 [WINDOWS.md](./WINDOWS.md) / [MAC.md](./MAC.md) / [LINUX.md](./LINUX.md)。
 
+### 6.5 黑窗闪现说明（Windows）
+
+点击侧边栏右上角「**关闭服务**」（黑色方块）或「**启动服务**」时，若命令行已隐藏则**不会**闪现黑色命令行窗口（Windows）。
+
+- **关闭服务**：Launcher 通过多个 `execSync` 子进程（`netstat` 查端口 → `powershell`/`wmic` 验证进程名 → `taskkill` 结束进程）停止服务，端口 14096 上可能同时存在主进程与多个 SSE 连接，逐 PID 验证+kill 曾累积闪现最多 13 个黑窗。所有 `execSync` 现统一经 `hiddenExecSync()` 强制 `windowsHide:true`（`CREATE_NO_WINDOW`）彻底隐藏。
+- **启动服务**：`spawn` 启动 OpenCode 时，`.cmd` shim（npm 全局 `opencode.cmd` / 无扩展名 PATH shim）依赖 `shell:true` 曾导致嵌套控制台进程闪现 1 个黑窗。现 `.cmd` 分支改**显式 `cmd.exe /d /s /c` 包装**（`shell:false` + `windowsHide:true` + `windowsVerbatimArguments:true`），`.exe`/`.ps1` 直启分支统一走 `hiddenSpawn()`，所有 `spawn` 强制 `windowsHide:true`。
+
+若仍观察到黑窗闪现，请反馈复现步骤与 `opencode-serve.log`（见 [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)）。
+
 ---
 
 ## 七、配置参考

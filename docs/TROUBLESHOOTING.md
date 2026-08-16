@@ -380,6 +380,15 @@ execSync('taskkill /F /PID ' + pid + ' 2>nul', ...);
 
 **优点**：只终止占用 14096 端口的进程，且通过 wmic 双重验证进程身份。
 
+### 黑窗闪现说明（2026-08 更新）
+
+Windows 下，停止服务（`stopOpenCodeByPort`）与启动服务（`startOpenCode`）的**子进程调用曾闪现黑色命令行窗口**：
+
+- **关闭服务闪 13 黑窗**：`stopOpenCodeByPort` 通过多个 `execSync` 子进程（`netstat` 查端口 → `powershell`/`wmic` 验证进程名 → `taskkill` 结束进程）停止服务，端口 14096 上可能同时存在主进程与多个 SSE 连接，逐 PID 验证+kill 未设 `windowsHide` 时累积闪现最多 13 个黑窗。**已修复**：全部 `execSync` 统一经 `hiddenExecSync()` 强制 `windowsHide:true`（`CREATE_NO_WINDOW`）。
+- **启动服务闪 1 黑窗**：`spawn` 在 `needShell=true`（npm 全局 `opencode.cmd` shim / 无扩展名 PATH shim）时依赖 `shell:true`，`windowsHide` 仅间接传给外层 `cmd.exe`，无法覆盖 `.cmd` 批处理为脚本启动的嵌套控制台进程。**已修复**：`.cmd` 分支改为显式 `cmd.exe /d /s /c` 包装（`shell:false` + `windowsHide:true` + `windowsVerbatimArguments:true`），`.exe`/`.ps1` 直启分支统一走 `hiddenSpawn()`，所有 `spawn` 强制 `windowsHide:true`。
+
+> 📌 若升级后仍观察到黑窗闪现，请反馈复现步骤与 `opencode-serve.log`。
+
 ---
 
 ## 十、WPS FileDialog 获取选中文件夹路径

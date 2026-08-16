@@ -57,10 +57,14 @@ test('launcher.js 源码：shell 模式 stdio 用 pipe 而非 WriteStream（修�
 });
 
 // --- 3. spawn 语义一致性：.exe/.ps1 直启不强制 shell ---
-test('launcher.js 源码：非 shell 模式 spawn 使用 shell:false', function() {
+test('launcher.js 源码：spawn 分支隐藏启动（.exe/.ps1 直启、.cmd 走 cmd.exe）', function() {
   var src = fs.readFileSync(LAUNCHER, 'utf-8');
   assertTrue(/shell: false/.test(src), '非 shell 分支应显式 shell:false，避免 .exe/.ps1 走 cmd');
-  assertTrue(/shell: true/.test(src), 'shell 分支应显式 shell:true，保证 .cmd 可被启动');
+  // 启动服务不闪黑窗（Issue #143 后续反馈）：.cmd shim 不再用 Node shell:true，改为显式
+  // cmd.exe /d /s /c 包装 + hiddenSpawn 强制 windowsHide，让 CREATE_NO_WINDOW 覆盖批处理嵌套控制台。
+  assertTrue(/hiddenSpawn\(\s*'cmd\.exe'/.test(src), 'shell 分支应显式 cmd.exe 启动（替代 shell:true，防嵌套黑窗）');
+  assertTrue(/\/d', '\/s', '\/c', shellCmd/.test(src), 'shell 分支应使用 cmd.exe /d /s /c 包装');
+  assertTrue(/windowsVerbatimArguments: true/.test(src), 'shell 分支应设 windowsVerbatimArguments 防引号破坏');
 });
 
 // --- 4. 语法自检 ---
@@ -73,6 +77,46 @@ test('launcher.js 语法检查', function() {
     child.on('close', function(code) { if (code !== 0) { ok = false; } });
     child.on('exit', function() { assertTrue(ok, 'launcher.js 语法检查通过' + (err ? '（' + err.trim() + '）' : '')); });
   } catch (e) { assertTrue(false, '语法检查执行异常: ' + e.message); }
+});
+
+// --- 5. 关闭服务不闪黑窗：所有 execSync 必须显式 windowsHide:true ---
+// 根因（Issue #143）：stopOpenCode() → stopOpenCodeByPort() 中多个 execSync 以
+// shell:cmd.exe / powershell 拉起子进程，未设 windowsHide 时 Windows 会弹出可见控制台窗口。
+// 修复：为全部 execSync 调用显式加 windowsHide:true（CREATE_NO_WINDOW），隐藏黑窗。
+test('launcher.js 源码：所有 execSync 均显式 windowsHide:true（修复黑窗闪现）', function() {
+  var src = fs.readFileSync(LAUNCHER, 'utf-8');
+  // 逐个断言 stop 路径（stopOpenCodeByPort）及启动/探测路径上的关键 execSync 都带 windowsHide
+  assertTrue(/execSync\('powershell -NoProfile -Command "\' \+ psCmd/, 'cleanupOrphanedMcp powershell 需 windowsHide');
+  assertTrue(/taskkill \/F \/PID ' \+ pid \+ ' 2>nul', \{ shell: 'cmd\.exe', stdio: 'ignore', timeout: 3000, windowsHide: true \}/.test(src), 'cleanupOrphanedMcp taskkill 需 windowsHide');
+  // stopOpenCodeByPort 中的 netstat / powershell 验证 / wmic 回退 / taskkill 四条路径
+  assertTrue(/netstat -ano \| findstr "\:' \+ port \+ ' "', \{ \s* shell: 'cmd\.exe',[\s\S]*?windowsHide: true/.test(src), 'stopOpenCodeByPort netstat 需 windowsHide');
+  assertTrue(/execSync\(psNameCmd, \{ encoding: 'utf8', timeout: 3000, windowsHide: true \}\)/.test(src), 'stopOpenCodeByPort powershell 进程名验证需 windowsHide');
+  assertTrue(/wmic process where ProcessId=' \+ pid \+ ' get Name \/format:csv', \{ encoding: 'utf8', timeout: 3000, shell: 'cmd\.exe', windowsHide: true \}/.test(src), 'stopOpenCodeByPort wmic 回退需 windowsHide');
+  assertTrue(/taskkill \/F \/PID ' \+ pid \+ ' 2>nul', \{ \s* shell: 'cmd\.exe',[\s\S]*?windowsHide: true/.test(src), 'stopOpenCodeByPort taskkill 需 windowsHide');
+  // isPortListening / where opencode / dockWindow edgeCheck 三条路径
+  assertTrue(/isPortListening/.test(src), 'isPortListening 存在');
+  assertTrue(/where opencode', \{ shell: 'cmd\.exe', encoding: 'utf8', timeout: 5000, windowsHide: true \}/.test(src), 'findOpenCodeBin where 需 windowsHide');
+  assertTrue(/execSync\('powershell[\s\S]*?msedge[\s\S]*?windowsHide: true/.test(src), 'dockWindow edgeCheck powershell 需 windowsHide');
+  // 兜底：确保源码中不存在任何未带 windowsHide 的 execSync 调用（防回归）
+  // 统计源码中所有 `windowsHide` 出现（含 hiddenExecSync 内部的 `= true` 赋值与各调用点显式 `: true`）
+  var execSyncCount = (src.match(/execSync\(/g) || []).length;
+  var windowsHideOccur = (src.match(/windowsHide/g) || []).length;
+  assertTrue(windowsHideOccur >= execSyncCount, 'execSync 调用数(' + execSyncCount + ') ≤ windowsHide 出现数(' + windowsHideOccur + ')，无遗漏');
+});
+
+// --- 6. 启动服务不闪黑窗：spawn 统一走 hiddenSpawn 强制 windowsHide ---
+// 根因（Issue #143 后续反馈）：startOpenCode 的 spawn 在 needShell=true（.cmd shim）时用
+// Node shell:true，windowsHide 仅间接传给外层 cmd.exe，无法覆盖批处理嵌套控制台 → 启动闪 1 次黑窗。
+// 修复：新增 hiddenSpawn 强制 windowsHide；shell 分支改显式 cmd.exe /d /s /c 包装；非 shell 分支统一走 hiddenSpawn。
+test('launcher.js 源码：spawn 统一经 hiddenSpawn 强制 windowsHide（修复启动闪黑窗）', function() {
+  var src = fs.readFileSync(LAUNCHER, 'utf-8');
+  // hiddenSpawn 帮助函数强制 windowsHide:true
+  assertTrue(/function hiddenSpawn\b[\s\S]*?options\.windowsHide = true/.test(src), 'hiddenSpawn 应强制 windowsHide=true');
+  // startOpenCode 两个 spawn 分支都必须走 hiddenSpawn（.exe/.ps1 直启 + .cmd shim 显式 cmd.exe）
+  var spawnCalls = (src.match(/opencodeProcess = hiddenSpawn\(/g) || []).length;
+  assertTrue(spawnCalls === 2, 'startOpenCode 两个 spawn 分支都应走 hiddenSpawn（当前 ' + spawnCalls + '/2）');
+  // 源码中不得再存在裸 spawn( 直接启动 opencode（除 hiddenSpawn 定义外的 require('child_process').spawn）
+  assertTrue(!/opencodeProcess = spawn\(/.test(src), '不允许再裸用 spawn 启动 opencode');
 });
 
 // ==================== 测试结果汇总 ====================
