@@ -77,8 +77,8 @@ main:
         options:
           # 指定模型 ID（取消注释并填入实际模型 ID 即可生效）
           # 模型 ID 可在 NPC 选择器或云原生开发 Agent 设置中查看可选列表
-          # DeepSeek V4 Flash Free（opencode provider，免费模型，与 agents/wps-expert.md 一致）
-          model: opencode/deepseek-v4-flash-free
+          # DeepSeek V4 Flash（npc:go 的模型，非 opencode-wps agent 模型）
+          model: deepseek-v4-flash
           # model: hy3    # ✅ 免费模型（混元 3），不消耗 AI Credits 账单
           # model: glm-5  # GLM 模型
           # model: kimi   # Kimi 模型
