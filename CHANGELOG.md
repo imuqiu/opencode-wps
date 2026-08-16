@@ -9,7 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-（本版本无待发布内容，见 [1.5.4]）
+（本版本无待发布内容，见 [1.5.5]）
+
+## [1.5.5] - 2026-08-16
+
+### Fixed
+
+- **修复 codewiki 生成 Wiki 持续失败：移除已废弃的 llm_model_name 模型名（Issue #117，PR #145）** — 此前在 `.cnb.yml` 的 `tag_push → codewiki` 配置中写死了 `llm_model_name: 'hy3-preview'`，但该模型已在 CNB 平台下线，导致 codewiki 插件 LLM 接入始终返回空响应（`LLM响应中未找到有效的Action标签, LLM响应预览: (空)`），Wiki 生成一直 `status: error`。按官方反馈（cnb/feedback#4760「把这行去掉，已经没有这个模型了，建议不要写死模型名」）修复：移除 `llm_model_name: 'hy3-preview'` 一行，让 codewiki 插件走平台默认模型，并同步更新 `use_codebuddy` 注释。修复后重新打 tag `v1.5.5` 触发 Wiki 重新生成，核验仓库 Wiki 入口是否成功激活。
 
 ## [1.5.4] - 2026-08-16
 
