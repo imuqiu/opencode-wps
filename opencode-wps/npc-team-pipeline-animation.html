@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NPC Team 流水线 · 模拟动画</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: linear-gradient(160deg, #0f172a 0%, #1e293b 100%);
+    color: #e2e8f0;
+    min-height: 100vh;
+    padding: 24px;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 {
+    text-align: center;
+    font-size: 22px;
+    margin-bottom: 4px;
+    color: #fbbf24;
+    letter-spacing: 1px;
+  }
+  .subtitle {
+    text-align: center;
+    color: #94a3b8;
+    font-size: 13px;
+    margin-bottom: 18px;
+  }
+  .controls {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  button {
+    background: #334155;
+    border: 1px solid #475569;
+    color: #e2e8f0;
+    padding: 8px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all .2s;
+  }
+  button:hover { background: #475569; }
+  button.active { background: #f59e0b; color: #1e293b; border-color: #f59e0b; font-weight: 600; }
+  #speed {
+    background: #334155; border: 1px solid #475569; color: #e2e8f0;
+    padding: 7px 10px; border-radius: 8px;
+  }
+  .stage-info { text-align: center; margin-bottom: 14px; min-height: 46px; }
+  .stage-title {
+    font-size: 17px; font-weight: 700; color: #fbbf24;
+    display: inline-block; margin-right: 10px;
+  }
+  .stage-desc { font-size: 13px; color: #94a3b8; }
+
+  /* Pipeline track */
+  .track {
+    background: #0b1220;
+    border: 1px solid #1e293b;
+    border-radius: 14px;
+    padding: 18px 14px;
+    margin-bottom: 18px;
+    position: relative;
+    overflow: hidden;
+  }
+  .track-title {
+    font-size: 13px; color: #7dd3fc; margin-bottom: 12px; font-weight: 600;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .track-title .badge {
+    background: #0ea5e9; color: #fff; padding: 1px 8px; border-radius: 10px; font-size: 11px;
+  }
+  .nodes {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    min-height: 60px;
+  }
+  .node {
+    position: relative;
+    background: #1e293b;
+    border: 2px solid #334155;
+    border-radius: 10px;
+    padding: 8px 10px;
+    min-width: 82px;
+    text-align: center;
+    font-size: 12px;
+    line-height: 1.35;
+    transition: all .4s;
+    flex-shrink: 0;
+  }
+  .node .role { font-size: 11px; color: #94a3b8; display: block; margin-top: 2px; }
+  .node.stage { border-style: dashed; border-color: #475569; background: #111827; }
+  .node.pause { border-style: solid; border-color: #f59e0b; background: #78350f; color: #fde68a; }
+  .node.done { border-color: #22c55e; background: #14532d; color: #bbf7d0; }
+  .node.active {
+    border-color: #3b82f6;
+    background: #1e3a8a;
+    color: #fff;
+    box-shadow: 0 0 0 4px rgba(59,130,246,.25), 0 0 18px rgba(59,130,246,.4);
+    transform: scale(1.08);
+    z-index: 2;
+  }
+  .node.waiting { border-color: #f59e0b; background: #78350f; animation: pulse 1.2s infinite; }
+  .arrow { color: #475569; font-size: 16px; flex-shrink: 0; }
+  .arrow.pass { color: #22c55e; }
+
+  /* Log console */
+  .console {
+    background: #000;
+    border: 1px solid #1e293b;
+    border-radius: 12px;
+    padding: 12px 14px;
+    min-height: 140px;
+    max-height: 220px;
+    overflow-y: auto;
+    font-family: "SF Mono", Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.7;
+  }
+  .console .line { white-space: pre-wrap; word-break: break-word; }
+  .console .t { color: #64748b; }
+  .console .ok { color: #4ade80; }
+  .console .warn { color: #fbbf24; }
+  .console .info { color: #7dd3fc; }
+  .console .err { color: #f87171; }
+  .console .role { color: #c084fc; font-weight: 700; }
+  .console .pause { color: #fbbf24; font-weight: 700; }
+  .console .stage { color: #f472b6; font-weight: 700; }
+
+  @keyframes pulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(245,158,11,.4); }
+    50% { box-shadow: 0 0 0 8px rgba(245,158,11,0); }
+  }
+  .relay-card {
+    background: linear-gradient(135deg,#1e3a8a,#14532d);
+    border: 1px solid #3b82f6;
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin: 8px 0;
+    font-size: 12.5px;
+    line-height: 1.6;
+    animation: fadeIn .5s;
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px);} to {opacity:1; transform:none;} }
+  .roles-row {
+    display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; justify-content: center;
+  }
+  .role-chip {
+    background: #1e293b; border: 1px solid #334155; border-radius: 20px;
+    padding: 5px 12px; font-size: 12px;
+  }
+  .role-chip.lit { border-color: #fbbf24; background: #78350f; color: #fde68a; box-shadow: 0 0 10px rgba(245,158,11,.4); }
+  .role-chip.dim { opacity: .4; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎬 NPC Team 流水线 · 模拟动画</h1>
+  <div class="subtitle">7 位专家 · 12 阶段 · 3 暂停点 · 10 轮评审-修复循环 · 自动接续</div>
+
+  <div class="controls">
+    <button id="playBtn" class="active">▶ 播放</button>
+    <button id="pauseBtn">⏸ 暂停</button>
+    <button id="resetBtn">↺ 重置</button>
+    <select id="speed">
+      <option value="1">1× 慢速</option>
+      <option value="0.65" selected>1.5× 中速</option>
+      <option value="0.4">2.5× 快速</option>
+      <option value="0.2">5× 极速</option>
+    </select>
+    <span style="font-size:12px;color:#94a3b8" id="timeLabel">t=0.0s</span>
+  </div>
+
+  <div class="roles-row" id="rolesRow">
+    <span class="role-chip" data-role="PM">🎯 PM 项目经理</span>
+    <span class="role-chip" data-role="PO">📋 PO 产品</span>
+    <span class="role-chip" data-role="ARCH">🏗️ ARCH 架构</span>
+    <span class="role-chip" data-role="DEV">💻 DEV 开发</span>
+    <span class="role-chip" data-role="CR">🔍 CR 评审</span>
+    <span class="role-chip" data-role="QA">🧪 QA 测试</span>
+    <span class="role-chip" data-role="RES">🔬 RES 研究员</span>
+  </div>
+
+  <div class="stage-info">
+    <span class="stage-title" id="stageTitle">准备就绪</span>
+    <span class="stage-desc" id="stageDesc">点击「播放」开始模拟 NPC Team 流水线</span>
+  </div>
+
+  <div class="track">
+    <div class="track-title"><span class="badge">流水线主轨</span> 12 阶段 + 3 暂停点</div>
+    <div class="nodes" id="pipeline"></div>
+  </div>
+
+  <div class="track">
+    <div class="track-title"><span class="badge">5/12 评审-修复循环</span> 10 轮 · 每步独立留痕 · 自动连续执行</div>
+    <div class="nodes" id="loopTrack"></div>
+  </div>
+
+  <div class="console" id="console">
+    <div class="line"><span class="t">[init]</span> <span class="info">NPC Team 流水线模拟器就绪。7 角色：🎯PM 📋PO 🏗️ARCH 💻DEV 🔍CR 🧪QA 🔬RES</span></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const pipe = $('pipeline');
+  const loopTrack = $('loopTrack');
+  const con = $('console');
+  const stageTitle = $('stageTitle');
+  const stageDesc = $('stageDesc');
+  const timeLabel = $('timeLabel');
+  const playBtn = $('playBtn'), pauseBtn = $('pauseBtn'), resetBtn = $('resetBtn'), speedSel = $('speed');
+
+  // ---------- Pipeline definition ----------
+  const STAGES = [
+    { id:'s0', n:'0/12', t:'需求接收', role:'PM', desc:'接收需求 · PO澄清 ≤5问 · RES调研背景', kind:'stage' },
+    { id:'s1', n:'1/12', t:'拆解分派', role:'PM', desc:'PM 拆解任务、分派角色、里程碑表', kind:'stage' },
+    { id:'cp1', n:'⏸CP1', t:'计划确认', role:'PM', desc:'暂停卡 · 用户「继续/补充/停止」', kind:'pause' },
+    { id:'s2', n:'2/12', t:'需求分析', role:'PO+RES', desc:'用户故事 + 验收标准（可省）', kind:'stage' },
+    { id:'s3', n:'3/12', t:'方案设计', role:'ARCH', desc:'技术方案 · 模块/选型/边界/风险（简单跳过）', kind:'stage' },
+    { id:'s4', n:'4/12', t:'开发', role:'DEV', desc:'实现 + 自测 + 提交 PR', kind:'stage' },
+    { id:'cp2', n:'⏸CP2', t:'开发确认', role:'PM', desc:'暂停卡 · PR 已建 · 等用户确认', kind:'pause' },
+    { id:'s5', n:'5/12', t:'评审-修复', role:'CR+RES', desc:'10 轮 review-修复循环至清零 · 自动连续执行', kind:'stage' },
+    { id:'s6', n:'6/12', t:'测试', role:'QA', desc:'测试矩阵 + 缺陷分级 + 信号灯', kind:'stage' },
+    { id:'s7', n:'7/12', t:'文档', role:'DEV+PO', desc:'完善文档 · 落点核对', kind:'stage' },
+    { id:'cp3', n:'⏸CP3', t:'合并确认', role:'PM', desc:'【合并确认卡】· 等用户「确认合并」', kind:'pause' },
+    { id:'s8', n:'8/12', t:'PR 合并', role:'PM', desc:'merge-pull · 留痕合并结果', kind:'stage' },
+    { id:'s9', n:'9/12', t:'发布', role:'DEV', desc:'版本号 + CHANGELOG + 产物 + Release Notes', kind:'stage' },
+    { id:'s10', n:'10/12', t:'汇报', role:'PM', desc:'里程碑 + 进度看板 + 汇报', kind:'stage' },
+    { id:'s11', n:'11/12', t:'复盘', role:'全员', desc:'根因/教训/预防/加固 四要素', kind:'stage' },
+  ];
+
+  const PAUSE_IDS = ['cp1','cp2','cp3'];
+  const ROLE_OF_STAGE = {
+    s0:['PM','PO','RES'], s1:['PM'], cp1:['PM'], s2:['PO','RES'], s3:['ARCH'],
+    s4:['DEV'], cp2:['PM'], s5:['CR','RES','DEV'], s6:['QA'], s7:['DEV','PO'],
+    cp3:['PM'], s8:['PM'], s9:['DEV'], s10:['PM'], s11:['PM','PO','ARCH','DEV','CR','QA','RES']
+  };
+
+  // Loop rounds (compressed for demo: show 10 rounds quickly)
+  const LOOP_ROUNDS = Array.from({length:10}, (_,i) => i+1);
+
+  // ---------- Build DOM ----------
+  function buildNodes(container, list, isLoop) {
+    container.innerHTML = '';
+    list.forEach((it, idx) => {
+      if (isLoop) {
+        const n = document.createElement('div');
+        n.className = 'node stage';
+        n.dataset.id = 'R' + it;
+        n.innerHTML = `<b>R${it}</b><span class="role">评审→修复→复评</span>`;
+        container.appendChild(n);
+        if (idx < list.length-1) {
+          const a = document.createElement('span'); a.className='arrow'; a.textContent='→';
+          container.appendChild(a);
+        }
+        return;
+      }
+      const n = document.createElement('div');
+      n.className = 'node ' + it.kind;
+      n.dataset.id = it.id;
+      n.innerHTML = `<b>${it.n}</b><div>${it.t}</div><span class="role">${it.role}</span>`;
+      container.appendChild(n);
+      if (idx < list.length-1) {
+        const a = document.createElement('span'); a.className='arrow'; a.textContent='→';
+        container.appendChild(a);
+      }
+    });
+  }
+  buildNodes(pipe, STAGES, false);
+  buildNodes(loopTrack, LOOP_ROUNDS, true);
+
+  const nodeMap = {}; 
+  document.querySelectorAll('.node').forEach(n => nodeMap[n.dataset.id] = n);
+
+  // ---------- Animation timeline ----------
+  const SCRIPT = [];  // list of {t, fn}
+  let scriptBuilt = false;
+  let t = 0;
+  let playing = false;
+  let lastTs = 0;
+  let rafId = null;
+  let speed = 1;
+  const curRound = { i: 0, sub: 'review' };
+
+  function log(text, cls='info', ts=t) {
+    const div = document.createElement('div');
+    div.className = 'line';
+    div.innerHTML = `<span class="t">[${ts.toFixed(1)}s]</span> ` + text;
+    con.appendChild(div);
+    con.scrollTop = con.scrollHeight;
+  }
+
+  function setStage(idx) {
+    const s = STAGES[idx];
+    stageTitle.textContent = s.n + ' ' + s.t;
+    stageDesc.textContent = s.desc;
+    // highlight role chips
+    document.querySelectorAll('.role-chip').forEach(c => {
+      const r = c.dataset.role;
+      const activeRoles = ROLE_OF_STAGE[s.id] || [];
+      if (activeRoles.includes(r)) c.classList.add('lit'); else c.classList.remove('lit');
+    });
+  }
+
+  function buildScript() {
+    if (scriptBuilt) return;
+    scriptBuilt = true;
+
+    // helper: mark node done, then activate next
+    let done = [];
+    const markDone = (id) => {
+      if (nodeMap[id]) { nodeMap[id].classList.remove('active','waiting'); nodeMap[id].classList.add('done'); }
+    };
+    const activate = (id) => {
+      Object.values(nodeMap).forEach(n => n.classList.remove('active','waiting'));
+      if (nodeMap[id]) nodeMap[id].classList.add('active');
+    };
+    const waitPause = (id, idx, cpText) => {
+      activate(id);
+      nodeMap[id].classList.add('waiting');
+      log(`<span class="pause">⏸ ${cpText} —— 暂停，等待用户命令（「继续 / 补充：xxx / 停止」）</span>`,'pause');
+    };
+
+    // Stage 0
+    SCRIPT.push({t:0, fn:()=>{ setStage(0); activate('s0'); log('<span class="stage">▶ 0/12 需求接收</span> 🎯PM 接收需求 + 📋PO 澄清 ≤5问 + 🔬RES 调研背景，输出任务书','stage'); }});
+    // Stage 1
+    SCRIPT.push({t:1.2, fn:()=>{ markDone('s0'); setStage(1); activate('s1'); log('<span class="stage">▶ 1/12 拆解分派</span> 🎯PM 拆解任务、分派 7 角色，定稿里程碑表','stage'); }});
+    // CP1
+    SCRIPT.push({t:2.4, fn:()=>{ markDone('s1'); setStage(2); waitPause('cp1',2,'⏸CP1 计划确认'); }});
+    // User "继续"
+    SCRIPT.push({t:3.8, fn:()=>{ log('👤 <span class="ok">用户回复「继续」→ 放行，进入下一阶段</span>','ok'); markDone('cp1'); }});
+    // Stage 2
+    SCRIPT.push({t:4.4, fn:()=>{ setStage(3); activate('s2'); log('<span class="stage">▶ 2/12 需求分析</span> 📋PO + 🔬RES 用户故事 + 验收标准','stage'); }});
+    // Stage 3
+    SCRIPT.push({t:5.6, fn:()=>{ markDone('s2'); setStage(4); activate('s3'); log('<span class="stage">▶ 3/12 方案设计</span> 🏗️ARCH 技术方案（简单需求可跳过）','stage'); }});
+    // Stage 4
+    SCRIPT.push({t:6.8, fn:()=>{ markDone('s3'); setStage(5); activate('s4'); log('<span class="stage">▶ 4/12 开发</span> 💻DEV 实现 + 自测 + 提交 PR','stage'); }});
+    // CP2
+    SCRIPT.push({t:8.0, fn:()=>{ markDone('s4'); setStage(6); waitPause('cp2',6,'⏸CP2 开发确认（PR 已建）'); }});
+    // User "继续"
+    SCRIPT.push({t:9.4, fn:()=>{ log('👤 <span class="ok">用户回复「继续」→ 放行，进入 5/12 评审-修复循环</span>','ok'); markDone('cp2'); }});
+    // Stage 5 - loop. We'll emit loop sub-events.
+    SCRIPT.push({t:10.0, fn:()=>{ setStage(7); activate('s5'); log('<span class="stage">▶ 5/12 评审-修复循环</span> 🔍CR 5维评审 + 🔬RES 研究员独立评审，自动连续执行，≥10 轮','stage'); }});
+
+    // --- Loop sub-animation (compressed) ---
+    let loopT = 10.5;
+    const loopStep = 0.5;
+    for (let r = 1; r <= 10; r++) {
+      (function(rr, ts){
+        SCRIPT.push({t: ts, fn:()=>{
+          nodeMap['R'+rr].classList.add('active');
+          log(`<span class="role">[R${rr}/评审棒]</span> 🔍CR 5维评审 diff + 🔬RES 研究员四维评审 → 发现并记录问题（分级🔴🟡🟢）`, 'role');
+        }});
+      })(r, loopT); loopT += loopStep;
+      (function(rr, ts){
+        SCRIPT.push({t: ts, fn:()=>{
+          log(`<span class="role">[R${rr}/修复棒]</span> 💻DEV 修复 🔴/🟡 问题，提交留痕`, 'role');
+        }});
+      })(r, loopT); loopT += loopStep;
+      (function(rr, ts){
+        SCRIPT.push({t: ts, fn:()=>{
+          log(`<span class="role">[R${rr}/复评棒]</span> 复评 → ${rr>=10 ? '<span class="ok">🟢 问题清零，循环结束</span>' : '🟢 通过，继续下一轮'}`, 'role');
+          nodeMap['R'+rr].classList.remove('active');
+          nodeMap['R'+rr].classList.add('done');
+          if (rr>=10) log('<span class="ok">✅ 评审-修复循环汇总卡：10 轮每步（评审/修复/复评）均已在 PR 分别留痕</span>','ok');
+        }});
+      })(r, loopT); loopT += loopStep;
+    }
+    // back to pipeline
+    SCRIPT.push({t: loopT + 0.3, fn:()=>{
+      const s5 = nodeMap['s5']; s5.classList.remove('active'); s5.classList.add('done');
+      markDone('s5');
+    }});
+
+    // Stage 6
+    let nextT = loopT + 1.0;
+    SCRIPT.push({t: nextT, fn:()=>{ setStage(8); activate('s6'); log('<span class="stage">▶ 6/12 测试</span> 🧪QA 测试矩阵 + 缺陷分级 + 信号灯 🟢','stage'); }}); nextT += 1.2;
+    // Stage 7
+    SCRIPT.push({t: nextT, fn:()=>{ markDone('s6'); setStage(9); activate('s7'); log('<span class="stage">▶ 7/12 文档</span> 💻DEV+📋PO 完善文档，落点核对','stage'); }}); nextT += 1.2;
+    // CP3
+    SCRIPT.push({t: nextT, fn:()=>{ markDone('s7'); setStage(10); waitPause('cp3',10,'⏸CP3 合并确认（【合并确认卡】）'); }});
+    // User confirm merge
+    SCRIPT.push({t: nextT + 1.6, fn:()=>{ log('👤 <span class="ok">用户回复「确认合并/继续」→ 放行 8/12</span>','ok'); markDone('cp3'); }});
+    // Stage 8
+    nextT += 2.2;
+    SCRIPT.push({t: nextT, fn:()=>{ setStage(11); activate('s8'); log('<span class="stage">▶ 8/12 PR 合并</span> 🎯PM merge-pull，留痕合并结果','stage'); }}); nextT += 1.2;
+    // Stage 9
+    SCRIPT.push({t: nextT, fn:()=>{ markDone('s8'); setStage(12); activate('s9'); log('<span class="stage">▶ 9/12 发布</span> 💻DEV 版本号 + CHANGELOG + 产物 + Release Notes 四要素','stage'); }}); nextT += 1.2;
+    // Stage 10
+    SCRIPT.push({t: nextT, fn:()=>{ markDone('s9'); setStage(13); activate('s10'); log('<span class="stage">▶ 10/12 汇报</span> 🎯PM 里程碑 + 进度看板 + 汇报','stage'); }}); nextT += 1.2;
+    // Stage 11
+    SCRIPT.push({t: nextT, fn:()=>{ markDone('s10'); setStage(14); activate('s11'); log('<span class="stage">▶ 11/12 复盘</span> 全员：根因/教训/预防/加固 四要素，流水线结束 ✅','stage'); }});
+    // final
+    SCRIPT.push({t: nextT + 1.0, fn:()=>{
+      markDone('s11');
+      log('🎉 <span class="ok">NPC Team 流水线 12 阶段全部完成！</span>','ok');
+      document.querySelectorAll('.role-chip').forEach(c=>c.classList.add('lit'));
+    }});
+  }
+
+  // ---------- Playback engine ----------
+  let scriptIdx = 0;
+  function frame(ts) {
+    if (!playing) return;
+    if (!lastTs) lastTs = ts;
+    const dt = (ts - lastTs) / 1000 * speed;
+    lastTs = ts;
+    t += dt;
+    timeLabel.textContent = 't=' + t.toFixed(1) + 's';
+    while (scriptIdx < SCRIPT.length && SCRIPT[scriptIdx].t <= t) {
+      SCRIPT[scriptIdx].fn();
+      scriptIdx++;
+    }
+    if (scriptIdx >= SCRIPT.length) {
+      playing = false; playBtn.classList.add('active'); pauseBtn.classList.remove('active');
+      return;
+    }
+    rafId = requestAnimationFrame(frame);
+  }
+
+  function start() {
+    if (playing) return;
+    playing = true;
+    playBtn.classList.add('active'); pauseBtn.classList.remove('active');
+    lastTs = 0;
+    rafId = requestAnimationFrame(frame);
+  }
+  function stop() {
+    playing = false;
+    playBtn.classList.add('active'); pauseBtn.classList.remove('active');
+    cancelAnimationFrame(rafId);
+  }
+  function reset() {
+    stop();
+    t = 0; scriptIdx = 0; lastTs = 0;
+    timeLabel.textContent = 't=0.0s';
+    con.innerHTML = '';
+    con.appendChild((()=>{ const d=document.createElement('div'); d.className='line'; d.innerHTML='<span class="t">[init]</span> <span class="info">NPC Team 流水线模拟器就绪。7 角色：🎯PM 📋PO 🏗️ARCH 💻DEV 🔍CR 🧪QA 🔬RES</span>'; return d; })());
+    Object.values(nodeMap).forEach(n => { n.className = n.className.split(' ')[0]; n.classList.add('stage'); });
+    // restore kinds
+    STAGES.forEach(s=>{ const n=nodeMap[s.id]; n.className='node '+s.kind; n.classList.remove('done','active','waiting'); });
+    LOOP_ROUNDS.forEach(r=>{ const n=nodeMap['R'+r]; n.className='node stage'; n.classList.remove('done','active'); });
+    stageTitle.textContent='准备就绪';
+    stageDesc.textContent='点击「播放」开始模拟 NPC Team 流水线';
+    document.querySelectorAll('.role-chip').forEach(c=>c.classList.remove('lit'));
+  }
+
+  playBtn.onclick = start;
+  pauseBtn.onclick = stop;
+  resetBtn.onclick = reset;
+  speedSel.onchange = () => { speed = parseFloat(speedSel.value); };
+
+  buildScript();
+})();
+</script>
+</body>
+</html>
