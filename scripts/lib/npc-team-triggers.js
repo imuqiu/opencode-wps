@@ -16,6 +16,10 @@
  * - 研究员 / 研究员角色：🔬 研究员 RES（需求背景调研、问题根因定位、方案可行性研究）触发语义
  * - PR 合并 / 合并确认 / 发布 / Release Notes：合并与发布阶段语义（8/12 合并前 ⏸CP3 暂停待用户确认；
  *   9/12 发布真实执行版本号/CHANGELOG/发布产物/Release Notes 四要素并留痕）
+ *
+ * 注：DOC_DESC_TRIGGERS 为 description 语义化触发短语集合，除「使用方式一」示例外，还包含按角色/阶段
+ * 的语义触发词（如“研究员”“PR 合并”等），作为 NPC 自动加载 description 的覆盖基准；新增触发词须
+ * 同时维护 DESC_TRIGGERS 与 DOC_DESC_TRIGGERS，并在 docs「使用方式一」或「角色卡片」中体现对应语义。
  */
 
 /** description 必须包含的触发词（每项为正则，全部命中才算合法） */
