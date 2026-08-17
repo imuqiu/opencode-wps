@@ -125,7 +125,7 @@ before 钩子拦截违规 → 工具执行 → after 钩子更新状态 → befo
 
 > 📖 校对技术设计细节见 [proofread-fluency-conciseness-design.md](./proofread-fluency-conciseness-design.md)；治理插件实现见 [AGENTS.md](../AGENTS.md) 与 `.opencode/plugins/governance.js`。
 
-> ℹ️ P1-P16 共 16 条规则，表格中 P2-P3/P4-P7/P8-P10 为编号合并展示，实际每条规则均独立在 `governance.js` 实现。本次重构（Issue #151）在单 agent 逐批校对基础上，新增 **P19/P20/P21** 以支持「规划/管理/执行/报告」4-subagent 并行协同（详见下文「校对 Subagent 组协同」）。
+> ℹ️ P1-P16 共 16 条规则，表格中 P2-P3/P4-P7/P8-P10 为编号合并展示，实际每条规则均独立在 `governance.js` 实现。本次重构（Issue #151）在单 agent 逐批校对基础上，新增 **P19/P20/P21/P22** 以支持「规划/管理/执行/报告」4-subagent 并行协同（详见下文「校对 Subagent 组协同」）。
 
 ### 校对 Subagent 组协同（Issue #151 重构）
 
@@ -143,3 +143,4 @@ before 钩子拦截违规 → 工具执行 → after 钩子更新状态 → befo
 2. **逐步凭证落盘（防幻觉）**：执行 agent 每批携带 `_batch_id` + `_steps_log`（6 步凭证），管理 agent 对照标准步骤链核对缺步即重派；governance **P20** 拦截「带 `_batch_id` 却缺非空 `_steps_log`」。
 3. **并行隔离**：执行 agent 只修自己区间（`replaceInParagraph` 按 paragraphIndex 隔离），规避 WPS 单进程 COM 并发修订冲突；并行度 ≤3（P21 校验）。
 4. **统计准确优先**：报告从磁盘 session 归并真实 issue 数据（不以 AI 上下文中间态为准），批次完整性 + 修订数交叉校验，疑似缺失/未完成标注告警而非静默。
+5. **进度追踪 + 报告硬性完整性门禁（Issue #151 遗留修复）**：执行 agent 每次 `proofreadAccumulate` 必报 `_processed_to_paragraph`（P22 强制，服务端追踪覆盖进度）；`generateProofreadReport` 为**硬门禁**——编排模式全部批次 done+凭证完整且区间覆盖全文，或串行模式进度 ≥ totalParagraphs，否则直接返回 `success=false` 拒绝生成，杜绝"中途结束就假装完成"、"匆忙生成报告"。

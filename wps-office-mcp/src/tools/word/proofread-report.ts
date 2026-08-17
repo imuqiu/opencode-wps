@@ -97,6 +97,20 @@ interface SessionData {
   totalRevisions?: number;
   /** 疑似问题（Issue #116 问题十一）：AI 识别但未确认的问题，报告单独列出「待确认」 */
   suspectedIssues?: ProofreadIssueEntry[];
+  /**
+   * 校对进度（Issue #151 遗留问题彻底修复）：服务端追踪文档实际校对覆盖进度，
+   * 用于 `generateProofreadReport` 的硬性完整性门禁——
+   * 串行模式下若 `processedToParagraph < docInfo.totalParagraphs`，禁止生成报告（防"中途结束就假装完成"）。
+   * 由 `proofreadAccumulate` 每次上报 `_processed_to_paragraph` 增量更新（取各批最大值）。
+   */
+  progress?: {
+    /** 已校对到的最末段落索引（含），1 起 */
+    processedToParagraph: number;
+    /** 文档总段数（与 docInfo.totalParagraphs 一致，冗余便于校验） */
+    totalParagraphs: number;
+    /** 是否已覆盖全文（processedToParagraph >= totalParagraphs） */
+    allBatchesComplete?: boolean;
+  };
 }
 
 // ==================== 会话 Map 与清理机制 ====================
@@ -659,6 +673,7 @@ export const proofreadAccumulateHandler: ToolHandler = async (
     _batch_id,
     _steps_log,
     _batch_allocations,
+    _processed_to_paragraph,
   } = args as {
     session_id: string;
     issues?: ProofreadIssueEntry[];
@@ -666,6 +681,8 @@ export const proofreadAccumulateHandler: ToolHandler = async (
     total_revisions?: number;
     /** 疑似问题（Issue #116 问题十一）：AI 识别但未确认的问题 */
     suspected_issues?: ProofreadIssueEntry[];
+    /** 本批已校对到的最末段落索引（Issue #151 遗留修复）：服务端追踪进度，供报告硬性完整性门禁 */
+    _processed_to_paragraph?: number;
     /** 批次标识（Issue #151 校对 subagent 并行重构）：执行 agent 声明本批所属批次，随凭证落盘 */
     _batch_id?: string;
     /** 本批逐步执行凭证（Issue #151 决策 5 防幻觉）：执行 agent 在 proofreadAccumulate 时一并提交，服务端落盘
@@ -1001,6 +1018,25 @@ export const proofreadAccumulateHandler: ToolHandler = async (
     }
   }
 
+  // 追踪校对进度（Issue #151 遗留修复）：串行/并行均上报 _processed_to_paragraph，
+  // 服务端记录已校对到的最末段落，供 generateProofreadReport 硬性完整性门禁（防"中途结束就假装完成"）。
+  if (
+    typeof _processed_to_paragraph === 'number' &&
+    Number.isFinite(_processed_to_paragraph) &&
+    _processed_to_paragraph >= 1
+  ) {
+    const totalPara =
+      typeof session.docInfo?.totalParagraphs === 'number' ? session.docInfo.totalParagraphs : 0;
+    const prev = session.progress?.processedToParagraph ?? 0;
+    // 取各批上报的最大值（并行多执行 agent 各自上报自己的区间终点）
+    session.progress = {
+      processedToParagraph: Math.max(prev, _processed_to_paragraph),
+      totalParagraphs: totalPara,
+      allBatchesComplete:
+        totalPara > 0 ? Math.max(prev, _processed_to_paragraph) >= totalPara : undefined,
+    };
+  }
+
   // 增量落盘（Issue #116 问题十二）：每次累加后同步到磁盘，服务重启后可恢复
   // 落盘失败不阻塞主流程（返回警告而非失败），但需向 AI 暴露信号
   const diskWriteSuccess = saveSessionToDisk(session_id, session);
@@ -1016,6 +1052,11 @@ export const proofreadAccumulateHandler: ToolHandler = async (
       stepsPersisted,
       // Issue #151 R3-2：暴露批次分配表登记状态，供规划 agent 判断分批计划是否落盘成功
       batchAllocationsPersisted,
+      // Issue #151 遗留修复：暴露服务端已追踪的校对进度，供 AI/管理 agent 判断覆盖是否完整
+      progress:
+        session.progress && typeof session.progress.processedToParagraph === 'number'
+          ? session.progress
+          : undefined,
     },
     content: [
       {
@@ -1023,6 +1064,12 @@ export const proofreadAccumulateHandler: ToolHandler = async (
         text:
           `已累加 ${issues.length} 条问题到会话 ${session_id}。\n` +
           `当前会话累计: ${session.issues.length} 条问题` +
+          (session.progress && typeof session.progress.processedToParagraph === 'number'
+            ? `\n已校对进度: ${session.progress.processedToParagraph} / ${session.progress.totalParagraphs} 段` +
+              (session.progress.allBatchesComplete
+                ? '（已覆盖全文 ✅，可生成报告）'
+                : '（未覆盖全文，生成报告会被完整性门禁拒绝）')
+            : '') +
           (skippedInvalidCount > 0
             ? `\n⚠️ 本批 ${skippedInvalidCount} 条因缺 original/suggestion 被跳过（有效条目已累加）；请 AI 补充缺失字段后重新累加这些被跳过的问题`
             : '') +
@@ -1170,6 +1217,91 @@ export const generateProofreadReportHandler: ToolHandler = async (
   }
 
   const { issues, docInfo, createdAt, totalRevisions, suspectedIssues } = session;
+
+  // ═══ 硬性完整性门禁（Issue #151 遗留问题彻底修复）═══
+  // 背景：此前报告生成对"未完成"仅打告警不阻塞，且批次分配/进度校验全部 opt-in（依赖 AI 自愿传
+  // _batch_id/_batch_allocations），导致大模型可绕过"防幻觉"机制：未跑完全部段落就调用
+  // generateProofreadReport，服务端照样返回 success=true，AI 便"假装已完成"并匆忙交付报告。
+  //
+  // 修复：在服务端加一道**强制、非 opt-in** 的完整性门禁，以下任一未满足则**拒绝生成报告**（返回
+  // success=false + 明确错误），而非仅打告警：
+  //  ① 若登记了批次分配表（编排模式）：全部批次必须 done 且步骤凭证完整，且区间覆盖全文（无缺口/超界/重叠）；
+  //  ② 若未登记批次分配表（串行模式）：服务端追踪的已校对进度 processedToParagraph 必须 >= docInfo.totalParagraphs。
+  //  ③ 两者皆无进度依据（历史会话/异常）：保留原有告警放行，避免误伤既有合法串行流程。
+  const batchAllocs = loadBatchAllocations(session_id);
+  const incomplete = getIncompleteBatches(session_id);
+  const totalPara = typeof docInfo?.totalParagraphs === 'number' ? docInfo.totalParagraphs : 0;
+  const processedTo = session.progress?.processedToParagraph;
+
+  // ① 编排模式（批次分配表已登记）：硬性要求全部批次完整 + 区间覆盖全文
+  if (batchAllocs.length > 0) {
+    const errors: string[] = [];
+    if (incomplete.length > 0) {
+      const list = incomplete
+        .map(b => `${b.batchId}(段落${b.range.start}-${b.range.end}, ${b.status})`)
+        .join(', ');
+      errors.push(
+        `仍有 ${incomplete.length} 批未完成（含 done 但步骤凭证不完整）：${list}。` +
+          `请由管理/执行 subagent 补完这些批次并落盘完整步骤凭证后再生成报告。`
+      );
+    }
+    // 区间覆盖完整性：合并批次区间，检查缺口/超界/重叠
+    if (totalPara > 0) {
+      const sorted = batchAllocs.map(b => b.range).sort((a, b) => a.start - b.start);
+      let cursor = 1;
+      const gaps: Array<{ start: number; end: number }> = [];
+      for (const r of sorted) {
+        if (r.start > cursor) gaps.push({ start: cursor, end: r.start - 1 });
+        cursor = Math.max(cursor, r.end + 1);
+      }
+      if (cursor <= totalPara) gaps.push({ start: cursor, end: totalPara });
+      if (gaps.length > 0) {
+        const gs = gaps
+          .map(g => (g.start === g.end ? `${g.start}` : `${g.start}-${g.end}`))
+          .join(', ');
+        errors.push(`批次区间未覆盖完整：段落 ${gs} 未被任何批次分配，请补充对应批次后重试。`);
+      }
+      const exceed = batchAllocs.filter(b => b.range.end > totalPara);
+      if (exceed.length > 0) {
+        errors.push(
+          `批次区间超出文档总段数：${exceed.map(b => b.batchId).join(', ')} 的 end 超过 ${totalPara} 段。`
+        );
+      }
+    }
+    if (errors.length > 0) {
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [
+          {
+            type: 'text',
+            text:
+              `【完整性门禁】本次校对未完整覆盖，**禁止生成报告**（防"假装完成/中途结束"）：\n` +
+              errors.map(e => `- ${e}`).join('\n') +
+              `\n请完成全部批次后再重新调用 generateProofreadReport。`,
+          },
+        ],
+        error: `校对未完整完成，禁止生成报告: ${errors.join(' ')}`,
+      };
+    }
+  } else if (typeof processedTo === 'number' && totalPara > 0 && processedTo < totalPara) {
+    // ② 串行模式：有明确进度且未覆盖全文 → 拒绝生成报告（防"中途结束就假装完成"）
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [
+        {
+          type: 'text',
+          text:
+            `【完整性门禁】本次校对尚未完成，**禁止生成报告**：\n` +
+            `已校对到第 ${processedTo} 段，文档共 ${totalPara} 段，尚有 ${totalPara - processedTo} 段未校对。\n` +
+            `请继续完成剩余段落（每段走完整步骤链并 proofreadAccumulate 上报 _processed_to_paragraph），` +
+            `覆盖全文后再重新调用 generateProofreadReport。`,
+        },
+      ],
+      error: `校对未覆盖全文，禁止生成报告: 已到第 ${processedTo}/${totalPara} 段`,
+    };
+  }
 
   if (issues.length === 0) {
     // 评审第 6 轮 C3：空 issues 但存在疑似问题时，不走纯空报告，

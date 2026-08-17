@@ -85,6 +85,22 @@ planner(规划) → manager(管理) → executor×3(执行,并行) → reporter(
 - **步骤名 trim（R11-1）**：P20 校验、`appendStepRecord` 落盘、`getMissingSteps`/`getIncompleteBatches` 判定均对步骤名 `trim()`，避免带空白步骤名被误拦/误判缺失。
 - **凭证提交失败文案（R10-1）**：批次分配表登记失败时提示「批次区间非法/重叠，或存储不可写」，区分原因。
 
+### 6. 报告硬性完整性门禁 + 进度追踪（Issue #151 遗留问题彻底修复）
+
+> 这是对原方案关键缺口的修复：此前批次完整性/覆盖校验在报告生成时**仅告警不阻塞**，且全部依赖 AI 自愿传 `_batch_id`/`_batch_allocations`（opt-in），导致实际跑校对时 AI 可绕过——未跑完全文就调用 `generateProofreadReport`，服务端照样 `success=true`，AI 便"假装已完成"并匆忙交付报告。
+
+**修复机制（服务端强制、非 opt-in）：**
+
+- **进度追踪**：`proofreadAccumulate` 每次必须上报 `_processed_to_paragraph`（本批已校对到的最末段落），服务端在 session 记录 `progress.processedToParagraph`（取各批最大值，兼容并行）。治理 **P22** 强制校验（规划初始化登记豁免），缺此字段直接拦截。
+- **报告硬门禁（`generateProofreadReport`）**：以下任一未满足则**拒绝生成报告**（`success=false` + 明确错误），而非仅打告警：
+  ① 编排模式（批次分配表已登记）：全部批次 `done` 且凭证完整 + 区间覆盖全文（无缺口/超界/重叠）；
+  ② 串行模式（无批次表）：`progress.processedToParagraph >= docInfo.totalParagraphs`；
+  ③ 两者皆无进度依据（历史会话）：保留原告警放行，不误伤既有合法串行流程。
+
+**效果**：AI 无法再"中途结束就假装完成"、无法跳过段落漏校、无法在未覆盖全文前匆忙生成报告——服务端会在报告阶段强制拦截并要求补齐。
+
+> **已知边界（评审第 2 轮）**：串行模式下的进度门禁依赖治理 P12/P18 强制顺序推进（必须先完成本批 proofread 周期才能获取下一批），能拦截"中途停止/跳过中段"；极端"仅跳最后一批"场景（先 proofread 到 N-1，最后一批只 getDocumentParagraphs 不 proofread 就报 progress=N）仍有残余可能。**完整闭环路径是编排模式（登记批次分配表 + 逐步凭证落盘）**——`getIncompleteBatches` 按批次校验 done+凭证完整，任一最后批次被跳也会被拦截。建议大文档一律走编排模式。
+
 ## 涉及文件
 
 | 文件 | 操作 |

@@ -34,6 +34,7 @@ color: "#f59e0b"
 ## 监督与校验
 
 - **每步落盘**：执行 subagent 每次调用 `proofreadAccumulate` 后，`stepsLog` 增量写入 session 磁盘文件。
+- **进度追踪（Issue #151 遗留修复，P22）**：每个执行 subagent 的 `proofreadAccumulate` **必须携带 `_processed_to_paragraph`**（本批已校对到的最末段落），服务端据此记录 `progress.processedToParagraph`。管理 agent 须核对所有批次的 `_processed_to_paragraph` 已覆盖 1..totalParagraphs（合并区间无缺口），否则报告硬性完整性门禁会拒绝生成报告。
 - **凭证完整性核对（R4-3 操作指引）**：监督时读取磁盘 session JSON（`~/.opencode-wps/proofread-sessions/{sessionId}.json`）的 `batchAllocations[].stepsLog`，对照标准 6 步链逐一核对每个批次是否完整覆盖 `getDocumentParagraphs → getDocumentTextByRange → proofreadBasic → confirmBatchAiProofread → replaceInParagraph → proofreadAccumulate`。任何一步缺失 → 该批状态回 `pending` 并重新派发。
   > 说明：步骤以名称去重判定覆盖（同一步骤多笔按 timestamp 区分审计，不影响完整性）。
 - **修订数核对（防幻觉核心，R4-2）**：凭证是 `proofreadAccumulate` 时一次性提交整批声明，**声明本身不可信**。必须用 `getTrackChangesStatus` 的实际修订数增量，与每批 `_steps_log` 的 `revisionsBefore→After` 比对：本批 `revisionsAfter - revisionsBefore` 应与实际修订增量一致（replaceInParagraph 产生修订）。若声明了 replaceInParagraph 但实际修订数无变化 → 该步疑似编造 → 批次判定未完成重派。

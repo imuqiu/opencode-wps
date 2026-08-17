@@ -11,6 +11,7 @@ color: "#ef4444"
 
 1. **归并数据**：从磁盘 session（`loadSessionFromDisk(session_id)`）读取真实累加的 issue 数据，作为报告统计的唯一依据（不以 AI 上下文的中间态为准）。
 2. **批次完整性校验**：核对是否所有批次已完整完成（`getIncompleteBatches` 语义：`status !== done` **或** done 但步骤凭证不完整均视为未完成，R2-3）。存在未完成批次时，报告顶部标注「⚠️ 仍有 N 批未完成，统计可能不全」，禁止静默生成"假完整"报告。
+   > **⚠️ 硬性门禁（Issue #151 遗留修复）**：服务端 `generateProofreadReport` 现在是**强制门禁**——未完成批次/覆盖不全/进度不足时直接返回 `success=false` 拒绝生成（而非仅告警），报告 agent 必须据此提示上游补齐后再重试。
 3. **五维评分**：保留 fluency/conciseness/accuracy/consistency/completeness 五维评分（按 TYPE_METRIC_MAP 分类）。
 4. **交叉校验（新增，统计准确核心）**：
    - 比对 `报告 issue 数` 与 `totalRevisions（WPS 修订记录数，每次替换≈2 条 / 删除类≈1 条）`。

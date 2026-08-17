@@ -39,6 +39,7 @@ color: "#3b82f6"
 >     session_id: sessionId,
 >     issues: [/* 本批问题 */],
 >     _batch_id: "batch-3",      // 必须：与批次分配表中的 batchId 一致
+>     _processed_to_paragraph: 300, // 必须：本批已校对到的最末段落（P22 防"中途结束"）
 >     _steps_log: [              // 必须：本批 6 步完整凭证
 >       { step: "getDocumentParagraphs", paragraphIndex: 201 },
 >       { step: "getDocumentTextByRange", paragraphIndex: 201 },

@@ -614,6 +614,29 @@ export const WpsGovernancePlugin = async () => {
               );
             }
           }
+          // P22（Issue #151 遗留问题彻底修复）：
+          // 串行/并行 proofreadAccumulate 必须上报 _processed_to_paragraph（本批已校对到的最末段落），
+          // 否则服务端无法追踪真实覆盖进度，报告硬性完整性门禁无法生效（防"中途结束就假装完成"）。
+          // 豁免：规划 agent 初始化 session 时的首次登记（无 issues 且带 _batch_allocations），
+          // 此时尚无实际校对，不必上报进度。
+          const isPlannerInit =
+            !innerArgs._batch_id &&
+            Array.isArray(innerArgs._batch_allocations) &&
+            innerArgs._batch_allocations.length > 0 &&
+            (!Array.isArray(innerArgs.issues) || innerArgs.issues.length === 0);
+          if (
+            !isPlannerInit &&
+            (typeof innerArgs._processed_to_paragraph !== 'number' ||
+              !Number.isFinite(innerArgs._processed_to_paragraph) ||
+              innerArgs._processed_to_paragraph < 1)
+          ) {
+            throw new Error(
+              `【执行治理】【P22】proofreadAccumulate 必须携带 _processed_to_paragraph（本批已校对到的最末段落索引，≥1）。\n` +
+                `服务端据此追踪文档覆盖进度；缺此字段则无法判定校对是否覆盖全文，` +
+                `generateProofreadReport 将因完整性门禁拒绝生成报告。\n` +
+                `请在本批校对完成后，将实际处理到的段落索引作为 _processed_to_paragraph 传入。`
+            );
+          }
           return;
         }
 

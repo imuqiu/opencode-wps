@@ -764,7 +764,8 @@ await wps_office_execute({
       totalParagraphs: totalParagraphs,
       totalWords: totalWords
     },
-    total_revisions: currentRevisionCount
+    total_revisions: currentRevisionCount,
+    _processed_to_paragraph: batchEndPara  // 本批已校对到的最末段落索引（P22 必填，防"中途结束就假装完成"）
   }
 })
 
@@ -774,10 +775,19 @@ await wps_office_execute({
   arguments: {
     session_id: sessionId,
     issues: allIssues,  // 本批合并去重后的 issues（不含前几批）
-    total_revisions: currentRevisionCount
+    total_revisions: currentRevisionCount,
+    _processed_to_paragraph: batchEndPara  // 必填：本批处理到的末段索引，服务端据此追踪覆盖进度
   }
 })
 ```
+
+> **🔥 `_processed_to_paragraph` 必填（P22）**：每次 `proofreadAccumulate` 都必须携带本批已校对到的最末段落索引（≥1）。
+> 服务端据此追踪文档真实覆盖进度；缺此字段会被治理 P22 拦截，且 `generateProofreadReport` 将因完整性门禁拒绝生成报告（防"中途结束就假装完成"）。
+>
+> **🔴 报告硬性完整性门禁（Issue #151 遗留修复）**：`generateProofreadReport` 现在是**硬门禁**而非仅告警——
+> ① 若登记了批次分配表（编排模式）：全部批次必须 `done` 且步骤凭证完整、区间覆盖全文，否则**拒绝生成报告**；
+> ② 若串行模式：已校对进度 `_processed_to_paragraph` 必须 ≥ `totalParagraphs`，否则**拒绝生成报告**并提示剩余段落。
+> 禁止在未覆盖全文前匆忙调用 `generateProofreadReport`，否则会收到 `success=false` + 明确错误，需补齐后再重试。
 
 > **⚠️ 每项 issue 必须携带 type**（Layer 1 来自 proofreadBasic 返回，Layer 2 由你输出真实类型）。
 > **每项 issue 必须携带 source**（Layer 1 标 `source: 'mcp'`，Layer 2 标 `source: 'ai'`）；
@@ -936,6 +946,10 @@ COM 超时已从 30s 增加到 60s（#116 问题八，MCP v1.1.1 起），200 �
 | **P16** | **替换内容与已知 issue 交叉校验** | `replaceInParagraph` | `findText` 不匹配任何 issue 的 `original` 原文 |
 | **P17** | **禁止手动 write 伪造校对报告** | `writeFile`/`write` | 写「校对报告」路径且服务端未成功生成报告 |
 | **P18** | **禁止重复获取已处理段落** | `getDocumentParagraphs` | 已处理到 N 段后又从段落 1 回卷获取 |
+| **P19** | **批次归属校验（并行隔离）** | `getDocumentParagraphs` / `replaceInParagraph` | 执行 agent 请求/替换区间越出分配批次区间 |
+| **P20** | **逐步凭证落盘（防幻觉）** | `proofreadAccumulate` | 携带 `_batch_id` 却缺非空 `_steps_log`，或步骤名非法 |
+| **P21** | **并行区间重叠检测** | `getDocumentParagraphs` | 同一会话不同批次请求区间相交 |
+| **P22** | **必须上报校对进度** | `proofreadAccumulate` | 未携带 `_processed_to_paragraph`（规划初始化登记豁免） |
 
 ### 通用执行规则（G1-G7，始终生效）
 
@@ -960,6 +974,8 @@ COM 超时已从 30s 增加到 60s（#116 问题八，MCP v1.1.1 起），200 �
 **P17 说明**（session_ffa8 问题一）：写文件路径含「校对报告」时，若服务端尚未通过 `generateProofreadReport` 成功生成报告（`reportGenerated !== true`），插件直接拦截。这防止 AI 在 `generateProofreadReport` 失败后手动 `write` 自拼 Markdown 报告（真实会话中出现过 3 份互相矛盾的手写报告）。
 
 **P18 说明**（session_ffa8 问题四）：`getDocumentParagraphs` 在已处理到段落 N 后，再次从段落 1 回卷获取即被拦截。批次必须严格连续，禁止把已检查过的段落重复扫描（真实会话中 AI 在已处理完第 1-2 批后又 `getDocumentParagraphs(start=1)` 重复跑了一遍）。如需重新开始，请先 `getActiveDocument` 重置进度。
+
+**P22 说明**（Issue #151 遗留修复）：每次 `proofreadAccumulate` 必须携带 `_processed_to_paragraph`（本批已校对到的最末段落索引）。服务端据此追踪真实覆盖进度，`generateProofreadReport` 的**硬性完整性门禁**据此判断是否允许生成报告——未覆盖全文（含编排模式有未完成批次、串行模式进度不足）时直接拒绝生成，杜绝"中途结束就假装完成"。规划 agent 初始化登记（带 `_batch_allocations` 且无 issues）豁免。
 
 **规则 2a 说明**：首次 `getDocumentParagraphs` 必须从第 1 段开始。若 `lastBatchParaIndex === 0` 时 `start_paragraph !== 1`，插件直接拒绝。这是为了防止从文档中间开始校对导致遗漏。
 

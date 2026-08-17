@@ -109,6 +109,7 @@ const NON_TOOL_NAMES = new Set([
   '_batch_id',
   '_steps_log',
   '_batch_allocations',
+  '_processed_to_paragraph',
 ]);
 
 /**

@@ -297,6 +297,7 @@ describe('governance 并行模式适配（Issue #151 R1-2/R1-3）', () => {
           session_id: 'sess-r42b',
           issues: [],
           _batch_id: 'batch-1',
+          _processed_to_paragraph: 100,
           _steps_log: [
             { step: 'getDocumentParagraphs', paragraphIndex: 1 },
             { step: 'proofreadAccumulate', paragraphIndex: 1 },
@@ -356,6 +357,7 @@ describe('governance 并行模式适配（Issue #151 R1-2/R1-3）', () => {
           session_id: 'sess-r111',
           issues: [],
           _batch_id: 'batch-1',
+          _processed_to_paragraph: 100,
           _steps_log: [
             { step: ' getDocumentParagraphs', paragraphIndex: 1 }, // 带前导空白
             { step: 'proofreadAccumulate ', paragraphIndex: 1 }, // 带尾随空白
@@ -367,5 +369,79 @@ describe('governance 并行模式适配（Issue #151 R1-2/R1-3）', () => {
       threw = true;
     }
     expect(threw).toBe(false); // trim 后步骤名合法，P20 不拦截
+  });
+
+  it('P22：proofreadAccumulate 缺 _processed_to_paragraph 时拦截（Issue #151 遗留修复）', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    let threw = false;
+    let msg = '';
+    try {
+      await after(
+        execInput('parallel-p22', 'c1', 'proofreadAccumulate', {
+          session_id: 'sess-p22',
+          issues: [],
+          _batch_id: 'batch-1',
+          _steps_log: [{ step: 'getDocumentParagraphs', paragraphIndex: 1 }],
+          // 缺 _processed_to_paragraph
+        }),
+        { content: [{ type: 'text', text: 'ok' }], isError: false }
+      );
+    } catch (e: any) {
+      threw = true;
+      msg = String(e.message);
+    }
+    expect(threw).toBe(true);
+    expect(msg).toContain('P22');
+  });
+
+  it('P22：规划 agent 初始化登记（带 _batch_allocations 且无 issues）豁免不拦截', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    let threw = false;
+    try {
+      await after(
+        execInput('parallel-p22b', 'c1', 'proofreadAccumulate', {
+          session_id: 'sess-p22b',
+          issues: [],
+          doc_info: {
+            fileName: 'd.docx',
+            filePath: '/p/d.docx',
+            totalParagraphs: 200,
+            totalWords: 1000,
+          },
+          _batch_allocations: [
+            { batchId: 'b1', range: { start: 1, end: 100 }, status: 'pending' },
+            { batchId: 'b2', range: { start: 101, end: 200 }, status: 'pending' },
+          ],
+          // 规划初始化，无 _processed_to_paragraph → 应豁免
+        }),
+        { content: [{ type: 'text', text: 'ok' }], isError: false }
+      );
+    } catch (e: any) {
+      threw = true;
+    }
+    expect(threw).toBe(false);
+  });
+
+  it('P22：携带合法 _processed_to_paragraph 时放行', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    let threw = false;
+    try {
+      await after(
+        execInput('parallel-p22c', 'c1', 'proofreadAccumulate', {
+          session_id: 'sess-p22c',
+          issues: [],
+          _batch_id: 'batch-1',
+          _processed_to_paragraph: 200,
+          _steps_log: [{ step: 'getDocumentParagraphs', paragraphIndex: 1 }],
+        }),
+        { content: [{ type: 'text', text: 'ok' }], isError: false }
+      );
+    } catch (e: any) {
+      threw = true;
+    }
+    expect(threw).toBe(false);
   });
 });

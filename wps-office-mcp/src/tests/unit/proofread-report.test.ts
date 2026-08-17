@@ -2961,8 +2961,10 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
     ]);
     const result = await generateProofreadReportHandler({ session_id: s });
     const text = result.content[0].text!;
+    // Issue #151 遗留修复：未完成批次现在是硬性门禁（BLOCK），而非仅告警
+    expect(result.success).toBe(false);
+    expect(text).toContain('完整性门禁');
     expect(text).toContain('仍有 1 批未完成');
-    expect(text).toContain('统计可能不全');
   });
 
   it('全部批次完成时无批次完整性告警', async () => {
@@ -3032,8 +3034,10 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
     ]);
     const result = await generateProofreadReportHandler({ session_id: s });
     const text = result.content[0].text!;
+    // Issue #151 遗留修复：done 但凭证不完整现在是硬性门禁（BLOCK）
+    expect(result.success).toBe(false);
+    expect(text).toContain('完整性门禁');
     expect(text).toContain('仍有 1 批未完成');
-    expect(text).toContain('统计可能不全');
   });
 
   it('存在并行 running 批次区间相交时报告标注并行区间冲突（评审第 3 轮 R4-2）', async () => {
@@ -3086,8 +3090,9 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
       ],
     });
     const result = await generateProofreadReportHandler({ session_id: s });
-    const text = result.content[0].text!;
-    expect(text).toContain('并行区间冲突');
+    // Issue #151 遗留修复：running（未完成）批次现在属于硬性门禁（BLOCK）
+    expect(result.success).toBe(false);
+    expect(result.content[0].text).toContain('完整性门禁');
   });
 
   it('未登记批次分配表时报告提示未检测到批次（评审第 9 轮 R10-2）', async () => {
@@ -3364,8 +3369,9 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
       ],
     });
     const result = await generateProofreadReportHandler({ session_id: s });
-    const text = result.content[0].text!;
-    expect(text).toContain('批次区间重叠');
+    // Issue #151 遗留修复：done 但无凭证（incomplete）→ 硬性门禁 BLOCK
+    expect(result.success).toBe(false);
+    expect(result.content[0].text).toContain('完整性门禁');
   });
 
   it('R10-2：docInfo 字段缺失时报告不显示 undefined（兜底为未知/0）', async () => {
@@ -3441,8 +3447,9 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
       ],
     });
     const result = await generateProofreadReportHandler({ session_id: s });
-    const text = result.content[0].text!;
-    expect(text).toContain('批次区间超出文档总段数');
+    // Issue #151 遗留修复：done 但无凭证（incomplete）→ 硬性门禁 BLOCK（含超界提示）
+    expect(result.success).toBe(false);
+    expect(result.content[0].text).toContain('完整性门禁');
   });
 
   it('R11-2：running 批次数超过 3 时报告提示并行度超限', async () => {
@@ -3495,7 +3502,148 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
       ],
     });
     const result = await generateProofreadReportHandler({ session_id: s });
-    const text = result.content[0].text!;
-    expect(text).toContain('并行度超限');
+    // Issue #151 遗留修复：running（未完成）批次 → 硬性门禁 BLOCK
+    expect(result.success).toBe(false);
+    expect(result.content[0].text).toContain('完整性门禁');
+  });
+
+  it('串行模式：未覆盖全文（processedTo < totalParagraphs）时禁止生成报告（Issue #151 遗留修复）', async () => {
+    const s = sid('serial-incomplete');
+    sessionIssues.set(s, {
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
+      ],
+      docInfo: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 200,
+        totalWords: 1000,
+      },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 2,
+      progress: { processedToParagraph: 50, totalParagraphs: 200, allBatchesComplete: false },
+    });
+    const result = await generateProofreadReportHandler({ session_id: s });
+    expect(result.success).toBe(false);
+    expect(result.content[0].text).toContain('完整性门禁');
+    expect(result.content[0].text).toContain('尚有 150 段未校对');
+  });
+
+  it('串行模式：覆盖全文（processedTo >= totalParagraphs）后允许生成报告（Issue #151 遗留修复）', async () => {
+    const s = sid('serial-complete');
+    sessionIssues.set(s, {
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
+      ],
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 100, totalWords: 500 },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 2,
+      progress: { processedToParagraph: 100, totalParagraphs: 100, allBatchesComplete: true },
+    });
+    const result = await generateProofreadReportHandler({ session_id: s });
+    expect(result.success).toBe(true);
+  });
+
+  it('串行模式：无进度信息时放行（历史会话兼容，不误伤既有串行流程）', async () => {
+    const s = sid('serial-noprogress');
+    sessionIssues.set(s, {
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
+      ],
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 100, totalWords: 500 },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 2,
+    });
+    const result = await generateProofreadReportHandler({ session_id: s });
+    expect(result.success).toBe(true);
+    expect(result.content[0].text).toContain('未检测到批次分配表');
+  });
+
+  it('proofreadAccumulate 上报 _processed_to_paragraph 后报告硬门禁联动生效（Issue #151 遗留修复）', async () => {
+    const s = sid('accum-progress');
+    const acc1 = await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      doc_info: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 100,
+        totalWords: 500,
+      },
+      _processed_to_paragraph: 40,
+    });
+    expect(acc1.success).toBe(true);
+    const blocked = await generateProofreadReportHandler({ session_id: s });
+    expect(blocked.success).toBe(false);
+    expect(blocked.content[0].text).toContain('尚有 60 段未校对');
+    await proofreadAccumulateHandler({ session_id: s, issues: [], _processed_to_paragraph: 100 });
+    const allowed = await generateProofreadReportHandler({ session_id: s });
+    expect(allowed.success).toBe(true);
+  });
+
+  it('编排模式：批次全部完成+凭证完整但区间未覆盖全文时禁止生成报告（Issue #151 遗留修复）', async () => {
+    const s = sid('gap-complete-cred');
+    sessionIssues.set(s, {
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
+      ],
+      docInfo: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 300,
+        totalWords: 1500,
+      },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 2,
+    });
+    // 两个批次都 done 且凭证完整，但只覆盖 1-100 和 250-300，中间 101-249 有缺口
+    const FULL = [
+      { step: 'getDocumentParagraphs', timestamp: 1, paragraphIndex: 1 },
+      { step: 'getDocumentTextByRange', timestamp: 2, paragraphIndex: 1 },
+      { step: 'proofreadBasic', timestamp: 3, paragraphIndex: 1 },
+      { step: 'confirmBatchAiProofread', timestamp: 4, paragraphIndex: 1 },
+      { step: 'replaceInParagraph', timestamp: 5, paragraphIndex: 1 },
+      { step: 'proofreadAccumulate', timestamp: 6, paragraphIndex: 1 },
+    ];
+    proofreadStore.saveBatchAllocations(s, [
+      { batchId: 'b1', range: { start: 1, end: 100 }, status: 'done', stepsLog: FULL },
+      { batchId: 'b2', range: { start: 250, end: 300 }, status: 'done', stepsLog: FULL },
+    ]);
+    const result = await generateProofreadReportHandler({ session_id: s });
+    expect(result.success).toBe(false);
+    expect(result.content[0].text).toContain('完整性门禁');
+    expect(result.content[0].text).toContain('101-249');
   });
 });

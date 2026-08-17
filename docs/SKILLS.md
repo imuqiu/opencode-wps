@@ -203,7 +203,7 @@ AI 识别：使用 wps-ppt skill
 **典型场景**：
 - 「把这段文字设为标题1」（`wps_word_apply_style`）
 - 「按模板批量填值」（`smartFillField` 五模式 + 修订追踪）
-- 「帮我校对文档」（`proofreadBasic` + `replaceInParagraph`，P1-P16 严格逐批）
+- 「帮我校对文档」（`proofreadBasic` + `replaceInParagraph`，P1-P22 严格逐批）
 
 **调用流程**：获取当前文档 → 确定操作目标 → 执行 → 返回。
 
@@ -231,7 +231,7 @@ AI 识别：使用 wps-ppt skill
 
 ### wps-proofread（文档校对专家）
 
-**能力**：错别字检测、语病检查、格式一致性校对（独立校对技能，P1-P21 铁律 3.0）。
+**能力**：错别字检测、语病检查、格式一致性校对（独立校对技能，P1-P22 铁律 3.0）。
 
 **典型流程**（严格逐批闭环）：
 ```text
