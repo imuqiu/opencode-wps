@@ -58,16 +58,16 @@ export enum ChartType {
  * WPS SDK用的是Excel的XlChartType常量
  */
 const CHART_TYPE_MAP: Record<ChartType, number> = {
-  [ChartType.COLUMN_CLUSTERED]: 51,    // xlColumnClustered
-  [ChartType.COLUMN_STACKED]: 52,      // xlColumnStacked
-  [ChartType.BAR_CLUSTERED]: 57,       // xlBarClustered
-  [ChartType.LINE]: 4,                  // xlLine
-  [ChartType.LINE_MARKERS]: 65,        // xlLineMarkers
-  [ChartType.PIE]: 5,                   // xlPie
-  [ChartType.DOUGHNUT]: -4120,         // xlDoughnut
-  [ChartType.SCATTER]: -4169,          // xlXYScatter
-  [ChartType.AREA]: 1,                  // xlArea
-  [ChartType.RADAR]: -4151,            // xlRadar
+  [ChartType.COLUMN_CLUSTERED]: 51, // xlColumnClustered
+  [ChartType.COLUMN_STACKED]: 52, // xlColumnStacked
+  [ChartType.BAR_CLUSTERED]: 57, // xlBarClustered
+  [ChartType.LINE]: 4, // xlLine
+  [ChartType.LINE_MARKERS]: 65, // xlLineMarkers
+  [ChartType.PIE]: 5, // xlPie
+  [ChartType.DOUGHNUT]: -4120, // xlDoughnut
+  [ChartType.SCATTER]: -4169, // xlXYScatter
+  [ChartType.AREA]: 1, // xlArea
+  [ChartType.RADAR]: -4151, // xlRadar
 };
 
 /**
@@ -249,9 +249,7 @@ export const createChartHandler: ToolHandler = async (
       return {
         id: uuidv4(),
         success: false,
-        content: [
-          { type: 'text', text: `创建图表失败: ${response.error || '未知错误'}` },
-        ],
+        content: [{ type: 'text', text: `创建图表失败: ${response.error || '未知错误'}` }],
         error: response.error,
       };
     }
@@ -420,7 +418,7 @@ export const updateChartHandler: ToolHandler = async (
   // 校验颜色格式
   if (colors && colors.length > 0) {
     const colorRegex = /^#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})$/;
-    const invalidColors = colors.filter((c) => !colorRegex.test(c));
+    const invalidColors = colors.filter(c => !colorRegex.test(c));
     if (invalidColors.length > 0) {
       return {
         id: uuidv4(),
@@ -459,19 +457,13 @@ export const updateChartHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       chartName: string;
       updatedProperties: string[];
-    }>(
-      'updateChart',
-      updateParams,
-      WpsAppType.SPREADSHEET
-    );
+    }>('updateChart', updateParams, WpsAppType.SPREADSHEET);
 
     if (!response.success || !response.data) {
       return {
         id: uuidv4(),
         success: false,
-        content: [
-          { type: 'text', text: `更新图表失败: ${response.error || '未知错误'}` },
-        ],
+        content: [{ type: 'text', text: `更新图表失败: ${response.error || '未知错误'}` }],
         error: response.error,
       };
     }

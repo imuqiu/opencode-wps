@@ -79,11 +79,7 @@ export const applyColorSchemeHandler: ToolHandler = async (
       success: boolean;
       message: string;
       appliedSlides: number;
-    }>(
-      'applyColorScheme',
-      { slideIndex, scheme },
-      WpsAppType.PRESENTATION
-    );
+    }>('applyColorScheme', { slideIndex, scheme }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       const schemeNames: Record<string, string> = {
@@ -174,11 +170,7 @@ export const autoBeautifySlideHandler: ToolHandler = async (
         count: number;
         details?: string;
       }>;
-    }>(
-      'autoBeautifySlide',
-      { slideIndex },
-      WpsAppType.PRESENTATION
-    );
+    }>('autoBeautifySlide', { slideIndex }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       let output = `幻灯片自动美化完成！\n幻灯片: 第 ${slideIndex} 页\n\n优化详情：\n`;
@@ -192,7 +184,7 @@ export const autoBeautifySlideHandler: ToolHandler = async (
         adjust_text_size: '调整文字大小',
       };
 
-      response.data.operations.forEach((op) => {
+      response.data.operations.forEach(op => {
         output += `- ${opNames[op.operation] || op.operation}: 处理了 ${op.count} 个元素${op.details ? ` (${op.details})` : ''}\n`;
       });
 
@@ -265,11 +257,7 @@ export const beautifyAllSlidesHandler: ToolHandler = async (
       message: string;
       slideCount: number;
       style: string;
-    }>(
-      'beautifyAllSlides',
-      { style: style || 'business' },
-      WpsAppType.PRESENTATION
-    );
+    }>('beautifyAllSlides', { style: style || 'business' }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       const styleNames: Record<string, string> = {
@@ -337,7 +325,8 @@ export const createKpiCardsDefinition: ToolDefinition = {
       },
       data: {
         type: 'array',
-        description: 'KPI数据数组，每项包含title（指标名称）、value（指标数值）、trend（趋势:up/down/flat，可选）、color（颜色，可选）',
+        description:
+          'KPI数据数组，每项包含title（指标名称）、value（指标数值）、trend（趋势:up/down/flat，可选）、color（颜色，可选）',
         items: {
           type: 'object',
           properties: {
@@ -372,15 +361,11 @@ export const createKpiCardsHandler: ToolHandler = async (
       success: boolean;
       message: string;
       cardCount: number;
-    }>(
-      'createKpiCards',
-      { slideIndex, data },
-      WpsAppType.PRESENTATION
-    );
+    }>('createKpiCards', { slideIndex, data }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       let output = `KPI卡片创建成功！\n幻灯片: 第 ${slideIndex} 页\n卡片数量: ${response.data.cardCount} 个\n\n指标列表：\n`;
-      data.forEach((item) => {
+      data.forEach(item => {
         const trendIcon = item.trend === 'up' ? '↑' : item.trend === 'down' ? '↓' : '→';
         output += `- ${item.title}: ${item.value} ${item.trend ? trendIcon : ''}\n`;
       });
@@ -472,11 +457,7 @@ export const createStyledTableHandler: ToolHandler = async (
       message: string;
       rows: number;
       cols: number;
-    }>(
-      'createStyledTable',
-      { slideIndex, data, style: style || 'blue' },
-      WpsAppType.PRESENTATION
-    );
+    }>('createStyledTable', { slideIndex, data, style: style || 'blue' }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       const styleNames: Record<string, string> = {
@@ -565,11 +546,7 @@ export const addTitleDecorationHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'addTitleDecoration',
-      { slideIndex, style: style || 'underline' },
-      WpsAppType.PRESENTATION
-    );
+    }>('addTitleDecoration', { slideIndex, style: style || 'underline' }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       const styleNames: Record<string, string> = {
@@ -652,11 +629,7 @@ export const addPageIndicatorHandler: ToolHandler = async (
       success: boolean;
       message: string;
       slideCount: number;
-    }>(
-      'addPageIndicator',
-      { position: position || 'bottom-right' },
-      WpsAppType.PRESENTATION
-    );
+    }>('addPageIndicator', { position: position || 'bottom-right' }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       const posNames: Record<string, string> = {
@@ -722,7 +695,8 @@ export const setBackgroundGradientDefinition: ToolDefinition = {
       },
       gradient: {
         type: 'object',
-        description: '渐变配置对象，包含type（linear/radial）、angle（角度）、colors（颜色数组）、stops（停靠点数组）',
+        description:
+          '渐变配置对象，包含type（linear/radial）、angle（角度）、colors（颜色数组）、stops（停靠点数组）',
       },
     },
     required: ['slideIndex', 'gradient'],
@@ -741,15 +715,13 @@ export const setBackgroundGradientHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'setBackgroundGradient',
-      { slideIndex, gradient },
-      WpsAppType.PRESENTATION
-    );
+    }>('setBackgroundGradient', { slideIndex, gradient }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       const gradientType = gradient.type === 'radial' ? '径向渐变' : '线性渐变';
-      const colors = Array.isArray(gradient.colors) ? (gradient.colors as string[]).join(' → ') : '';
+      const colors = Array.isArray(gradient.colors)
+        ? (gradient.colors as string[]).join(' → ')
+        : '';
 
       return {
         id: uuidv4(),

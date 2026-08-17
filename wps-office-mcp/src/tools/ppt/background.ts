@@ -77,11 +77,7 @@ export const setSlideBackgroundHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'setSlideBackground',
-      { slideIndex, background },
-      WpsAppType.PRESENTATION
-    );
+    }>('setSlideBackground', { slideIndex, background }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       const bgType = (background.type as string) || 'solid';
@@ -162,11 +158,7 @@ export const setBackgroundColorHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'setBackgroundColor',
-      { slideIndex, color },
-      WpsAppType.PRESENTATION
-    );
+    }>('setBackgroundColor', { slideIndex, color }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {
@@ -329,11 +321,7 @@ export const setSlideNumberHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'setSlideNumber',
-      { show, startFrom },
-      WpsAppType.PRESENTATION
-    );
+    }>('setSlideNumber', { show, startFrom }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       let text = `幻灯片页码设置成功！\n显示状态: ${show ? '显示' : '隐藏'}`;
@@ -406,11 +394,7 @@ export const setPptFooterHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'setPptFooter',
-      { text, show: show !== false },
-      WpsAppType.PRESENTATION
-    );
+    }>('setPptFooter', { text, show: show !== false }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {
@@ -494,11 +478,7 @@ export const setPptDateTimeHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'setPptDateTime',
-      { show, autoUpdate, format },
-      WpsAppType.PRESENTATION
-    );
+    }>('setPptDateTime', { show, autoUpdate, format }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       let text = `日期时间设置成功！\n显示状态: ${show ? '显示' : '隐藏'}`;
@@ -577,11 +557,7 @@ export const duplicateShapeHandler: ToolHandler = async (
       success: boolean;
       message: string;
       newShapeIndex?: number;
-    }>(
-      'duplicateShape',
-      { slideIndex, shapeIndex },
-      WpsAppType.PRESENTATION
-    );
+    }>('duplicateShape', { slideIndex, shapeIndex }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       let text = `形状复制成功！\n幻灯片: 第 ${slideIndex} 页\n源形状: 第 ${shapeIndex} 个`;
@@ -666,11 +642,7 @@ export const setShapeZOrderHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'setShapeZOrder',
-      { slideIndex, shapeIndex, order },
-      WpsAppType.PRESENTATION
-    );
+    }>('setShapeZOrder', { slideIndex, shapeIndex, order }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       const orderName: Record<string, string> = {

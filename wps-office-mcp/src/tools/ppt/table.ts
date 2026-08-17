@@ -86,11 +86,7 @@ export const insertPptTableHandler: ToolHandler = async (
       success: boolean;
       message: string;
       tableIndex: number;
-    }>(
-      'insertPptTable',
-      { slideIndex, rows, cols, left, top },
-      WpsAppType.PRESENTATION
-    );
+    }>('insertPptTable', { slideIndex, rows, cols, left, top }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       return {
@@ -178,11 +174,7 @@ export const setPptTableCellHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'setPptTableCell',
-      { slideIndex, tableIndex, row, col, text },
-      WpsAppType.PRESENTATION
-    );
+    }>('setPptTableCell', { slideIndex, tableIndex, row, col, text }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {
@@ -266,11 +258,7 @@ export const getPptTableCellHandler: ToolHandler = async (
       success: boolean;
       message: string;
       text: string;
-    }>(
-      'getPptTableCell',
-      { slideIndex, tableIndex, row, col },
-      WpsAppType.PRESENTATION
-    );
+    }>('getPptTableCell', { slideIndex, tableIndex, row, col }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       return {
@@ -338,7 +326,8 @@ export const setPptTableStyleDefinition: ToolDefinition = {
       },
       style: {
         type: 'object',
-        description: '样式配置对象，包含borderColor、borderWidth、backgroundColor、fontName、fontSize、fontColor、headerBackground、alternateRowColor等属性',
+        description:
+          '样式配置对象，包含borderColor、borderWidth、backgroundColor、fontName、fontSize、fontColor、headerBackground、alternateRowColor等属性',
       },
     },
     required: ['slideIndex', 'tableIndex', 'style'],
@@ -358,11 +347,7 @@ export const setPptTableStyleHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'setPptTableStyle',
-      { slideIndex, tableIndex, style },
-      WpsAppType.PRESENTATION
-    );
+    }>('setPptTableStyle', { slideIndex, tableIndex, style }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       const styleKeys = Object.keys(style).join('、');
@@ -439,7 +424,8 @@ export const setPptTableCellStyleDefinition: ToolDefinition = {
       },
       style: {
         type: 'object',
-        description: '样式配置对象，包含backgroundColor、fontName、fontSize、fontColor、bold、italic、alignment、verticalAlignment等属性',
+        description:
+          '样式配置对象，包含backgroundColor、fontName、fontSize、fontColor、bold、italic、alignment、verticalAlignment等属性',
       },
     },
     required: ['slideIndex', 'tableIndex', 'row', 'col', 'style'],
@@ -538,7 +524,8 @@ export const setPptTableRowStyleDefinition: ToolDefinition = {
       },
       style: {
         type: 'object',
-        description: '样式配置对象，包含backgroundColor、fontName、fontSize、fontColor、bold、italic、alignment、height等属性',
+        description:
+          '样式配置对象，包含backgroundColor、fontName、fontSize、fontColor、bold、italic、alignment、height等属性',
       },
     },
     required: ['slideIndex', 'tableIndex', 'row', 'style'],
@@ -559,11 +546,7 @@ export const setPptTableRowStyleHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'setPptTableRowStyle',
-      { slideIndex, tableIndex, row, style },
-      WpsAppType.PRESENTATION
-    );
+    }>('setPptTableRowStyle', { slideIndex, tableIndex, row, style }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       const styleKeys = Object.keys(style).join('、');

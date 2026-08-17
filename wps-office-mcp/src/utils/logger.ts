@@ -143,10 +143,7 @@ export const log = {
 /**
  * 请求日志中间件风格的函数
  */
-export const logRequest = (
-  method: string,
-  params?: Record<string, unknown>
-): void => {
+export const logRequest = (method: string, params?: Record<string, unknown>): void => {
   logger.info(`[REQUEST] ${method}`, { params });
 };
 

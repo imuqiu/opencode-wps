@@ -56,12 +56,26 @@ export const openWorkbookHandler: ToolHandler = async (
       WpsAppType.SPREADSHEET
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `打开工作簿失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `打开工作簿失败: ${response.error}` }],
+        error: response.error,
+      };
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `工作簿已打开: ${filePath}` }] };
+    return {
+      id: uuidv4(),
+      success: true,
+      content: [{ type: 'text', text: `工作簿已打开: ${filePath}` }],
+    };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `打开工作簿出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `打开工作簿出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -89,13 +103,29 @@ export const getOpenWorkbooksHandler: ToolHandler = async (
       WpsAppType.SPREADSHEET
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `获取工作簿列表失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `获取工作簿列表失败: ${response.error}` }],
+        error: response.error,
+      };
     }
     const list = response.data?.workbooks || [];
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `已打开的工作簿 (${list.length}个):\n${list.join('\n') || '无'}` }] };
+    return {
+      id: uuidv4(),
+      success: true,
+      content: [
+        { type: 'text', text: `已打开的工作簿 (${list.length}个):\n${list.join('\n') || '无'}` },
+      ],
+    };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `获取工作簿列表出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `获取工作簿列表出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -123,7 +153,12 @@ export const switchWorkbookHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { name } = args as { name: string };
   if (!name) {
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: '请提供工作簿名称' }], error: '缺少工作簿名称' };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: '请提供工作簿名称' }],
+      error: '缺少工作簿名称',
+    };
   }
   try {
     const response = await wpsClient.executeMethod<{ message: string }>(
@@ -132,12 +167,26 @@ export const switchWorkbookHandler: ToolHandler = async (
       WpsAppType.SPREADSHEET
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `切换工作簿失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `切换工作簿失败: ${response.error}` }],
+        error: response.error,
+      };
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `已切换到工作簿: ${name}` }] };
+    return {
+      id: uuidv4(),
+      success: true,
+      content: [{ type: 'text', text: `已切换到工作簿: ${name}` }],
+    };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `切换工作簿出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `切换工作簿出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -175,12 +224,31 @@ export const closeWorkbookHandler: ToolHandler = async (
       WpsAppType.SPREADSHEET
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `关闭工作簿失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `关闭工作簿失败: ${response.error}` }],
+        error: response.error,
+      };
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `工作簿已关闭${name ? ': ' + name : ''}${save !== false ? '（已保存）' : '（未保存）'}` }] };
+    return {
+      id: uuidv4(),
+      success: true,
+      content: [
+        {
+          type: 'text',
+          text: `工作簿已关闭${name ? ': ' + name : ''}${save !== false ? '（已保存）' : '（未保存）'}`,
+        },
+      ],
+    };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `关闭工作簿出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `关闭工作簿出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -208,12 +276,22 @@ export const createWorkbookHandler: ToolHandler = async (
       WpsAppType.SPREADSHEET
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `新建工作簿失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `新建工作簿失败: ${response.error}` }],
+        error: response.error,
+      };
     }
     return { id: uuidv4(), success: true, content: [{ type: 'text', text: '新工作簿已创建' }] };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `新建工作簿出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `新建工作簿出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -246,12 +324,26 @@ export const getCellValueHandler: ToolHandler = async (
       WpsAppType.SPREADSHEET
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `获取单元格值失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `获取单元格值失败: ${response.error}` }],
+        error: response.error,
+      };
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `单元格值: ${JSON.stringify(response.data?.value)}` }] };
+    return {
+      id: uuidv4(),
+      success: true,
+      content: [{ type: 'text', text: `单元格值: ${JSON.stringify(response.data?.value)}` }],
+    };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `获取单元格值出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `获取单元格值出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -277,7 +369,12 @@ export const setCellValueDefinition: ToolDefinition = {
 export const setCellValueHandler: ToolHandler = async (
   args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  const { sheet, row, col, value } = args as { sheet: string; row: number; col: number; value: string };
+  const { sheet, row, col, value } = args as {
+    sheet: string;
+    row: number;
+    col: number;
+    value: string;
+  };
   try {
     const response = await wpsClient.executeMethod<{ message: string }>(
       'setCellValue',
@@ -285,12 +382,26 @@ export const setCellValueHandler: ToolHandler = async (
       WpsAppType.SPREADSHEET
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置单元格值失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `设置单元格值失败: ${response.error}` }],
+        error: response.error,
+      };
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `单元格值已设置: ${sheet}!R${row}C${col} = ${value}` }] };
+    return {
+      id: uuidv4(),
+      success: true,
+      content: [{ type: 'text', text: `单元格值已设置: ${sheet}!R${row}C${col} = ${value}` }],
+    };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置单元格值出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `设置单元格值出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -322,12 +433,28 @@ export const getFormulaHandler: ToolHandler = async (
       WpsAppType.SPREADSHEET
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `获取公式失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `获取公式失败: ${response.error}` }],
+        error: response.error,
+      };
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `单元格 ${cell} 的公式: ${response.data?.formula || '无公式'}` }] };
+    return {
+      id: uuidv4(),
+      success: true,
+      content: [
+        { type: 'text', text: `单元格 ${cell} 的公式: ${response.data?.formula || '无公式'}` },
+      ],
+    };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `获取公式出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `获取公式出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -359,12 +486,28 @@ export const getCellInfoHandler: ToolHandler = async (
       WpsAppType.SPREADSHEET
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `获取单元格信息失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `获取单元格信息失败: ${response.error}` }],
+        error: response.error,
+      };
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `单元格 ${cell} 信息:\n${JSON.stringify(response.data, null, 2)}` }] };
+    return {
+      id: uuidv4(),
+      success: true,
+      content: [
+        { type: 'text', text: `单元格 ${cell} 信息:\n${JSON.stringify(response.data, null, 2)}` },
+      ],
+    };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `获取单元格信息出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `获取单元格信息出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -401,13 +544,27 @@ export const clearRangeHandler: ToolHandler = async (
       WpsAppType.SPREADSHEET
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `清除范围失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `清除范围失败: ${response.error}` }],
+        error: response.error,
+      };
     }
     const typeLabel = type === 'contents' ? '内容' : type === 'formats' ? '格式' : '全部';
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `范围 ${range} 的${typeLabel}已清除` }] };
+    return {
+      id: uuidv4(),
+      success: true,
+      content: [{ type: 'text', text: `范围 ${range} 的${typeLabel}已清除` }],
+    };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `清除范围出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `清除范围出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 

@@ -53,11 +53,7 @@ export const createPresentationHandler: ToolHandler = async (
       success: boolean;
       message: string;
       name: string;
-    }>(
-      'createPresentation',
-      {},
-      WpsAppType.PRESENTATION
-    );
+    }>('createPresentation', {}, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       return {
@@ -141,11 +137,7 @@ export const openPresentationHandler: ToolHandler = async (
       message: string;
       name: string;
       filePath: string;
-    }>(
-      'openPresentation',
-      { filePath: safePath, path: safePath },
-      WpsAppType.PRESENTATION
-    );
+    }>('openPresentation', { filePath: safePath, path: safePath }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       return {
@@ -291,11 +283,7 @@ export const getOpenPresentationsHandler: ToolHandler = async (
         isActive: boolean;
       }>;
       count: number;
-    }>(
-      'getOpenPresentations',
-      {},
-      WpsAppType.PRESENTATION
-    );
+    }>('getOpenPresentations', {}, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       const { presentations, count } = response.data;
@@ -375,11 +363,7 @@ export const switchPresentationHandler: ToolHandler = async (
       success: boolean;
       message: string;
       name: string;
-    }>(
-      'switchPresentation',
-      { name },
-      WpsAppType.PRESENTATION
-    );
+    }>('switchPresentation', { name }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       return {
@@ -444,11 +428,7 @@ export const setSlideThemeHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'setSlideTheme',
-      { theme },
-      WpsAppType.PRESENTATION
-    );
+    }>('setSlideTheme', { theme }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       return {
@@ -516,11 +496,7 @@ export const copySlideHandler: ToolHandler = async (
       success: boolean;
       message: string;
       newIndex: number;
-    }>(
-      'duplicateSlide',
-      { slideIndex, targetIndex },
-      WpsAppType.PRESENTATION
-    );
+    }>('duplicateSlide', { slideIndex, targetIndex }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       return {
@@ -615,7 +591,14 @@ export const insertSlideImageHandler: ToolHandler = async (
       message: string;
     }>(
       'insertImage',
-      { slideIndex, imagePath: safeImagePath, path: safeImagePath, filePath: safeImagePath, left, top },
+      {
+        slideIndex,
+        imagePath: safeImagePath,
+        path: safeImagePath,
+        filePath: safeImagePath,
+        left,
+        top,
+      },
       WpsAppType.PRESENTATION
     );
 

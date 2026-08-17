@@ -222,16 +222,17 @@ function getTimeout(action: string, params: Record<string, unknown> = {}): numbe
   // 容错：AI 可能传字符串数字（如 "9500"），统一转 number；非有限数/负数回退默认 1
   const parsePara = (v: unknown): number => {
     if (typeof v === 'number' && isFinite(v) && v > 0) return Math.floor(v);
-    if (typeof v === 'string' && v.trim() !== '' && isFinite(Number(v)) && Number(v) > 0) return Math.floor(Number(v));
+    if (typeof v === 'string' && v.trim() !== '' && isFinite(Number(v)) && Number(v) > 0)
+      return Math.floor(Number(v));
     return 0;
   };
   const start = parsePara(params.startParagraph) || 1;
   const end = parsePara(params.endParagraph) || start;
   const target = Math.max(start, end); // 目标段落号（决定 WPS COM 遍历开销）
-  if (target <= 500) return base;                 // 前段批次：基础 60s
-  if (target <= 3000) return Math.round(base * 1.5);   // 中段批次（301-3000）：90s
-  if (target <= 8000) return Math.round(base * 2);     // 后段批次（3001-8000）：120s
-  return Math.round(base * 2.5);                       // 极后段批次（>8000）：150s
+  if (target <= 500) return base; // 前段批次：基础 60s
+  if (target <= 3000) return Math.round(base * 1.5); // 中段批次（301-3000）：90s
+  if (target <= 8000) return Math.round(base * 2); // 后段批次（3001-8000）：120s
+  return Math.round(base * 2.5); // 极后段批次（>8000）：150s
 }
 
 /**

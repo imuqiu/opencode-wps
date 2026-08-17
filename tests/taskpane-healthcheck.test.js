@@ -55,9 +55,15 @@ function makeEl(id) {
   return {
     id: id || '',
     classList: {
-      add: function (c) { _classList.add(c); },
-      remove: function (c) { _classList.delete(c); },
-      contains: function (c) { return _classList.has(c); }
+      add: function (c) {
+        _classList.add(c);
+      },
+      remove: function (c) {
+        _classList.delete(c);
+      },
+      contains: function (c) {
+        return _classList.has(c);
+      },
     },
     textContent: '',
     value: '',
@@ -71,33 +77,69 @@ function makeEl(id) {
     addEventListener: function () {},
     click: function () {},
     scrollTop: 0,
-    scrollHeight: 0
+    scrollHeight: 0,
   };
 }
 
 var ELEMENT_IDS = [
-  'messages','input-box','send-btn','send-area','session-title','status-dot','model-name',
-  'view-setup','view-chat','setup-cwd','btn-start','setup-status','topbar-cwd','server-dot',
-  'server-label','provider-name','agent-name','cwd-input','cwd-modal','modal-cwd-current',
-  'cwd-history','mode-label','bb-mode','bb-provider','provider-label','bb-level','level-label',
-  'bb-model','bb-agent','sidebar-list','streaming-msg','file-input','session-header-area','rename-input'
+  'messages',
+  'input-box',
+  'send-btn',
+  'send-area',
+  'session-title',
+  'status-dot',
+  'model-name',
+  'view-setup',
+  'view-chat',
+  'setup-cwd',
+  'btn-start',
+  'setup-status',
+  'topbar-cwd',
+  'server-dot',
+  'server-label',
+  'provider-name',
+  'agent-name',
+  'cwd-input',
+  'cwd-modal',
+  'modal-cwd-current',
+  'cwd-history',
+  'mode-label',
+  'bb-mode',
+  'bb-provider',
+  'provider-label',
+  'bb-level',
+  'level-label',
+  'bb-model',
+  'bb-agent',
+  'sidebar-list',
+  'streaming-msg',
+  'file-input',
+  'session-header-area',
+  'rename-input',
 ];
 
 var HEALTH_RESPONSE = { healthy: true };
-var healthOverride = null;   // 测试可设置：null=用默认，或 {healthy:false}/错误
-var healthFailCount = 0;     // 用于模拟连续失败
+var healthOverride = null; // 测试可设置：null=用默认，或 {healthy:false}/错误
+var healthFailCount = 0; // 用于模拟连续失败
 
 // fetchJSON 拦截：只处理 /global/health；其余返回空
 function installFetchJSON(sandbox) {
   var original = sandbox.fetchJSON;
   sandbox.fetchJSON = function (method, path, body, onSuccess, onError) {
     if (path === '/global/health') {
-      if (healthOverride === 'error') { if (onError) onError(0, 'network'); return; }
+      if (healthOverride === 'error') {
+        if (onError) onError(0, 'network');
+        return;
+      }
       if (healthOverride && typeof healthOverride === 'object') {
         if (onSuccess) onSuccess(healthOverride);
         return;
       }
-      if (healthFailCount > 0) { healthFailCount--; if (onError) onError(0, 'network'); return; }
+      if (healthFailCount > 0) {
+        healthFailCount--;
+        if (onError) onError(0, 'network');
+        return;
+      }
       if (onSuccess) onSuccess({ healthy: true });
       return;
     }
@@ -113,7 +155,9 @@ function loadTaskpaneScript() {
   var src = m[1];
 
   var elements = {};
-  ELEMENT_IDS.forEach(function (id) { elements[id] = makeEl(id); });
+  ELEMENT_IDS.forEach(function (id) {
+    elements[id] = makeEl(id);
+  });
 
   // 记录最近一次创建的 XHR 实例，供测试手动触发 onload/onerror（init 回退 launcher 探测等）
   var lastXhr = null;
@@ -122,42 +166,63 @@ function loadTaskpaneScript() {
     CONFIG: {
       opencode: { apiBase: 'http://127.0.0.1:14096' },
       network: { timeout: 5000, uploadTimeout: 15000 },
-      plugin: { userHome: 'C:/Users/test' }
+      plugin: { userHome: 'C:/Users/test' },
     },
     document: {
-      getElementById: function (id) { return elements[id] || makeEl(id); },
-      createElement: function () { return makeEl('dyn'); },
-      body: { appendChild: function () {} }
+      getElementById: function (id) {
+        return elements[id] || makeEl(id);
+      },
+      createElement: function () {
+        return makeEl('dyn');
+      },
+      body: { appendChild: function () {} },
     },
     window: {
       Application: {
         PluginStorage: {
-          getItem: function () { return ''; },
-          setItem: function () {}
-        }
+          getItem: function () {
+            return '';
+          },
+          setItem: function () {},
+        },
       },
       addEventListener: function () {},
-      removeEventListener: function () {}
+      removeEventListener: function () {},
     },
     console: { log: function () {}, warn: function () {}, error: function () {} },
     alert: function () {},
     EventSource: function () {
       this.close = function () {};
-      this.onopen = null; this.onmessage = null; this.onerror = null;
+      this.onopen = null;
+      this.onmessage = null;
+      this.onerror = null;
     },
     XMLHttpRequest: function () {
-      this.open = function () {}; this.send = function () {};
-      this.setRequestHeader = function () {}; this.readyState = 4; this.status = 0;
+      this.open = function () {};
+      this.send = function () {};
+      this.setRequestHeader = function () {};
+      this.readyState = 4;
+      this.status = 0;
       // 记录实例以便测试手动触发 onload/onerror（用于 init 回退 launcher 探测等场景）
       lastXhr = this;
     },
-    setTimeout: function (cb) { return 1; },
+    setTimeout: function (cb) {
+      return 1;
+    },
     clearTimeout: function () {},
-    setInterval: function (cb) { intervals.push(cb); intervalIds.push(nextIntervalId); nextIntervalId++; return nextIntervalId - 1; },
-    clearInterval: function (id) { 
+    setInterval: function (cb) {
+      intervals.push(cb);
+      intervalIds.push(nextIntervalId);
+      nextIntervalId++;
+      return nextIntervalId - 1;
+    },
+    clearInterval: function (id) {
       var idx = intervalIds.indexOf(id);
-      if (idx >= 0) { intervals.splice(idx, 1); intervalIds.splice(idx, 1); }
-    }
+      if (idx >= 0) {
+        intervals.splice(idx, 1);
+        intervalIds.splice(idx, 1);
+      }
+    },
   };
   var intervals = [];
   var intervalIds = [];
@@ -169,7 +234,10 @@ function loadTaskpaneScript() {
     var count = 0;
     for (var k = 0; k < (n == null ? intervals.length : n); k++) {
       var cb = intervals[k];
-      if (cb) { cb(); count++; }
+      if (cb) {
+        cb();
+        count++;
+      }
     }
     return count;
   };
@@ -180,7 +248,9 @@ function loadTaskpaneScript() {
   installFetchJSON(sandbox);
   // 暴露关键内部状态以便断言
   sandbox.__elements = elements;
-  sandbox.__lastXhr = function () { return lastXhr; };
+  sandbox.__lastXhr = function () {
+    return lastXhr;
+  };
   return sandbox;
 }
 
@@ -191,7 +261,10 @@ test('AC2: showSetup() 不再调用 stopHealthCheck()（健康检测与视图切
   var s = loadTaskpaneScript();
   var oldStop = s.stopHealthCheck;
   var stopCalls = 0;
-  s.stopHealthCheck = function () { stopCalls++; oldStop(); };
+  s.stopHealthCheck = function () {
+    stopCalls++;
+    oldStop();
+  };
   s.SERVER_RUNNING = true;
   s.showSetup();
   assertEqual(stopCalls, 0, 'showSetup 不应触发 stopHealthCheck');
@@ -203,7 +276,10 @@ test('AC1: 运行中误触失败 → setup；下一周期恢复 → 自动 onSer
   var connected = 0;
   // 只验证健康检查触发恢复：调用 showChat()（真实 onServerConnected 内会调它重置 IN_SETUP_VIEW），
   // 不执行会话/模型等无关副作用（fetchAvailableModels/loadSessionMessages 依赖生产环境）
-  s.onServerConnected = function () { connected++; s.showChat(); };
+  s.onServerConnected = function () {
+    connected++;
+    s.showChat();
+  };
   // 初始进入运行中 chat 状态
   s.SERVER_RUNNING = true;
   s.CONNECTED = true;
@@ -227,7 +303,9 @@ test('AC1: 运行中误触失败 → setup；下一周期恢复 → 自动 onSer
 test('AC3: setup 视图下保持探测，服务恢复即自动恢复', function () {
   var s = loadTaskpaneScript();
   var connected = 0;
-  s.onServerConnected = function () { connected++; };
+  s.onServerConnected = function () {
+    connected++;
+  };
   // 直接处于 setup 未连接状态（模拟初始化失败进入 setup）
   s.SERVER_RUNNING = false;
   s.CONNECTED = false;
@@ -248,7 +326,9 @@ test('AC3: setup 视图下保持探测，服务恢复即自动恢复', function 
 test('AC4: 服务真实停止 → 降级提示保留（不误恢复）', function () {
   var s = loadTaskpaneScript();
   var connected = 0;
-  s.onServerConnected = function () { connected++; };
+  s.onServerConnected = function () {
+    connected++;
+  };
   s.SERVER_RUNNING = true;
   s.CONNECTED = true;
   s.IN_SETUP_VIEW = false;
@@ -258,7 +338,11 @@ test('AC4: 服务真实停止 → 降级提示保留（不误恢复）', functio
   healthOverride = { healthy: false };
   s.__flushHealthChecks(3);
   assertEqual(connected, 0, '服务持续停止不应自动重连');
-  assertEqual(s.__elements['setup-status'].textContent, '服务已断开，请重新启动以继续。', '应显示降级提示');
+  assertEqual(
+    s.__elements['setup-status'].textContent,
+    '服务已断开，请重新启动以继续。',
+    '应显示降级提示'
+  );
 });
 
 test('AC5: 防重入——同一时刻至多 1 个 /global/health 在途（无请求风暴）', function () {
@@ -272,22 +356,42 @@ test('AC5: 防重入——同一时刻至多 1 个 /global/health 在途（无�
       inFlightCount++;
       if (inFlightCount > maxInFlight) maxInFlight = inFlightCount;
       // 模拟慢响应
-      original(method, path, body, function (d) { inFlightCount--; if (ok) ok(d); }, function () { inFlightCount--; if (err) err(0, 'net'); });
-    } else { original(method, path, body, ok, err); }
+      original(
+        method,
+        path,
+        body,
+        function (d) {
+          inFlightCount--;
+          if (ok) ok(d);
+        },
+        function () {
+          inFlightCount--;
+          if (err) err(0, 'net');
+        }
+      );
+    } else {
+      original(method, path, body, ok, err);
+    }
   };
   s.SERVER_RUNNING = true;
   s.IN_SETUP_VIEW = false;
   s.startHealthCheck();
   // 触发多次 tick，验证防重入
   s.__flushHealthChecks(5);
-  assertTrue(maxInFlight <= 1, 'HEALTH_CHECK_IN_FLIGHT 应保证同一时刻至多 1 个在途请求，实际 max=' + maxInFlight);
+  assertTrue(
+    maxInFlight <= 1,
+    'HEALTH_CHECK_IN_FLIGHT 应保证同一时刻至多 1 个在途请求，实际 max=' + maxInFlight
+  );
 });
 
 test('R1-1: 服务稳定运行时成功分支不每 10s 冗余更新状态（仅状态变化时更新）', function () {
   var s = loadTaskpaneScript();
   var statusUpdates = 0;
   var orig = s.updateServerStatus;
-  s.updateServerStatus = function (running) { statusUpdates++; orig(running); };
+  s.updateServerStatus = function (running) {
+    statusUpdates++;
+    orig(running);
+  };
   s.SERVER_RUNNING = true;
   s.CONNECTED = true;
   s.IN_SETUP_VIEW = false;
@@ -303,7 +407,9 @@ test('R1-1: 服务稳定运行时成功分支不每 10s 冗余更新状态（仅
 test('R2-1: 显式停止（STOPPING=true）后不自动重连', function () {
   var s = loadTaskpaneScript();
   var connected = 0;
-  s.onServerConnected = function () { connected++; };
+  s.onServerConnected = function () {
+    connected++;
+  };
   s.SERVER_RUNNING = true;
   s.CONNECTED = true;
   s.IN_SETUP_VIEW = false;
@@ -336,7 +442,10 @@ test('STOPPING 置位顺序：stopOpenCode 设置 STOPPING=true + 停健康检�
   var s = loadTaskpaneScript();
   var stopCalls = 0;
   var orig = s.stopHealthCheck;
-  s.stopHealthCheck = function () { stopCalls++; orig(); };
+  s.stopHealthCheck = function () {
+    stopCalls++;
+    orig();
+  };
   s.STOP_POLL_TIMER = null;
   s.stopOpenCode();
   assertTrue(s.STOPPING === true, 'stopOpenCode 应置 STOPPING=true');
@@ -349,13 +458,15 @@ test('STOPPING 置位顺序：stopOpenCode 设置 STOPPING=true + 停健康检�
 test('R5-P1: 启动轮询在途回调在显式停止后不应触发 onServerConnected（防泄漏）', function () {
   var s = loadTaskpaneScript();
   var connected = 0;
-  s.onServerConnected = function () { connected++; };
+  s.onServerConnected = function () {
+    connected++;
+  };
   // 模拟启动轮询：设置 START_POLL_TIMER，然后在途请求返回前用户显式停止
   s.START_POLL_TIMER = 123;
   s.STOPPING = false;
   s.SERVER_RUNNING = false;
   s.CONNECTED = false;
-  s.stopOpenCode();  // STOPPING=true, STOPPED_AT=Date.now(), SERVER_RUNNING=false
+  s.stopOpenCode(); // STOPPING=true, STOPPED_AT=Date.now(), SERVER_RUNNING=false
   // 在途请求返回 healthy → 回调中应检查 STOPPING，不调用 onServerConnected
   // 模拟 START_POLL_TIMER 回调被手动执行（等价于在途 fetchJSON 回调返回）
   var origFetch = s.fetchJSON;
@@ -371,12 +482,15 @@ test('R5-P2: 启动失败后应恢复健康检查（startHealthCheck 被调用�
   var s = loadTaskpaneScript();
   var hcCalls = 0;
   var orig = s.startHealthCheck;
-  s.startHealthCheck = function () { hcCalls++; orig(); };
+  s.startHealthCheck = function () {
+    hcCalls++;
+    orig();
+  };
   // 模拟 startOpenCode 完整流程：用户显式停止后重新启动
   s.STOPPING = true;
   s.SERVER_RUNNING = false;
   // 设置 fetchJSON 持续返回错误，模拟服务一直不可达
-  healthFailCount = 999;  // 足够大，确保 maxRetries 耗尽
+  healthFailCount = 999; // 足够大，确保 maxRetries 耗尽
   // 调用 startOpenCode：应清除 STOPPING
   s.startOpenCode();
   assertEqual(s.STOPPING, false, 'startOpenCode 应清除 STOPPING');
@@ -385,12 +499,14 @@ test('R5-P2: 启动失败后应恢复健康检查（startHealthCheck 被调用�
   var triggerCount = 0;
   var maxTicks = 40;
   for (var i = 0; i < maxTicks && s.START_POLL_TIMER !== null; i++) {
-    s.__flushHealthChecks(0);  // 不会触发健康检查，只触发轮询
+    s.__flushHealthChecks(0); // 不会触发健康检查，只触发轮询
     // 直接手动执行轮询回调
-    var timerIdx = s.__intervals.length - 1;  // 最新一个 interval（轮询）
+    var timerIdx = s.__intervals.length - 1; // 最新一个 interval（轮询）
     var cb = s.__intervals[timerIdx];
-    if (cb) { cb(); triggerCount++; }
-    else break;
+    if (cb) {
+      cb();
+      triggerCount++;
+    } else break;
   }
   // 验证：轮询失败后应调用 startHealthCheck
   assertTrue(hcCalls >= 1, '启动失败后应恢复健康检查（hcCalls=' + hcCalls + '）');
@@ -401,11 +517,13 @@ test('R5-P2: 启动失败后应恢复健康检查（startHealthCheck 被调用�
 });
 
 test('R5-P3: 健康检查旧请求时间戳检查——停止前发起的请求结果被丢弃', function () {
-  healthFailCount = 0;  // 重置，避免 R5-P2 的副作用
+  healthFailCount = 0; // 重置，避免 R5-P2 的副作用
   healthOverride = null;
   var s = loadTaskpaneScript();
   var connected = 0;
-  s.onServerConnected = function () { connected++; };
+  s.onServerConnected = function () {
+    connected++;
+  };
   s.SERVER_RUNNING = false;
   s.CONNECTED = false;
   s.IN_SETUP_VIEW = true;
@@ -415,7 +533,7 @@ test('R5-P3: 健康检查旧请求时间戳检查——停止前发起的请求�
   // 模拟旧请求：发起请求后（requestTs 在 STOPPED_AT 之前），然后用户停止
   // 在测试环境中 requestTs 是模拟时间，无法直接控制，但可以通过设置 STOPPED_AT 来验证
   // 将 STOPPED_AT 设为将来的时间，使请求被视为旧请求
-  s.STOPPED_AT = Date.now() + 10000;  // 未来时刻
+  s.STOPPED_AT = Date.now() + 10000; // 未来时刻
   // 触发健康检查
   s.__flushHealthChecks(1);
   // 由于 STOPPED_AT 大于 requestTs，结果应被丢弃
@@ -430,12 +548,14 @@ test('R5-P3: 健康检查旧请求时间戳检查——停止前发起的请求�
 test('R8-P1: 定时器替换防误清理——旧定时器回调不误清新定时器引用', function () {
   var s = loadTaskpaneScript();
   var connected = 0;
-  s.onServerConnected = function () { connected++; };
+  s.onServerConnected = function () {
+    connected++;
+  };
   // 模拟：timer1 被设置，然后在途请求期间用户停止并启动新服务（timer2）
   s.STOPPING = true;
   s.SERVER_RUNNING = false;
   s.startOpenCode();
-  var timer1Id = s.START_POLL_TIMER;  // 保存 timer1 引用
+  var timer1Id = s.START_POLL_TIMER; // 保存 timer1 引用
   // 模拟用户停止：清理 timer1
   s.stopOpenCode();
   assertEqual(s.START_POLL_TIMER, null, 'stopOpenCode 后 START_POLL_TIMER 应为 null');
@@ -479,13 +599,13 @@ test('R9-P1: 旧请求返回不误复位新请求的 HEALTH_CHECK_IN_FLIGHT（�
   var activeTs = s.HEALTH_CHECK_ACTIVE_TS;
   // 模拟请求 A 已完成后，请求 B 在途（HEALTH_CHECK_IN_FLIGHT=true）
   s.HEALTH_CHECK_IN_FLIGHT = true;
-  s.HEALTH_CHECK_ACTIVE_TS = activeTs + 1;  // 模拟请求 B 的标识
+  s.HEALTH_CHECK_ACTIVE_TS = activeTs + 1; // 模拟请求 B 的标识
   // 模拟旧请求 A 的 healthCheckDone 调用（使用旧的 requestTs）
-  s.healthCheckDone(activeTs, function() {});
+  s.healthCheckDone(activeTs, function () {});
   // 旧请求 A 的 requestTs !== HEALTH_CHECK_ACTIVE_TS（请求 B），不应复位 HEALTH_CHECK_IN_FLIGHT
   assertEqual(s.HEALTH_CHECK_IN_FLIGHT, true, '旧请求返回不应复位新请求的 HEALTH_CHECK_IN_FLIGHT');
   // 模拟新请求 B 的 healthCheckDone 调用（匹配当前标识）
-  s.healthCheckDone(activeTs + 1, function() {});
+  s.healthCheckDone(activeTs + 1, function () {});
   assertEqual(s.HEALTH_CHECK_IN_FLIGHT, false, '当前请求完成应复位 HEALTH_CHECK_IN_FLIGHT');
 });
 
@@ -494,7 +614,10 @@ test('SSE-onopen: /global/health 探测失败时，SSE 连接成功即同步恢�
   var s = loadTaskpaneScript();
   var statusUpdated = null;
   var orig = s.updateServerStatus;
-  s.updateServerStatus = function (running) { statusUpdated = running; orig(running); };
+  s.updateServerStatus = function (running) {
+    statusUpdated = running;
+    orig(running);
+  };
   // 模拟服务在跑但 SERVER_RUNNING 仍为 false（健康检查 XHR 探测失败场景），且处于 setup 视图
   s.SERVER_RUNNING = false;
   s.STOPPING = false;
@@ -502,10 +625,17 @@ test('SSE-onopen: /global/health 探测失败时，SSE 连接成功即同步恢�
   s.IN_SETUP_VIEW = true;
   var chatShown = 0;
   var origChat = s.showChat;
-  s.showChat = function () { chatShown++; origChat(); };
+  s.showChat = function () {
+    chatShown++;
+    origChat();
+  };
   // 第 1 轮评审：setup 探测恢复路径会刷新模型/智能体下拉框，这里 stub 避免触发真实 fetch
-  s.fetchAvailableModels = function (cb) { if (cb) cb(); };
-  s.fetchAvailableAgents = function (cb) { if (cb) cb(); };
+  s.fetchAvailableModels = function (cb) {
+    if (cb) cb();
+  };
+  s.fetchAvailableAgents = function (cb) {
+    if (cb) cb();
+  };
   // 连接 SSE
   s.connectSSE();
   assertTrue(s.SSE != null, 'SSE 实例应已创建');
@@ -522,9 +652,12 @@ test('SSE-onopen-STOPPING: 显式停止（STOPPING=true）后 SSE onopen 不应�
   var s = loadTaskpaneScript();
   var statusUpdates = [];
   var orig = s.updateServerStatus;
-  s.updateServerStatus = function (running) { statusUpdates.push(running); orig(running); };
+  s.updateServerStatus = function (running) {
+    statusUpdates.push(running);
+    orig(running);
+  };
   s.SERVER_RUNNING = false;
-  s.STOPPING = true;   // 用户已显式停止，不应自动重连
+  s.STOPPING = true; // 用户已显式停止，不应自动重连
   s.CONNECTED = false;
   s.connectSSE();
   s.SSE.onopen();
@@ -537,11 +670,16 @@ test('launcher-fallback: /global/health 持续失败但 launcher 确认端口监
   var s = loadTaskpaneScript();
   var statuses = [];
   var orig = s.updateServerStatus;
-  s.updateServerStatus = function (running) { statuses.push(running); orig(running); };
+  s.updateServerStatus = function (running) {
+    statuses.push(running);
+    orig(running);
+  };
   var connected = 0;
   // 避免 onServerConnected 内部副作用，只计数
   var origConn = s.onServerConnected;
-  s.onServerConnected = function () { connected++; };
+  s.onServerConnected = function () {
+    connected++;
+  };
   s.SERVER_RUNNING = true;
   s.CONNECTED = true;
   s.IN_SETUP_VIEW = false;
@@ -567,7 +705,9 @@ test('probeLauncherRunning: launcher 返回 running 或 portOpen 任一为真即
   var s = loadTaskpaneScript();
   // 场景 A：running=true（进程引用在）
   var ra = null;
-  s.probeLauncherRunning(function (r) { ra = r; });
+  s.probeLauncherRunning(function (r) {
+    ra = r;
+  });
   var xa = s.__lastXhr();
   xa.status = 200;
   xa.responseText = JSON.stringify({ running: true, portOpen: false });
@@ -575,7 +715,9 @@ test('probeLauncherRunning: launcher 返回 running 或 portOpen 任一为真即
   assertEqual(ra, true, 'running=true 时应判定运行中');
   // 场景 B：running=false 但 portOpen=true（launcher 重启、端口仍监听）
   var rb = null;
-  s.probeLauncherRunning(function (r) { rb = r; });
+  s.probeLauncherRunning(function (r) {
+    rb = r;
+  });
   var xb = s.__lastXhr();
   xb.status = 200;
   xb.responseText = JSON.stringify({ running: false, portOpen: true });
@@ -583,7 +725,9 @@ test('probeLauncherRunning: launcher 返回 running 或 portOpen 任一为真即
   assertEqual(rb, true, 'portOpen=true 时应判定运行中');
   // 场景 C：running=false 且 portOpen=false（服务真实停止）
   var rc = null;
-  s.probeLauncherRunning(function (r) { rc = r; });
+  s.probeLauncherRunning(function (r) {
+    rc = r;
+  });
   var xc = s.__lastXhr();
   xc.status = 200;
   xc.responseText = JSON.stringify({ running: false, portOpen: false });
@@ -594,14 +738,19 @@ test('probeLauncherRunning: launcher 返回 running 或 portOpen 任一为真即
 test('init-launcher-fallback: init 首屏含 launcher 回退分支（/global/health 失败 → 回退 launcher）', function () {
   var src = fs.readFileSync(TASKPANE_HTML, 'utf-8');
   assertTrue(/else if \(launcherOk\)/.test(src), 'init 应含 launcher 回退分支');
-  assertTrue(/probeLauncherRunning\(function\(launcherRunning\)/.test(src), 'launcher 回退分支应调用 probeLauncherRunning');
+  assertTrue(
+    /probeLauncherRunning\(function\(launcherRunning\)/.test(src),
+    'launcher 回退分支应调用 probeLauncherRunning'
+  );
 });
 
 // ===== Issue #114 回归修复：launcher 不可达时用 SSE 作第三信号源探测服务 =====
 test('probeLauncherRunning: launcher 不可达（XHR 错误/超时）时 reachable=false', function () {
   var s = loadTaskpaneScript();
   var result = null;
-  s.probeLauncherRunning(function (running, reachable) { result = { running: running, reachable: reachable }; });
+  s.probeLauncherRunning(function (running, reachable) {
+    result = { running: running, reachable: reachable };
+  });
   var x = s.__lastXhr();
   // 模拟 launcher 未运行：XHR 网络错误（onerror）
   x.onerror();
@@ -609,13 +758,17 @@ test('probeLauncherRunning: launcher 不可达（XHR 错误/超时）时 reachab
   assertEqual(result.reachable, false, 'launcher 不可达时应 reachable=false');
   // 场景 B：XHR 超时
   result = null;
-  s.probeLauncherRunning(function (running, reachable) { result = { running: running, reachable: reachable }; });
+  s.probeLauncherRunning(function (running, reachable) {
+    result = { running: running, reachable: reachable };
+  });
   var x2 = s.__lastXhr();
   x2.ontimeout();
   assertEqual(result.reachable, false, 'XHR 超时时应 reachable=false');
   // 场景 C：launcher 可达但确认服务停止
   result = null;
-  s.probeLauncherRunning(function (running, reachable) { result = { running: running, reachable: reachable }; });
+  s.probeLauncherRunning(function (running, reachable) {
+    result = { running: running, reachable: reachable };
+  });
   var x3 = s.__lastXhr();
   x3.status = 200;
   x3.responseText = JSON.stringify({ running: false, portOpen: false });
@@ -626,10 +779,14 @@ test('probeLauncherRunning: launcher 不可达（XHR 错误/超时）时 reachab
 
 test('healthcheck-launcher-unreachable: /global/health 失败且 launcher 不可达 → 用 SSE 探测服务（Issue #114）', function () {
   var s = loadTaskpaneScript();
-  s.onServerConnected = function () {};  // 避免内部副作用
+  s.onServerConnected = function () {}; // 避免内部副作用
   // 第 1 轮评审：SSE 探测恢复路径会刷新模型/智能体下拉框，这里 stub 避免触发真实 fetch
-  s.fetchAvailableModels = function (cb) { if (cb) cb(); };
-  s.fetchAvailableAgents = function (cb) { if (cb) cb(); };
+  s.fetchAvailableModels = function (cb) {
+    if (cb) cb();
+  };
+  s.fetchAvailableAgents = function (cb) {
+    if (cb) cb();
+  };
   // 进入运行中 chat 状态
   s.SERVER_RUNNING = true;
   s.CONNECTED = true;
@@ -649,7 +806,10 @@ test('healthcheck-launcher-unreachable: /global/health 失败且 launcher 不可
   // 服务实际在跑：SSE onopen → 恢复运行中 + 切回 chat
   var statuses = [];
   var origUpd = s.updateServerStatus;
-  s.updateServerStatus = function (running) { statuses.push(running); origUpd(running); };
+  s.updateServerStatus = function (running) {
+    statuses.push(running);
+    origUpd(running);
+  };
   s.SSE.onopen();
   assertEqual(s.SERVER_RUNNING, true, 'SSE onopen 确认服务在跑应恢复 SERVER_RUNNING=true');
   assertEqual(statuses[statuses.length - 1], true, 'SSE onopen 应 updateServerStatus(true)');
@@ -678,7 +838,10 @@ test('init-launcher-unreachable: init 时 launcher 未运行 + /global/health �
   var src = fs.readFileSync(TASKPANE_HTML, 'utf-8');
   // 验证 init 的 else 分支（launcher 未运行）包含 connectSSE 探测
   assertTrue(/launcher 未运行或 opencode 未启动/.test(src), 'init 应含 launcher 未运行分支');
-  assertTrue(/startHealthCheck\(\)   \/\/ setup 下也启动健康检测[\s\S]*?connectSSE\(true\)/.test(src), 'init else 分支应在 startHealthCheck 后调用 connectSSE(true) 探测');
+  assertTrue(
+    /startHealthCheck\(\)   \/\/ setup 下也启动健康检测[\s\S]*?connectSSE\(true\)/.test(src),
+    'init else 分支应在 startHealthCheck 后调用 connectSSE(true) 探测'
+  );
 });
 
 test('SSE-onopen-noselfreconnect: setup 补建会话时不再回调 connectSSE 拆除当前 SSE（评审建议 1）', function () {
@@ -687,24 +850,37 @@ test('SSE-onopen-noselfreconnect: setup 补建会话时不再回调 connectSSE �
   s.STOPPING = false;
   s.CONNECTED = false;
   s.IN_SETUP_VIEW = true;
-  s.SESSION_ID = '';   // 无会话 → onopen 应补建会话
+  s.SESSION_ID = ''; // 无会话 → onopen 应补建会话
   // 第 1 轮评审：SSE 探测恢复路径会刷新模型/智能体下拉框，这里 stub 避免触发真实 fetch
-  s.fetchAvailableModels = function (cb) { if (cb) cb(); };
-  s.fetchAvailableAgents = function (cb) { if (cb) cb(); };
+  s.fetchAvailableModels = function (cb) {
+    if (cb) cb();
+  };
+  s.fetchAvailableAgents = function (cb) {
+    if (cb) cb();
+  };
   // 拦截 createNewSession：捕获回调，验证不再以 connectSSE() 作为回调（避免 close 刚建立的 SSE 再重连）
   var sessionCallback = 'not-captured';
   var origCreate = s.createNewSession;
-  s.createNewSession = function (cb) { sessionCallback = cb; };
+  s.createNewSession = function (cb) {
+    sessionCallback = cb;
+  };
   // 拦截 connectSSE：验证 onopen 补建会话时不会再次调用 connectSSE（自拆除/重连）
   var connCalls = 0;
   var origConn = s.connectSSE;
-  s.connectSSE = function () { connCalls++; origConn(); };
+  s.connectSSE = function () {
+    connCalls++;
+    origConn();
+  };
   // 连接并触发 onopen
   s.connectSSE();
   var currentSSE = s.SSE;
   assertTrue(currentSSE != null, 'SSE 实例应已创建');
   s.SSE.onopen();
-  assertEqual(sessionCallback, undefined, 'createNewSession 应被调用且不传 connectSSE 回调（建议 1）');
+  assertEqual(
+    sessionCallback,
+    undefined,
+    'createNewSession 应被调用且不传 connectSSE 回调（建议 1）'
+  );
   // 关键断言：SSE 实例未被拆除/重建（createNewSession 不应触发 connectSSE 去 close 当前 SSE）
   assertTrue(s.SSE === currentSSE, '补建会话后应保留当前已建立的 SSE，不因自拆除而重建');
   assertEqual(connCalls, 1, '补建会话过程中不应额外调用 connectSSE（仅 onopen 前那次）');
@@ -738,21 +914,29 @@ test('healthcheck-launcher-unreachable-cooldown: launcher 不可达触发 SSE �
   healthOverride = { healthy: false };
   s.__flushHealthChecks(1);
   var x = s.__lastXhr();
-  x.onerror();  // launcher 不可达
-  assertEqual(s.SSE, null, '冷却窗口内健康检查失败分支不应创建注定失败的 EventSource（无连接风暴）');
+  x.onerror(); // launcher 不可达
+  assertEqual(
+    s.SSE,
+    null,
+    '冷却窗口内健康检查失败分支不应创建注定失败的 EventSource（无连接风暴）'
+  );
 });
 
 // ===== 第 1 轮评审新增：SSE 探测连接失败不自动重连（不绕过冷却守卫） =====
 test('SSE-probe-noreconnect: 探测性连接（connectSSE(true)）失败时不走自动重连（评审第 1 轮）', function () {
   var s = loadTaskpaneScript();
-  s.SESSION_ID = 'abc';   // 模拟先前已建会话（正常场景 SESSION_ID 非空，旧逻辑会走自动重连）
+  s.SESSION_ID = 'abc'; // 模拟先前已建会话（正常场景 SESSION_ID 非空，旧逻辑会走自动重连）
   s.SSE_IS_PROBE = false;
   // 以探测模式建连
   s.connectSSE(true);
   assertEqual(s.SSE_IS_PROBE, true, '探测性 connectSSE(true) 应标记 SSE_IS_PROBE=true');
   // 触发 onerror（服务真停/连接失败）
   s.SSE.onerror();
-  assertEqual(s.sseReconnectTimer, null, '探测性连接失败不应排程自动重连（避免绕过冷却向已停止服务反复建连）');
+  assertEqual(
+    s.sseReconnectTimer,
+    null,
+    '探测性连接失败不应排程自动重连（避免绕过冷却向已停止服务反复建连）'
+  );
   assertEqual(s.SSE_IS_PROBE, false, 'onerror 后应复位 SSE_IS_PROBE 标记');
 });
 
@@ -760,7 +944,7 @@ test('SSE-probe-normal-reconnect-kept: 正常连接（connectSSE()）失败仍�
   var s = loadTaskpaneScript();
   s.SESSION_ID = 'abc';
   s.SSE_IS_PROBE = false;
-  s.connectSSE();   // 正常连接
+  s.connectSSE(); // 正常连接
   assertEqual(s.SSE_IS_PROBE, false, '正常 connectSSE() 不应标记为探测连接');
   s.SSE.onerror();
   assertTrue(s.sseReconnectTimer != null, '正常连接失败应保留标准自动重连（不影响既有重连逻辑）');
@@ -773,11 +957,15 @@ test('SSE-probe-onopen-clears-probe: 探测连接成功后转为真实连接（S
   s.STOPPING = false;
   s.CONNECTED = false;
   s.IN_SETUP_VIEW = true;
-  s.fetchAvailableModels = function (cb) { if (cb) cb(); };
-  s.fetchAvailableAgents = function (cb) { if (cb) cb(); };
-  s.connectSSE(true);   // 探测建连
+  s.fetchAvailableModels = function (cb) {
+    if (cb) cb();
+  };
+  s.fetchAvailableAgents = function (cb) {
+    if (cb) cb();
+  };
+  s.connectSSE(true); // 探测建连
   assertEqual(s.SSE_IS_PROBE, true, '建连时 SSE_IS_PROBE=true');
-  s.SSE.onopen();   // 连接成功 → 服务在跑
+  s.SSE.onopen(); // 连接成功 → 服务在跑
   assertEqual(s.SSE_IS_PROBE, false, 'onopen 成功后应复位 SSE_IS_PROBE=false（转为真实连接）');
 });
 
@@ -788,9 +976,16 @@ test('SSE-probe-model-agent-refresh: setup 探测恢复应刷新模型/智能体
   s.CONNECTED = false;
   s.IN_SETUP_VIEW = true;
   s.SESSION_ID = '';
-  var modelRefreshed = 0, agentRefreshed = 0;
-  s.fetchAvailableModels = function (cb) { modelRefreshed++; if (cb) cb(); };
-  s.fetchAvailableAgents = function (cb) { agentRefreshed++; if (cb) cb(); };
+  var modelRefreshed = 0,
+    agentRefreshed = 0;
+  s.fetchAvailableModels = function (cb) {
+    modelRefreshed++;
+    if (cb) cb();
+  };
+  s.fetchAvailableAgents = function (cb) {
+    agentRefreshed++;
+    if (cb) cb();
+  };
   s.connectSSE(true);
   s.SSE.onopen();
   assertTrue(modelRefreshed >= 1, 'setup 探测恢复应刷新模型列表（fetchAvailableModels 被调用）');
@@ -800,35 +995,54 @@ test('SSE-probe-model-agent-refresh: setup 探测恢复应刷新模型/智能体
 test('healthcheck-SSE-connected-sticky: SSE 已连接时 /global/health 失败不应拆除运行中状态（第 2 轮评审，防振荡）', function () {
   var s = loadTaskpaneScript();
   s.onServerConnected = function () {};
-  s.fetchAvailableModels = function (cb) { if (cb) cb(); };
-  s.fetchAvailableAgents = function (cb) { if (cb) cb(); };
+  s.fetchAvailableModels = function (cb) {
+    if (cb) cb();
+  };
+  s.fetchAvailableAgents = function (cb) {
+    if (cb) cb();
+  };
   // 已通过 SSE 探测恢复：SSE 已连接，SERVER_RUNNING=true（chat 视图）
   s.SERVER_RUNNING = true;
   s.CONNECTED = true;
   s.IN_SETUP_VIEW = false;
   s.STOPPING = false;
-  s.connectSSE();   // 建立真实 SSE 连接
+  s.connectSSE(); // 建立真实 SSE 连接
   s.SSE.onopen();
   assertEqual(s.SERVER_RUNNING, true, 'SSE onopen 后应 SERVER_RUNNING=true');
   assertTrue(s.SSE != null, 'SSE 应已连接');
   var statuses = [];
   var orig = s.updateServerStatus;
-  s.updateServerStatus = function (running) { statuses.push(running); orig(running); };
+  s.updateServerStatus = function (running) {
+    statuses.push(running);
+    orig(running);
+  };
   // 启动健康检查，触发一次 /global/health 失败（CORS 持续失败场景）
   s.startHealthCheck();
   healthOverride = { healthy: false };
   s.__flushHealthChecks(1);
   // SSE 已连接，不应因 /global/health 失败拆除运行中状态（防每 10s 振荡）
-  assertEqual(s.SERVER_RUNNING, true, 'SSE 已连接时 /global/health 失败不应置 SERVER_RUNNING=false');
+  assertEqual(
+    s.SERVER_RUNNING,
+    true,
+    'SSE 已连接时 /global/health 失败不应置 SERVER_RUNNING=false'
+  );
   assertEqual(s.SSE != null, true, 'SSE 已连接时 /global/health 失败不应 close SSE');
-  assertEqual(statuses.indexOf(false), -1, 'SSE 已连接时 /global/health 失败不应 updateServerStatus(false)');
+  assertEqual(
+    statuses.indexOf(false),
+    -1,
+    'SSE 已连接时 /global/health 失败不应 updateServerStatus(false)'
+  );
 });
 
 test('healthcheck-SSE-closed-then-fail: SSE 断开后 /global/health 失败仍正常降级（第 2 轮评审回归，不损失响应性）', function () {
   var s = loadTaskpaneScript();
   s.onServerConnected = function () {};
-  s.fetchAvailableModels = function (cb) { if (cb) cb(); };
-  s.fetchAvailableAgents = function (cb) { if (cb) cb(); };
+  s.fetchAvailableModels = function (cb) {
+    if (cb) cb();
+  };
+  s.fetchAvailableAgents = function (cb) {
+    if (cb) cb();
+  };
   s.SERVER_RUNNING = true;
   s.CONNECTED = true;
   s.IN_SETUP_VIEW = false;
@@ -843,15 +1057,27 @@ test('healthcheck-SSE-closed-then-fail: SSE 断开后 /global/health 失败仍�
   s.startHealthCheck();
   healthOverride = { healthy: false };
   s.__flushHealthChecks(1);
-  assertEqual(s.SERVER_RUNNING, false, 'SSE 断开后 /global/health 失败应正常降级为 SERVER_RUNNING=false');
+  assertEqual(
+    s.SERVER_RUNNING,
+    false,
+    'SSE 断开后 /global/health 失败应正常降级为 SERVER_RUNNING=false'
+  );
 });
 
 // ==================== 测试结果汇总 ====================
 
 console.log('\n========== 测试结果 ==========');
 console.log('总计: ' + testCount + ' 个测试');
-console.log('通过: ' + testResults.filter(function (r) { return r.status === 'PASS'; }).length + ' 个');
-var failed = testResults.filter(function (r) { return r.status === 'FAIL'; });
+console.log(
+  '通过: ' +
+    testResults.filter(function (r) {
+      return r.status === 'PASS';
+    }).length +
+    ' 个'
+);
+var failed = testResults.filter(function (r) {
+  return r.status === 'FAIL';
+});
 console.log('失败: ' + failed.length + ' 个');
 
 if (failed.length === 0) {

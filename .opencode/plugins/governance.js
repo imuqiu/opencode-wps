@@ -35,93 +35,153 @@
 // ==================== 常量定义 ====================
 
 const DIRECT_TO_GATEWAY = {
-  "wps-office_wps_get_active_document":     "getActiveDocument",
-  "wps-office_wps_insert_text":             "insertText",
-  "wps-office_wps_get_active_workbook":     "getActiveWorkbook",
-  "wps-office_wps_get_cell_value":          "getCellValue",
-  "wps-office_wps_set_cell_value":          "setCellValue",
-  "wps-office_wps_get_active_presentation": "getActivePresentation",
+  'wps-office_wps_get_active_document': 'getActiveDocument',
+  'wps-office_wps_insert_text': 'insertText',
+  'wps-office_wps_get_active_workbook': 'getActiveWorkbook',
+  'wps-office_wps_get_cell_value': 'getCellValue',
+  'wps-office_wps_set_cell_value': 'setCellValue',
+  'wps-office_wps_get_active_presentation': 'getActivePresentation',
   // 五维评分校对报告工具（#25 TC-13）：MCP 侧不直连注册，但仍加入 G1 兜底拦截，
   // 若未来误注册为直接 MCP 工具也会被强制改走 wps_office_execute 网关
-  "wps-office_wps_word_proofread_accumulate":        "proofreadAccumulate",
-  "wps-office_wps_word_generate_proofread_report":   "generateProofreadReport",
+  'wps-office_wps_word_proofread_accumulate': 'proofreadAccumulate',
+  'wps-office_wps_word_generate_proofread_report': 'generateProofreadReport',
 };
 
 const WRITE_TOOLS = new Set([
-  "setCellValue", "setRangeData", "setFormula", "setArrayFormula",
-  "insertText", "insertTable", "insertImage", "insertExcelImage",
-  "insertPptImage", "insertRows", "insertColumns", "deleteRows", "deleteColumns",
-  "clearRange", "mergeCells", "unmergeCells",
-  "replaceInParagraph", "findReplace", "replaceInSheet",
-  "setCellFormat", "setCellStyle", "setBorder", "setNumberFormat",
-  "setColumnWidth", "setRowHeight",
-  "setFont", "setParagraph", "applyStyle",
-  "setSlideTitle", "setSlideContent", "setSlideNotes", "setSlideBackground",
-  "addSlide", "deleteSlide", "duplicateSlide", "moveSlide",
-  "addShape", "deleteShape", "addTextBox", "setTextBoxText", "deleteTextBox",
-  "addComment", "beautifySlide", "beautifyAllSlides",
-  "save", "saveAs", "closeDocument", "closePresentation", "closeWorkbook",
-  "smartFillField", "replaceBookmarkContent",
+  'setCellValue',
+  'setRangeData',
+  'setFormula',
+  'setArrayFormula',
+  'insertText',
+  'insertTable',
+  'insertImage',
+  'insertExcelImage',
+  'insertPptImage',
+  'insertRows',
+  'insertColumns',
+  'deleteRows',
+  'deleteColumns',
+  'clearRange',
+  'mergeCells',
+  'unmergeCells',
+  'replaceInParagraph',
+  'findReplace',
+  'replaceInSheet',
+  'setCellFormat',
+  'setCellStyle',
+  'setBorder',
+  'setNumberFormat',
+  'setColumnWidth',
+  'setRowHeight',
+  'setFont',
+  'setParagraph',
+  'applyStyle',
+  'setSlideTitle',
+  'setSlideContent',
+  'setSlideNotes',
+  'setSlideBackground',
+  'addSlide',
+  'deleteSlide',
+  'duplicateSlide',
+  'moveSlide',
+  'addShape',
+  'deleteShape',
+  'addTextBox',
+  'setTextBoxText',
+  'deleteTextBox',
+  'addComment',
+  'beautifySlide',
+  'beautifyAllSlides',
+  'save',
+  'saveAs',
+  'closeDocument',
+  'closePresentation',
+  'closeWorkbook',
+  'smartFillField',
+  'replaceBookmarkContent',
 ]);
 
 const READ_TOOLS = new Set([
-  "getActiveDocument", "getActiveWorkbook", "getActivePresentation",
-  "getDocumentText", "getDocumentParagraphs", "getDocumentStats",
-  "getCellValue", "getRangeData", "getFormula",
-  "getSheetList", "getCellInfo", "getSelection",
-  "getSlideCount", "getSlideInfo", "getSlideTitle", "getSlideNotes",
-  "getShapes", "getTextBoxes", "getBookmarks", "getComments",
-  "findInDocument", "findInSheet",
+  'getActiveDocument',
+  'getActiveWorkbook',
+  'getActivePresentation',
+  'getDocumentText',
+  'getDocumentParagraphs',
+  'getDocumentStats',
+  'getCellValue',
+  'getRangeData',
+  'getFormula',
+  'getSheetList',
+  'getCellInfo',
+  'getSelection',
+  'getSlideCount',
+  'getSlideInfo',
+  'getSlideTitle',
+  'getSlideNotes',
+  'getShapes',
+  'getTextBoxes',
+  'getBookmarks',
+  'getComments',
+  'findInDocument',
+  'findInSheet',
 ]);
 
 const DESTRUCTIVE_TOOLS = new Set([
-  "deleteSheet", "deleteSlide", "deleteRows", "deleteColumns",
-  "deleteShape", "deleteTextBox", "deletePptImage", "deleteCellComment",
-  "clearRange", "clearFormats",
-  "unmergeCells",
-  "removeConditionalFormat", "removeDataValidation",
-  "removeAnimation", "removeSlideTransition", "removePptHyperlink",
-  "closeDocument", "closePresentation", "closeWorkbook",
+  'deleteSheet',
+  'deleteSlide',
+  'deleteRows',
+  'deleteColumns',
+  'deleteShape',
+  'deleteTextBox',
+  'deletePptImage',
+  'deleteCellComment',
+  'clearRange',
+  'clearFormats',
+  'unmergeCells',
+  'removeConditionalFormat',
+  'removeDataValidation',
+  'removeAnimation',
+  'removeSlideTransition',
+  'removePptHyperlink',
+  'closeDocument',
+  'closePresentation',
+  'closeWorkbook',
 ]);
 
-const PASSWORD_TOOLS = new Set([
-  "protectSheet", "unprotectSheet", "protectWorkbook",
-]);
+const PASSWORD_TOOLS = new Set(['protectSheet', 'unprotectSheet', 'protectWorkbook']);
 
-const FILE_PATH_PARAMS = new Set([
-  "filePath", "imagePath", "outputPath", "path",
-]);
+const FILE_PATH_PARAMS = new Set(['filePath', 'imagePath', 'outputPath', 'path']);
 
 const PARAM_RANGES = {
-  "getCellValue":    { row: [1, null], col: [1, null] },
-  "setCellValue":    { row: [1, null], col: [1, null] },
-  "getCellInfo":     { row: [1, null], col: [1, null] },
-  "addCellComment":  { row: [1, null], col: [1, null] },
-  "deleteCellComment": { row: [1, null], col: [1, null] },
-  "insertRows":      { row: [1, null] },
-  "deleteRows":      { row: [1, null] },
-  "hideRows":        { row: [1, null] },
-  "showRows":        { row: [1, null] },
-  "setRowHeight":    { row: [1, null], height: [1, null] },
-  "deleteSlide":     { slideIndex: [1, null] },
-  "switchSlide":     { slideIndex: [1, null] },
-  "getSlideInfo":    { slideIndex: [1, null] },
-  "getSlideTitle":   { slideIndex: [1, null] },
-  "getSlideNotes":   { slideIndex: [1, null] },
-  "setSlideTitle":   { slideIndex: [1, null] },
-  "setSlideSubtitle": { slideIndex: [1, null] },
-  "setSlideContent": { slideIndex: [1, null] },
-  "setSlideNotes":   { slideIndex: [1, null] },
-  "setSlideBackground": { slideIndex: [1, null] },
-  "setSlideTransition": { slideIndex: [1, null] },
-  "removeSlideTransition": { slideIndex: [1, null] },
-  "addAnimation":    { slideIndex: [1, null], shapeIndex: [1, null] },
-  "removeAnimation": { slideIndex: [1, null], animationIndex: [1, null] },
-  "deleteShape":     { index: [1, null] },
-  "duplicateShape":  { index: [1, null] },
-  "insertTable":     { rows: [1, 100], cols: [1, 100] },
-  "insertPptTable":  { rows: [1, 100], cols: [1, 100] },
-  "groupRows":       { startRow: [1, null], endRow: [1, null] },
+  getCellValue: { row: [1, null], col: [1, null] },
+  setCellValue: { row: [1, null], col: [1, null] },
+  getCellInfo: { row: [1, null], col: [1, null] },
+  addCellComment: { row: [1, null], col: [1, null] },
+  deleteCellComment: { row: [1, null], col: [1, null] },
+  insertRows: { row: [1, null] },
+  deleteRows: { row: [1, null] },
+  hideRows: { row: [1, null] },
+  showRows: { row: [1, null] },
+  setRowHeight: { row: [1, null], height: [1, null] },
+  deleteSlide: { slideIndex: [1, null] },
+  switchSlide: { slideIndex: [1, null] },
+  getSlideInfo: { slideIndex: [1, null] },
+  getSlideTitle: { slideIndex: [1, null] },
+  getSlideNotes: { slideIndex: [1, null] },
+  setSlideTitle: { slideIndex: [1, null] },
+  setSlideSubtitle: { slideIndex: [1, null] },
+  setSlideContent: { slideIndex: [1, null] },
+  setSlideNotes: { slideIndex: [1, null] },
+  setSlideBackground: { slideIndex: [1, null] },
+  setSlideTransition: { slideIndex: [1, null] },
+  removeSlideTransition: { slideIndex: [1, null] },
+  addAnimation: { slideIndex: [1, null], shapeIndex: [1, null] },
+  removeAnimation: { slideIndex: [1, null], animationIndex: [1, null] },
+  deleteShape: { index: [1, null] },
+  duplicateShape: { index: [1, null] },
+  insertTable: { rows: [1, 100], cols: [1, 100] },
+  insertPptTable: { rows: [1, 100], cols: [1, 100] },
+  groupRows: { startRow: [1, null], endRow: [1, null] },
 };
 
 const AI_FIXES_NO_ISSUES_LIMIT = 1;
@@ -138,9 +198,9 @@ const PROOFREAD_STEP_CHAIN = [
 ];
 
 const EXECUTE_METHOD_WHITELIST = new Set([
-  "Application.ActiveDocument",
-  "Application.ActiveWorkbook",
-  "Application.ActivePresentation",
+  'Application.ActiveDocument',
+  'Application.ActiveWorkbook',
+  'Application.ActivePresentation',
 ]);
 
 // ==================== 会话隔离状态管理 ====================
@@ -256,7 +316,9 @@ function extractJsonFromOutput(outputText) {
   if (trimmed.startsWith('{')) {
     try {
       return JSON.parse(trimmed);
-    } catch (_e) { /* fallthrough */ }
+    } catch (_e) {
+      /* fallthrough */
+    }
   }
   // 场景 2：文本展示 + 末尾 JSON 行（proofreadBasic T1 新格式）
   // 从后往前找以 { 开头的行，取其后缀整块尝试 parse
@@ -275,11 +337,38 @@ function extractJsonFromOutput(outputText) {
 }
 
 function getAppType(toolName) {
-  if (toolName.startsWith('getActivePresentation') || toolName.startsWith('wps_ppt_') || toolName.startsWith('wpp_')) return 'ppt';
-  if (toolName.startsWith('getActiveWorkbook') || toolName.startsWith('wps_excel_') || toolName.startsWith('et_')) return 'excel';
-  if (toolName.startsWith('getCell') || toolName.startsWith('setCell') || toolName.startsWith('getRange') || toolName.startsWith('setRange')) return 'excel';
-  if (toolName.startsWith('getSheet') || toolName.startsWith('createSheet') || toolName.startsWith('deleteSheet')) return 'excel';
-  if (toolName.startsWith('renameSheet') || toolName.startsWith('copySheet') || toolName.startsWith('switchSheet') || toolName.startsWith('moveSheet')) return 'excel';
+  if (
+    toolName.startsWith('getActivePresentation') ||
+    toolName.startsWith('wps_ppt_') ||
+    toolName.startsWith('wpp_')
+  )
+    return 'ppt';
+  if (
+    toolName.startsWith('getActiveWorkbook') ||
+    toolName.startsWith('wps_excel_') ||
+    toolName.startsWith('et_')
+  )
+    return 'excel';
+  if (
+    toolName.startsWith('getCell') ||
+    toolName.startsWith('setCell') ||
+    toolName.startsWith('getRange') ||
+    toolName.startsWith('setRange')
+  )
+    return 'excel';
+  if (
+    toolName.startsWith('getSheet') ||
+    toolName.startsWith('createSheet') ||
+    toolName.startsWith('deleteSheet')
+  )
+    return 'excel';
+  if (
+    toolName.startsWith('renameSheet') ||
+    toolName.startsWith('copySheet') ||
+    toolName.startsWith('switchSheet') ||
+    toolName.startsWith('moveSheet')
+  )
+    return 'excel';
   return 'word';
 }
 
@@ -309,13 +398,12 @@ function checkParamRange(toolName, toolArgs) {
     if (val < min) {
       throw new Error(
         `【执行治理】${toolName} ${param}=${val} 过小（允许 ≥ ${min}）。` +
-        `请确保 ${param} 从 ${min} 开始。`
+          `请确保 ${param} 从 ${min} 开始。`
       );
     }
     if (max !== null && val > max) {
       throw new Error(
-        `【执行治理】${toolName} ${param}=${val} 过大（允许 ≤ ${max}）。` +
-        `请减小 ${param} 值。`
+        `【执行治理】${toolName} ${param}=${val} 过大（允许 ≤ ${max}）。` + `请减小 ${param} 值。`
       );
     }
   }
@@ -328,7 +416,7 @@ function checkFilePathSafety(args) {
     if (val.includes('..')) {
       throw new Error(
         `【执行治理】文件路径含路径穿越符号（..），已拒绝：${key}="${val}"。` +
-        `请使用绝对路径且不含 ".."。`
+          `请使用绝对路径且不含 ".."。`
       );
     }
   }
@@ -338,8 +426,7 @@ function checkPasswordProtection(toolName, toolArgs) {
   if (!PASSWORD_TOOLS.has(toolName)) return;
   if (toolArgs.password && toolArgs.password.length > 0) {
     console.warn(
-      `【执行治理】${toolName} 使用了密码参数（已脱敏）。` +
-      `密码不会记录日志，请确认操作范围。`
+      `【执行治理】${toolName} 使用了密码参数（已脱敏）。` + `密码不会记录日志，请确认操作范围。`
     );
   }
 }
@@ -348,13 +435,12 @@ function checkPasswordProtection(toolName, toolArgs) {
 
 export const WpsGovernancePlugin = async () => {
   return {
-
     // ── 执行后钩子：输出成功后才提交可变状态 ──
     // 回调签名: (input: { tool: string, sessionID: string, callID: string, args: object }, output: { content: array, isError?: boolean }) => Promise<void>
-    "tool.execute.after": async (input, output) => {
+    'tool.execute.after': async (input, output) => {
       const outerTool = input.tool;
 
-      if (outerTool === "wps-office_wps_office_execute" || outerTool === "wps_office_execute") {
+      if (outerTool === 'wps-office_wps_office_execute' || outerTool === 'wps_office_execute') {
         if (output?.isError) return;
 
         const toolArgs = input.args || {};
@@ -362,13 +448,13 @@ export const WpsGovernancePlugin = async () => {
         const innerArgs = toolArgs.arguments || {};
         var st = getSessionState(input);
 
-        if (toolName === "getActiveDocument") {
+        if (toolName === 'getActiveDocument') {
           const outText = getOutputText(output);
           if (!outText) return;
           st.docInfoFetched = true;
           st.appReadState.word.activeDocRead = true;
-          const paraMatch = outText.match(/总段数[：:]\s*(\d+)/i)
-            || outText.match(/[Pp]aragraphs?[:\s]+(\d+)/i);
+          const paraMatch =
+            outText.match(/总段数[：:]\s*(\d+)/i) || outText.match(/[Pp]aragraphs?[:\s]+(\d+)/i);
           if (paraMatch) {
             st.totalParagraphs = parseInt(paraMatch[1], 10);
           } else {
@@ -388,21 +474,21 @@ export const WpsGovernancePlugin = async () => {
           return;
         }
 
-        if (toolName === "getActiveWorkbook") {
+        if (toolName === 'getActiveWorkbook') {
           const outText = getOutputText(output);
           if (!outText) return;
           st.appReadState.excel.activeWorkbookRead = true;
           return;
         }
 
-        if (toolName === "getActivePresentation") {
+        if (toolName === 'getActivePresentation') {
           const outText = getOutputText(output);
           if (!outText) return;
           st.appReadState.ppt.activePresentationRead = true;
           return;
         }
 
-        if (toolName === "getDocumentParagraphs") {
+        if (toolName === 'getDocumentParagraphs') {
           const outText = getOutputText(output);
           if (!outText) return;
           const ranges = parseParagraphRanges(outText);
@@ -427,7 +513,7 @@ export const WpsGovernancePlugin = async () => {
           return;
         }
 
-        if (toolName === "enableTrackChanges") {
+        if (toolName === 'enableTrackChanges') {
           const outText = getOutputText(output);
           if (!outText) return;
           st.trackChangesOn = innerArgs.enable === true;
@@ -435,7 +521,7 @@ export const WpsGovernancePlugin = async () => {
           return;
         }
 
-        if (toolName === "proofreadBasic") {
+        if (toolName === 'proofreadBasic') {
           const outText = getOutputText(output);
           if (!outText) return;
           st.proofreadCalledThisBatch = true;
@@ -448,25 +534,23 @@ export const WpsGovernancePlugin = async () => {
           const parsed = extractJsonFromOutput(outText);
           if (parsed && Array.isArray(parsed.issues)) {
             st.proofreadHadIssues = parsed.issues.length > 0;
-            st.proofreadIssueOriginals = parsed.issues
-              .map(i => i.original)
-              .filter(Boolean);
+            st.proofreadIssueOriginals = parsed.issues.map(i => i.original).filter(Boolean);
           }
           return;
         }
 
-        if (toolName === "replaceInParagraph") {
+        if (toolName === 'replaceInParagraph') {
           st.replaceCalledThisBatch = true;
           st.replaceCountThisBatch++;
           return;
         }
 
-        if (toolName === "confirmBatchAiProofread") {
+        if (toolName === 'confirmBatchAiProofread') {
           st.aiProofreadDoneThisBatch = true;
           return;
         }
 
-        if (toolName === "getTrackChangesStatus") {
+        if (toolName === 'getTrackChangesStatus') {
           const outText = getOutputText(output);
           if (!outText) return;
           const match = outText.match(/当前修订数量:\s*(\d+)/);
@@ -480,31 +564,39 @@ export const WpsGovernancePlugin = async () => {
         // 供 write 拦截规则区分「合法落盘服务端报告」与「AI 手动 write 伪造报告」。
         // 关键：必须区分 generateProofreadReport 的「成功」与「失败」（如未找到会话/落盘失败），
         // 否则 AI 在报告失败后仍可 write 伪造——故同时检查 success 与失败标记文本。
-        if (toolName === "generateProofreadReport") {
+        if (toolName === 'generateProofreadReport') {
           const outText = getOutputText(output);
-          const failureMarkers = ['未找到会话', '写入文件失败', '落盘失败', 'success:false', '生成报告失败', '写文件失败'];
-          const hasFailureMarker = failureMarkers.some((m) => outText.indexOf(m) !== -1);
+          const failureMarkers = [
+            '未找到会话',
+            '写入文件失败',
+            '落盘失败',
+            'success:false',
+            '生成报告失败',
+            '写文件失败',
+          ];
+          const hasFailureMarker = failureMarkers.some(m => outText.indexOf(m) !== -1);
           const ok = output && !output.isError && output.success !== false && !hasFailureMarker;
           st.reportGenerated = !!ok;
-          st.reportSessionId = (innerArgs.session_id || st.reportSessionId || '');
+          st.reportSessionId = innerArgs.session_id || st.reportSessionId || '';
           return;
         }
-        if (toolName === "proofreadAccumulate") {
+        if (toolName === 'proofreadAccumulate') {
           // 记录会话 ID（用于识别校对流程会话），即便未生成报告也便于 P17 判断在校对流程中
-          st.reportSessionId = (innerArgs.session_id || st.reportSessionId || '');
+          st.reportSessionId = innerArgs.session_id || st.reportSessionId || '';
           // P20（Issue #151 校对重构，决策 5）：逐步凭证落盘防幻觉——
           // 执行 agent 在并行校对中调用 proofreadAccumulate 时，若携带了 _batch_id 声明批次，
           // 则必须同时携带 _steps_log（本批逐步执行凭证），供管理 agent 审计完整步骤链，
           // 防止"大模型假装批量校对"（缺任何一步即判定该批未完成并重新派发）。
           // R8-2：校验 _steps_log 为非空数组（空数组/缺数组均拦截，避免用空凭证绕过 P20）。
-          const hasStepsLog = Array.isArray(innerArgs._steps_log) && innerArgs._steps_log.length > 0;
+          const hasStepsLog =
+            Array.isArray(innerArgs._steps_log) && innerArgs._steps_log.length > 0;
           if (innerArgs._batch_id && !hasStepsLog) {
             throw new Error(
               `【执行治理】【P20】本批 ${innerArgs._batch_id} 缺少逐步执行凭证（_steps_log 需为非空数组）。\n` +
-              `执行 agent 必须在校对过程中逐步落盘凭证，完整覆盖标准步骤链：\n` +
-              `getDocumentParagraphs → getDocumentTextByRange → proofreadBasic → ` +
-              `confirmBatchAiProofread → replaceInParagraph → proofreadAccumulate。\n` +
-              `缺少任一步即视为本批未完成，将重新派发。请补充非空的 _steps_log 后再累加。`
+                `执行 agent 必须在校对过程中逐步落盘凭证，完整覆盖标准步骤链：\n` +
+                `getDocumentParagraphs → getDocumentTextByRange → proofreadBasic → ` +
+                `confirmBatchAiProofread → replaceInParagraph → proofreadAccumulate。\n` +
+                `缺少任一步即视为本批未完成，将重新派发。请补充非空的 _steps_log 后再累加。`
             );
           }
           // R4-2：校验 _steps_log 的 step 名合法性——必须落在标准步骤链内，杜绝编造任意步骤名
@@ -518,14 +610,14 @@ export const WpsGovernancePlugin = async () => {
             if (illegalStep) {
               throw new Error(
                 `【执行治理】【P20】本批 ${innerArgs._batch_id} 的 _steps_log 含非法步骤名 "${String(illegalStep && illegalStep.step)}"。\n` +
-                `标准步骤链：${PROOFREAD_STEP_CHAIN.join(' → ')}。`
+                  `标准步骤链：${PROOFREAD_STEP_CHAIN.join(' → ')}。`
               );
             }
           }
           return;
         }
 
-        if (toolName === "smartFillField") {
+        if (toolName === 'smartFillField') {
           st.templateFilling.active = true;
           st.templateFilling.fieldsFilled++;
           const keyword = innerArgs.keyword;
@@ -542,14 +634,18 @@ export const WpsGovernancePlugin = async () => {
           return;
         }
 
-        if (toolName === "replaceBookmarkContent") {
+        if (toolName === 'replaceBookmarkContent') {
           st.templateFilling.active = true;
           st.templateFilling.fieldsFilled++;
           if (innerArgs.keyword) {
             st.templateFilling.fillKeywords.push(innerArgs.keyword);
           }
           if (innerArgs.keyword && innerArgs.value !== undefined) {
-            st.templateFilling.fillHistory.push({ keyword: innerArgs.keyword, value: innerArgs.value, underline: true });
+            st.templateFilling.fillHistory.push({
+              keyword: innerArgs.keyword,
+              value: innerArgs.value,
+              underline: true,
+            });
           }
           return;
         }
@@ -559,7 +655,7 @@ export const WpsGovernancePlugin = async () => {
     // ── 执行前钩子：所有规则校验 ──
     // 回调签名: (input: { tool: string, sessionID: string, callID: string, args: object }, output: never) => Promise<void>
     // rules: G1-G7 通用规则, P1-P16 校对规则, T1-T11 模板填写规则
-    "tool.execute.before": async (input, output) => {
+    'tool.execute.before': async (input, output) => {
       const outerTool = input.tool;
 
       // ==================== 规则 G1：网关强制 ====================
@@ -567,27 +663,28 @@ export const WpsGovernancePlugin = async () => {
       if (gatewayName) {
         throw new Error(
           `【执行治理】请通过网关调用 ${gatewayName}，不要直接调用 ${outerTool}。` +
-          `使用方法：wps_office_execute({ tool_name: "${gatewayName}", arguments: {...} })`
+            `使用方法：wps_office_execute({ tool_name: "${gatewayName}", arguments: {...} })`
         );
       }
 
       // ==================== 规则 G2：wps_execute_method 白名单 ====================
-      if (outerTool === "wps-office_wps_execute_method" || outerTool === "wps_execute_method") {
+      if (outerTool === 'wps-office_wps_execute_method' || outerTool === 'wps_execute_method') {
         const args = input.args || {};
         const method = args.method || '';
         const allowed = Array.from(EXECUTE_METHOD_WHITELIST).some(a => method.startsWith(a));
         if (!allowed) {
           throw new Error(
             `【执行治理】wps_execute_method 只允许白名单 API。` +
-            `当前 method="${method}" 不在白名单中。` +
-            `允许的 API：${Array.from(EXECUTE_METHOD_WHITELIST).join(', ')}。` +
-            `其他操作请通过 wps_office_execute 使用已注册工具。`
+              `当前 method="${method}" 不在白名单中。` +
+              `允许的 API：${Array.from(EXECUTE_METHOD_WHITELIST).join(', ')}。` +
+              `其他操作请通过 wps_office_execute 使用已注册工具。`
           );
         }
       }
 
       // 以下规则仅针对 wps_office_execute 网关调用
-      if (outerTool !== "wps-office_wps_office_execute" && outerTool !== "wps_office_execute") return;
+      if (outerTool !== 'wps-office_wps_office_execute' && outerTool !== 'wps_office_execute')
+        return;
 
       const toolArgs = input.args || {};
       const toolName = toolArgs.tool_name;
@@ -610,8 +707,8 @@ export const WpsGovernancePlugin = async () => {
         if (state && !state.activeDocRead) {
           throw new Error(
             `【执行治理】执行 ${toolName} 前必须先读取文档状态。` +
-            `请先调用 getActiveDocument(Word) / getActiveWorkbook(Excel) / ` +
-            `getActivePresentation(PPT) 了解当前文档信息。`
+              `请先调用 getActiveDocument(Word) / getActiveWorkbook(Excel) / ` +
+              `getActivePresentation(PPT) 了解当前文档信息。`
           );
         }
       }
@@ -622,7 +719,7 @@ export const WpsGovernancePlugin = async () => {
         if (confirm !== true) {
           throw new Error(
             `【执行治理】${toolName} 是破坏性操作，必须传递 confirm: true 确认。` +
-            `请在调用参数中添加 arguments: { ..., confirm: true } 以确认此操作。`
+              `请在调用参数中添加 arguments: { ..., confirm: true } 以确认此操作。`
           );
         }
       }
@@ -636,7 +733,7 @@ export const WpsGovernancePlugin = async () => {
       // 处理：写「校对报告」路径时，除非服务端已成功生成报告（reportGenerated=true，
       // 即合法方案 B 落盘服务端返回文本），否则一律拦截——强制走 generateProofreadReport
       // 网关（返回 success=true 才算报告完成），而非手动 write 拼报告。
-      const isReportPath = (pathStr) =>
+      const isReportPath = pathStr =>
         typeof pathStr === 'string' && pathStr.indexOf('校对报告') !== -1;
       const reportPathArg = innerArgs.filePath || innerArgs.path || innerArgs.file_path;
       if (toolName === 'writeFile' || toolName === 'write' || toolName === 'writeText') {
@@ -649,9 +746,9 @@ export const WpsGovernancePlugin = async () => {
           if (!st.reportGenerated) {
             throw new Error(
               `【执行治理】【P17】检测到直接写入“校对报告”路径（${reportPathArg}），但服务端尚未成功生成报告。\n` +
-              `校对报告必须由服务端真实累计的数据生成，禁止 AI 手动 write 伪造报告。\n` +
-              `请先调用 generateProofreadReport（走 wps_office_execute 网关，传 session_id + output_file）\n` +
-              `由服务端生成并落盘；若需自行落盘，请用其返回的 content 文本（不得手动构造报告体）。`
+                `校对报告必须由服务端真实累计的数据生成，禁止 AI 手动 write 伪造报告。\n` +
+                `请先调用 generateProofreadReport（走 wps_office_execute 网关，传 session_id + output_file）\n` +
+                `由服务端生成并落盘；若需自行落盘，请用其返回的 content 文本（不得手动构造报告体）。`
             );
           }
         }
@@ -659,12 +756,12 @@ export const WpsGovernancePlugin = async () => {
 
       // ── 以下为分批校对专用规则（P1-P11） ──
 
-      if (toolName === "getActiveDocument" || toolName === "enableTrackChanges") {
+      if (toolName === 'getActiveDocument' || toolName === 'enableTrackChanges') {
         return;
       }
 
       // ── 规则 P1 + P2：getDocumentParagraphs ──
-      if (toolName === "getDocumentParagraphs") {
+      if (toolName === 'getDocumentParagraphs') {
         // Issue #151 R1-2：并行模式（执行 agent 携带 _batch_id）下，P1/P2/P12/P18 这些
         // **基于会话级单值**（st.batchStarted/st.lastBatchParaIndex 等）的串行连续性校验不适用——
         // 并行多执行 agent 各处理独立区间，会话级单值会被互相覆盖而误拦截（如 agent B 的
@@ -674,48 +771,60 @@ export const WpsGovernancePlugin = async () => {
         if (!isParallelBatch && st.allBatchesComplete) {
           throw new Error(
             `【执行治理】所有 ${st.batchCount} 批已全部完成（段落 1-${st.lastBatchParaIndex}/${st.totalParagraphs}）。\n` +
-            `请直接生成校对报告（.校对报告.md），不要再调用 getDocumentParagraphs。`
+              `请直接生成校对报告（.校对报告.md），不要再调用 getDocumentParagraphs。`
           );
         }
         if (!isParallelBatch && st.batchStarted && !st.proofreadCalledThisBatch) {
           throw new Error(
             `【执行治理】【P12】当前批（段落 ${st.batchStartParaIndex}-${st.lastBatchParaIndex}）` +
-            `尚未调用 proofreadBasic，不得获取下一批。\n` +
-            `每批必须先调 proofreadBasic 进行基础校对，禁止仅凭视觉判断跳过。`
+              `尚未调用 proofreadBasic，不得获取下一批。\n` +
+              `每批必须先调 proofreadBasic 进行基础校对，禁止仅凭视觉判断跳过。`
           );
         }
-        if (!isParallelBatch && st.batchStarted && st.proofreadCalledThisBatch && !st.aiProofreadDoneThisBatch) {
+        if (
+          !isParallelBatch &&
+          st.batchStarted &&
+          st.proofreadCalledThisBatch &&
+          !st.aiProofreadDoneThisBatch
+        ) {
           throw new Error(
             `【执行治理】【P12】当前批的 AI 智能校对尚未确认。` +
-            `调完 proofreadBasic 后必须调用 confirmBatchAiProofread 确认 AI 校对完成。`
+              `调完 proofreadBasic 后必须调用 confirmBatchAiProofread 确认 AI 校对完成。`
           );
         }
-        if (!isParallelBatch && st.batchStarted && st.proofreadCalledThisBatch && st.proofreadHadIssues && !st.replaceCalledThisBatch) {
+        if (
+          !isParallelBatch &&
+          st.batchStarted &&
+          st.proofreadCalledThisBatch &&
+          st.proofreadHadIssues &&
+          !st.replaceCalledThisBatch
+        ) {
           throw new Error(
             `【执行治理】【P12】当前批（段落 ${st.batchStartParaIndex}-${st.lastBatchParaIndex}）` +
-            `的校对问题尚未修复，不得获取下一批。\n` +
-            `请先调用 replaceInParagraph 完成本批修复。`
+              `的校对问题尚未修复，不得获取下一批。\n` +
+              `请先调用 replaceInParagraph 完成本批修复。`
           );
         }
         if (!st.docInfoFetched) {
           throw new Error(
-            `【执行治理】请先调用 getActiveDocument 了解文档总段落数，` +
-            `再获取段落列表。`
+            `【执行治理】请先调用 getActiveDocument 了解文档总段落数，` + `再获取段落列表。`
           );
         }
         const start = innerArgs.start_paragraph ?? 1;
-        const end = innerArgs.end_paragraph ?? (start + 199);
+        const end = innerArgs.end_paragraph ?? start + 199;
         const count = end - start + 1;
         if (start < 1) {
           throw new Error(`【执行治理】start_paragraph 必须 ≥ 1（当前值: ${start}）。`);
         }
         if (end < start) {
-          throw new Error(`【执行治理】end_paragraph（${end}）必须 ≥ start_paragraph（${start}）。`);
+          throw new Error(
+            `【执行治理】end_paragraph（${end}）必须 ≥ start_paragraph（${start}）。`
+          );
         }
         if (count > 200) {
           throw new Error(
             `【执行治理】getDocumentParagraphs 单次请求 ${count} 段，` +
-            `超过上限 200 段。请分多次获取。`
+              `超过上限 200 段。请分多次获取。`
           );
         }
         if (!isParallelBatch && st.lastBatchParaIndex === 0 && start !== 1) {
@@ -727,7 +836,7 @@ export const WpsGovernancePlugin = async () => {
           if (start !== 1) {
             throw new Error(
               `【执行治理】批次不连续：上一批结束于段落 ${st.lastBatchParaIndex}，` +
-              `当前批从段落 ${start} 开始。批次必须连续或从第 1 段重新开始。`
+                `当前批从段落 ${start} 开始。批次必须连续或从第 1 段重新开始。`
             );
           }
         }
@@ -740,9 +849,9 @@ export const WpsGovernancePlugin = async () => {
         if (!isParallelBatch && st.lastBatchParaIndex > 0 && start === 1) {
           throw new Error(
             `【执行治理】【P18】禁止重复获取已处理段落：已处理到段落 ${st.lastBatchParaIndex}，` +
-            `当前又从段落 1 重新获取。\n` +
-            `批次必须严格连续（从段落 ${st.lastBatchParaIndex + 1} 继续），` +
-            `禁止回卷重复扫描已检查过的段落范围。`
+              `当前又从段落 1 重新获取。\n` +
+              `批次必须严格连续（从段落 ${st.lastBatchParaIndex + 1} 继续），` +
+              `禁止回卷重复扫描已检查过的段落范围。`
           );
         }
 
@@ -756,28 +865,33 @@ export const WpsGovernancePlugin = async () => {
           const declaredRange = innerArgs._batch_range;
           const declStart = Number(declaredRange.start);
           const declEnd = Number(declaredRange.end);
-          if (Number.isInteger(declStart) && Number.isInteger(declEnd) && declStart >= 1 && declEnd >= declStart) {
+          if (
+            Number.isInteger(declStart) &&
+            Number.isInteger(declEnd) &&
+            declStart >= 1 &&
+            declEnd >= declStart
+          ) {
             // 登记本批次的分配区间（R4-1：按 batchId 隔离，不覆盖其它批次）
             st.assignedRanges[currentBatchId] = { start: declStart, end: declEnd };
             // 请求区间必须落在分配区间内，否则越界（P19）
             if (start < declStart || end > declEnd) {
               throw new Error(
                 `【执行治理】【P19】批次归属越界：本执行 agent 分配区间为段落 ${declStart}-${declEnd}，` +
-                `当前请求 ${start}-${end} 超出该区间。\n` +
-                `执行 agent 只能获取自己被分配的段落区间，不得越界扫描其它区间。`
+                  `当前请求 ${start}-${end} 超出该区间。\n` +
+                  `执行 agent 只能获取自己被分配的段落区间，不得越界扫描其它区间。`
               );
             }
             // 并行区间登记：若请求区间与其它**不同批次**已登记的区间重叠，判定并行冲突（P21）
             // 评审第 1 轮 R1-3/R1-4：以 _batch_id 区分批次。同一批次（同一 _batch_id）的
             // 顺序/续扫请求不算并行冲突（避免断点续跑重扫误判）；仅不同批次区间相交才拦截。
-            const overlap = st.registeredRanges.some(function(r) {
+            const overlap = st.registeredRanges.some(function (r) {
               // 同批次（同 _batch_id）视为顺序处理，不判重叠；不同批次区间相交才判冲突
               return r.batchId !== currentBatchId && !(end < r.start || start > r.end);
             });
             if (overlap) {
               throw new Error(
                 `【执行治理】【P21】并行区间重叠：请求区间 ${start}-${end}（批次 ${currentBatchId}）与其它批次已登记的区间 ${JSON.stringify(st.registeredRanges)} 相交。\n` +
-                `并行执行 agent 必须处理互不重叠的段落区间，防止 COM 修订冲突。`
+                  `并行执行 agent 必须处理互不重叠的段落区间，防止 COM 修订冲突。`
               );
             }
             // 登记当前请求区间（供后续并行重叠检测，按批次标识）
@@ -789,7 +903,7 @@ export const WpsGovernancePlugin = async () => {
           if (start < mine.start || end > mine.end) {
             throw new Error(
               `【执行治理】【P19】批次归属越界：本执行 agent（批次 ${currentBatchId}）分配区间为段落 ${mine.start}-${mine.end}，` +
-              `当前请求 ${start}-${end} 超出该区间。`
+                `当前请求 ${start}-${end} 超出该区间。`
             );
           }
         }
@@ -799,11 +913,11 @@ export const WpsGovernancePlugin = async () => {
       }
 
       // ── 规则 P3 + P5 + P7 + P8 + P9：proofreadBasic ──
-      if (toolName === "proofreadBasic") {
+      if (toolName === 'proofreadBasic') {
         if (!st.docInfoFetched) {
           throw new Error(
             `【执行治理】请先调用 getActiveDocument 了解文档总段落数，` +
-            `输出分批校对计划后，再开始校对。`
+              `输出分批校对计划后，再开始校对。`
           );
         }
         // Issue #151 R1-2：并行模式下（携带 _batch_id），st.batchStarted/st.proofreadCalledThisBatch/
@@ -814,26 +928,29 @@ export const WpsGovernancePlugin = async () => {
         if (!isParallelBatchProofread && !st.batchStarted) {
           throw new Error(
             `【执行治理】请先调用 getDocumentParagraphs 获取第一批段落，` +
-            `确认分批计划后再调 proofreadBasic。`
+              `确认分批计划后再调 proofreadBasic。`
           );
         }
         const so = innerArgs.startOffset;
         if (so === undefined || so === null) {
           throw new Error(
             `【执行治理】proofreadBasic 缺少 startOffset 参数。` +
-            `必须传入本批第一段的字符起始位置。`
+              `必须传入本批第一段的字符起始位置。`
           );
         }
         if (!isParallelBatchProofread && st.proofreadCalledThisBatch) {
           throw new Error(
-            `【执行治理】本批已调过 proofreadBasic，禁止再次调用。` +
-            `每批只准调 1 次。`
+            `【执行治理】本批已调过 proofreadBasic，禁止再次调用。` + `每批只准调 1 次。`
           );
         }
-        if (!isParallelBatchProofread && st.batchStartOffset !== null && so !== st.batchStartOffset) {
+        if (
+          !isParallelBatchProofread &&
+          st.batchStartOffset !== null &&
+          so !== st.batchStartOffset
+        ) {
           throw new Error(
             `【执行治理】proofreadBasic startOffset=${so} 与本批第一段起始位置 ` +
-            `${st.batchStartOffset} 不匹配。`
+              `${st.batchStartOffset} 不匹配。`
           );
         }
         if (!isParallelBatchProofread && !innerArgs.file_path && st.batchEndOffset !== null) {
@@ -841,13 +958,13 @@ export const WpsGovernancePlugin = async () => {
           if (text.length === 0) {
             throw new Error(
               `【执行治理】proofreadBasic 传入文本为空。` +
-              `请用 getDocumentTextByRange(startOffset=${so}, length=${st.batchEndOffset - so}) 获取文本。`
+                `请用 getDocumentTextByRange(startOffset=${so}, length=${st.batchEndOffset - so}) 获取文本。`
             );
           }
           if (text.length < 20) {
             throw new Error(
               `【执行治理】proofreadBasic 传入文本仅 ${text.length} 字符，` +
-              `明显不足（预期约 ${st.batchEndOffset - so} 字符）。`
+                `明显不足（预期约 ${st.batchEndOffset - so} 字符）。`
             );
           }
           if (st.batchStartOffset !== null) {
@@ -856,8 +973,8 @@ export const WpsGovernancePlugin = async () => {
             if (text.length > maxLen) {
               throw new Error(
                 `【执行治理】【P6b】proofreadBasic 传入文本 ${text.length} 字符 ` +
-                `远超本批预期范围 ${expectedLen} 字符。` +
-                `禁止一次性校对多批。请严格每批 ≤200 段、单次 proofreadBasic 只传本批文本。`
+                  `远超本批预期范围 ${expectedLen} 字符。` +
+                  `禁止一次性校对多批。请严格每批 ≤200 段、单次 proofreadBasic 只传本批文本。`
               );
             }
           }
@@ -866,11 +983,16 @@ export const WpsGovernancePlugin = async () => {
       }
 
       // ── 规则 P13：getDocumentTextByRange 范围上限 ──
-      if (toolName === "getDocumentTextByRange") {
+      if (toolName === 'getDocumentTextByRange') {
         // Issue #151 R1-2：并行模式下跳过会话级 batchStartOffset/batchEndOffset 单值校验
         // （各执行 agent 独立区间，会话级 offset 会被互相覆盖），P19 已按 _batch_range 隔离。
         const isParallelBatchText = !!innerArgs._batch_id;
-        if (!isParallelBatchText && st.batchStarted && st.batchStartOffset !== null && st.batchEndOffset !== null) {
+        if (
+          !isParallelBatchText &&
+          st.batchStarted &&
+          st.batchStartOffset !== null &&
+          st.batchEndOffset !== null
+        ) {
           const requestedLen = innerArgs.length;
           if (requestedLen !== undefined && requestedLen !== null) {
             const expectedBatchLen = st.batchEndOffset - st.batchStartOffset;
@@ -878,8 +1000,8 @@ export const WpsGovernancePlugin = async () => {
             if (requestedLen > maxLen) {
               throw new Error(
                 `【执行治理】【P13】getDocumentTextByRange length=${requestedLen} ` +
-                `远超本批预期范围长度 ${expectedBatchLen}。` +
-                `禁止一次性拉取多批文本。请只获取本批范围内的文本（≤200 段）。`
+                  `远超本批预期范围长度 ${expectedBatchLen}。` +
+                  `禁止一次性拉取多批文本。请只获取本批范围内的文本（≤200 段）。`
               );
             }
           }
@@ -892,7 +1014,7 @@ export const WpsGovernancePlugin = async () => {
           if (requestedLen !== undefined && requestedLen !== null && Number(requestedLen) > 10000) {
             throw new Error(
               `【执行治理】【P13】getDocumentTextByRange length=${requestedLen} 在并行校对模式下超出单批文本上限（10000 字符，约 200 段）。` +
-              `执行 agent 只能获取自己被分配批次的文本，禁止一次性拉取多批或整篇文档。`
+                `执行 agent 只能获取自己被分配批次的文本，禁止一次性拉取多批或整篇文档。`
             );
           }
         }
@@ -900,32 +1022,31 @@ export const WpsGovernancePlugin = async () => {
       }
 
       // ── 规则 P14：confirmBatchAiProofread 必须 proofreadBasic 已调用 ──
-      if (toolName === "confirmBatchAiProofread") {
+      if (toolName === 'confirmBatchAiProofread') {
         // Issue #151 R1-2：并行模式下跳过会话级 batchStarted/proofreadCalledThisBatch 单值校验
         const isParallelBatchConfirm = !!innerArgs._batch_id;
         if (!isParallelBatchConfirm && st.batchStarted && !st.proofreadCalledThisBatch) {
           throw new Error(
             `【执行治理】【P14】confirmBatchAiProofread 必须在 proofreadBasic 之后调用。\n` +
-            `当前批尚未进行基础校对，请先调用 proofreadBasic。` +
-            `（禁止跳过基础校对直接确认 AI 校对）`
+              `当前批尚未进行基础校对，请先调用 proofreadBasic。` +
+              `（禁止跳过基础校对直接确认 AI 校对）`
           );
         }
         return;
       }
 
       // ── 规则 P4 + P6 + P10 + P11：替换操作 ──
-      if (toolName === "replaceInParagraph" || toolName === "findReplace") {
+      if (toolName === 'replaceInParagraph' || toolName === 'findReplace') {
         if (!st.trackChangesOn) {
           throw new Error(
-            `【执行治理】请先调用 enableTrackChanges(true) 开启修订模式，` +
-            `再执行替换操作。`
+            `【执行治理】请先调用 enableTrackChanges(true) 开启修订模式，` + `再执行替换操作。`
           );
         }
-        if (toolName === "findReplace") {
+        if (toolName === 'findReplace') {
           if (st.batchStarted) {
             throw new Error(
               `【执行治理】分批校对流程中禁止使用 findReplace（不支持修订标记）。` +
-              `请改用 replaceInParagraph。`
+                `请改用 replaceInParagraph。`
             );
           }
           const findTextFR = innerArgs.findText || innerArgs.find || innerArgs.find_text || '';
@@ -933,20 +1054,20 @@ export const WpsGovernancePlugin = async () => {
           if (colonMatchFR && findTextFR.length >= 2 && findTextFR.length <= 20) {
             throw new Error(
               `【执行治理·禁止低级替换】检测到用 findReplace 做模板填写。\n` +
-              `findText="${findTextFR}" 看起来是一个模板字段标签。\n` +
-              `请改用 smartFillField 填写模板字段。`
+                `findText="${findTextFR}" 看起来是一个模板字段标签。\n` +
+                `请改用 smartFillField 填写模板字段。`
             );
           }
           return;
         }
-        if (toolName === "replaceInParagraph") {
+        if (toolName === 'replaceInParagraph') {
           const findText = innerArgs.findText || innerArgs.find || innerArgs.find_text || '';
           const colonMatch = findText.match(/^[\u4e00-\u9fff]+[：:]/);
           if (colonMatch && findText.length >= 2 && findText.length <= 20) {
             throw new Error(
               `【执行治理·禁止低级替换】检测到用 replaceInParagraph 做模板填写。\n` +
-              `findText="${findText}" 看起来是一个模板字段标签。\n` +
-              `请改用 smartFillField 填写模板字段。`
+                `findText="${findText}" 看起来是一个模板字段标签。\n` +
+                `请改用 smartFillField 填写模板字段。`
             );
           }
           // P10/P11：仅在校对流程中强制 proofreadBeforeReplace
@@ -954,52 +1075,75 @@ export const WpsGovernancePlugin = async () => {
           // Issue #151 R1-2/R1-3：并行模式下（携带 _batch_id）会话级 batchStarted/proofreadCalledThisBatch/
           // aiProofreadDoneThisBatch 单值会被各执行 agent 互相覆盖，不适用；改由 P20 逐步凭证落盘校验完整性。
           const isParallelBatchReplace = !!innerArgs._batch_id;
-          if (!isParallelBatchReplace && !st.templateFilling.active && st.batchStarted && !st.proofreadCalledThisBatch) {
+          if (
+            !isParallelBatchReplace &&
+            !st.templateFilling.active &&
+            st.batchStarted &&
+            !st.proofreadCalledThisBatch
+          ) {
             throw new Error(
               `【执行治理】replaceInParagraph 必须在同一批的 proofreadBasic 之后调用。`
             );
           }
-          if (!isParallelBatchReplace && !st.templateFilling.active && st.batchStarted && !st.aiProofreadDoneThisBatch) {
+          if (
+            !isParallelBatchReplace &&
+            !st.templateFilling.active &&
+            st.batchStarted &&
+            !st.aiProofreadDoneThisBatch
+          ) {
             throw new Error(
               `【执行治理】AI 智能校对未完成。请在 proofreadBasic 之后调用 ` +
-              `confirmBatchAiProofread 确认 AI 校对已完成，再执行替换操作。`
+                `confirmBatchAiProofread 确认 AI 校对已完成，再执行替换操作。`
             );
           }
           // P15：基础校对无 issue 时，禁止 AI 自行大量修复
           // 当 proofreadHadIssues = false（基础校对未发现问题），最多允许 1 次 AI 自定修复
           // 超过限制需传 _force_ai_fix: true 显式确认
-          if (!isParallelBatchReplace && !st.templateFilling.active && st.batchStarted && !st.proofreadHadIssues) {
+          if (
+            !isParallelBatchReplace &&
+            !st.templateFilling.active &&
+            st.batchStarted &&
+            !st.proofreadHadIssues
+          ) {
             if (st.replaceCountThisBatch >= AI_FIXES_NO_ISSUES_LIMIT) {
               if (!innerArgs._force_ai_fix) {
                 throw new Error(
                   `【执行治理】【P15】基础校对未发现本批存在任何问题，` +
-                  `AI 已自行修复 ${st.replaceCountThisBatch} 处。\n` +
-                  `禁止 AI 编造不存在的校对问题。如确认此处确需修复，` +
-                  `请在参数中添加 _force_ai_fix: true 以强制放行。`
+                    `AI 已自行修复 ${st.replaceCountThisBatch} 处。\n` +
+                    `禁止 AI 编造不存在的校对问题。如确认此处确需修复，` +
+                    `请在参数中添加 _force_ai_fix: true 以强制放行。`
                 );
               }
             }
           }
           // P16：交叉校验 — 替换内容应与已知校对 issue 对应
           // 防止 AI 擅自修复 proofreadBasic 未发现的问题（"把正确的改成错误的"）
-          if (!isParallelBatchReplace && !st.templateFilling.active && st.batchStarted && st.proofreadHadIssues && st.proofreadIssueOriginals.length > 0) {
+          if (
+            !isParallelBatchReplace &&
+            !st.templateFilling.active &&
+            st.batchStarted &&
+            st.proofreadHadIssues &&
+            st.proofreadIssueOriginals.length > 0
+          ) {
             // 参数名兼容：AI 走网关时可能传 camelCase（findText）或 snake_case（find_text），
             // 两者都需兜底，否则 P16 会因 findText 为空而跳过校验（#55 遗留：F11–F15 零拦截）
-            const findText =
-              innerArgs.findText || innerArgs.find || innerArgs.find_text || '';
+            const findText = innerArgs.findText || innerArgs.find || innerArgs.find_text || '';
             if (findText && !innerArgs._force_ai_fix) {
-              const matchesIssue = st.proofreadIssueOriginals.some(function(orig) {
-                return (orig && (orig.indexOf(findText) !== -1 || findText.indexOf(orig) !== -1));
+              const matchesIssue = st.proofreadIssueOriginals.some(function (orig) {
+                return orig && (orig.indexOf(findText) !== -1 || findText.indexOf(orig) !== -1);
               });
               if (!matchesIssue) {
                 const maxShow = 5;
                 const shown = st.proofreadIssueOriginals.slice(0, maxShow);
-                const more = st.proofreadIssueOriginals.length > maxShow ? `...等共 ${st.proofreadIssueOriginals.length} 条` : '';
+                const more =
+                  st.proofreadIssueOriginals.length > maxShow
+                    ? `...等共 ${st.proofreadIssueOriginals.length} 条`
+                    : '';
                 throw new Error(
                   `【执行治理】【P16】replaceInParagraph findText="${findText}" ` +
-                  `与 proofreadBasic 找到的任何 issue 原文都不匹配。\n` +
-                  `已知问题原文：${shown.join('、')}${more}\n` +
-                  `AI 不应修复基础校对未发现的问题。如需强制修复请传 _force_ai_fix: true。`
+                    `与 proofreadBasic 找到的任何 issue 原文都不匹配。\n` +
+                    `已知问题原文：${shown.join('、')}${more}\n` +
+                    `AI 不应修复基础校对未发现的问题。如需强制修复请传 _force_ai_fix: true。`
                 );
               }
             }
@@ -1039,31 +1183,31 @@ export const WpsGovernancePlugin = async () => {
       }
 
       // ── 模板填写工作流规则（T1-T11） ──
-      if (toolName === "smartFillField" || toolName === "replaceBookmarkContent") {
+      if (toolName === 'smartFillField' || toolName === 'replaceBookmarkContent') {
         // T1：评估文档
         if (!st.templateFilling.active && !st.templateFilling.docFetched) {
           throw new Error(
             `【执行治理】模板填写前请先评估文档规模。` +
-            `请先调用 getActiveDocument 了解文档总段落数。`
+              `请先调用 getActiveDocument 了解文档总段落数。`
           );
         }
         // T2：分批
         if (!st.templateFilling.active && !st.templateFilling.paragraphsFetched) {
           throw new Error(
             `【执行治理】模板填写前请先分批。` +
-            `请先调用 getDocumentParagraphs 以每批 ≤200 段评估文档结构，再逐批填写。`
+              `请先调用 getDocumentParagraphs 以每批 ≤200 段评估文档结构，再逐批填写。`
           );
         }
         // T7：首次填写前必须输出字段对照表并获用户确认
-        if (toolName === "smartFillField" && !st.templateFilling.userConfirmed) {
+        if (toolName === 'smartFillField' && !st.templateFilling.userConfirmed) {
           if (!innerArgs._field_mapping_confirmed) {
             throw new Error(
               `【执行治理·禁止编造】首次 smartFillField 前，你必须：\n` +
-              `1. 列出文档中所有待填写字段与用户提供值的对照表\n` +
-              `2. 标记出用户未提供的字段（如缺少"采购项目编号"的值）\n` +
-              `3. 要求用户补充缺失值，不得自行编造\n` +
-              `4. 用户确认后，在首次 smartFillField 参数中添加 ` +
-              `_field_mapping_confirmed: true 即可放行`
+                `1. 列出文档中所有待填写字段与用户提供值的对照表\n` +
+                `2. 标记出用户未提供的字段（如缺少"采购项目编号"的值）\n` +
+                `3. 要求用户补充缺失值，不得自行编造\n` +
+                `4. 用户确认后，在首次 smartFillField 参数中添加 ` +
+                `_field_mapping_confirmed: true 即可放行`
             );
           }
         }
@@ -1071,7 +1215,7 @@ export const WpsGovernancePlugin = async () => {
         if (!st.templateFilling.trackChangesEnabled) {
           throw new Error(
             `【执行治理】模板填写前请先调用 enableTrackChanges(true) 开启修订模式，` +
-            `以便追踪填写变更。`
+              `以便追踪填写变更。`
           );
         }
         // T8：跳过签字字段
@@ -1081,23 +1225,27 @@ export const WpsGovernancePlugin = async () => {
             if (innerArgs.keyword.indexOf(signaturePatterns[s]) !== -1) {
               throw new Error(
                 `【执行治理·跳过签字】"${innerArgs.keyword}" 包含"${signaturePatterns[s]}"，` +
-                `属于手工签章字段，不应由AI填写。请跳过此字段。`
+                  `属于手工签章字段，不应由AI填写。请跳过此字段。`
               );
             }
           }
         }
         // T6：禁止子串重复填写（可传 _substring_confirmed: true 绕过）
         const newKeyword = innerArgs.keyword;
-        if (newKeyword && !innerArgs._substring_confirmed && st.templateFilling.fillKeywords.length > 0) {
+        if (
+          newKeyword &&
+          !innerArgs._substring_confirmed &&
+          st.templateFilling.fillKeywords.length > 0
+        ) {
           for (var k = 0; k < st.templateFilling.fillKeywords.length; k++) {
             const existingKwd = st.templateFilling.fillKeywords[k];
             if (existingKwd.indexOf(newKeyword) !== -1 || newKeyword.indexOf(existingKwd) !== -1) {
               if (existingKwd !== newKeyword) {
                 throw new Error(
                   `【执行治理·禁止重复】"${newKeyword}" 与已填写字段 "${existingKwd}" ` +
-                  `存在包含关系（子串/超串）。请确认这是否是同一字段：\n` +
-                  `- 如果是同一字段（如"包号"是"采购包号"的一部分），不要再次填写\n` +
-                  `- 如果是不同字段，请向用户确认后在参数中添加 _substring_confirmed: true 绕过`
+                    `存在包含关系（子串/超串）。请确认这是否是同一字段：\n` +
+                    `- 如果是同一字段（如"包号"是"采购包号"的一部分），不要再次填写\n` +
+                    `- 如果是不同字段，请向用户确认后在参数中添加 _substring_confirmed: true 绕过`
                 );
               }
             }
@@ -1105,6 +1253,6 @@ export const WpsGovernancePlugin = async () => {
         }
         return;
       }
-    }
+    },
   };
 };

@@ -57,7 +57,8 @@ export const insertTextDefinition: ToolDefinition = {
       },
       position: {
         type: 'string',
-        description: '插入位置，可选值: "cursor"(光标位置), "start"(文档开头), "end"(文档结尾)。默认cursor',
+        description:
+          '插入位置，可选值: "cursor"(光标位置), "start"(文档开头), "end"(文档结尾)。默认cursor',
         enum: ['cursor', 'start', 'end'],
       },
       style: {
@@ -113,8 +114,7 @@ export const insertTextHandler: ToolHandler = async (
 
     if (response.success && response.data) {
       const positionText =
-        position === 'start' ? '文档开头' :
-        position === 'end' ? '文档结尾' : '光标位置';
+        position === 'start' ? '文档开头' : position === 'end' ? '文档结尾' : '光标位置';
 
       return {
         id: uuidv4(),
@@ -333,7 +333,12 @@ export const insertTableHandler: ToolHandler = async (
     };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `插入表格出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `插入表格出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -378,7 +383,12 @@ export const setParagraphHandler: ToolHandler = async (
     };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置段落出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `设置段落出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -402,13 +412,23 @@ async function tryLauncherFallback(failMsg: string, errorDetail?: string): Promi
       return {
         id: uuidv4(),
         success: true,
-        content: [{ type: 'text', text: `当前文档: ${launcherDoc.name}\n路径: ${launcherDoc.path}\n类型: ${launcherDoc.type}\n总段数: ${launcherDoc.paragraphCount || '未知'}\n字数: ${launcherDoc.wordCount || '未知'}` }],
+        content: [
+          {
+            type: 'text',
+            text: `当前文档: ${launcherDoc.name}\n路径: ${launcherDoc.path}\n类型: ${launcherDoc.type}\n总段数: ${launcherDoc.paragraphCount || '未知'}\n字数: ${launcherDoc.wordCount || '未知'}`,
+          },
+        ],
       };
     }
-  } catch(e) {
+  } catch (e) {
     // 不抛出，fall through 到 failMsg
   }
-  return { id: uuidv4(), success: false, content: [{ type: 'text', text: failMsg }], error: errorDetail };
+  return {
+    id: uuidv4(),
+    success: false,
+    content: [{ type: 'text', text: failMsg }],
+    error: errorDetail,
+  };
 }
 
 export const getActiveDocumentHandler: ToolHandler = async (
@@ -422,21 +442,25 @@ export const getActiveDocumentHandler: ToolHandler = async (
       paragraphCount: number;
       wordCount: number;
       characterCount: number;
-    }>(
-      'getActiveDocument',
-      {},
-      WpsAppType.WRITER
-    );
+    }>('getActiveDocument', {}, WpsAppType.WRITER);
     if (response.success && response.data) {
       const d = response.data;
       return {
         id: uuidv4(),
         success: true,
-        content: [{ type: 'text', text: `当前文档: ${d.name}\n路径: ${d.path}\n总段数: ${d.paragraphCount}\n字数: ${d.wordCount}\n字符数: ${d.characterCount}` }],
+        content: [
+          {
+            type: 'text',
+            text: `当前文档: ${d.name}\n路径: ${d.path}\n总段数: ${d.paragraphCount}\n字数: ${d.wordCount}\n字符数: ${d.characterCount}`,
+          },
+        ],
       };
     }
 
-    return await tryLauncherFallback(`获取文档信息失败: ${response.error}。请确认 WPS 文字已打开文档，且文档窗口处于活动状态。`, response.error);
+    return await tryLauncherFallback(
+      `获取文档信息失败: ${response.error}。请确认 WPS 文字已打开文档，且文档窗口处于活动状态。`,
+      response.error
+    );
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
     return await tryLauncherFallback(`获取文档信息出错: ${errMsg}`, errMsg);
@@ -558,7 +582,12 @@ export const insertPageBreakHandler: ToolHandler = async (
       WpsAppType.WRITER
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `插入分页符失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `插入分页符失败: ${response.error}` }],
+        error: response.error,
+      };
     }
     return {
       id: uuidv4(),
@@ -567,7 +596,12 @@ export const insertPageBreakHandler: ToolHandler = async (
     };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `插入分页符出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `插入分页符出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -597,7 +631,12 @@ export const setFontStyleHandler: ToolHandler = async (
       WpsAppType.WRITER
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置字体失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `设置字体失败: ${response.error}` }],
+        error: response.error,
+      };
     }
     return {
       id: uuidv4(),
@@ -606,7 +645,12 @@ export const setFontStyleHandler: ToolHandler = async (
     };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置字体出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `设置字体出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -631,7 +675,12 @@ export const insertCommentHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { text } = args as { text: string };
   if (!text || text.trim() === '') {
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: '批注内容不能为空！' }], error: '批注内容为空' };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: '批注内容不能为空！' }],
+      error: '批注内容为空',
+    };
   }
   try {
     const response = await wpsClient.executeMethod<{ success: boolean; message: string }>(
@@ -640,7 +689,12 @@ export const insertCommentHandler: ToolHandler = async (
       WpsAppType.WRITER
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `插入批注失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `插入批注失败: ${response.error}` }],
+        error: response.error,
+      };
     }
     return {
       id: uuidv4(),
@@ -649,7 +703,12 @@ export const insertCommentHandler: ToolHandler = async (
     };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `插入批注出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `插入批注出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -674,7 +733,12 @@ export const setTextColorHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { color } = args as { color: string };
   if (!color || color.trim() === '') {
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: '颜色值不能为空！' }], error: '颜色值为空' };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: '颜色值不能为空！' }],
+      error: '颜色值为空',
+    };
   }
   try {
     const response = await wpsClient.executeMethod<{ success: boolean; message: string }>(
@@ -683,7 +747,12 @@ export const setTextColorHandler: ToolHandler = async (
       WpsAppType.WRITER
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置文字颜色失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `设置文字颜色失败: ${response.error}` }],
+        error: response.error,
+      };
     }
     return {
       id: uuidv4(),
@@ -692,7 +761,12 @@ export const setTextColorHandler: ToolHandler = async (
     };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置文字颜色出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `设置文字颜色出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -745,11 +819,7 @@ export const getParagraphsHandler: ToolHandler = async (
       paragraphs: Array<{ index: number; text: string; style: string; start: number; end: number }>;
       totalCount: number;
       returnedCount: number;
-    }>(
-      'getDocumentParagraphs',
-      execParams,
-      WpsAppType.WRITER
-    );
+    }>('getDocumentParagraphs', execParams, WpsAppType.WRITER);
 
     if (response.success && response.data) {
       const data = response.data;
@@ -757,7 +827,8 @@ export const getParagraphsHandler: ToolHandler = async (
       const totalCount = data.totalCount;
       const returnedCount = data.returnedCount;
       const lines = paragraphs.map(
-        (p: { index: number; text: string; style: string; start: number; end: number }) => `[${p.index}] (${p.style}) [${p.start}-${p.end}] ${p.text}`
+        (p: { index: number; text: string; style: string; start: number; end: number }) =>
+          `[${p.index}] (${p.style}) [${p.start}-${p.end}] ${p.text}`
       );
       return {
         id: uuidv4(),
@@ -849,7 +920,13 @@ export const findInDocumentHandler: ToolHandler = async (
 
   try {
     const response = await wpsClient.executeMethod<{
-      results: Array<{ text: string; start: number; end: number; paragraphIndex: number; context: string }>;
+      results: Array<{
+        text: string;
+        start: number;
+        end: number;
+        paragraphIndex: number;
+        context: string;
+      }>;
       count: number;
       findText: string;
     }>(
@@ -880,7 +957,13 @@ export const findInDocumentHandler: ToolHandler = async (
         };
       }
       const lines = results.map(
-        (r: { text: string; start: number; end: number; paragraphIndex: number; context: string }) => `  段落${r.paragraphIndex} [${r.start}-${r.end}]: ...${r.context}...`
+        (r: {
+          text: string;
+          start: number;
+          end: number;
+          paragraphIndex: number;
+          context: string;
+        }) => `  段落${r.paragraphIndex} [${r.start}-${r.end}]: ...${r.context}...`
       );
       return {
         id: uuidv4(),
@@ -947,16 +1030,19 @@ export const smartFillFieldDefinition: ToolDefinition = {
       },
       fill_mode: {
         type: 'string',
-        description: '填写模式: auto(自动判断), underline(下划线), afterColon(冒号后), afterLabel(标签后), placeholder(占位符)。默认auto',
+        description:
+          '填写模式: auto(自动判断), underline(下划线), afterColon(冒号后), afterLabel(标签后), placeholder(占位符)。默认auto',
         enum: ['auto', 'underline', 'afterColon', 'afterLabel', 'placeholder'],
       },
       occurrence: {
         type: 'number',
-        description: '关键字出现的序号（从1开始）。默认1（第一个匹配项）。文档中有多个相同字段时使用，如"日期"在第2处出现',
+        description:
+          '关键字出现的序号（从1开始）。默认1（第一个匹配项）。文档中有多个相同字段时使用，如"日期"在第2处出现',
       },
       paragraphIndex: {
         type: 'number',
-        description: '所在段落索引（从1开始）。指定后只在该段落内搜索关键字，忽略其他段落。优先级高于 occurrence',
+        description:
+          '所在段落索引（从1开始）。指定后只在该段落内搜索关键字，忽略其他段落。优先级高于 occurrence',
       },
     },
     required: ['keyword', 'value'],

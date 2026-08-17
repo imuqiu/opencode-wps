@@ -58,7 +58,8 @@ export class WpsMcpServer {
   private isRunning: boolean = false;
 
   // 跨应用数据缓存 - 解决macOS WPS无法跨应用操作的P0问题
-  private static dataCache: Map<string, { data: unknown; timestamp: number; appType: string }> = new Map();
+  private static dataCache: Map<string, { data: unknown; timestamp: number; appType: string }> =
+    new Map();
   private static readonly MAX_CACHE_AGE = 30 * 60 * 1000; // 30 分钟 TTL
   private static readonly MAX_CACHE_SIZE = 100;
 
@@ -77,7 +78,9 @@ export class WpsMcpServer {
     }
     // 超出容量时淘汰最旧条目
     if (WpsMcpServer.dataCache.size > WpsMcpServer.MAX_CACHE_SIZE) {
-      const entries = [...WpsMcpServer.dataCache.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp);
+      const entries = [...WpsMcpServer.dataCache.entries()].sort(
+        (a, b) => a[1].timestamp - b[1].timestamp
+      );
       const toDelete = entries.slice(0, entries.length - WpsMcpServer.MAX_CACHE_SIZE);
       for (const [key] of toDelete) WpsMcpServer.dataCache.delete(key);
     }
@@ -104,7 +107,7 @@ export class WpsMcpServer {
     this.setupRequestHandlers();
 
     // 错误处理
-    this.server.onerror = (error) => {
+    this.server.onerror = error => {
       logger.error('MCP Server error', error);
     };
 
@@ -127,7 +130,7 @@ export class WpsMcpServer {
       logger.info(`Returning ${tools.length} tools`);
 
       return {
-        tools: tools.map((tool) => ({
+        tools: tools.map(tool => ({
           name: tool.name,
           description: tool.description,
           inputSchema: tool.inputSchema,
@@ -136,17 +139,14 @@ export class WpsMcpServer {
     });
 
     // 处理 tools/call 请求
-    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    this.server.setRequestHandler(CallToolRequestSchema, async request => {
       const { name, arguments: args } = request.params;
 
       logger.debug('Handling tools/call request', { name, args });
 
       // 检查Tool是否存在
       if (!this.registry.hasTool(name)) {
-        throw new SdkMcpError(
-          McpErrorCode.MethodNotFound,
-          `Unknown tool: ${name}`
-        );
+        throw new SdkMcpError(McpErrorCode.MethodNotFound, `Unknown tool: ${name}`);
       }
 
       try {
@@ -239,9 +239,13 @@ export class WpsMcpServer {
         try {
           const launcherDoc = await fetchDocInfoFromLauncher();
           if (launcherDoc) {
-            return { id: '', success: true, content: [{ type: 'text', text: JSON.stringify(launcherDoc) }] };
+            return {
+              id: '',
+              success: true,
+              content: [{ type: 'text', text: JSON.stringify(launcherDoc) }],
+            };
           }
-        } catch(e) {
+        } catch (e) {
           console.warn('[mcp-server] fetchDocInfoFromLauncher failed:', e);
         }
 
@@ -274,7 +278,7 @@ export class WpsMcpServer {
         },
         category: ToolCategory.DOCUMENT,
       },
-      async (args) => {
+      async args => {
         const text = args.text as string;
         const position = args.position as number | undefined;
 
@@ -313,9 +317,7 @@ export class WpsMcpServer {
           content: [
             {
               type: 'text',
-              text: workbook
-                ? JSON.stringify(workbook)
-                : '没有打开的工作簿',
+              text: workbook ? JSON.stringify(workbook) : '没有打开的工作簿',
             },
           ],
         };
@@ -347,7 +349,7 @@ export class WpsMcpServer {
         },
         category: ToolCategory.SPREADSHEET,
       },
-      async (args) => {
+      async args => {
         const sheet = args.sheet as string | number;
         const row = args.row as number;
         const col = args.col as number;
@@ -396,7 +398,7 @@ export class WpsMcpServer {
         },
         category: ToolCategory.SPREADSHEET,
       },
-      async (args) => {
+      async args => {
         const sheet = args.sheet as string | number;
         const row = args.row as number;
         const col = args.col as number;
@@ -437,9 +439,7 @@ export class WpsMcpServer {
           content: [
             {
               type: 'text',
-              text: presentation
-                ? JSON.stringify(presentation)
-                : '没有打开的演示文稿',
+              text: presentation ? JSON.stringify(presentation) : '没有打开的演示文稿',
             },
           ],
         };
@@ -475,7 +475,7 @@ export class WpsMcpServer {
         },
         category: ToolCategory.COMMON,
       },
-      async (args) => {
+      async args => {
         const method = args.method as string;
         const params = args.params as Record<string, unknown> | undefined;
         const appType = args.appType as string | undefined;
@@ -498,32 +498,76 @@ export class WpsMcpServer {
         // 第一层防御：Governance 插件 G2 白名单（governance.js）
         // 第二层防御：MCP Server 端的白名单 + 黑名单
         // 两层必须同步更新。MCP 层做双重校验：若 G2 被绕过仍可拦截。
-        const allowPrefixes = ['Application.ActiveDocument', 'Application.ActiveWorkbook', 'Application.ActivePresentation'];
-        const blockedPrefixes = ['CreateObject', 'Shell', 'Exec', 'Run', 'WScript', 'ScriptControl', 'Eval', 'Execute'];
+        const allowPrefixes = [
+          'Application.ActiveDocument',
+          'Application.ActiveWorkbook',
+          'Application.ActivePresentation',
+        ];
+        const blockedPrefixes = [
+          'CreateObject',
+          'Shell',
+          'Exec',
+          'Run',
+          'WScript',
+          'ScriptControl',
+          'Eval',
+          'Execute',
+        ];
         if (!method) {
-          return { id: '', success: false, content: [{ type: 'text', text: 'Error: method is required' }] };
+          return {
+            id: '',
+            success: false,
+            content: [{ type: 'text', text: 'Error: method is required' }],
+          };
         }
         // 白名单检查：方法必须以允许前缀开头
-        const allowed = allowPrefixes.some(function(p) { return method.startsWith(p); });
+        const allowed = allowPrefixes.some(function (p) {
+          return method.startsWith(p);
+        });
         if (!allowed) {
           console.warn('[mcp-server] Method "' + method + '" not in allowlist, blocked');
-          return { id: '', success: false, content: [{ type: 'text', text: 'Error: method "' + method + '" is not allowed. Only Application.ActiveDocument / ActiveWorkbook / ActivePresentation are permitted.' }] };
+          return {
+            id: '',
+            success: false,
+            content: [
+              {
+                type: 'text',
+                text:
+                  'Error: method "' +
+                  method +
+                  '" is not allowed. Only Application.ActiveDocument / ActiveWorkbook / ActivePresentation are permitted.',
+              },
+            ],
+          };
         }
         const segments = method.split('.');
         for (let i = 0; i < blockedPrefixes.length; i++) {
           for (let j = 0; j < segments.length; j++) {
             if (segments[j].toLowerCase().indexOf(blockedPrefixes[i].toLowerCase()) === 0) {
-              console.warn('[mcp-server] Blocked method "' + method + '" (matched prefix "' + blockedPrefixes[i] + '" on segment "' + segments[j] + '")');
-              return { id: '', success: false, content: [{ type: 'text', text: 'Error: method "' + method + '" is blocked for security reasons' }] };
+              console.warn(
+                '[mcp-server] Blocked method "' +
+                  method +
+                  '" (matched prefix "' +
+                  blockedPrefixes[i] +
+                  '" on segment "' +
+                  segments[j] +
+                  '")'
+              );
+              return {
+                id: '',
+                success: false,
+                content: [
+                  {
+                    type: 'text',
+                    text: 'Error: method "' + method + '" is blocked for security reasons',
+                  },
+                ],
+              };
             }
           }
         }
 
-        const response = await wpsClient.executeMethod(
-          method,
-          params,
-          appType as WpsAppType
-        );
+        const response = await wpsClient.executeMethod(method, params, appType as WpsAppType);
 
         return {
           id: '',
@@ -546,7 +590,8 @@ export class WpsMcpServer {
     this.registry.register(
       {
         name: 'wps_cache_data',
-        description: '缓存数据到MCP Server，用于跨应用数据传递。例如：从Excel读取数据后缓存，然后在PPT中使用。',
+        description:
+          '缓存数据到MCP Server，用于跨应用数据传递。例如：从Excel读取数据后缓存，然后在PPT中使用。',
         inputSchema: {
           type: 'object',
           properties: {
@@ -568,7 +613,7 @@ export class WpsMcpServer {
         },
         category: ToolCategory.COMMON,
       },
-      async (args) => {
+      async args => {
         const key = args.key as string;
         const data = args.data;
         const appType = (args.appType as string) || 'unknown';
@@ -617,7 +662,7 @@ export class WpsMcpServer {
         },
         category: ToolCategory.COMMON,
       },
-      async (args) => {
+      async args => {
         const key = args.key as string;
         let cached = WpsMcpServer.dataCache.get(key);
 
@@ -716,7 +761,7 @@ export class WpsMcpServer {
         },
         category: ToolCategory.COMMON,
       },
-      async (args) => {
+      async args => {
         const key = args.key as string | undefined;
 
         if (key) {
@@ -799,7 +844,7 @@ export class WpsMcpServer {
         },
         category: ToolCategory.COMMON,
       },
-      async (args) => {
+      async args => {
         const query = args.query as string;
         const category = args.category as string | undefined;
         const limit = (args.limit as number) || 10;
@@ -847,15 +892,23 @@ export class WpsMcpServer {
         },
         category: ToolCategory.COMMON,
       },
-      async (args) => {
+      async args => {
         const tool_name = args.tool_name as string;
         const arguments_ = args.arguments as Record<string, unknown>;
 
         if (!tool_name || typeof tool_name !== 'string') {
-          return { id: '', success: false, content: [{ type: 'text', text: 'Error: tool_name must be a non-empty string' }] };
+          return {
+            id: '',
+            success: false,
+            content: [{ type: 'text', text: 'Error: tool_name must be a non-empty string' }],
+          };
         }
         if (!arguments_ || typeof arguments_ !== 'object' || Array.isArray(arguments_)) {
-          return { id: '', success: false, content: [{ type: 'text', text: 'Error: arguments must be a non-null object' }] };
+          return {
+            id: '',
+            success: false,
+            content: [{ type: 'text', text: 'Error: arguments must be a non-null object' }],
+          };
         }
 
         const result = await executeTool({ tool_name, arguments: arguments_ });
@@ -930,9 +983,7 @@ export class WpsMcpServer {
 }
 
 // 导出单例创建函数
-export const createMcpServer = (
-  config?: Partial<McpServerConfig>
-): WpsMcpServer => {
+export const createMcpServer = (config?: Partial<McpServerConfig>): WpsMcpServer => {
   return new WpsMcpServer(config);
 };
 

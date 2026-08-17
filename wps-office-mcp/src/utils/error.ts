@@ -138,11 +138,10 @@ export class InvalidParamsError extends McpError {
  */
 export class TimeoutError extends McpError {
   constructor(operation: string, timeoutMs: number) {
-    super(
-      `Operation timed out: ${operation} (${timeoutMs}ms)`,
-      ErrorCode.TIMEOUT,
-      { operation, timeoutMs }
-    );
+    super(`Operation timed out: ${operation} (${timeoutMs}ms)`, ErrorCode.TIMEOUT, {
+      operation,
+      timeoutMs,
+    });
     this.name = 'TimeoutError';
     Object.setPrototypeOf(this, TimeoutError.prototype);
   }
@@ -167,11 +166,9 @@ export const errorUtils = {
       });
     }
 
-    return new McpError(
-      typeof error === 'string' ? error : defaultMessage,
-      ErrorCode.UNKNOWN,
-      { originalError: error }
-    );
+    return new McpError(typeof error === 'string' ? error : defaultMessage, ErrorCode.UNKNOWN, {
+      originalError: error,
+    });
   },
 
   /**
@@ -179,26 +176,22 @@ export const errorUtils = {
    */
   logAndThrow(error: unknown, context?: string): never {
     const mcpError = errorUtils.wrap(error);
-    log.error(context ? `${context}: ${mcpError.message}` : mcpError.message, mcpError, { ...mcpError.details, code: mcpError.code });
+    log.error(context ? `${context}: ${mcpError.message}` : mcpError.message, mcpError, {
+      ...mcpError.details,
+      code: mcpError.code,
+    });
     throw mcpError;
   },
 
   /**
    * 安全执行函数 - 出错了返回默认值，不会炸
    */
-  async safeExecute<T>(
-    fn: () => Promise<T>,
-    defaultValue: T,
-    context?: string
-  ): Promise<T> {
+  async safeExecute<T>(fn: () => Promise<T>, defaultValue: T, context?: string): Promise<T> {
     try {
       return await fn();
     } catch (error) {
       const mcpError = errorUtils.wrap(error);
-      log.error(
-        context ? `${context}: ${mcpError.message}` : mcpError.message,
-        mcpError
-      );
+      log.error(context ? `${context}: ${mcpError.message}` : mcpError.message, mcpError);
       return defaultValue;
     }
   },

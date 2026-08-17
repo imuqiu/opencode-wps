@@ -56,11 +56,7 @@ export const getOpenDocumentsHandler: ToolHandler = async (
       success: boolean;
       message: string;
       documents: Array<{ name: string; path: string; active: boolean }>;
-    }>(
-      'getOpenDocuments',
-      {},
-      WpsAppType.WRITER
-    );
+    }>('getOpenDocuments', {}, WpsAppType.WRITER);
 
     if (response.success && response.data) {
       const docs = response.data.documents;
@@ -73,7 +69,10 @@ export const getOpenDocumentsHandler: ToolHandler = async (
       }
 
       const docList = docs
-        .map((doc, i) => `${i + 1}. ${doc.name}${doc.active ? ' (当前活动)' : ''}\n   路径: ${doc.path}`)
+        .map(
+          (doc, i) =>
+            `${i + 1}. ${doc.name}${doc.active ? ' (当前活动)' : ''}\n   路径: ${doc.path}`
+        )
         .join('\n');
 
       return {
@@ -147,11 +146,7 @@ export const switchDocumentHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'switchDocument',
-      { name },
-      WpsAppType.WRITER
-    );
+    }>('switchDocument', { name }, WpsAppType.WRITER);
 
     if (response.success) {
       return {
@@ -232,11 +227,7 @@ export const openDocumentHandler: ToolHandler = async (
       success: boolean;
       message: string;
       documentName: string;
-    }>(
-      'openDocument',
-      params,
-      WpsAppType.WRITER
-    );
+    }>('openDocument', params, WpsAppType.WRITER);
 
     if (response.success && response.data) {
       return {
@@ -312,16 +303,11 @@ export const getDocumentTextHandler: ToolHandler = async (
       message: string;
       text: string;
       length: number;
-    }>(
-      'getDocumentText',
-      params,
-      WpsAppType.WRITER
-    );
+    }>('getDocumentText', params, WpsAppType.WRITER);
 
     if (response.success && response.data) {
-      const rangeInfo = start !== undefined || end !== undefined
-        ? `\n范围: ${start ?? 0} - ${end ?? '末尾'}`
-        : '';
+      const rangeInfo =
+        start !== undefined || end !== undefined ? `\n范围: ${start ?? 0} - ${end ?? '末尾'}` : '';
 
       return {
         id: uuidv4(),
@@ -397,22 +383,21 @@ export const getDocumentTextByRangeHandler: ToolHandler = async (
       startOffset: number;
       length: number;
       docLength: number;
-    }>(
-      'getDocumentTextByRange',
-      execParams,
-      WpsAppType.WRITER
-    );
+    }>('getDocumentTextByRange', execParams, WpsAppType.WRITER);
 
     if (response.success && response.data) {
       return {
         id: uuidv4(),
         success: true,
-        content: [{
-          type: 'text',
-          text: `文档文本 (偏移 ${response.data.startOffset}, ` +
-            `长度 ${response.data.length}，` +
-            `文档总长 ${response.data.docLength}):\n\n${response.data.text}`,
-        }],
+        content: [
+          {
+            type: 'text',
+            text:
+              `文档文本 (偏移 ${response.data.startOffset}, ` +
+              `长度 ${response.data.length}，` +
+              `文档总长 ${response.data.docLength}):\n\n${response.data.text}`,
+          },
+        ],
       };
     } else {
       return {
@@ -480,11 +465,7 @@ export const insertHeaderHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'insertHeader',
-      { text, section },
-      WpsAppType.WRITER
-    );
+    }>('insertHeader', { text, section }, WpsAppType.WRITER);
 
     if (response.success) {
       return {
@@ -558,11 +539,7 @@ export const insertFooterHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'insertFooter',
-      { text, section },
-      WpsAppType.WRITER
-    );
+    }>('insertFooter', { text, section }, WpsAppType.WRITER);
 
     if (response.success) {
       return {
@@ -624,11 +601,7 @@ export const generateDocTocHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'generateTOC',
-      { levels },
-      WpsAppType.WRITER
-    );
+    }>('generateTOC', { levels }, WpsAppType.WRITER);
 
     if (response.success) {
       return {
@@ -672,7 +645,8 @@ export const insertSectionBreakDefinition: ToolDefinition = {
     properties: {
       breakType: {
         type: 'string',
-        description: '分节符类型：nextPage(下一页)、continuous(连续)、evenPage(偶数页)、oddPage(奇数页)，默认nextPage',
+        description:
+          '分节符类型：nextPage(下一页)、continuous(连续)、evenPage(偶数页)、oddPage(奇数页)，默认nextPage',
         default: 'nextPage',
       },
     },
@@ -688,11 +662,7 @@ export const insertSectionBreakHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'insertSectionBreak',
-      { breakType },
-      WpsAppType.WRITER
-    );
+    }>('insertSectionBreak', { breakType }, WpsAppType.WRITER);
 
     if (response.success) {
       return {
@@ -768,11 +738,7 @@ export const setLineSpacingHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'setLineSpacing',
-      params,
-      WpsAppType.WRITER
-    );
+    }>('setLineSpacing', params, WpsAppType.WRITER);
 
     if (response.success) {
       const target = paragraphIndex !== undefined ? `第${paragraphIndex}段` : '当前段落';

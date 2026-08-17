@@ -67,11 +67,7 @@ export const deleteShapeHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'deleteShape',
-      { slideIndex, shapeIndex },
-      WpsAppType.PRESENTATION
-    );
+    }>('deleteShape', { slideIndex, shapeIndex }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {
@@ -147,16 +143,12 @@ export const getShapesHandler: ToolHandler = async (
         width: number;
         height: number;
       }>;
-    }>(
-      'getShapes',
-      { slideIndex },
-      WpsAppType.PRESENTATION
-    );
+    }>('getShapes', { slideIndex }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       const shapes = response.data.shapes;
       let output = `幻灯片第 ${slideIndex} 页的形状列表（共 ${shapes.length} 个）：\n\n`;
-      shapes.forEach((s) => {
+      shapes.forEach(s => {
         output += `[${s.index}] ${s.name} (${s.type})\n`;
         output += `    位置: (${s.left}, ${s.top}) 大小: ${s.width} x ${s.height}\n`;
       });
@@ -338,11 +330,7 @@ export const setShapeShadowHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'setShapeShadow',
-      { slideIndex, shapeIndex, shadow },
-      WpsAppType.PRESENTATION
-    );
+    }>('setShapeShadow', { slideIndex, shapeIndex, shadow }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {
@@ -404,7 +392,11 @@ gradient对象属性：
         type: 'object',
         description: '渐变配置对象',
         properties: {
-          type: { type: 'string', description: '渐变类型: linear 或 radial', enum: ['linear', 'radial'] },
+          type: {
+            type: 'string',
+            description: '渐变类型: linear 或 radial',
+            enum: ['linear', 'radial'],
+          },
           angle: { type: 'number', description: '渐变角度（0-360）' },
           stops: {
             type: 'array',
@@ -437,11 +429,7 @@ export const setShapeGradientHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'setShapeGradient',
-      { slideIndex, shapeIndex, gradient },
-      WpsAppType.PRESENTATION
-    );
+    }>('setShapeGradient', { slideIndex, shapeIndex, gradient }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {
@@ -507,7 +495,11 @@ border对象属性：
           enabled: { type: 'boolean', description: '是否启用边框' },
           color: { type: 'string', description: '边框颜色' },
           weight: { type: 'number', description: '边框粗细（磅）' },
-          style: { type: 'string', description: '边框样式', enum: ['solid', 'dash', 'dot', 'dash_dot', 'dash_dot_dot'] },
+          style: {
+            type: 'string',
+            description: '边框样式',
+            enum: ['solid', 'dash', 'dot', 'dash_dot', 'dash_dot_dot'],
+          },
         },
       },
     },
@@ -528,11 +520,7 @@ export const setShapeBorderHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'setShapeBorder',
-      { slideIndex, shapeIndex, border },
-      WpsAppType.PRESENTATION
-    );
+    }>('setShapeBorder', { slideIndex, shapeIndex, border }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {
@@ -607,11 +595,7 @@ export const setShapeTransparencyHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'setShapeTransparency',
-      { slideIndex, shapeIndex, transparency },
-      WpsAppType.PRESENTATION
-    );
+    }>('setShapeTransparency', { slideIndex, shapeIndex, transparency }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {
@@ -697,11 +681,7 @@ export const alignShapesHandler: ToolHandler = async (
       success: boolean;
       message: string;
       count?: number;
-    }>(
-      'alignShapes',
-      { slideIndex, shapeIndices, alignment },
-      WpsAppType.PRESENTATION
-    );
+    }>('alignShapes', { slideIndex, shapeIndices, alignment }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       const alignName: Record<string, string> = {
@@ -791,11 +771,7 @@ export const distributeShapesHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'distributeShapes',
-      { slideIndex, shapeIndices, direction },
-      WpsAppType.PRESENTATION
-    );
+    }>('distributeShapes', { slideIndex, shapeIndices, direction }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       const dirName = direction === 'horizontal' ? '水平等距' : '垂直等距';
@@ -869,11 +845,7 @@ export const groupShapesHandler: ToolHandler = async (
       success: boolean;
       message: string;
       groupIndex?: number;
-    }>(
-      'groupShapes',
-      { slideIndex, shapeIndices },
-      WpsAppType.PRESENTATION
-    );
+    }>('groupShapes', { slideIndex, shapeIndices }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       let text = `形状组合成功！\n幻灯片: 第 ${slideIndex} 页\n组合形状: ${shapeIndices.length} 个`;

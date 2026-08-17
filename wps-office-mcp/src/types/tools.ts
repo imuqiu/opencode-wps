@@ -98,9 +98,7 @@ export interface ToolContent {
 /**
  * Tool处理函数类型
  */
-export type ToolHandler = (
-  args: Record<string, unknown>
-) => Promise<ToolCallResult>;
+export type ToolHandler = (args: Record<string, unknown>) => Promise<ToolCallResult>;
 
 /**
  * 注册的Tool完整信息

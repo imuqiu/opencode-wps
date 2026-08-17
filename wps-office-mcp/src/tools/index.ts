@@ -118,7 +118,12 @@ export const getToolCount = (): number => allTools.length;
 /**
  * 获取按应用分类的Tool数量
  */
-export const getToolCountByApp = (): { excel: number; word: number; ppt: number; common: number } => ({
+export const getToolCountByApp = (): {
+  excel: number;
+  word: number;
+  ppt: number;
+  common: number;
+} => ({
   excel: excelTools.length,
   word: wordTools.length,
   ppt: pptTools.length,

@@ -41,7 +41,7 @@ function fullAllocation(batchId: string, range: { start: number; end: number }):
     batchId,
     range,
     status: 'done',
-    stepsLog: PROOFREAD_STEP_CHAIN.map((s) => ({
+    stepsLog: PROOFREAD_STEP_CHAIN.map(s => ({
       step: s,
       timestamp: Date.now(),
       paragraphIndex: range.end,
@@ -60,9 +60,22 @@ describe('proofread-store batch allocation & step-log', () => {
   afterAll(() => {
     // 清理所有测试 session 文件
     for (const label of [
-      'roundtrip', 'preserve', 'append', 'missing', 'incomplete',
-      'conflict', 'noconflict', 'partial', 'nonexist', 'badbatch',
-      'state-machine', 'done-append', 'done-redispatch', 'bad-overlap', 'bad-range', 'trim-step',
+      'roundtrip',
+      'preserve',
+      'append',
+      'missing',
+      'incomplete',
+      'conflict',
+      'noconflict',
+      'partial',
+      'nonexist',
+      'badbatch',
+      'state-machine',
+      'done-append',
+      'done-redispatch',
+      'bad-overlap',
+      'bad-range',
+      'trim-step',
     ]) {
       removeSessionFromDisk(sid(label));
     }
@@ -87,7 +100,12 @@ describe('proofread-store batch allocation & step-log', () => {
     const s = sid('preserve');
     saveSessionToDisk(s, {
       issues: [],
-      docInfo: { fileName: 'a.docx', filePath: '/tmp/a.docx', totalParagraphs: 200, totalWords: 1000 },
+      docInfo: {
+        fileName: 'a.docx',
+        filePath: '/tmp/a.docx',
+        totalParagraphs: 200,
+        totalWords: 1000,
+      },
       createdAt: new Date().toISOString(),
       totalRevisions: 0,
     });
@@ -103,8 +121,22 @@ describe('proofread-store batch allocation & step-log', () => {
     saveBatchAllocations(s, [fullAllocation('b1', { start: 1, end: 100 })]);
     // 模拟 executor 每次 proofreadAccumulate 后写 session（不含 batchAllocations 字段）
     saveSessionToDisk(s, {
-      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' }],
-      docInfo: { fileName: 'a.docx', filePath: '/tmp/a.docx', totalParagraphs: 200, totalWords: 1000 },
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp',
+        },
+      ],
+      docInfo: {
+        fileName: 'a.docx',
+        filePath: '/tmp/a.docx',
+        totalParagraphs: 200,
+        totalWords: 1000,
+      },
       createdAt: new Date().toISOString(),
       totalRevisions: 2,
     });
@@ -126,7 +158,7 @@ describe('proofread-store batch allocation & step-log', () => {
       issuesCount: 2,
     };
     expect(appendStepRecord(s, 'batch-2', rec)).toBe(true);
-    const batch2 = loadBatchAllocations(s).find((b) => b.batchId === 'batch-2');
+    const batch2 = loadBatchAllocations(s).find(b => b.batchId === 'batch-2');
     expect(batch2?.stepsLog).toHaveLength(1);
     expect(batch2?.stepsLog[0].step).toBe('replaceInParagraph');
     expect(batch2?.stepsLog[0].revisionsAfter).toBe(4);
@@ -135,13 +167,15 @@ describe('proofread-store batch allocation & step-log', () => {
   test('appendStepRecord returns false for non-existent batch', () => {
     const s = sid('badbatch');
     saveBatchAllocations(s, [fullAllocation('b1', { start: 1, end: 100 })]);
-    expect(appendStepRecord(s, 'batch-999', { step: 'proofreadBasic', timestamp: Date.now() })).toBe(false);
+    expect(
+      appendStepRecord(s, 'batch-999', { step: 'proofreadBasic', timestamp: Date.now() })
+    ).toBe(false);
   });
 
   test('updateBatchStatus updates status & assignee', () => {
     const s = sid('append'); // 复用已有批次
     expect(updateBatchStatus(s, 'batch-2', 'running', 'executor-3')).toBe(true);
-    const batch2 = loadBatchAllocations(s).find((b) => b.batchId === 'batch-2');
+    const batch2 = loadBatchAllocations(s).find(b => b.batchId === 'batch-2');
     expect(batch2?.status).toBe('running');
     expect(batch2?.assignee).toBe('executor-3');
   });
@@ -185,7 +219,9 @@ describe('proofread-store batch allocation & step-log', () => {
       { batchId: 'b', range: { start: 51, end: 100 }, status: 'pending', stepsLog: [] },
       { batchId: 'c', range: { start: 101, end: 150 }, status: 'failed', stepsLog: [] },
     ]);
-    const ids = getIncompleteBatches(s).map((b) => b.batchId).sort();
+    const ids = getIncompleteBatches(s)
+      .map(b => b.batchId)
+      .sort();
     expect(ids).toEqual(['b', 'c']); // pending + failed 重新入队，完整 done 跳过
   });
 
@@ -204,16 +240,19 @@ describe('proofread-store batch allocation & step-log', () => {
       },
     ]);
     const incomplete = getIncompleteBatches(s);
-    expect(incomplete.map((b) => b.batchId)).toContain('d'); // 谎报/异常 done 但凭证不全 → 重派
+    expect(incomplete.map(b => b.batchId)).toContain('d'); // 谎报/异常 done 但凭证不全 → 重派
   });
 
   test('hasParallelRangeConflict detects overlapping running ranges', () => {
     const s = sid('conflict');
     // R8-1 后 saveBatchAllocations 拒绝重叠，故用 saveSessionToDisk 直接写重叠数据（模拟异常/历史数据）
-    saveSessionToDisk(s, { issues: [], batchAllocations: [
-      { batchId: 'x', range: { start: 1, end: 100 }, status: 'running', stepsLog: [] },
-      { batchId: 'y', range: { start: 90, end: 190 }, status: 'running', stepsLog: [] },
-    ] });
+    saveSessionToDisk(s, {
+      issues: [],
+      batchAllocations: [
+        { batchId: 'x', range: { start: 1, end: 100 }, status: 'running', stepsLog: [] },
+        { batchId: 'y', range: { start: 90, end: 190 }, status: 'running', stepsLog: [] },
+      ],
+    });
     expect(hasParallelRangeConflict(s)).toBe(true);
   });
 
@@ -268,7 +307,7 @@ describe('proofread-store batch allocation & step-log', () => {
       },
     ]);
     // getIncompleteBatches 判定该批次未完成（done 但凭证不全）
-    expect(getIncompleteBatches(s).map((b) => b.batchId)).toContain('b1');
+    expect(getIncompleteBatches(s).map(b => b.batchId)).toContain('b1');
     // 状态机允许 done → pending 回退重派
     expect(updateBatchStatus(s, 'b1', 'pending')).toBe(true);
     expect(loadBatchAllocations(s)[0].status).toBe('pending');
@@ -280,7 +319,9 @@ describe('proofread-store batch allocation & step-log', () => {
   test('R3-3：appendStepRecord 对 done 批次拒绝追加', () => {
     const s = sid('done-append');
     saveBatchAllocations(s, [fullAllocation('b1', { start: 1, end: 100 })]); // status: done
-    expect(appendStepRecord(s, 'b1', { step: 'proofreadAccumulate', timestamp: Date.now() })).toBe(false);
+    expect(appendStepRecord(s, 'b1', { step: 'proofreadAccumulate', timestamp: Date.now() })).toBe(
+      false
+    );
     // 未 done 批次正常追加
     saveBatchAllocations(s, [
       { batchId: 'b2', range: { start: 101, end: 200 }, status: 'running', stepsLog: [] },
@@ -290,29 +331,39 @@ describe('proofread-store batch allocation & step-log', () => {
 
   test('R8-1：saveBatchAllocations 拒绝非法区间（start<1 或 end<start）', () => {
     const s = sid('bad-range');
-    expect(saveBatchAllocations(s, [
-      { batchId: 'b1', range: { start: 0, end: 100 }, status: 'pending', stepsLog: [] }, // start<1
-    ])).toBe(false);
-    expect(saveBatchAllocations(s, [
-      { batchId: 'b1', range: { start: 100, end: 50 }, status: 'pending', stepsLog: [] }, // end<start
-    ])).toBe(false);
+    expect(
+      saveBatchAllocations(s, [
+        { batchId: 'b1', range: { start: 0, end: 100 }, status: 'pending', stepsLog: [] }, // start<1
+      ])
+    ).toBe(false);
+    expect(
+      saveBatchAllocations(s, [
+        { batchId: 'b1', range: { start: 100, end: 50 }, status: 'pending', stepsLog: [] }, // end<start
+      ])
+    ).toBe(false);
     // 合法区间正常
-    expect(saveBatchAllocations(s, [
-      { batchId: 'b1', range: { start: 1, end: 100 }, status: 'pending', stepsLog: [] },
-    ])).toBe(true);
+    expect(
+      saveBatchAllocations(s, [
+        { batchId: 'b1', range: { start: 1, end: 100 }, status: 'pending', stepsLog: [] },
+      ])
+    ).toBe(true);
   });
 
   test('R8-1：saveBatchAllocations 拒绝重叠批次区间', () => {
     const s = sid('bad-overlap');
-    expect(saveBatchAllocations(s, [
-      { batchId: 'b1', range: { start: 1, end: 100 }, status: 'pending', stepsLog: [] },
-      { batchId: 'b2', range: { start: 90, end: 200 }, status: 'pending', stepsLog: [] }, // 与 b1 在 90-100 重叠
-    ])).toBe(false);
+    expect(
+      saveBatchAllocations(s, [
+        { batchId: 'b1', range: { start: 1, end: 100 }, status: 'pending', stepsLog: [] },
+        { batchId: 'b2', range: { start: 90, end: 200 }, status: 'pending', stepsLog: [] }, // 与 b1 在 90-100 重叠
+      ])
+    ).toBe(false);
     // 不重叠正常
-    expect(saveBatchAllocations(s, [
-      { batchId: 'b1', range: { start: 1, end: 100 }, status: 'pending', stepsLog: [] },
-      { batchId: 'b2', range: { start: 101, end: 200 }, status: 'pending', stepsLog: [] },
-    ])).toBe(true);
+    expect(
+      saveBatchAllocations(s, [
+        { batchId: 'b1', range: { start: 1, end: 100 }, status: 'pending', stepsLog: [] },
+        { batchId: 'b2', range: { start: 101, end: 200 }, status: 'pending', stepsLog: [] },
+      ])
+    ).toBe(true);
   });
 
   test('R11-1：getMissingSteps 对带空白步骤名 trim 后判定完整（不误判缺失）', () => {

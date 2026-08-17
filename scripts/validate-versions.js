@@ -19,9 +19,7 @@ const rootDir = path.resolve(__dirname, '..');
 const errors = [];
 
 // 单一版本源：根 package.json
-const rootPkg = JSON.parse(
-  fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8')
-);
+const rootPkg = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
 const EXPECTED = rootPkg.version;
 if (!/^\d+\.\d+\.\d+$/.test(EXPECTED)) {
   errors.push(`根 package.json 版本号「${EXPECTED}」格式非法（应为 x.y.z）`);
@@ -56,10 +54,18 @@ checkFile('wps-office-mcp/package.json', 'wps-office-mcp/package.json', mcpPkg.v
 const mcpLock = JSON.parse(
   fs.readFileSync(path.join(rootDir, 'wps-office-mcp/package-lock.json'), 'utf8')
 );
-checkFile('wps-office-mcp/package-lock.json (顶层)', 'wps-office-mcp/package-lock.json', mcpLock.version);
+checkFile(
+  'wps-office-mcp/package-lock.json (顶层)',
+  'wps-office-mcp/package-lock.json',
+  mcpLock.version
+);
 const lockPkg = mcpLock.packages && mcpLock.packages[''];
 if (lockPkg) {
-  checkFile('wps-office-mcp/package-lock.json (packages[""])', 'wps-office-mcp/package-lock.json', lockPkg.version);
+  checkFile(
+    'wps-office-mcp/package-lock.json (packages[""])',
+    'wps-office-mcp/package-lock.json',
+    lockPkg.version
+  );
 }
 
 // ---- 2. config.js（CONFIG.version）----
@@ -82,21 +88,32 @@ if (!verMatch) {
 
 // manifest.xml 不应再有冗余的小写 <version> 字段（历史遗留）
 if (/<version>\s*\d/.test(manifestSrc)) {
-  errors.push('opencode-wps/manifest.xml 中存在冗余的小写 <version> 字段，请删除（只保留 <Version>）');
+  errors.push(
+    'opencode-wps/manifest.xml 中存在冗余的小写 <version> 字段，请删除（只保留 <Version>）'
+  );
 }
 
 // ---- 3b. Linux manifest.xml（<Version> 大写字段）----
-const linuxManifestSrc = fs.readFileSync(path.join(rootDir, 'opencode-wps-linux/manifest.xml'), 'utf8');
+const linuxManifestSrc = fs.readFileSync(
+  path.join(rootDir, 'opencode-wps-linux/manifest.xml'),
+  'utf8'
+);
 const linuxVerMatch = linuxManifestSrc.match(/<Version>\s*(\d+\.\d+\.\d+)\s*<\/Version>/);
 if (!linuxVerMatch) {
   errors.push('opencode-wps-linux/manifest.xml 中未找到 <Version>x.y.z</Version>');
 } else {
-  checkFile('opencode-wps-linux/manifest.xml (<Version>)', 'opencode-wps-linux/manifest.xml', linuxVerMatch[1]);
+  checkFile(
+    'opencode-wps-linux/manifest.xml (<Version>)',
+    'opencode-wps-linux/manifest.xml',
+    linuxVerMatch[1]
+  );
 }
 
 // Linux manifest.xml 不应再有冗余的小写 <version> 字段
 if (/<version>\s*\d/.test(linuxManifestSrc)) {
-  errors.push('opencode-wps-linux/manifest.xml 中存在冗余的小写 <version> 字段，请删除（只保留 <Version>）');
+  errors.push(
+    'opencode-wps-linux/manifest.xml 中存在冗余的小写 <version> 字段，请删除（只保留 <Version>）'
+  );
 }
 
 // ---- 4. 汇总 ----

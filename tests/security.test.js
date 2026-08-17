@@ -14,7 +14,7 @@
  */
 function escapeHtml(s) {
   if (typeof s !== 'string') return '';
-  return s.replace(/[<>&"']/g, function(c) {
+  return s.replace(/[<>&"']/g, function (c) {
     var map = { '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' };
     return map[c];
   });
@@ -27,7 +27,12 @@ function escapeHtml(s) {
  */
 function escapeAttr(s) {
   if (typeof s !== 'string') return '';
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, "\\'");
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, "\\'");
 }
 
 /**
@@ -35,7 +40,18 @@ function escapeAttr(s) {
  */
 function decodeHtmlEntities(s) {
   if (!s) return '';
-  return s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&#x([0-9a-fA-F]+);/g, function(m, h) { return String.fromCharCode(parseInt(h, 16)) }).replace(/&#(\d+);/g, function(m, d) { return String.fromCharCode(parseInt(d, 10)) });
+  return s
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#x([0-9a-fA-F]+);/g, function (m, h) {
+      return String.fromCharCode(parseInt(h, 16));
+    })
+    .replace(/&#(\d+);/g, function (m, d) {
+      return String.fromCharCode(parseInt(d, 10));
+    });
 }
 
 /**
@@ -48,8 +64,14 @@ function safeHref(url) {
   var trimmed = decoded.replace(/^\s+|\s+$/g, '');
   // 协议检测前去除控制字符/空白（OWASP 建议），防 `jav\nascript:` 之类混淆绕过
   var low = trimmed.replace(/[\x00-\x20\x7f]/g, '').toLowerCase();
-  if (low.indexOf('http:') === 0 || low.indexOf('https:') === 0 || low.indexOf('mailto:') === 0) return escapeHtml(trimmed);
-  if (low.indexOf('javascript:') === 0 || low.indexOf('data:') === 0 || low.indexOf('vbscript:') === 0) return '#';
+  if (low.indexOf('http:') === 0 || low.indexOf('https:') === 0 || low.indexOf('mailto:') === 0)
+    return escapeHtml(trimmed);
+  if (
+    low.indexOf('javascript:') === 0 ||
+    low.indexOf('data:') === 0 ||
+    low.indexOf('vbscript:') === 0
+  )
+    return '#';
   // 协议相对 URL（//evil.com）在 file:// 环境下解析为 UNC 路径，非预期行为
   if (trimmed.indexOf('//') === 0) return '#';
   return escapeHtml(trimmed);
@@ -62,7 +84,7 @@ function safeHref(url) {
  */
 function validateCwd(cwd, basePath) {
   if (!cwd || !basePath) return false;
-  var normalize = function(p) {
+  var normalize = function (p) {
     var out = p.replace(/\\/g, '/').replace(/\/+/g, '/');
     // 解析 . 和 .. 段
     var parts = out.split('/');
@@ -133,59 +155,62 @@ console.log('\n========== 安全测试套件 ==========\n');
 // --- 1. HTML 转义测试（escapeHtml）---
 console.log('--- HTML 转义测试 (escapeHtml) ---');
 
-test('escapeHtml: 基本 HTML 标签转义', function() {
+test('escapeHtml: 基本 HTML 标签转义', function () {
   assertEqual(escapeHtml('<script>alert(1)</script>'), '&lt;script&gt;alert(1)&lt;/script&gt;');
 });
 
-test('escapeHtml: 尖括号转义', function() {
+test('escapeHtml: 尖括号转义', function () {
   assertEqual(escapeHtml('<div>'), '&lt;div&gt;');
   assertEqual(escapeHtml('a>b'), 'a&gt;b');
 });
 
-test('escapeHtml: 引号转义', function() {
+test('escapeHtml: 引号转义', function () {
   assertEqual(escapeHtml('"test"'), '&quot;test&quot;');
   assertEqual(escapeHtml("'test'"), '&#39;test&#39;');
 });
 
-test('escapeHtml: &符号转义', function() {
+test('escapeHtml: &符号转义', function () {
   assertEqual(escapeHtml('a&b'), 'a&amp;b');
 });
 
-test('escapeHtml: 空值/非字符串处理', function() {
+test('escapeHtml: 空值/非字符串处理', function () {
   assertEqual(escapeHtml(null), '');
   assertEqual(escapeHtml(undefined), '');
   assertEqual(escapeHtml(123), '');
   assertEqual(escapeHtml(''), '');
 });
 
-test('escapeHtml: 正常文本不过滤', function() {
+test('escapeHtml: 正常文本不过滤', function () {
   assertEqual(escapeHtml('Hello World'), 'Hello World');
   assertEqual(escapeHtml('正常中文文本'), '正常中文文本');
 });
 
-test('escapeHtml: 混合内容', function() {
-  assertEqual(escapeHtml('Hello <script>x</script> & "test"'), 'Hello &lt;script&gt;x&lt;/script&gt; &amp; &quot;test&quot;');
+test('escapeHtml: 混合内容', function () {
+  assertEqual(
+    escapeHtml('Hello <script>x</script> & "test"'),
+    'Hello &lt;script&gt;x&lt;/script&gt; &amp; &quot;test&quot;'
+  );
 });
 
-test('escapeAttr: 单引号用反斜杠转义（onclick 双层解析安全）', function() {
+test('escapeAttr: 单引号用反斜杠转义（onclick 双层解析安全）', function () {
   assertEqual(escapeAttr("x' onmouseover=alert(1)"), "x\\' onmouseover=alert(1)");
 });
 
-test('escapeAttr: 双引号用实体转义（防属性定界符闭合）', function() {
+test('escapeAttr: 双引号用实体转义（防属性定界符闭合）', function () {
   assertEqual(escapeAttr('a"b'), 'a&quot;b');
 });
 
-test('escapeAttr: & < > 均转义防实体/标签注入', function() {
+test('escapeAttr: & < > 均转义防实体/标签注入', function () {
   assertEqual(escapeAttr('a&b<c>d'), 'a&amp;b&lt;c&gt;d');
 });
 
-test('escapeAttr: 空值/非字符串处理', function() {
+test('escapeAttr: 空值/非字符串处理', function () {
   assertEqual(escapeAttr(null), '');
   assertEqual(escapeAttr(undefined), '');
   assertEqual(escapeAttr(123), '');
 });
 
-test('escapeAttr: onclick 完整注入攻击向量被中和', function() {
+test('escapeAttr: onclick 完整注入攻击向量被中和', function () {
   // 模拟 provider id 含恶意 payload（来自服务端配置）
   var payload = "x' onmouseover='alert(document.cookie)' '";
   var escaped = escapeAttr(payload);
@@ -197,20 +222,20 @@ test('escapeAttr: onclick 完整注入攻击向量被中和', function() {
 // --- 2. HTML 实体解码测试（decodeHtmlEntities）---
 console.log('\n--- HTML 实体解码测试 (decodeHtmlEntities) ---');
 
-test('decodeHtmlEntities: 基本实体解码', function() {
+test('decodeHtmlEntities: 基本实体解码', function () {
   assertEqual(decodeHtmlEntities('&lt;div&gt;'), '<div>');
   assertEqual(decodeHtmlEntities('a&amp;b'), 'a&b');
   assertEqual(decodeHtmlEntities('&quot;q&quot;'), '"q"');
   assertEqual(decodeHtmlEntities('&#39;s&#39;'), "'s'");
 });
 
-test('decodeHtmlEntities: 十六进制/十进制数字实体', function() {
+test('decodeHtmlEntities: 十六进制/十进制数字实体', function () {
   assertEqual(decodeHtmlEntities('&#x73;'), 's');
   assertEqual(decodeHtmlEntities('&#115;'), 's');
   assertEqual(decodeHtmlEntities('&#x6A;avascript'), 'javascript');
 });
 
-test('decodeHtmlEntities: 空值处理', function() {
+test('decodeHtmlEntities: 空值处理', function () {
   assertEqual(decodeHtmlEntities(''), '');
   assertEqual(decodeHtmlEntities(null), '');
   assertEqual(decodeHtmlEntities(undefined), '');
@@ -219,25 +244,25 @@ test('decodeHtmlEntities: 空值处理', function() {
 // --- 3. safeHref 安全 URL 测试 ---
 console.log('\n--- safeHref 安全 URL 测试 ---');
 
-test('safeHref: 合法 http/https/mailto 通过并转义', function() {
+test('safeHref: 合法 http/https/mailto 通过并转义', function () {
   assertEqual(safeHref('http://a.com/?x=1&y=2'), 'http://a.com/?x=1&amp;y=2');
   assertEqual(safeHref('https://cnb.cool/?q=1&r=2'), 'https://cnb.cool/?q=1&amp;r=2');
   assertEqual(safeHref('mailto:a@b.com'), 'mailto:a@b.com');
 });
 
-test('safeHref: 相对路径带 & 参数不被双重转义', function() {
+test('safeHref: 相对路径带 & 参数不被双重转义', function () {
   assertEqual(safeHref('docs/guide.html?a=1&b=2'), 'docs/guide.html?a=1&amp;b=2');
   assertEqual(safeHref('img/x.png?a=1&b=2'), 'img/x.png?a=1&amp;b=2');
 });
 
-test('safeHref: 危险协议拦截', function() {
+test('safeHref: 危险协议拦截', function () {
   assertEqual(safeHref('javascript:alert(1)'), '#');
   assertEqual(safeHref('JaVaScRiPt:alert(1)'), '#');
   assertEqual(safeHref('data:text/html,<svg>'), '#');
   assertEqual(safeHref('vbscript:msgbox(1)'), '#');
 });
 
-test('safeHref: 实体混淆绕过拦截', function() {
+test('safeHref: 实体混淆绕过拦截', function () {
   // 直接调用时传原始混淆文本（含 &amp; 等实体）
   // &#x61; → a, &#x73; → s，解码后为 javascript: 必须拦截
   assertEqual(safeHref('jav&#x61;script:alert(1)'), '#');
@@ -248,17 +273,17 @@ test('safeHref: 实体混淆绕过拦截', function() {
   assertEqual(safeHref('java&amp;script:alert(1)'), 'java&amp;script:alert(1)');
 });
 
-test('safeHref: 控制字符/空白混淆拦截', function() {
+test('safeHref: 控制字符/空白混淆拦截', function () {
   assertEqual(safeHref('java\nscript:alert(1)'), '#');
   assertEqual(safeHref('java\tscript:alert(1)'), '#');
   assertEqual(safeHref('java script:alert(1)'), '#');
 });
 
-test('safeHref: 协议相对 URL 拦截', function() {
+test('safeHref: 协议相对 URL 拦截', function () {
   assertEqual(safeHref('//evil.com/x'), '#');
 });
 
-test('safeHref: 已转义文本链路无双重转义', function() {
+test('safeHref: 已转义文本链路无双重转义', function () {
   // renderMarkdown 中入参已被全局 escapeHtml 转义
   assertEqual(safeHref('http://a.com/?x=1&amp;y=2'), 'http://a.com/?x=1&amp;y=2');
   assertEqual(safeHref('docs/a.html?a=1&amp;b=2'), 'docs/a.html?a=1&amp;b=2');
@@ -266,7 +291,7 @@ test('safeHref: 已转义文本链路无双重转义', function() {
   assertEqual(safeHref('javascript:alert(1)'), '#');
 });
 
-test('safeHref: 空值/非字符串处理', function() {
+test('safeHref: 空值/非字符串处理', function () {
   assertEqual(safeHref(''), '#');
   assertEqual(safeHref(null), '#');
   assertEqual(safeHref(undefined), '#');
@@ -275,19 +300,19 @@ test('safeHref: 空值/非字符串处理', function() {
 // --- 4. 路径遍历防护测试 ---
 console.log('\n--- 路径遍历防护测试 ---');
 
-test('isValidPath: 合法路径', function() {
+test('isValidPath: 合法路径', function () {
   assertTrue(isValidPath('C:\\Users\\test\\project'));
   assertTrue(isValidPath('/home/user/project'));
   assertTrue(isValidPath('./relative/path'));
 });
 
-test('isValidPath: 路径遍历检测', function() {
+test('isValidPath: 路径遍历检测', function () {
   assertFalse(isValidPath('../etc/passwd'));
   assertFalse(isValidPath('C:\\Users\\..\\Windows\\system32'));
   assertFalse(isValidPath('..\\..\\secret.txt'));
 });
 
-test('isValidPath: 非法字符检测', function() {
+test('isValidPath: 非法字符检测', function () {
   assertFalse(isValidPath('path|pipe'));
   assertFalse(isValidPath('path*star'));
   assertFalse(isValidPath('path?question'));
@@ -295,19 +320,19 @@ test('isValidPath: 非法字符检测', function() {
   assertFalse(isValidPath('path"quote'));
 });
 
-test('isValidPath: 空值处理', function() {
+test('isValidPath: 空值处理', function () {
   assertFalse(isValidPath(''));
   assertFalse(isValidPath(null));
   assertFalse(isValidPath(undefined));
 });
 
-test('validateCwd: 合法子目录', function() {
+test('validateCwd: 合法子目录', function () {
   assertTrue(validateCwd('C:\\Users\\test\\project', 'C:\\Users\\test'));
   assertTrue(validateCwd('/home/user/project', '/home/user'));
   assertTrue(validateCwd('C:\\Users\\test', 'C:\\Users\\test'));
 });
 
-test('validateCwd: 路径遍历尝试', function() {
+test('validateCwd: 路径遍历尝试', function () {
   assertFalse(validateCwd('C:\\Users\\test\\..\\Windows', 'C:\\Users\\test'));
   assertFalse(validateCwd('/home/../etc', '/home'));
   assertFalse(validateCwd('C:\\Users\\test2', 'C:\\Users\\test'));
@@ -325,13 +350,13 @@ function isValidApiUrl(url) {
   }
 }
 
-test('isValidApiUrl: 合法 URL', function() {
+test('isValidApiUrl: 合法 URL', function () {
   assertTrue(isValidApiUrl('http://127.0.0.1:14096'));
   assertTrue(isValidApiUrl('https://api.example.com'));
   assertTrue(isValidApiUrl('http://localhost:8080'));
 });
 
-test('isValidApiUrl: 非法 URL', function() {
+test('isValidApiUrl: 非法 URL', function () {
   assertFalse(isValidApiUrl('file:///etc/passwd'));
   assertFalse(isValidApiUrl('javascript:alert(1)'));
   assertFalse(isValidApiUrl(''));
@@ -350,7 +375,7 @@ if (passCount === testCount) {
 } else {
   console.log('\n✗ 部分测试失败!\n');
   console.log('失败详情:');
-  testResults.forEach(function(r) {
+  testResults.forEach(function (r) {
     if (r.status === 'FAIL') {
       console.log('  - ' + r.name + ': ' + r.error);
     }

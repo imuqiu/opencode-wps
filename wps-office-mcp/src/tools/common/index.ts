@@ -24,10 +24,7 @@ import { generalTools } from './general';
  * - 批量处理
  * - 云端同步
  */
-export const commonTools: RegisteredTool[] = [
-  ...convertTools,
-  ...generalTools,
-];
+export const commonTools: RegisteredTool[] = [...convertTools, ...generalTools];
 
 // 分别导出，方便按需使用
 export { convertTools } from './convert';

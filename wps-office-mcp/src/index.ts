@@ -18,9 +18,46 @@ export { WpsMcpServer, createMcpServer } from './server/mcp-server';
 export { ToolRegistry, toolRegistry, registerTool } from './server/tool-registry';
 export { WpsClient, wpsClient } from './client/wps-client';
 export { log, logger, createChildLogger } from './utils/logger';
-export { ErrorCode, McpError, WpsConnectionError, WpsApiError, ToolNotFoundError, ToolExecutionError, InvalidParamsError, TimeoutError, errorUtils } from './utils/error';
-export { ToolParameterSchema, ToolInputSchema, ToolDefinition, ToolCategory, ToolCallRequest, ToolCallResult, ToolContent, ToolHandler, RegisteredTool, ListToolsResponse, CallToolResponse } from './types/tools';
-export { WpsAppType, WpsEndpointConfig, WpsApiRequest, WpsApiResponse, DocumentInfo, WorkbookInfo, SheetInfo, CellRange, CellData, PresentationInfo, SlideInfo, TextOperationParams, FormatParams, WpsClientStatus } from './types/wps';
+export {
+  ErrorCode,
+  McpError,
+  WpsConnectionError,
+  WpsApiError,
+  ToolNotFoundError,
+  ToolExecutionError,
+  InvalidParamsError,
+  TimeoutError,
+  errorUtils,
+} from './utils/error';
+export {
+  ToolParameterSchema,
+  ToolInputSchema,
+  ToolDefinition,
+  ToolCategory,
+  ToolCallRequest,
+  ToolCallResult,
+  ToolContent,
+  ToolHandler,
+  RegisteredTool,
+  ListToolsResponse,
+  CallToolResponse,
+} from './types/tools';
+export {
+  WpsAppType,
+  WpsEndpointConfig,
+  WpsApiRequest,
+  WpsApiResponse,
+  DocumentInfo,
+  WorkbookInfo,
+  SheetInfo,
+  CellRange,
+  CellData,
+  PresentationInfo,
+  SlideInfo,
+  TextOperationParams,
+  FormatParams,
+  WpsClientStatus,
+} from './types/wps';
 
 /**
  * 主函数 - 程序入口
@@ -59,17 +96,18 @@ async function main(): Promise<void> {
   process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
   // 未捕获异常处理
-  process.on('uncaughtException', (error) => {
+  process.on('uncaughtException', error => {
     mainLogger.error('Uncaught exception', error);
     process.exit(1);
   });
 
-  process.on('unhandledRejection', (reason) => {
+  process.on('unhandledRejection', reason => {
     mainLogger.error('[OpenCode] Unhandled Rejection:', reason);
     // Graceful shutdown - the server will restart via launcher
-    server.stop()
+    server
+      .stop()
       .then(() => mainLogger.info('Server stopped after unhandled rejection'))
-      .catch((err) => mainLogger.error('Error during shutdown after unhandled rejection', err))
+      .catch(err => mainLogger.error('Error during shutdown after unhandled rejection', err))
       .finally(() => process.exit(1));
   });
 
@@ -83,7 +121,6 @@ async function main(): Promise<void> {
 
     // 服务器会一直运行，等待MCP客户端连接
     // stdio传输层会保持进程活跃
-
   } catch (error) {
     mainLogger.error('Failed to start server', error);
     process.exit(1);
@@ -92,7 +129,7 @@ async function main(): Promise<void> {
 
 // 如果是直接运行而不是被导入，则启动服务器
 if (process.argv[1] && require.main === module) {
-  main().catch((error) => {
+  main().catch(error => {
     log.error('Fatal error', error);
     process.exit(1);
   });

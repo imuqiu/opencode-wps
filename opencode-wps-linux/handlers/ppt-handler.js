@@ -4,1717 +4,1890 @@
  */
 
 var COLOR_SCHEMES = {
-    business: { title: 0x2F5496, body: 0x333333, accent: 0x4472C4 },
-    tech: { title: 0x00B0F0, body: 0x404040, accent: 0x0078D7 },
-    creative: { title: 0xFF6B6B, body: 0x4A4A4A, accent: 0xE74856 },
-    minimal: { title: 0x000000, body: 0x666666, accent: 0x999999 }
+  business: { title: 0x2f5496, body: 0x333333, accent: 0x4472c4 },
+  tech: { title: 0x00b0f0, body: 0x404040, accent: 0x0078d7 },
+  creative: { title: 0xff6b6b, body: 0x4a4a4a, accent: 0xe74856 },
+  minimal: { title: 0x000000, body: 0x666666, accent: 0x999999 },
 };
 
 function getPPT() {
-    return Application.ActivePresentation;
+  return Application.ActivePresentation;
 }
 
 // 校验并归一化 slideIndex（必须为正整数且不越界）；非法返回 null
 // 大量 handler 直接 pres.Slides.Item(idx) 对越界抛错返回泛化 fail，统一前置校验给出明确错误
 function resolveSlideIndex(pres, idx) {
-    var n = parseInt(idx, 10);
-    if (isNaN(n) || n < 1) return null;
-    if (n > pres.Slides.Count) return null;
-    return n;
+  var n = parseInt(idx, 10);
+  if (isNaN(n) || n < 1) return null;
+  if (n > pres.Slides.Count) return null;
+  return n;
 }
 
 // 将颜色参数解析为整型 RGB：支持 #RRGGBB、RRGGBB、RGB 简写；数字直接返回；非法返回 null
 // （与 excel-handler 的 toExcelColor 语义对称，供 PPT COM 的 ForeColor.RGB 赋值使用）
 function toRgb(color) {
-    if (typeof color === 'number') return color;
-    if (typeof color !== 'string') return null;
-    var hex = color.trim();
-    if (hex.charAt(0) === '#') hex = hex.substring(1);
-    if (hex.length === 3) {
-        hex = hex.charAt(0) + hex.charAt(0) + hex.charAt(1) + hex.charAt(1) + hex.charAt(2) + hex.charAt(2);
-    }
-    if (!/^[0-9a-fA-F]{6}$/.test(hex)) return null;
-    return parseInt(hex, 16);
+  if (typeof color === 'number') return color;
+  if (typeof color !== 'string') return null;
+  var hex = color.trim();
+  if (hex.charAt(0) === '#') hex = hex.substring(1);
+  if (hex.length === 3) {
+    hex =
+      hex.charAt(0) + hex.charAt(0) + hex.charAt(1) + hex.charAt(1) + hex.charAt(2) + hex.charAt(2);
+  }
+  if (!/^[0-9a-fA-F]{6}$/.test(hex)) return null;
+  return parseInt(hex, 16);
 }
 
-registerHandler('getActivePresentation', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
+registerHandler('getActivePresentation', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
 
-        var slides = [];
-        for (var i = 1; i <= pres.Slides.Count; i++) {
-            var slide = pres.Slides.Item(i);
-            var shapes = [];
-            for (var j = 1; j <= slide.Shapes.Count; j++) {
-                var shape = slide.Shapes.Item(j);
-                var text = '';
-                try {
-                    if (shape.HasTextFrame && shape.TextFrame.HasText) {
-                        text = shape.TextFrame.TextRange.Text;
-                        if (text.length > 50) text = text.substring(0, 50) + '...';
-                    }
-                } catch (e) {}
-                shapes.push({ name: shape.Name, type: shape.Type, text: text });
-            }
-            slides.push({ index: i, shapeCount: slide.Shapes.Count, shapes: shapes });
+    var slides = [];
+    for (var i = 1; i <= pres.Slides.Count; i++) {
+      var slide = pres.Slides.Item(i);
+      var shapes = [];
+      for (var j = 1; j <= slide.Shapes.Count; j++) {
+        var shape = slide.Shapes.Item(j);
+        var text = '';
+        try {
+          if (shape.HasTextFrame && shape.TextFrame.HasText) {
+            text = shape.TextFrame.TextRange.Text;
+            if (text.length > 50) text = text.substring(0, 50) + '...';
+          }
+        } catch (e) {}
+        shapes.push({ name: shape.Name, type: shape.Type, text: text });
+      }
+      slides.push({ index: i, shapeCount: slide.Shapes.Count, shapes: shapes });
+    }
+
+    return ok({
+      name: pres.Name,
+      path: pres.FullName,
+      slideCount: pres.Slides.Count,
+      slides: slides,
+    });
+  } catch (e) {
+    return fail('获取演示文稿信息失败: ' + e.message);
+  }
+});
+
+registerHandler('getOpenPresentations', function (params) {
+  try {
+    var preses = Application.Presentations;
+    var list = [];
+    for (var i = 1; i <= preses.Count; i++) {
+      var p = preses.Item(i);
+      list.push({ name: p.Name, path: p.FullName, index: i, slideCount: p.Slides.Count });
+    }
+    return ok({ presentations: list });
+  } catch (e) {
+    return fail('获取演示文稿列表失败: ' + e.message);
+  }
+});
+
+registerHandler('switchPresentation', function (params) {
+  try {
+    var preses = Application.Presentations;
+    var target = params.name || params.index;
+    var found = null;
+    if (typeof target === 'number') {
+      found = preses.Item(target);
+    } else {
+      for (var i = 1; i <= preses.Count; i++) {
+        if (preses.Item(i).Name === target) {
+          found = preses.Item(i);
+          break;
         }
-
-        return ok({
-            name: pres.Name,
-            path: pres.FullName,
-            slideCount: pres.Slides.Count,
-            slides: slides
-        });
-    } catch (e) {
-        return fail('获取演示文稿信息失败: ' + e.message);
+      }
     }
+    if (!found) return fail('未找到演示文稿: ' + target);
+    found.Activate();
+    return ok({ name: found.Name });
+  } catch (e) {
+    return fail('切换演示文稿失败: ' + e.message);
+  }
 });
 
-registerHandler('getOpenPresentations', function(params) {
-    try {
-        var preses = Application.Presentations;
-        var list = [];
-        for (var i = 1; i <= preses.Count; i++) {
-            var p = preses.Item(i);
-            list.push({ name: p.Name, path: p.FullName, index: i, slideCount: p.Slides.Count });
-        }
-        return ok({ presentations: list });
-    } catch (e) {
-        return fail('获取演示文稿列表失败: ' + e.message);
-    }
+registerHandler('openPresentation', function (params) {
+  try {
+    var filePath = params.path || params.filePath;
+    if (!filePath) return invalidParam('缺少 path');
+    var pres = Application.Presentations.Open(filePath);
+    return ok({ name: pres.Name, path: pres.FullName });
+  } catch (e) {
+    return fail('打开演示文稿失败: ' + e.message);
+  }
 });
 
-registerHandler('switchPresentation', function(params) {
-    try {
-        var preses = Application.Presentations;
-        var target = params.name || params.index;
-        var found = null;
-        if (typeof target === 'number') {
-            found = preses.Item(target);
-        } else {
-            for (var i = 1; i <= preses.Count; i++) {
-                if (preses.Item(i).Name === target) { found = preses.Item(i); break; }
-            }
-        }
-        if (!found) return fail('未找到演示文稿: ' + target);
-        found.Activate();
-        return ok({ name: found.Name });
-    } catch (e) {
-        return fail('切换演示文稿失败: ' + e.message);
-    }
+registerHandler('createPresentation', function (params) {
+  try {
+    var pres = Application.Presentations.Add();
+    return ok({ name: pres.Name });
+  } catch (e) {
+    return fail('创建演示文稿失败: ' + e.message);
+  }
 });
 
-registerHandler('openPresentation', function(params) {
-    try {
-        var filePath = params.path || params.filePath;
-        if (!filePath) return invalidParam('缺少 path');
-        var pres = Application.Presentations.Open(filePath);
-        return ok({ name: pres.Name, path: pres.FullName });
-    } catch (e) {
-        return fail('打开演示文稿失败: ' + e.message);
-    }
+registerHandler('closePresentation', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    pres.Close();
+    return ok({});
+  } catch (e) {
+    return fail('关闭演示文稿失败: ' + e.message);
+  }
 });
 
-registerHandler('createPresentation', function(params) {
-    try {
-        var pres = Application.Presentations.Add();
-        return ok({ name: pres.Name });
-    } catch (e) {
-        return fail('创建演示文稿失败: ' + e.message);
+registerHandler('addSlide', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var layouts = { title: 1, title_content: 2, blank: 12, two_column: 3 };
+    var layoutType = layouts[params.layout] || 2;
+    var position =
+      params.position !== undefined ? parseInt(params.position, 10) : pres.Slides.Count + 1;
+    // position 边界校验：WPS Slides.Add 要求 1 <= position <= Count+1，越界行为未定义（抛错或静默插错位置）
+    if (isNaN(position) || position < 1 || position > pres.Slides.Count + 1) {
+      return fail(
+        '无效的插入位置: ' + params.position + '（合法范围 1~' + (pres.Slides.Count + 1) + '）'
+      );
     }
-});
-
-registerHandler('closePresentation', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        pres.Close();
-        return ok({});
-    } catch (e) {
-        return fail('关闭演示文稿失败: ' + e.message);
-    }
-});
-
-registerHandler('addSlide', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var layouts = { title: 1, title_content: 2, blank: 12, two_column: 3 };
-        var layoutType = layouts[params.layout] || 2;
-        var position = params.position !== undefined ? parseInt(params.position, 10) : (pres.Slides.Count + 1);
-        // position 边界校验：WPS Slides.Add 要求 1 <= position <= Count+1，越界行为未定义（抛错或静默插错位置）
-        if (isNaN(position) || position < 1 || position > pres.Slides.Count + 1) {
-            return fail('无效的插入位置: ' + params.position + '（合法范围 1~' + (pres.Slides.Count + 1) + '）');
-        }
-        var slide = pres.Slides.Add(position, layoutType);
-        // 标题设置包 try/catch：Slides.Add 已插入幻灯片，若标题设置失败（如布局无标题占位符）不应整体 fail——
-        // 否则调用方以为失败、实际已插入一张幻灯片，重试会重复插入（非原子，第 17 轮评审 info）
-        var titleFailed = false;
-        if (params.title) {
-            try {
-                if (slide.Shapes.HasTitle) {
-                    slide.Shapes.Title.TextFrame.TextRange.Text = params.title;
-                } else {
-                    titleFailed = true;
-                }
-            } catch (e) {
-                titleFailed = true;
-            }
-        }
-        // 返回实际插入位置（slide.SlideIndex），而非请求的 position（WPS 可能调整）
-        var actualIndex = slide.SlideIndex !== undefined ? slide.SlideIndex : position;
-        if (titleFailed) {
-            return ok({ slideIndex: actualIndex, titleFailed: true, warning: '幻灯片已插入但标题设置失败（布局可能无标题占位符）' });
-        }
-        return ok({ slideIndex: actualIndex });
-    } catch (e) {
-        return fail('添加幻灯片失败: ' + e.message);
-    }
-});
-
-registerHandler('deleteSlide', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = resolveSlideIndex(pres, params.slideIndex || params.index || 1);
-        if (idx === null) return fail('无效的幻灯片索引: ' + (params.slideIndex || params.index) + '（合法范围 1~' + pres.Slides.Count + '）');
-        pres.Slides.Item(idx).Delete();
-        return ok({});
-    } catch (e) {
-        return fail('删除幻灯片失败: ' + e.message);
-    }
-});
-
-registerHandler('duplicateSlide', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = resolveSlideIndex(pres, params.slideIndex || 1);
-        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
-        pres.Slides.Item(idx).Duplicate();
-        return ok({});
-    } catch (e) {
-        return fail('复制幻灯片失败: ' + e.message);
-    }
-});
-
-registerHandler('moveSlide', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = resolveSlideIndex(pres, params.slideIndex || 1);
-        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
-        var target = params.targetIndex;
-        if (target === undefined || target === null) return fail('缺少 targetIndex');
-        var targetNum = parseInt(target, 10);
-        if (isNaN(targetNum) || targetNum < 1 || targetNum > pres.Slides.Count) {
-            return fail('无效的目标位置: ' + target + '（合法范围 1~' + pres.Slides.Count + '）');
-        }
-        pres.Slides.Item(idx).MoveTo(targetNum);
-        return ok({});
-    } catch (e) {
-        return fail('移动幻灯片失败: ' + e.message);
-    }
-});
-
-registerHandler('getSlideCount', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        // 返回 slideCount（与 getActivePresentation/getOpenPresentations 契约一致），兼容保留 count 字段
-        return ok({ slideCount: pres.Slides.Count, count: pres.Slides.Count });
-    } catch (e) {
-        return fail('获取幻灯片数量失败: ' + e.message);
-    }
-});
-
-registerHandler('getSlideInfo', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = resolveSlideIndex(pres, params.slideIndex || params.index || 1);
-        if (idx === null) return fail('无效的幻灯片索引: ' + (params.slideIndex || params.index) + '（合法范围 1~' + pres.Slides.Count + '）');
-        var slide = pres.Slides.Item(idx);
-        var shapes = [];
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            var s = slide.Shapes.Item(j);
-            shapes.push({ name: s.Name, type: s.Type, left: s.Left, top: s.Top, width: s.Width, height: s.Height });
-        }
-        return ok({ index: idx, shapeCount: slide.Shapes.Count, shapes: shapes });
-    } catch (e) {
-        return fail('获取幻灯片信息失败: ' + e.message);
-    }
-});
-
-registerHandler('switchSlide', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = resolveSlideIndex(pres, params.slideIndex || params.index || 1);
-        if (idx === null) return fail('无效的幻灯片索引: ' + (params.slideIndex || params.index) + '（合法范围 1~' + pres.Slides.Count + '）');
-        pres.Slides.Item(idx).Select();
-        return ok({ slideIndex: idx });
-    } catch (e) {
-        return fail('切换幻灯片失败: ' + e.message);
-    }
-});
-
-registerHandler('getSlideTitle', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = resolveSlideIndex(pres, params.slideIndex || 1);
-        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
-        var slide = pres.Slides.Item(idx);
-        var title = '';
+    var slide = pres.Slides.Add(position, layoutType);
+    // 标题设置包 try/catch：Slides.Add 已插入幻灯片，若标题设置失败（如布局无标题占位符）不应整体 fail——
+    // 否则调用方以为失败、实际已插入一张幻灯片，重试会重复插入（非原子，第 17 轮评审 info）
+    var titleFailed = false;
+    if (params.title) {
+      try {
         if (slide.Shapes.HasTitle) {
-            title = slide.Shapes.Title.TextFrame.TextRange.Text;
+          slide.Shapes.Title.TextFrame.TextRange.Text = params.title;
+        } else {
+          titleFailed = true;
         }
-        return ok({ slideIndex: idx, title: title });
-    } catch (e) {
-        return fail('获取幻灯片标题失败: ' + e.message);
+      } catch (e) {
+        titleFailed = true;
+      }
     }
+    // 返回实际插入位置（slide.SlideIndex），而非请求的 position（WPS 可能调整）
+    var actualIndex = slide.SlideIndex !== undefined ? slide.SlideIndex : position;
+    if (titleFailed) {
+      return ok({
+        slideIndex: actualIndex,
+        titleFailed: true,
+        warning: '幻灯片已插入但标题设置失败（布局可能无标题占位符）',
+      });
+    }
+    return ok({ slideIndex: actualIndex });
+  } catch (e) {
+    return fail('添加幻灯片失败: ' + e.message);
+  }
 });
 
-registerHandler('setSlideTitle', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = resolveSlideIndex(pres, params.slideIndex);
-        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
-        var slide = pres.Slides.Item(idx);
-        // 无标题占位符时明确 fail（与 setSlideSubtitle 语义一致），避免 AI 误以为设置成功
-        if (!slide.Shapes.HasTitle) return fail('当前幻灯片无标题占位符（可能使用了空白布局）');
-        slide.Shapes.Title.TextFrame.TextRange.Text = params.title;
+registerHandler('deleteSlide', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = resolveSlideIndex(pres, params.slideIndex || params.index || 1);
+    if (idx === null)
+      return fail(
+        '无效的幻灯片索引: ' +
+          (params.slideIndex || params.index) +
+          '（合法范围 1~' +
+          pres.Slides.Count +
+          '）'
+      );
+    pres.Slides.Item(idx).Delete();
+    return ok({});
+  } catch (e) {
+    return fail('删除幻灯片失败: ' + e.message);
+  }
+});
+
+registerHandler('duplicateSlide', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = resolveSlideIndex(pres, params.slideIndex || 1);
+    if (idx === null)
+      return fail(
+        '无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）'
+      );
+    pres.Slides.Item(idx).Duplicate();
+    return ok({});
+  } catch (e) {
+    return fail('复制幻灯片失败: ' + e.message);
+  }
+});
+
+registerHandler('moveSlide', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = resolveSlideIndex(pres, params.slideIndex || 1);
+    if (idx === null)
+      return fail(
+        '无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）'
+      );
+    var target = params.targetIndex;
+    if (target === undefined || target === null) return fail('缺少 targetIndex');
+    var targetNum = parseInt(target, 10);
+    if (isNaN(targetNum) || targetNum < 1 || targetNum > pres.Slides.Count) {
+      return fail('无效的目标位置: ' + target + '（合法范围 1~' + pres.Slides.Count + '）');
+    }
+    pres.Slides.Item(idx).MoveTo(targetNum);
+    return ok({});
+  } catch (e) {
+    return fail('移动幻灯片失败: ' + e.message);
+  }
+});
+
+registerHandler('getSlideCount', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    // 返回 slideCount（与 getActivePresentation/getOpenPresentations 契约一致），兼容保留 count 字段
+    return ok({ slideCount: pres.Slides.Count, count: pres.Slides.Count });
+  } catch (e) {
+    return fail('获取幻灯片数量失败: ' + e.message);
+  }
+});
+
+registerHandler('getSlideInfo', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = resolveSlideIndex(pres, params.slideIndex || params.index || 1);
+    if (idx === null)
+      return fail(
+        '无效的幻灯片索引: ' +
+          (params.slideIndex || params.index) +
+          '（合法范围 1~' +
+          pres.Slides.Count +
+          '）'
+      );
+    var slide = pres.Slides.Item(idx);
+    var shapes = [];
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      var s = slide.Shapes.Item(j);
+      shapes.push({
+        name: s.Name,
+        type: s.Type,
+        left: s.Left,
+        top: s.Top,
+        width: s.Width,
+        height: s.Height,
+      });
+    }
+    return ok({ index: idx, shapeCount: slide.Shapes.Count, shapes: shapes });
+  } catch (e) {
+    return fail('获取幻灯片信息失败: ' + e.message);
+  }
+});
+
+registerHandler('switchSlide', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = resolveSlideIndex(pres, params.slideIndex || params.index || 1);
+    if (idx === null)
+      return fail(
+        '无效的幻灯片索引: ' +
+          (params.slideIndex || params.index) +
+          '（合法范围 1~' +
+          pres.Slides.Count +
+          '）'
+      );
+    pres.Slides.Item(idx).Select();
+    return ok({ slideIndex: idx });
+  } catch (e) {
+    return fail('切换幻灯片失败: ' + e.message);
+  }
+});
+
+registerHandler('getSlideTitle', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = resolveSlideIndex(pres, params.slideIndex || 1);
+    if (idx === null)
+      return fail(
+        '无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）'
+      );
+    var slide = pres.Slides.Item(idx);
+    var title = '';
+    if (slide.Shapes.HasTitle) {
+      title = slide.Shapes.Title.TextFrame.TextRange.Text;
+    }
+    return ok({ slideIndex: idx, title: title });
+  } catch (e) {
+    return fail('获取幻灯片标题失败: ' + e.message);
+  }
+});
+
+registerHandler('setSlideTitle', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = resolveSlideIndex(pres, params.slideIndex);
+    if (idx === null)
+      return fail(
+        '无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）'
+      );
+    var slide = pres.Slides.Item(idx);
+    // 无标题占位符时明确 fail（与 setSlideSubtitle 语义一致），避免 AI 误以为设置成功
+    if (!slide.Shapes.HasTitle) return fail('当前幻灯片无标题占位符（可能使用了空白布局）');
+    slide.Shapes.Title.TextFrame.TextRange.Text = params.title;
+    return ok({});
+  } catch (e) {
+    return fail('设置幻灯片标题失败: ' + e.message);
+  }
+});
+
+registerHandler('setSlideSubtitle', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = resolveSlideIndex(pres, params.slideIndex);
+    if (idx === null)
+      return fail(
+        '无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）'
+      );
+    var slide = pres.Slides.Item(idx);
+    // 按副标题占位符类型（ppPlaceholderSubtitle=15）定位，避免用 t.length<100 猜文本误覆盖标题/正文
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      var s = slide.Shapes.Item(j);
+      if (!s.HasTextFrame) continue;
+      try {
+        var pf = s.PlaceholderFormat;
+        if (pf && pf.Type === 15) {
+          s.TextFrame.TextRange.Text = params.subtitle;
+          return ok({});
+        }
+      } catch (e) {}
+    }
+    return fail('未找到副标题占位符');
+  } catch (e) {
+    return fail('设置幻灯片副标题失败: ' + e.message);
+  }
+});
+
+registerHandler('setSlideContent', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = resolveSlideIndex(pres, params.slideIndex);
+    if (idx === null)
+      return fail(
+        '无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）'
+      );
+    var slide = pres.Slides.Item(idx);
+    var count = 0;
+    // 优先按正文占位符（ppPlaceholderBody=2）定位——与 setSlideSubtitle 按 Type=15 精确定位的语义对称，
+    // 避免「第一个有文本的非标题形状」启发式在 [副标题, 正文] 顺序下把副标题当正文覆盖
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      var s = slide.Shapes.Item(j);
+      if (!s.HasTextFrame) continue;
+      try {
+        var pf = s.PlaceholderFormat;
+        if (pf && pf.Type === 2) {
+          s.TextFrame.TextRange.Text = params.content || '';
+          return ok({ updated: true, via: 'body-placeholder' });
+        }
+      } catch (e) {}
+    }
+    // 兜底：跳过标题（13/14）与副标题（15）占位符后，取第一个有文本的形状（旧行为，兼容无正文占位符的布局）
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      var s = slide.Shapes.Item(j);
+      if (!s.HasTextFrame) continue;
+      try {
+        var pf = s.PlaceholderFormat;
+        if (pf && (pf.Type === 13 || pf.Type === 14 || pf.Type === 15)) continue;
+      } catch (e) {}
+      if (s.TextFrame.TextRange.Text) {
+        s.TextFrame.TextRange.Text = params.content || '';
+        count++;
+        break;
+      }
+    }
+    return ok({ updated: count > 0 });
+  } catch (e) {
+    return fail('设置幻灯片内容失败: ' + e.message);
+  }
+});
+
+registerHandler('addTextBox', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    // 无选中/无活动窗口时安全兜底到第 1 张（与周边 handler 的 slideIndex || 1 语义一致），避免 Selection 抛错
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var shape = slide.Shapes.AddTextbox(
+      1,
+      params.left || 100,
+      params.top || 100,
+      params.width || 400,
+      params.height || 50
+    );
+    shape.TextFrame.TextRange.Text = params.text || '';
+    if (params.fontSize) shape.TextFrame.TextRange.Font.Size = params.fontSize;
+    if (params.fontName) shape.TextFrame.TextRange.Font.Name = params.fontName;
+    return ok({ shapeName: shape.Name });
+  } catch (e) {
+    return fail('添加文本框失败: ' + e.message);
+  }
+});
+
+registerHandler('deleteTextBox', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var shapeName = params.shapeName || params.name;
+    var slide = pres.Slides.Item(idx);
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      if (slide.Shapes.Item(j).Name === shapeName) {
+        slide.Shapes.Item(j).Delete();
         return ok({});
-    } catch (e) {
-        return fail('设置幻灯片标题失败: ' + e.message);
+      }
     }
+    return fail('未找到形状: ' + shapeName);
+  } catch (e) {
+    return fail('删除文本框失败: ' + e.message);
+  }
 });
 
-registerHandler('setSlideSubtitle', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = resolveSlideIndex(pres, params.slideIndex);
-        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
-        var slide = pres.Slides.Item(idx);
-        // 按副标题占位符类型（ppPlaceholderSubtitle=15）定位，避免用 t.length<100 猜文本误覆盖标题/正文
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            var s = slide.Shapes.Item(j);
-            if (!s.HasTextFrame) continue;
-            try {
-                var pf = s.PlaceholderFormat;
-                if (pf && pf.Type === 15) {
-                    s.TextFrame.TextRange.Text = params.subtitle;
-                    return ok({});
-                }
-            } catch (e) {}
-        }
-        return fail('未找到副标题占位符');
-    } catch (e) {
-        return fail('设置幻灯片副标题失败: ' + e.message);
+registerHandler('getTextBoxes', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var boxes = [];
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      var s = slide.Shapes.Item(j);
+      if (s.HasTextFrame) {
+        boxes.push({ name: s.Name, text: s.TextFrame.TextRange.Text });
+      }
     }
+    return ok({ textBoxes: boxes });
+  } catch (e) {
+    return fail('获取文本框列表失败: ' + e.message);
+  }
 });
 
-registerHandler('setSlideContent', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = resolveSlideIndex(pres, params.slideIndex);
-        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
-        var slide = pres.Slides.Item(idx);
-        var count = 0;
-        // 优先按正文占位符（ppPlaceholderBody=2）定位——与 setSlideSubtitle 按 Type=15 精确定位的语义对称，
-        // 避免「第一个有文本的非标题形状」启发式在 [副标题, 正文] 顺序下把副标题当正文覆盖
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            var s = slide.Shapes.Item(j);
-            if (!s.HasTextFrame) continue;
-            try {
-                var pf = s.PlaceholderFormat;
-                if (pf && pf.Type === 2) {
-                    s.TextFrame.TextRange.Text = params.content || '';
-                    return ok({ updated: true, via: 'body-placeholder' });
-                }
-            } catch (e) {}
-        }
-        // 兜底：跳过标题（13/14）与副标题（15）占位符后，取第一个有文本的形状（旧行为，兼容无正文占位符的布局）
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            var s = slide.Shapes.Item(j);
-            if (!s.HasTextFrame) continue;
-            try {
-                var pf = s.PlaceholderFormat;
-                if (pf && (pf.Type === 13 || pf.Type === 14 || pf.Type === 15)) continue;
-            } catch (e) {}
-            if (s.TextFrame.TextRange.Text) {
-                s.TextFrame.TextRange.Text = params.content || '';
-                count++;
-                break;
-            }
-        }
-        return ok({ updated: count > 0 });
-    } catch (e) {
-        return fail('设置幻灯片内容失败: ' + e.message);
-    }
-});
-
-registerHandler('addTextBox', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        // 无选中/无活动窗口时安全兜底到第 1 张（与周边 handler 的 slideIndex || 1 语义一致），避免 Selection 抛错
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var shape = slide.Shapes.AddTextbox(1, params.left || 100, params.top || 100, params.width || 400, params.height || 50);
-        shape.TextFrame.TextRange.Text = params.text || '';
-        if (params.fontSize) shape.TextFrame.TextRange.Font.Size = params.fontSize;
-        if (params.fontName) shape.TextFrame.TextRange.Font.Name = params.fontName;
-        return ok({ shapeName: shape.Name });
-    } catch (e) {
-        return fail('添加文本框失败: ' + e.message);
-    }
-});
-
-registerHandler('deleteTextBox', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var shapeName = params.shapeName || params.name;
-        var slide = pres.Slides.Item(idx);
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            if (slide.Shapes.Item(j).Name === shapeName) {
-                slide.Shapes.Item(j).Delete();
-                return ok({});
-            }
-        }
-        return fail('未找到形状: ' + shapeName);
-    } catch (e) {
-        return fail('删除文本框失败: ' + e.message);
-    }
-});
-
-registerHandler('getTextBoxes', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var boxes = [];
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            var s = slide.Shapes.Item(j);
-            if (s.HasTextFrame) {
-                boxes.push({ name: s.Name, text: s.TextFrame.TextRange.Text });
-            }
-        }
-        return ok({ textBoxes: boxes });
-    } catch (e) {
-        return fail('获取文本框列表失败: ' + e.message);
-    }
-});
-
-registerHandler('setTextBoxText', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var shapeName = params.shapeName || params.name;
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            if (slide.Shapes.Item(j).Name === shapeName) {
-                slide.Shapes.Item(j).TextFrame.TextRange.Text = params.text || '';
-                return ok({});
-            }
-        }
-        return fail('未找到形状: ' + shapeName);
-    } catch (e) {
-        return fail('设置文本框文本失败: ' + e.message);
-    }
-});
-
-registerHandler('setTextBoxStyle', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var shapeName = params.shapeName || params.name;
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            var s = slide.Shapes.Item(j);
-            if (s.Name === shapeName && s.HasTextFrame) {
-                var tr = s.TextFrame.TextRange;
-                if (params.fontName) tr.Font.Name = params.fontName;
-                if (params.fontSize) tr.Font.Size = params.fontSize;
-                return ok({});
-            }
-        }
-        return fail('未找到形状: ' + shapeName);
-    } catch (e) {
-        return fail('设置文本框样式失败: ' + e.message);
-    }
-});
-
-registerHandler('addShape', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var shapeTypes = { rectangle: 1, oval: 9, line: 6, arrow: 13, diamond: 4, triangle: 5 };
-        var st = shapeTypes[params.shapeType] || 1;
-        var shape = slide.Shapes.AddShape(st, params.left || 100, params.top || 100, params.width || 100, params.height || 100);
-        if (params.text) {
-            shape.TextFrame.TextRange.Text = params.text;
-        }
-        return ok({ shapeName: shape.Name });
-    } catch (e) {
-        return fail('添加形状失败: ' + e.message);
-    }
-});
-
-registerHandler('deleteShape', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var shapeName = params.shapeName || params.name;
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            if (slide.Shapes.Item(j).Name === shapeName) {
-                slide.Shapes.Item(j).Delete();
-                return ok({});
-            }
-        }
-        return fail('未找到形状: ' + shapeName);
-    } catch (e) {
-        return fail('删除形状失败: ' + e.message);
-    }
-});
-
-registerHandler('getShapes', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var shapes = [];
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            var s = slide.Shapes.Item(j);
-            shapes.push({ name: s.Name, type: s.Type, left: s.Left, top: s.Top, width: s.Width, height: s.Height });
-        }
-        return ok({ shapes: shapes });
-    } catch (e) {
-        return fail('获取形状列表失败: ' + e.message);
-    }
-});
-
-registerHandler('setShapeText', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var shapeName = params.shapeName || params.name;
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            if (slide.Shapes.Item(j).Name === shapeName) {
-                slide.Shapes.Item(j).TextFrame.TextRange.Text = params.text || '';
-                return ok({});
-            }
-        }
-        return fail('未找到形状: ' + shapeName);
-    } catch (e) {
-        return fail('设置形状文本失败: ' + e.message);
-    }
-});
-
-registerHandler('setShapePosition', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var shapeName = params.shapeName || params.name;
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            var s = slide.Shapes.Item(j);
-            if (s.Name === shapeName) {
-                if (params.left !== undefined) s.Left = params.left;
-                if (params.top !== undefined) s.Top = params.top;
-                if (params.width !== undefined) s.Width = params.width;
-                if (params.height !== undefined) s.Height = params.height;
-                return ok({});
-            }
-        }
-        return fail('未找到形状: ' + shapeName);
-    } catch (e) {
-        return fail('设置形状位置失败: ' + e.message);
-    }
-});
-
-registerHandler('setShapeStyle', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var shapeName = params.shapeName || params.name;
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            var s = slide.Shapes.Item(j);
-            if (s.Name === shapeName) {
-                if (params.fillColor) {
-                    var fc = toRgb(params.fillColor);
-                    if (fc === null) return fail('无效的填充颜色: ' + params.fillColor);
-                    s.Fill.ForeColor.RGB = fc;
-                    if (!s.Fill.Visible) s.Fill.Visible = 1;
-                }
-                if (params.lineColor) {
-                    var lc = toRgb(params.lineColor);
-                    if (lc === null) return fail('无效的线条颜色: ' + params.lineColor);
-                    s.Line.ForeColor.RGB = lc;
-                }
-                return ok({});
-            }
-        }
-        return fail('未找到形状: ' + shapeName);
-    } catch (e) {
-        return fail('设置形状样式失败: ' + e.message);
-    }
-});
-
-registerHandler('setShapeBorder', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var shapeName = params.shapeName || params.name;
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            var s = slide.Shapes.Item(j);
-            if (s.Name === shapeName) {
-                s.Line.Visible = 1;
-                if (params.color) {
-                    var lc = toRgb(params.color);
-                    if (lc === null) return fail('无效的边框颜色: ' + params.color);
-                    s.Line.ForeColor.RGB = lc;
-                }
-                if (params.weight) s.Line.Weight = params.weight;
-                return ok({});
-            }
-        }
-        return fail('未找到形状: ' + shapeName);
-    } catch (e) {
-        return fail('设置形状边框失败: ' + e.message);
-    }
-});
-
-registerHandler('setShapeShadow', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var shapeName = params.shapeName || params.name;
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            var s = slide.Shapes.Item(j);
-            if (s.Name === shapeName) {
-                s.Shadow.Visible = params.visible !== false ? 1 : 0;
-                return ok({});
-            }
-        }
-        return fail('未找到形状: ' + shapeName);
-    } catch (e) {
-        return fail('设置形状阴影失败: ' + e.message);
-    }
-});
-
-registerHandler('setShapeTransparency', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var shapeName = params.shapeName || params.name;
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            var s = slide.Shapes.Item(j);
-            if (s.Name === shapeName) {
-                s.Fill.Transparency = params.transparency || 0;
-                return ok({});
-            }
-        }
-        return fail('未找到形状: ' + shapeName);
-    } catch (e) {
-        return fail('设置形状透明度失败: ' + e.message);
-    }
-});
-
-registerHandler('setShapeZOrder', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var shapeName = params.shapeName || params.name;
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            var s = slide.Shapes.Item(j);
-            if (s.Name === shapeName) {
-                var cmd = params.command || 'forward';
-                if (cmd === 'forward' || cmd === 'up') s.ZOrder(1);
-                else if (cmd === 'backward' || cmd === 'down') s.ZOrder(2);
-                else if (cmd === 'front' || cmd === 'top') s.ZOrder(0);
-                else if (cmd === 'bottom' || cmd === 'back') s.ZOrder(3);
-                return ok({});
-            }
-        }
-        return fail('未找到形状: ' + shapeName);
-    } catch (e) {
-        return fail('设置形状层级失败: ' + e.message);
-    }
-});
-
-registerHandler('groupShapes', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var names = params.shapeNames || [];
-        if (names.length < 2) return fail('至少需要两个形状');
-        var range = slide.Shapes.Range(names);
-        var group = range.Group();
-        return ok({ groupName: group.Name });
-    } catch (e) {
-        return fail('组合形状失败: ' + e.message);
-    }
-});
-
-registerHandler('duplicateShape', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var shapeName = params.shapeName || params.name;
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            if (slide.Shapes.Item(j).Name === shapeName) {
-                var dup = slide.Shapes.Item(j).Duplicate();
-                return ok({ shapeName: dup.Name });
-            }
-        }
-        return fail('未找到形状: ' + shapeName);
-    } catch (e) {
-        return fail('复制形状失败: ' + e.message);
-    }
-});
-
-registerHandler('alignShapes', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var names = params.shapeNames || [];
-        if (names.length < 2) return fail('至少需要两个形状');
-        var range = slide.Shapes.Range(names);
-        var align = params.align || 'left';
-        var map = { left: 0, center: 1, right: 2, top: 3, middle: 4, bottom: 5 };
-        range.Align(map[align] || 0, 0);
+registerHandler('setTextBoxText', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var shapeName = params.shapeName || params.name;
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      if (slide.Shapes.Item(j).Name === shapeName) {
+        slide.Shapes.Item(j).TextFrame.TextRange.Text = params.text || '';
         return ok({});
-    } catch (e) {
-        return fail('对齐形状失败: ' + e.message);
+      }
     }
+    return fail('未找到形状: ' + shapeName);
+  } catch (e) {
+    return fail('设置文本框文本失败: ' + e.message);
+  }
 });
 
-registerHandler('distributeShapes', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var names = params.shapeNames || [];
-        if (names.length < 2) return fail('至少需要两个形状');
-        var range = slide.Shapes.Range(names);
-        if (params.direction === 'horizontal') range.Distribute(0, 0);
-        else range.Distribute(1, 0);
+registerHandler('setTextBoxStyle', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var shapeName = params.shapeName || params.name;
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      var s = slide.Shapes.Item(j);
+      if (s.Name === shapeName && s.HasTextFrame) {
+        var tr = s.TextFrame.TextRange;
+        if (params.fontName) tr.Font.Name = params.fontName;
+        if (params.fontSize) tr.Font.Size = params.fontSize;
         return ok({});
-    } catch (e) {
-        return fail('分布形状失败: ' + e.message);
+      }
     }
+    return fail('未找到形状: ' + shapeName);
+  } catch (e) {
+    return fail('设置文本框样式失败: ' + e.message);
+  }
 });
 
-registerHandler('smartDistribute', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var names = params.shapeNames || [];
-        if (names.length < 2) return fail('至少需要两个形状');
-        var range = slide.Shapes.Range(names);
-        range.Align(1, 0);
-        range.Distribute(0, 0);
+registerHandler('addShape', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var shapeTypes = { rectangle: 1, oval: 9, line: 6, arrow: 13, diamond: 4, triangle: 5 };
+    var st = shapeTypes[params.shapeType] || 1;
+    var shape = slide.Shapes.AddShape(
+      st,
+      params.left || 100,
+      params.top || 100,
+      params.width || 100,
+      params.height || 100
+    );
+    if (params.text) {
+      shape.TextFrame.TextRange.Text = params.text;
+    }
+    return ok({ shapeName: shape.Name });
+  } catch (e) {
+    return fail('添加形状失败: ' + e.message);
+  }
+});
+
+registerHandler('deleteShape', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var shapeName = params.shapeName || params.name;
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      if (slide.Shapes.Item(j).Name === shapeName) {
+        slide.Shapes.Item(j).Delete();
         return ok({});
-    } catch (e) {
-        return fail('智能分布失败: ' + e.message);
+      }
     }
+    return fail('未找到形状: ' + shapeName);
+  } catch (e) {
+    return fail('删除形状失败: ' + e.message);
+  }
 });
 
-registerHandler('setSlideBackground', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        if (params.color !== undefined) {
-            slide.FollowMasterBackground = 0;
-            var bg = toRgb(params.color);
-            if (bg === null) return fail('无效的背景颜色: ' + params.color);
-            slide.Background.Fill.ForeColor.RGB = bg;
-            slide.Background.Fill.Visible = 1;
+registerHandler('getShapes', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var shapes = [];
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      var s = slide.Shapes.Item(j);
+      shapes.push({
+        name: s.Name,
+        type: s.Type,
+        left: s.Left,
+        top: s.Top,
+        width: s.Width,
+        height: s.Height,
+      });
+    }
+    return ok({ shapes: shapes });
+  } catch (e) {
+    return fail('获取形状列表失败: ' + e.message);
+  }
+});
+
+registerHandler('setShapeText', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var shapeName = params.shapeName || params.name;
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      if (slide.Shapes.Item(j).Name === shapeName) {
+        slide.Shapes.Item(j).TextFrame.TextRange.Text = params.text || '';
+        return ok({});
+      }
+    }
+    return fail('未找到形状: ' + shapeName);
+  } catch (e) {
+    return fail('设置形状文本失败: ' + e.message);
+  }
+});
+
+registerHandler('setShapePosition', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var shapeName = params.shapeName || params.name;
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      var s = slide.Shapes.Item(j);
+      if (s.Name === shapeName) {
+        if (params.left !== undefined) s.Left = params.left;
+        if (params.top !== undefined) s.Top = params.top;
+        if (params.width !== undefined) s.Width = params.width;
+        if (params.height !== undefined) s.Height = params.height;
+        return ok({});
+      }
+    }
+    return fail('未找到形状: ' + shapeName);
+  } catch (e) {
+    return fail('设置形状位置失败: ' + e.message);
+  }
+});
+
+registerHandler('setShapeStyle', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var shapeName = params.shapeName || params.name;
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      var s = slide.Shapes.Item(j);
+      if (s.Name === shapeName) {
+        if (params.fillColor) {
+          var fc = toRgb(params.fillColor);
+          if (fc === null) return fail('无效的填充颜色: ' + params.fillColor);
+          s.Fill.ForeColor.RGB = fc;
+          if (!s.Fill.Visible) s.Fill.Visible = 1;
         }
-        if (params.imagePath || params.path) {
-            var img = params.imagePath || params.path;
-            slide.FollowMasterBackground = 0;
-            slide.Background.Fill.UserPicture(img);
+        if (params.lineColor) {
+          var lc = toRgb(params.lineColor);
+          if (lc === null) return fail('无效的线条颜色: ' + params.lineColor);
+          s.Line.ForeColor.RGB = lc;
         }
         return ok({});
-    } catch (e) {
-        return fail('设置幻灯片背景失败: ' + e.message);
+      }
     }
+    return fail('未找到形状: ' + shapeName);
+  } catch (e) {
+    return fail('设置形状样式失败: ' + e.message);
+  }
 });
 
-registerHandler('setSlideLayout', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = resolveSlideIndex(pres, params.slideIndex);
-        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
-        var slide = pres.Slides.Item(idx);
-        var layouts = { title: 1, title_content: 2, blank: 12, two_column: 3 };
-        var lt = layouts[params.layout] || 2;
-        slide.Layout = lt;
-        return ok({});
-    } catch (e) {
-        return fail('设置幻灯片布局失败: ' + e.message);
-    }
-});
-
-registerHandler('setSlideNumber', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = resolveSlideIndex(pres, params.slideIndex || 1);
-        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
-        var slide = pres.Slides.Item(idx);
-        slide.HeadersFooters.SlideNumber.Visible = 1;
-        return ok({});
-    } catch (e) {
-        return fail('设置幻灯片编号失败: ' + e.message);
-    }
-});
-
-registerHandler('setSlideTransition', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = resolveSlideIndex(pres, params.slideIndex || 1);
-        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
-        var slide = pres.Slides.Item(idx);
-        var types = { fade: 1, push: 2, wipe: 3, split: 4, uncover: 5, cover: 6, zoom: 31 };
-        // 未知 type 显式 fail（与 setShapeRoundness 形状类型校验一致），避免静默兜底 fade 误导 AI
-        var entryEffect = types[params.type];
-        if (entryEffect === undefined) return fail('无效的切换类型: ' + params.type + '（支持 fade/push/wipe/split/uncover/cover/zoom）');
-        slide.SlideShowTransition.EntryEffect = entryEffect;
-        if (params.speed !== undefined) {
-            var speedMap = { slow: 3, medium: 2, fast: 1 };
-            var speed = speedMap[params.speed];
-            if (speed === undefined) return fail('无效的切换速度: ' + params.speed + '（支持 slow/medium/fast）');
-            slide.SlideShowTransition.Speed = speed;
+registerHandler('setShapeBorder', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var shapeName = params.shapeName || params.name;
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      var s = slide.Shapes.Item(j);
+      if (s.Name === shapeName) {
+        s.Line.Visible = 1;
+        if (params.color) {
+          var lc = toRgb(params.color);
+          if (lc === null) return fail('无效的边框颜色: ' + params.color);
+          s.Line.ForeColor.RGB = lc;
         }
+        if (params.weight) s.Line.Weight = params.weight;
         return ok({});
-    } catch (e) {
-        return fail('设置幻灯片切换效果失败: ' + e.message);
+      }
     }
+    return fail('未找到形状: ' + shapeName);
+  } catch (e) {
+    return fail('设置形状边框失败: ' + e.message);
+  }
 });
 
-registerHandler('removeSlideTransition', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = resolveSlideIndex(pres, params.slideIndex || 1);
-        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
-        pres.Slides.Item(idx).SlideShowTransition.EntryEffect = 0;
+registerHandler('setShapeShadow', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var shapeName = params.shapeName || params.name;
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      var s = slide.Shapes.Item(j);
+      if (s.Name === shapeName) {
+        s.Shadow.Visible = params.visible !== false ? 1 : 0;
         return ok({});
-    } catch (e) {
-        return fail('移除幻灯片切换效果失败: ' + e.message);
+      }
     }
+    return fail('未找到形状: ' + shapeName);
+  } catch (e) {
+    return fail('设置形状阴影失败: ' + e.message);
+  }
 });
 
-registerHandler('applyTransitionToAll', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var types = { fade: 1, push: 2, wipe: 3, split: 4, uncover: 5, cover: 6, zoom: 31 };
-        var transitionType = types[params.type] || 1;
-        for (var i = 1; i <= pres.Slides.Count; i++) {
-            pres.Slides.Item(i).SlideShowTransition.EntryEffect = transitionType;
+registerHandler('setShapeTransparency', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var shapeName = params.shapeName || params.name;
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      var s = slide.Shapes.Item(j);
+      if (s.Name === shapeName) {
+        s.Fill.Transparency = params.transparency || 0;
+        return ok({});
+      }
+    }
+    return fail('未找到形状: ' + shapeName);
+  } catch (e) {
+    return fail('设置形状透明度失败: ' + e.message);
+  }
+});
+
+registerHandler('setShapeZOrder', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var shapeName = params.shapeName || params.name;
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      var s = slide.Shapes.Item(j);
+      if (s.Name === shapeName) {
+        var cmd = params.command || 'forward';
+        if (cmd === 'forward' || cmd === 'up') s.ZOrder(1);
+        else if (cmd === 'backward' || cmd === 'down') s.ZOrder(2);
+        else if (cmd === 'front' || cmd === 'top') s.ZOrder(0);
+        else if (cmd === 'bottom' || cmd === 'back') s.ZOrder(3);
+        return ok({});
+      }
+    }
+    return fail('未找到形状: ' + shapeName);
+  } catch (e) {
+    return fail('设置形状层级失败: ' + e.message);
+  }
+});
+
+registerHandler('groupShapes', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var names = params.shapeNames || [];
+    if (names.length < 2) return fail('至少需要两个形状');
+    var range = slide.Shapes.Range(names);
+    var group = range.Group();
+    return ok({ groupName: group.Name });
+  } catch (e) {
+    return fail('组合形状失败: ' + e.message);
+  }
+});
+
+registerHandler('duplicateShape', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var shapeName = params.shapeName || params.name;
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      if (slide.Shapes.Item(j).Name === shapeName) {
+        var dup = slide.Shapes.Item(j).Duplicate();
+        return ok({ shapeName: dup.Name });
+      }
+    }
+    return fail('未找到形状: ' + shapeName);
+  } catch (e) {
+    return fail('复制形状失败: ' + e.message);
+  }
+});
+
+registerHandler('alignShapes', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var names = params.shapeNames || [];
+    if (names.length < 2) return fail('至少需要两个形状');
+    var range = slide.Shapes.Range(names);
+    var align = params.align || 'left';
+    var map = { left: 0, center: 1, right: 2, top: 3, middle: 4, bottom: 5 };
+    range.Align(map[align] || 0, 0);
+    return ok({});
+  } catch (e) {
+    return fail('对齐形状失败: ' + e.message);
+  }
+});
+
+registerHandler('distributeShapes', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var names = params.shapeNames || [];
+    if (names.length < 2) return fail('至少需要两个形状');
+    var range = slide.Shapes.Range(names);
+    if (params.direction === 'horizontal') range.Distribute(0, 0);
+    else range.Distribute(1, 0);
+    return ok({});
+  } catch (e) {
+    return fail('分布形状失败: ' + e.message);
+  }
+});
+
+registerHandler('smartDistribute', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var names = params.shapeNames || [];
+    if (names.length < 2) return fail('至少需要两个形状');
+    var range = slide.Shapes.Range(names);
+    range.Align(1, 0);
+    range.Distribute(0, 0);
+    return ok({});
+  } catch (e) {
+    return fail('智能分布失败: ' + e.message);
+  }
+});
+
+registerHandler('setSlideBackground', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    if (params.color !== undefined) {
+      slide.FollowMasterBackground = 0;
+      var bg = toRgb(params.color);
+      if (bg === null) return fail('无效的背景颜色: ' + params.color);
+      slide.Background.Fill.ForeColor.RGB = bg;
+      slide.Background.Fill.Visible = 1;
+    }
+    if (params.imagePath || params.path) {
+      var img = params.imagePath || params.path;
+      slide.FollowMasterBackground = 0;
+      slide.Background.Fill.UserPicture(img);
+    }
+    return ok({});
+  } catch (e) {
+    return fail('设置幻灯片背景失败: ' + e.message);
+  }
+});
+
+registerHandler('setSlideLayout', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = resolveSlideIndex(pres, params.slideIndex);
+    if (idx === null)
+      return fail(
+        '无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）'
+      );
+    var slide = pres.Slides.Item(idx);
+    var layouts = { title: 1, title_content: 2, blank: 12, two_column: 3 };
+    var lt = layouts[params.layout] || 2;
+    slide.Layout = lt;
+    return ok({});
+  } catch (e) {
+    return fail('设置幻灯片布局失败: ' + e.message);
+  }
+});
+
+registerHandler('setSlideNumber', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = resolveSlideIndex(pres, params.slideIndex || 1);
+    if (idx === null)
+      return fail(
+        '无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）'
+      );
+    var slide = pres.Slides.Item(idx);
+    slide.HeadersFooters.SlideNumber.Visible = 1;
+    return ok({});
+  } catch (e) {
+    return fail('设置幻灯片编号失败: ' + e.message);
+  }
+});
+
+registerHandler('setSlideTransition', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = resolveSlideIndex(pres, params.slideIndex || 1);
+    if (idx === null)
+      return fail(
+        '无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）'
+      );
+    var slide = pres.Slides.Item(idx);
+    var types = { fade: 1, push: 2, wipe: 3, split: 4, uncover: 5, cover: 6, zoom: 31 };
+    // 未知 type 显式 fail（与 setShapeRoundness 形状类型校验一致），避免静默兜底 fade 误导 AI
+    var entryEffect = types[params.type];
+    if (entryEffect === undefined)
+      return fail(
+        '无效的切换类型: ' + params.type + '（支持 fade/push/wipe/split/uncover/cover/zoom）'
+      );
+    slide.SlideShowTransition.EntryEffect = entryEffect;
+    if (params.speed !== undefined) {
+      var speedMap = { slow: 3, medium: 2, fast: 1 };
+      var speed = speedMap[params.speed];
+      if (speed === undefined)
+        return fail('无效的切换速度: ' + params.speed + '（支持 slow/medium/fast）');
+      slide.SlideShowTransition.Speed = speed;
+    }
+    return ok({});
+  } catch (e) {
+    return fail('设置幻灯片切换效果失败: ' + e.message);
+  }
+});
+
+registerHandler('removeSlideTransition', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = resolveSlideIndex(pres, params.slideIndex || 1);
+    if (idx === null)
+      return fail(
+        '无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）'
+      );
+    pres.Slides.Item(idx).SlideShowTransition.EntryEffect = 0;
+    return ok({});
+  } catch (e) {
+    return fail('移除幻灯片切换效果失败: ' + e.message);
+  }
+});
+
+registerHandler('applyTransitionToAll', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var types = { fade: 1, push: 2, wipe: 3, split: 4, uncover: 5, cover: 6, zoom: 31 };
+    var transitionType = types[params.type] || 1;
+    for (var i = 1; i <= pres.Slides.Count; i++) {
+      pres.Slides.Item(i).SlideShowTransition.EntryEffect = transitionType;
+    }
+    return ok({});
+  } catch (e) {
+    return fail('应用全局切换效果失败: ' + e.message);
+  }
+});
+
+registerHandler('addAnimation', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var shapeName = params.shapeName || params.name;
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      if (slide.Shapes.Item(j).Name === shapeName) {
+        var effectTypes = { fade: 0, flyIn: 1, zoomIn: 64, wipe: 15 };
+        var etype = effectTypes[params.animationType || 'fade'] || 0;
+        slide.TimeLine.MainSequence.AddEffect(slide.Shapes.Item(j), 0, 0, etype);
+        return ok({});
+      }
+    }
+    return fail('未找到形状: ' + shapeName);
+  } catch (e) {
+    return fail('添加动画失败: ' + e.message);
+  }
+});
+
+registerHandler('removeAnimation', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    while (slide.TimeLine.MainSequence.Count > 0) {
+      slide.TimeLine.MainSequence.Item(1).Delete();
+    }
+    return ok({});
+  } catch (e) {
+    return fail('移除动画失败: ' + e.message);
+  }
+});
+
+registerHandler('startSlideShow', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    pres.SlideShowSettings.Run();
+    return ok({});
+  } catch (e) {
+    return fail('开始放映失败: ' + e.message);
+  }
+});
+
+registerHandler('endSlideShow', function (params) {
+  try {
+    // 无放映窗口时视为已结束（幂等），避免 Item(1) 抛错误导 AI
+    var windows = Application.SlideShowWindows;
+    if (!windows || windows.Count < 1) return ok({ alreadyStopped: true });
+    windows.Item(1).View.Exit();
+    return ok({});
+  } catch (e) {
+    return fail('结束放映失败: ' + e.message);
+  }
+});
+
+registerHandler('insertPptImage', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var filePath = params.path || params.imagePath;
+    if (!filePath) return invalidParam('缺少 path');
+    var pic = slide.Shapes.AddPicture(
+      filePath,
+      false,
+      true,
+      params.left || 0,
+      params.top || 0,
+      params.width || -1,
+      params.height || -1
+    );
+    return ok({ name: pic.Name });
+  } catch (e) {
+    return fail('插入图片失败: ' + e.message);
+  }
+});
+
+registerHandler('deletePptImage', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var shapeName = params.shapeName || params.name;
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      if (slide.Shapes.Item(j).Name === shapeName) {
+        slide.Shapes.Item(j).Delete();
+        return ok({});
+      }
+    }
+    return fail('未找到图片形状: ' + shapeName);
+  } catch (e) {
+    return fail('删除图片失败: ' + e.message);
+  }
+});
+
+registerHandler('insertPptTable', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var rows = params.rows || 3;
+    var cols = params.cols || 3;
+    var table = slide.Shapes.AddTable(
+      rows,
+      cols,
+      params.left || 100,
+      params.top || 100,
+      params.width || 400,
+      params.height || 200
+    );
+    if (params.data) {
+      for (var r = 0; r < Math.min(params.data.length, rows); r++) {
+        // 行归一化为数组：兼容标量/null 行（与 excel setRangeData 的 toRowArray 语义一致），避免 .length 抛 TypeError
+        var rowData = params.data[r];
+        if (rowData && typeof rowData === 'object' && rowData.length !== undefined) {
+          for (var c = 0; c < Math.min(rowData.length, cols); c++) {
+            table.Table.Cell(r + 1, c + 1).Shape.TextFrame.TextRange.Text = String(rowData[c]);
+          }
+        } else if (rowData !== null && rowData !== undefined) {
+          table.Table.Cell(r + 1, 1).Shape.TextFrame.TextRange.Text = String(rowData);
         }
-        return ok({});
-    } catch (e) {
-        return fail('应用全局切换效果失败: ' + e.message);
+      }
     }
-});
-
-registerHandler('addAnimation', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var shapeName = params.shapeName || params.name;
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            if (slide.Shapes.Item(j).Name === shapeName) {
-                var effectTypes = { fade: 0, flyIn: 1, zoomIn: 64, wipe: 15 };
-                var etype = effectTypes[params.animationType || 'fade'] || 0;
-                slide.TimeLine.MainSequence.AddEffect(slide.Shapes.Item(j), 0, 0, etype);
-                return ok({});
-            }
-        }
-        return fail('未找到形状: ' + shapeName);
-    } catch (e) {
-        return fail('添加动画失败: ' + e.message);
-    }
-});
-
-registerHandler('removeAnimation', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        while (slide.TimeLine.MainSequence.Count > 0) {
-            slide.TimeLine.MainSequence.Item(1).Delete();
-        }
-        return ok({});
-    } catch (e) {
-        return fail('移除动画失败: ' + e.message);
-    }
-});
-
-registerHandler('startSlideShow', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        pres.SlideShowSettings.Run();
-        return ok({});
-    } catch (e) {
-        return fail('开始放映失败: ' + e.message);
-    }
-});
-
-registerHandler('endSlideShow', function(params) {
-    try {
-        // 无放映窗口时视为已结束（幂等），避免 Item(1) 抛错误导 AI
-        var windows = Application.SlideShowWindows;
-        if (!windows || windows.Count < 1) return ok({ alreadyStopped: true });
-        windows.Item(1).View.Exit();
-        return ok({});
-    } catch (e) {
-        return fail('结束放映失败: ' + e.message);
-    }
-});
-
-registerHandler('insertPptImage', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var filePath = params.path || params.imagePath;
-        if (!filePath) return invalidParam('缺少 path');
-        var pic = slide.Shapes.AddPicture(filePath, false, true, params.left || 0, params.top || 0, params.width || -1, params.height || -1);
-        return ok({ name: pic.Name });
-    } catch (e) {
-        return fail('插入图片失败: ' + e.message);
-    }
-});
-
-registerHandler('deletePptImage', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var shapeName = params.shapeName || params.name;
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            if (slide.Shapes.Item(j).Name === shapeName) {
-                slide.Shapes.Item(j).Delete();
-                return ok({});
-            }
-        }
-        return fail('未找到图片形状: ' + shapeName);
-    } catch (e) {
-        return fail('删除图片失败: ' + e.message);
-    }
-});
-
-registerHandler('insertPptTable', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var rows = params.rows || 3;
-        var cols = params.cols || 3;
-        var table = slide.Shapes.AddTable(rows, cols, params.left || 100, params.top || 100, params.width || 400, params.height || 200);
-        if (params.data) {
-            for (var r = 0; r < Math.min(params.data.length, rows); r++) {
-                // 行归一化为数组：兼容标量/null 行（与 excel setRangeData 的 toRowArray 语义一致），避免 .length 抛 TypeError
-                var rowData = params.data[r];
-                if (rowData && typeof rowData === 'object' && rowData.length !== undefined) {
-                    for (var c = 0; c < Math.min(rowData.length, cols); c++) {
-                        table.Table.Cell(r + 1, c + 1).Shape.TextFrame.TextRange.Text = String(rowData[c]);
-                    }
-                } else if (rowData !== null && rowData !== undefined) {
-                    table.Table.Cell(r + 1, 1).Shape.TextFrame.TextRange.Text = String(rowData);
-                }
-            }
-        }
-        return ok({});
-    } catch (e) {
-        return fail('插入表格失败: ' + e.message);
-    }
+    return ok({});
+  } catch (e) {
+    return fail('插入表格失败: ' + e.message);
+  }
 });
 
 // 在指定幻灯片中按名称或序号（第 N 个表格）定位表格形状；非表格返回 null
 function findPptTable(slide, tableNameOrIndex) {
-    if (typeof tableNameOrIndex === 'number') {
-        // 按"第 N 个表格"定位
-        var n = 0;
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            var s = slide.Shapes.Item(j);
-            if (s.HasTable) {
-                n++;
-                if (n === tableNameOrIndex) return s;
-            }
-        }
-        return null;
-    }
-    if (tableNameOrIndex == null) {
-        // 默认取第一个表格
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            if (slide.Shapes.Item(j).HasTable) return slide.Shapes.Item(j);
-        }
-        return null;
-    }
-    // 按名称精确匹配
+  if (typeof tableNameOrIndex === 'number') {
+    // 按"第 N 个表格"定位
+    var n = 0;
     for (var j = 1; j <= slide.Shapes.Count; j++) {
-        var s = slide.Shapes.Item(j);
-        if (s.Name === tableNameOrIndex && s.HasTable) return s;
+      var s = slide.Shapes.Item(j);
+      if (s.HasTable) {
+        n++;
+        if (n === tableNameOrIndex) return s;
+      }
     }
     return null;
+  }
+  if (tableNameOrIndex == null) {
+    // 默认取第一个表格
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      if (slide.Shapes.Item(j).HasTable) return slide.Shapes.Item(j);
+    }
+    return null;
+  }
+  // 按名称精确匹配
+  for (var j = 1; j <= slide.Shapes.Count; j++) {
+    var s = slide.Shapes.Item(j);
+    if (s.Name === tableNameOrIndex && s.HasTable) return s;
+  }
+  return null;
 }
 
-registerHandler('getPptTableCell', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = resolveSlideIndex(pres, params.slideIndex);
-        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
-        var slide = pres.Slides.Item(idx);
-        var table = findPptTable(slide, params.tableName !== undefined ? params.tableName : (params.tableIndex || 1));
-        if (!table) return fail('未找到表格形状（需为表格且名称/序号匹配）');
-        var cell = table.Table.Cell(params.row, params.col);
-        return ok({ text: cell.Shape.TextFrame.TextRange.Text });
-    } catch (e) {
-        return fail('获取表格单元格失败: ' + e.message);
-    }
+registerHandler('getPptTableCell', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = resolveSlideIndex(pres, params.slideIndex);
+    if (idx === null)
+      return fail(
+        '无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）'
+      );
+    var slide = pres.Slides.Item(idx);
+    var table = findPptTable(
+      slide,
+      params.tableName !== undefined ? params.tableName : params.tableIndex || 1
+    );
+    if (!table) return fail('未找到表格形状（需为表格且名称/序号匹配）');
+    var cell = table.Table.Cell(params.row, params.col);
+    return ok({ text: cell.Shape.TextFrame.TextRange.Text });
+  } catch (e) {
+    return fail('获取表格单元格失败: ' + e.message);
+  }
 });
 
-registerHandler('setPptTableCell', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = resolveSlideIndex(pres, params.slideIndex);
-        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
-        var slide = pres.Slides.Item(idx);
-        var table = findPptTable(slide, params.tableName !== undefined ? params.tableName : (params.tableIndex || 1));
-        if (!table) return fail('未找到表格形状（需为表格且名称/序号匹配）');
-        table.Table.Cell(params.row, params.col).Shape.TextFrame.TextRange.Text = params.text || '';
-        return ok({});
-    } catch (e) {
-        return fail('设置表格单元格失败: ' + e.message);
-    }
+registerHandler('setPptTableCell', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = resolveSlideIndex(pres, params.slideIndex);
+    if (idx === null)
+      return fail(
+        '无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）'
+      );
+    var slide = pres.Slides.Item(idx);
+    var table = findPptTable(
+      slide,
+      params.tableName !== undefined ? params.tableName : params.tableIndex || 1
+    );
+    if (!table) return fail('未找到表格形状（需为表格且名称/序号匹配）');
+    table.Table.Cell(params.row, params.col).Shape.TextFrame.TextRange.Text = params.text || '';
+    return ok({});
+  } catch (e) {
+    return fail('设置表格单元格失败: ' + e.message);
+  }
 });
 
-registerHandler('unifyFont', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        // Linux 默认字体：思源黑体（主流发行版预装）；调用方可显式传 fontName 覆盖
-        var fontName = params.fontName || 'Noto Sans CJK SC';
-        // 全量遍历性能边界：大演示文稿（100+ 张×几十形状）数千次 COM 往返会超时被 MCP kill。
-        // 增加 maxShapes 上限（默认 500），达到上限返回 truncated 提示（第 19 轮评审 info）
-        var maxShapes = params.maxShapes !== undefined ? parseInt(params.maxShapes, 10) : 500;
-        if (isNaN(maxShapes) || maxShapes < 1) return fail('无效的 maxShapes: ' + params.maxShapes + '（必须为正整数）');
-        var count = 0;
-        var truncated = false;
-        outer:
-        for (var i = 1; i <= pres.Slides.Count; i++) {
-            var slide = pres.Slides.Item(i);
-            for (var j = 1; j <= slide.Shapes.Count; j++) {
-                try {
-                    var s = slide.Shapes.Item(j);
-                    if (s.HasTextFrame && s.TextFrame.HasText) {
-                        s.TextFrame.TextRange.Font.Name = fontName;
-                        count++;
-                        if (count >= maxShapes) { truncated = true; break outer; }
-                    }
-                } catch (e) {}
+registerHandler('unifyFont', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    // Linux 默认字体：思源黑体（主流发行版预装）；调用方可显式传 fontName 覆盖
+    var fontName = params.fontName || 'Noto Sans CJK SC';
+    // 全量遍历性能边界：大演示文稿（100+ 张×几十形状）数千次 COM 往返会超时被 MCP kill。
+    // 增加 maxShapes 上限（默认 500），达到上限返回 truncated 提示（第 19 轮评审 info）
+    var maxShapes = params.maxShapes !== undefined ? parseInt(params.maxShapes, 10) : 500;
+    if (isNaN(maxShapes) || maxShapes < 1)
+      return fail('无效的 maxShapes: ' + params.maxShapes + '（必须为正整数）');
+    var count = 0;
+    var truncated = false;
+    outer: for (var i = 1; i <= pres.Slides.Count; i++) {
+      var slide = pres.Slides.Item(i);
+      for (var j = 1; j <= slide.Shapes.Count; j++) {
+        try {
+          var s = slide.Shapes.Item(j);
+          if (s.HasTextFrame && s.TextFrame.HasText) {
+            s.TextFrame.TextRange.Font.Name = fontName;
+            count++;
+            if (count >= maxShapes) {
+              truncated = true;
+              break outer;
             }
-        }
-        return ok({ fontName: fontName, count: count, truncated: truncated, maxShapes: maxShapes });
-    } catch (e) {
-        return fail('统一字体失败: ' + e.message);
+          }
+        } catch (e) {}
+      }
     }
+    return ok({ fontName: fontName, count: count, truncated: truncated, maxShapes: maxShapes });
+  } catch (e) {
+    return fail('统一字体失败: ' + e.message);
+  }
 });
 
-registerHandler('beautifySlide', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var scheme = COLOR_SCHEMES[params.style] || COLOR_SCHEMES.business;
-        var count = 0;
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            try {
-                var s = slide.Shapes.Item(j);
-                if (s.HasTextFrame && s.TextFrame.HasText) {
-                    var tr = s.TextFrame.TextRange;
-                    if (tr.Font.Size >= 24) tr.Font.Color.RGB = scheme.title;
-                    else tr.Font.Color.RGB = scheme.body;
-                    count++;
-                }
-            } catch (e) {}
+registerHandler('beautifySlide', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var scheme = COLOR_SCHEMES[params.style] || COLOR_SCHEMES.business;
+    var count = 0;
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      try {
+        var s = slide.Shapes.Item(j);
+        if (s.HasTextFrame && s.TextFrame.HasText) {
+          var tr = s.TextFrame.TextRange;
+          if (tr.Font.Size >= 24) tr.Font.Color.RGB = scheme.title;
+          else tr.Font.Color.RGB = scheme.body;
+          count++;
         }
-        return ok({ style: params.style || 'business', count: count });
-    } catch (e) {
-        return fail('美化幻灯片失败: ' + e.message);
+      } catch (e) {}
     }
+    return ok({ style: params.style || 'business', count: count });
+  } catch (e) {
+    return fail('美化幻灯片失败: ' + e.message);
+  }
 });
 
-registerHandler('autoBeautifySlide', function(params) {
-    return beautifySlideImpl(params);
+registerHandler('autoBeautifySlide', function (params) {
+  return beautifySlideImpl(params);
 });
 
-registerHandler('beautifyAllSlides', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var scheme = COLOR_SCHEMES[params.style] || COLOR_SCHEMES.business;
-        var total = 0;
-        for (var i = 1; i <= pres.Slides.Count; i++) {
-            var slide = pres.Slides.Item(i);
-            for (var j = 1; j <= slide.Shapes.Count; j++) {
-                try {
-                    var s = slide.Shapes.Item(j);
-                    if (s.HasTextFrame && s.TextFrame.HasText) {
-                        var tr = s.TextFrame.TextRange;
-                        if (tr.Font.Size >= 24) tr.Font.Color.RGB = scheme.title;
-                        else tr.Font.Color.RGB = scheme.body;
-                        total++;
-                    }
-                } catch (e) {}
-            }
-        }
-        return ok({ style: params.style || 'business', total: total });
-    } catch (e) {
-        return fail('全局美化失败: ' + e.message);
+registerHandler('beautifyAllSlides', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var scheme = COLOR_SCHEMES[params.style] || COLOR_SCHEMES.business;
+    var total = 0;
+    for (var i = 1; i <= pres.Slides.Count; i++) {
+      var slide = pres.Slides.Item(i);
+      for (var j = 1; j <= slide.Shapes.Count; j++) {
+        try {
+          var s = slide.Shapes.Item(j);
+          if (s.HasTextFrame && s.TextFrame.HasText) {
+            var tr = s.TextFrame.TextRange;
+            if (tr.Font.Size >= 24) tr.Font.Color.RGB = scheme.title;
+            else tr.Font.Color.RGB = scheme.body;
+            total++;
+          }
+        } catch (e) {}
+      }
     }
+    return ok({ style: params.style || 'business', total: total });
+  } catch (e) {
+    return fail('全局美化失败: ' + e.message);
+  }
 });
 
 function beautifySlideImpl(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var scheme = COLOR_SCHEMES[params.style] || COLOR_SCHEMES.business;
-        var count = 0;
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            try {
-                var s = slide.Shapes.Item(j);
-                if (s.HasTextFrame && s.TextFrame.HasText) {
-                    if (s.TextFrame.TextRange.Font.Size >= 24) s.TextFrame.TextRange.Font.Color.RGB = scheme.title;
-                    else s.TextFrame.TextRange.Font.Color.RGB = scheme.body;
-                    count++;
-                }
-            } catch (e) {}
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var scheme = COLOR_SCHEMES[params.style] || COLOR_SCHEMES.business;
+    var count = 0;
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      try {
+        var s = slide.Shapes.Item(j);
+        if (s.HasTextFrame && s.TextFrame.HasText) {
+          if (s.TextFrame.TextRange.Font.Size >= 24)
+            s.TextFrame.TextRange.Font.Color.RGB = scheme.title;
+          else s.TextFrame.TextRange.Font.Color.RGB = scheme.body;
+          count++;
         }
-        return ok({ style: params.style || 'business', count: count });
-    } catch (e) {
-        return fail('自动美化失败: ' + e.message);
+      } catch (e) {}
     }
+    return ok({ style: params.style || 'business', count: count });
+  } catch (e) {
+    return fail('自动美化失败: ' + e.message);
+  }
 }
 
-registerHandler('autoLayout', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var totalW = 0, count = 0;
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            if (slide.Shapes.Item(j).Width > 50) {
-                totalW += slide.Shapes.Item(j).Width;
-                count++;
-            }
-        }
-        // 空白幻灯片（无有效形状）直接返回，避免 Shapes.Item(1) 越界
-        if (count === 0) return ok({ layouted: 0 });
-        var spacing = (slide.Shapes.Item(1).Width - totalW) / (count + 1);
-        if (spacing < 10) spacing = 10;
-        var curX = spacing;
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            if (slide.Shapes.Item(j).Width > 50) {
-                slide.Shapes.Item(j).Left = curX;
-                curX += slide.Shapes.Item(j).Width + spacing;
-            }
-        }
+registerHandler('autoLayout', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var totalW = 0,
+      count = 0;
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      if (slide.Shapes.Item(j).Width > 50) {
+        totalW += slide.Shapes.Item(j).Width;
+        count++;
+      }
+    }
+    // 空白幻灯片（无有效形状）直接返回，避免 Shapes.Item(1) 越界
+    if (count === 0) return ok({ layouted: 0 });
+    var spacing = (slide.Shapes.Item(1).Width - totalW) / (count + 1);
+    if (spacing < 10) spacing = 10;
+    var curX = spacing;
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      if (slide.Shapes.Item(j).Width > 50) {
+        slide.Shapes.Item(j).Left = curX;
+        curX += slide.Shapes.Item(j).Width + spacing;
+      }
+    }
+    return ok({});
+  } catch (e) {
+    return fail('自动布局失败: ' + e.message);
+  }
+});
+
+registerHandler('addArrow', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var startX = params.startX || 100;
+    var startY = params.startY || 100;
+    var endX = params.endX !== undefined ? params.endX : 200;
+    var endY = params.endY !== undefined ? params.endY : 100;
+    var width = Math.abs(endX - startX) || 100;
+    var height = Math.abs(endY - startY) || 20;
+    var shape = slide.Shapes.AddShape(
+      33,
+      Math.min(startX, endX),
+      Math.min(startY, endY),
+      width,
+      height
+    );
+    return ok({ shapeName: shape.Name });
+  } catch (e) {
+    return fail('添加箭头失败: ' + e.message);
+  }
+});
+
+registerHandler('addConnector', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var shape = slide.Shapes.AddConnector(
+      1,
+      params.startX || 100,
+      params.startY || 100,
+      params.endX || 300,
+      params.endY || 100
+    );
+    return ok({ shapeName: shape.Name });
+  } catch (e) {
+    return fail('添加连接线失败: ' + e.message);
+  }
+});
+
+registerHandler('addPptHyperlink', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var shapeName = params.shapeName || params.name;
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      if (slide.Shapes.Item(j).Name === shapeName) {
+        slide.Shapes.Item(j).ActionSettings.Item(1).Hyperlink.Address = params.url;
         return ok({});
-    } catch (e) {
-        return fail('自动布局失败: ' + e.message);
+      }
     }
+    return fail('未找到形状: ' + shapeName);
+  } catch (e) {
+    return fail('添加超链接失败: ' + e.message);
+  }
 });
 
-registerHandler('addArrow', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var startX = params.startX || 100;
-        var startY = params.startY || 100;
-        var endX = params.endX !== undefined ? params.endX : 200;
-        var endY = params.endY !== undefined ? params.endY : 100;
-        var width = Math.abs(endX - startX) || 100;
-        var height = Math.abs(endY - startY) || 20;
-        var shape = slide.Shapes.AddShape(33, Math.min(startX, endX), Math.min(startY, endY), width, height);
-        return ok({ shapeName: shape.Name });
-    } catch (e) {
-        return fail('添加箭头失败: ' + e.message);
+registerHandler('removePptHyperlink', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var shapeName = params.shapeName || params.name;
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      if (slide.Shapes.Item(j).Name === shapeName) {
+        slide.Shapes.Item(j).ActionSettings.Item(1).Hyperlink.Delete();
+        return ok({});
+      }
     }
+    return fail('未找到形状: ' + shapeName);
+  } catch (e) {
+    return fail('移除超链接失败: ' + e.message);
+  }
 });
 
-registerHandler('addConnector', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var shape = slide.Shapes.AddConnector(1, params.startX || 100, params.startY || 100, params.endX || 300, params.endY || 100);
-        return ok({ shapeName: shape.Name });
-    } catch (e) {
-        return fail('添加连接线失败: ' + e.message);
-    }
-});
-
-registerHandler('addPptHyperlink', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var shapeName = params.shapeName || params.name;
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            if (slide.Shapes.Item(j).Name === shapeName) {
-                slide.Shapes.Item(j).ActionSettings.Item(1).Hyperlink.Address = params.url;
-                return ok({});
+registerHandler('findPptText', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var query = params.query || params.text;
+    if (!query) return invalidParam('缺少 query');
+    var results = [];
+    for (var i = 1; i <= pres.Slides.Count; i++) {
+      var slide = pres.Slides.Item(i);
+      for (var j = 1; j <= slide.Shapes.Count; j++) {
+        try {
+          var s = slide.Shapes.Item(j);
+          if (s.HasTextFrame && s.TextFrame.HasText) {
+            var t = s.TextFrame.TextRange.Text;
+            if (t.indexOf(query) !== -1) {
+              results.push({ slideIndex: i, shapeName: s.Name, text: t.substring(0, 100) });
             }
-        }
-        return fail('未找到形状: ' + shapeName);
-    } catch (e) {
-        return fail('添加超链接失败: ' + e.message);
+          }
+        } catch (e) {}
+      }
     }
+    return ok({ query: query, results: results, count: results.length });
+  } catch (e) {
+    return fail('查找失败: ' + e.message);
+  }
 });
 
-registerHandler('removePptHyperlink', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var shapeName = params.shapeName || params.name;
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            if (slide.Shapes.Item(j).Name === shapeName) {
-                slide.Shapes.Item(j).ActionSettings.Item(1).Hyperlink.Delete();
-                return ok({});
+registerHandler('replacePptText', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var count = 0;
+    for (var i = 1; i <= pres.Slides.Count; i++) {
+      var slide = pres.Slides.Item(i);
+      for (var j = 1; j <= slide.Shapes.Count; j++) {
+        try {
+          var s = slide.Shapes.Item(j);
+          if (s.HasTextFrame && s.TextFrame.HasText) {
+            var tr = s.TextFrame.TextRange;
+            if (tr.Text.indexOf(params.findText) !== -1) {
+              tr.Text = tr.Text.replace(
+                new RegExp(params.findText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
+                params.replaceText || ''
+              );
+              count++;
             }
-        }
-        return fail('未找到形状: ' + shapeName);
-    } catch (e) {
-        return fail('移除超链接失败: ' + e.message);
+          }
+        } catch (e) {}
+      }
     }
-});
-
-registerHandler('findPptText', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var query = params.query || params.text;
-        if (!query) return invalidParam('缺少 query');
-        var results = [];
-        for (var i = 1; i <= pres.Slides.Count; i++) {
-            var slide = pres.Slides.Item(i);
-            for (var j = 1; j <= slide.Shapes.Count; j++) {
-                try {
-                    var s = slide.Shapes.Item(j);
-                    if (s.HasTextFrame && s.TextFrame.HasText) {
-                        var t = s.TextFrame.TextRange.Text;
-                        if (t.indexOf(query) !== -1) {
-                            results.push({ slideIndex: i, shapeName: s.Name, text: t.substring(0, 100) });
-                        }
-                    }
-                } catch (e) {}
-            }
-        }
-        return ok({ query: query, results: results, count: results.length });
-    } catch (e) {
-        return fail('查找失败: ' + e.message);
-    }
-});
-
-registerHandler('replacePptText', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var count = 0;
-        for (var i = 1; i <= pres.Slides.Count; i++) {
-            var slide = pres.Slides.Item(i);
-            for (var j = 1; j <= slide.Shapes.Count; j++) {
-                try {
-                    var s = slide.Shapes.Item(j);
-                    if (s.HasTextFrame && s.TextFrame.HasText) {
-                        var tr = s.TextFrame.TextRange;
-                        if (tr.Text.indexOf(params.findText) !== -1) {
-                            tr.Text = tr.Text.replace(new RegExp(params.findText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), params.replaceText || '');
-                            count++;
-                        }
-                    }
-                } catch (e) {}
-            }
-        }
-        return ok({ count: count });
-    } catch (e) {
-        return fail('替换文本失败: ' + e.message);
-    }
+    return ok({ count: count });
+  } catch (e) {
+    return fail('替换文本失败: ' + e.message);
+  }
 });
 
 // 在备注页中定位备注占位符形状：优先 ppPlaceholderBody(2)/ppPlaceholderObject(7)，其次找第一个有文本的文本框
 function findNotesShape(notesPage) {
-    try {
-        for (var j = 1; j <= notesPage.Shapes.Count; j++) {
-            var s = notesPage.Shapes.Item(j);
-            try {
-                var pf = s.PlaceholderFormat;
-                if (pf && (pf.Type === 2 || pf.Type === 7)) return s;
-            } catch (e) {}
-        }
-        // 兜底：第一个 HasTextFrame 且 HasText 的形状
-        for (var j = 1; j <= notesPage.Shapes.Count; j++) {
-            var s = notesPage.Shapes.Item(j);
-            try { if (s.HasTextFrame && s.TextFrame.HasText) return s; } catch (e) {}
-        }
-    } catch (e) {}
-    return null;
+  try {
+    for (var j = 1; j <= notesPage.Shapes.Count; j++) {
+      var s = notesPage.Shapes.Item(j);
+      try {
+        var pf = s.PlaceholderFormat;
+        if (pf && (pf.Type === 2 || pf.Type === 7)) return s;
+      } catch (e) {}
+    }
+    // 兜底：第一个 HasTextFrame 且 HasText 的形状
+    for (var j = 1; j <= notesPage.Shapes.Count; j++) {
+      var s = notesPage.Shapes.Item(j);
+      try {
+        if (s.HasTextFrame && s.TextFrame.HasText) return s;
+      } catch (e) {}
+    }
+  } catch (e) {}
+  return null;
 }
 
-registerHandler('getSlideNotes', function(params) {
+registerHandler('getSlideNotes', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = resolveSlideIndex(pres, params.slideIndex || 1);
+    if (idx === null)
+      return fail(
+        '无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）'
+      );
+    var slide = pres.Slides.Item(idx);
+    var notes = '';
     try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = resolveSlideIndex(pres, params.slideIndex || 1);
-        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
-        var slide = pres.Slides.Item(idx);
-        var notes = '';
+      var shape = findNotesShape(slide.NotesPage.Shapes);
+      if (shape) notes = shape.TextFrame.TextRange.Text || '';
+    } catch (e) {}
+    return ok({ slideIndex: idx, notes: notes });
+  } catch (e) {
+    return fail('获取备注失败: ' + e.message);
+  }
+});
+
+registerHandler('setSlideNotes', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = resolveSlideIndex(pres, params.slideIndex || 1);
+    if (idx === null)
+      return fail(
+        '无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）'
+      );
+    var slide = pres.Slides.Item(idx);
+    var shape = findNotesShape(slide.NotesPage.Shapes);
+    if (!shape) return fail('未找到备注占位符，无法写入备注');
+    shape.TextFrame.TextRange.Text = params.notes || '';
+    return ok({});
+  } catch (e) {
+    return fail('设置备注失败: ' + e.message);
+  }
+});
+
+registerHandler('exportSlideAsImage', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = resolveSlideIndex(pres, params.slideIndex || 1);
+    if (idx === null)
+      return fail(
+        '无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）'
+      );
+    var outputPath = params.outputPath || params.path;
+    if (!outputPath) return invalidParam('缺少 outputPath');
+    // 宽高显式校验（与 setSlideSize 一致）：0/"0"/负数/字符串静默兜底问题
+    var width = params.width !== undefined ? parseInt(params.width, 10) : 1920;
+    if (isNaN(width) || width <= 0)
+      return fail('无效的导出宽度: ' + params.width + '（必须为正数）');
+    var height = params.height !== undefined ? parseInt(params.height, 10) : 1080;
+    if (isNaN(height) || height <= 0)
+      return fail('无效的导出高度: ' + params.height + '（必须为正数）');
+    // format 白名单校验（避免任意字符串传给 Export 抛类型错误）
+    var format = (params.format || 'PNG').toUpperCase();
+    var allowed = { PNG: 'PNG', JPG: 'JPG', JPEG: 'JPG', GIF: 'GIF', BMP: 'BMP' };
+    var filterName = allowed[format];
+    if (!filterName)
+      return fail('无效的导出格式: ' + params.format + '（支持 PNG/JPG/JPEG/GIF/BMP）');
+    var slide = pres.Slides.Item(idx);
+    slide.Export(outputPath, filterName, width, height);
+    return ok({ slideIndex: idx, outputPath: outputPath, format: filterName });
+  } catch (e) {
+    return fail('导出幻灯片为图片失败: ' + e.message);
+  }
+});
+
+registerHandler('applyColorScheme', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var scheme = COLOR_SCHEMES[params.style] || COLOR_SCHEMES.business;
+    var count = 0;
+    for (var i = 1; i <= pres.Slides.Count; i++) {
+      var slide = pres.Slides.Item(i);
+      for (var j = 1; j <= slide.Shapes.Count; j++) {
         try {
-            var shape = findNotesShape(slide.NotesPage.Shapes);
-            if (shape) notes = shape.TextFrame.TextRange.Text || '';
+          var s = slide.Shapes.Item(j);
+          if (s.HasTextFrame && s.TextFrame.HasText) {
+            var tr = s.TextFrame.TextRange;
+            if (tr.Font.Size >= 24) tr.Font.Color.RGB = scheme.title;
+            else tr.Font.Color.RGB = scheme.body;
+            count++;
+          }
         } catch (e) {}
-        return ok({ slideIndex: idx, notes: notes });
-    } catch (e) {
-        return fail('获取备注失败: ' + e.message);
+      }
     }
+    return ok({ style: params.style || 'business', count: count });
+  } catch (e) {
+    return fail('应用配色方案失败: ' + e.message);
+  }
 });
 
-registerHandler('setSlideNotes', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = resolveSlideIndex(pres, params.slideIndex || 1);
-        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
-        var slide = pres.Slides.Item(idx);
-        var shape = findNotesShape(slide.NotesPage.Shapes);
-        if (!shape) return fail('未找到备注占位符，无法写入备注');
-        shape.TextFrame.TextRange.Text = params.notes || '';
-        return ok({});
-    } catch (e) {
-        return fail('设置备注失败: ' + e.message);
+registerHandler('setMasterBackground', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var master = pres.SlideMaster;
+    if (params.color !== undefined) {
+      var bg = toRgb(params.color);
+      if (bg === null) return fail('无效的背景颜色: ' + params.color);
+      master.Background.Fill.ForeColor.RGB = bg;
+      master.Background.Fill.Visible = 1;
     }
+    return ok({});
+  } catch (e) {
+    return fail('设置母版背景失败: ' + e.message);
+  }
 });
 
-registerHandler('exportSlideAsImage', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = resolveSlideIndex(pres, params.slideIndex || 1);
-        if (idx === null) return fail('无效的幻灯片索引: ' + params.slideIndex + '（合法范围 1~' + pres.Slides.Count + '）');
-        var outputPath = params.outputPath || params.path;
-        if (!outputPath) return invalidParam('缺少 outputPath');
-        // 宽高显式校验（与 setSlideSize 一致）：0/"0"/负数/字符串静默兜底问题
-        var width = params.width !== undefined ? parseInt(params.width, 10) : 1920;
-        if (isNaN(width) || width <= 0) return fail('无效的导出宽度: ' + params.width + '（必须为正数）');
-        var height = params.height !== undefined ? parseInt(params.height, 10) : 1080;
-        if (isNaN(height) || height <= 0) return fail('无效的导出高度: ' + params.height + '（必须为正数）');
-        // format 白名单校验（避免任意字符串传给 Export 抛类型错误）
-        var format = (params.format || 'PNG').toUpperCase();
-        var allowed = { PNG: 'PNG', JPG: 'JPG', JPEG: 'JPG', GIF: 'GIF', BMP: 'BMP' };
-        var filterName = allowed[format];
-        if (!filterName) return fail('无效的导出格式: ' + params.format + '（支持 PNG/JPG/JPEG/GIF/BMP）');
-        var slide = pres.Slides.Item(idx);
-        slide.Export(outputPath, filterName, width, height);
-        return ok({ slideIndex: idx, outputPath: outputPath, format: filterName });
-    } catch (e) {
-        return fail('导出幻灯片为图片失败: ' + e.message);
-    }
+registerHandler('getSlideMaster', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var master = pres.SlideMaster;
+    return ok({ name: master.Name, width: master.Width, height: master.Height });
+  } catch (e) {
+    return fail('获取母版信息失败: ' + e.message);
+  }
 });
 
-registerHandler('applyColorScheme', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var scheme = COLOR_SCHEMES[params.style] || COLOR_SCHEMES.business;
-        var count = 0;
-        for (var i = 1; i <= pres.Slides.Count; i++) {
-            var slide = pres.Slides.Item(i);
-            for (var j = 1; j <= slide.Shapes.Count; j++) {
-                try {
-                    var s = slide.Shapes.Item(j);
-                    if (s.HasTextFrame && s.TextFrame.HasText) {
-                        var tr = s.TextFrame.TextRange;
-                        if (tr.Font.Size >= 24) tr.Font.Color.RGB = scheme.title;
-                        else tr.Font.Color.RGB = scheme.body;
-                        count++;
-                    }
-                } catch (e) {}
-            }
+registerHandler('setPptFooter', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var hf = pres.SlideMaster.HeadersFooters;
+    hf.Footer.Visible = 1;
+    hf.Footer.Text = params.text || '';
+    return ok({});
+  } catch (e) {
+    return fail('设置页脚失败: ' + e.message);
+  }
+});
+
+registerHandler('setPptDateTime', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var hf = pres.SlideMaster.HeadersFooters;
+    hf.DateAndTime.Visible = 1;
+    if (params.format === 'auto') hf.DateAndTime.UseFormat = true;
+    else hf.DateAndTime.Text = params.text || '';
+    return ok({});
+  } catch (e) {
+    return fail('设置日期时间失败: ' + e.message);
+  }
+});
+
+registerHandler('setImageStyle', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var shapeName = params.shapeName || params.name;
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      var s = slide.Shapes.Item(j);
+      if (s.Name === shapeName) {
+        if (params.width !== undefined) s.Width = params.width;
+        if (params.height !== undefined) s.Height = params.height;
+        if (params.borderColor) {
+          var bc = toRgb(params.borderColor);
+          if (bc === null) return fail('无效的边框颜色: ' + params.borderColor);
+          s.Line.Visible = 1;
+          s.Line.ForeColor.RGB = bc;
         }
-        return ok({ style: params.style || 'business', count: count });
-    } catch (e) {
-        return fail('应用配色方案失败: ' + e.message);
-    }
-});
-
-registerHandler('setMasterBackground', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var master = pres.SlideMaster;
-        if (params.color !== undefined) {
-            var bg = toRgb(params.color);
-            if (bg === null) return fail('无效的背景颜色: ' + params.color);
-            master.Background.Fill.ForeColor.RGB = bg;
-            master.Background.Fill.Visible = 1;
-        }
+        if (params.borderWidth) s.Line.Weight = params.borderWidth;
         return ok({});
-    } catch (e) {
-        return fail('设置母版背景失败: ' + e.message);
+      }
     }
-});
-
-registerHandler('getSlideMaster', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var master = pres.SlideMaster;
-        return ok({ name: master.Name, width: master.Width, height: master.Height });
-    } catch (e) {
-        return fail('获取母版信息失败: ' + e.message);
-    }
-});
-
-registerHandler('setPptFooter', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var hf = pres.SlideMaster.HeadersFooters;
-        hf.Footer.Visible = 1;
-        hf.Footer.Text = params.text || '';
-        return ok({});
-    } catch (e) {
-        return fail('设置页脚失败: ' + e.message);
-    }
-});
-
-registerHandler('setPptDateTime', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var hf = pres.SlideMaster.HeadersFooters;
-        hf.DateAndTime.Visible = 1;
-        if (params.format === 'auto') hf.DateAndTime.UseFormat = true;
-        else hf.DateAndTime.Text = params.text || '';
-        return ok({});
-    } catch (e) {
-        return fail('设置日期时间失败: ' + e.message);
-    }
-});
-
-registerHandler('setImageStyle', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var shapeName = params.shapeName || params.name;
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            var s = slide.Shapes.Item(j);
-            if (s.Name === shapeName) {
-                if (params.width !== undefined) s.Width = params.width;
-                if (params.height !== undefined) s.Height = params.height;
-                if (params.borderColor) {
-                    var bc = toRgb(params.borderColor);
-                    if (bc === null) return fail('无效的边框颜色: ' + params.borderColor);
-                    s.Line.Visible = 1;
-                    s.Line.ForeColor.RGB = bc;
-                }
-                if (params.borderWidth) s.Line.Weight = params.borderWidth;
-                return ok({});
-            }
-        }
-        return fail('未找到图片: ' + shapeName);
-    } catch (e) {
-        return fail('设置图片样式失败: ' + e.message);
-    }
+    return fail('未找到图片: ' + shapeName);
+  } catch (e) {
+    return fail('设置图片样式失败: ' + e.message);
+  }
 });
 
 function findShape(slide, nameOrIndex) {
-    if (typeof nameOrIndex === 'number') {
-        try { return slide.Shapes.Item(nameOrIndex); } catch (e) { return null; }
+  if (typeof nameOrIndex === 'number') {
+    try {
+      return slide.Shapes.Item(nameOrIndex);
+    } catch (e) {
+      return null;
     }
-    if (nameOrIndex == null) return slide.Shapes.Count > 0 ? slide.Shapes.Item(1) : null;
-    for (var j = 1; j <= slide.Shapes.Count; j++) {
-        if (slide.Shapes.Item(j).Name === nameOrIndex) return slide.Shapes.Item(j);
-    }
-    return null;
+  }
+  if (nameOrIndex == null) return slide.Shapes.Count > 0 ? slide.Shapes.Item(1) : null;
+  for (var j = 1; j <= slide.Shapes.Count; j++) {
+    if (slide.Shapes.Item(j).Name === nameOrIndex) return slide.Shapes.Item(j);
+  }
+  return null;
 }
 
-registerHandler('setBackgroundColor', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        // 非法颜色必须明确 fail（与 setSlideBackground 语义一致），不能用 || 0xFFFFFF 静默兜底——AI 传错色值会"静默变白"误导
-        var bg = toRgb(params.color);
-        if (bg === null) return fail('无效的背景颜色: ' + params.color + '，支持 #RRGGBB/RRGGBB/数字');
-        slide.FollowMasterBackground = 0;
-        slide.Background.Fill.ForeColor.RGB = bg;
-        slide.Background.Fill.Visible = 1;
+registerHandler('setBackgroundColor', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    // 非法颜色必须明确 fail（与 setSlideBackground 语义一致），不能用 || 0xFFFFFF 静默兜底——AI 传错色值会"静默变白"误导
+    var bg = toRgb(params.color);
+    if (bg === null) return fail('无效的背景颜色: ' + params.color + '，支持 #RRGGBB/RRGGBB/数字');
+    slide.FollowMasterBackground = 0;
+    slide.Background.Fill.ForeColor.RGB = bg;
+    slide.Background.Fill.Visible = 1;
+    return ok({});
+  } catch (e) {
+    return fail('设置背景颜色失败: ' + e.message);
+  }
+});
+
+registerHandler('setBackgroundImage', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var filePath = params.path || params.imagePath;
+    if (!filePath) return invalidParam('缺少 path');
+    var slide = pres.Slides.Item(idx);
+    slide.FollowMasterBackground = 0;
+    slide.Background.Fill.UserPicture(filePath);
+    return ok({});
+  } catch (e) {
+    return fail('设置背景图片失败: ' + e.message);
+  }
+});
+
+registerHandler('setBackgroundGradient', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    slide.FollowMasterBackground = 0;
+    slide.Background.Fill.OneColorGradient(1, 1, 0.5);
+    return ok({});
+  } catch (e) {
+    return fail('设置渐变背景失败: ' + e.message);
+  }
+});
+
+registerHandler('setShapeGradient', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var shapeName = params.shapeName || params.name;
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      var s = slide.Shapes.Item(j);
+      if (s.Name === shapeName) {
+        s.Fill.OneColorGradient(1, 1, 0.5);
         return ok({});
-    } catch (e) {
-        return fail('设置背景颜色失败: ' + e.message);
+      }
     }
+    return fail('未找到形状: ' + shapeName);
+  } catch (e) {
+    return fail('设置形状渐变失败: ' + e.message);
+  }
 });
 
-registerHandler('setBackgroundImage', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var filePath = params.path || params.imagePath;
-        if (!filePath) return invalidParam('缺少 path');
-        var slide = pres.Slides.Item(idx);
-        slide.FollowMasterBackground = 0;
-        slide.Background.Fill.UserPicture(filePath);
-        return ok({});
-    } catch (e) {
-        return fail('设置背景图片失败: ' + e.message);
-    }
-});
-
-registerHandler('setBackgroundGradient', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        slide.FollowMasterBackground = 0;
-        slide.Background.Fill.OneColorGradient(1, 1, 0.5);
-        return ok({});
-    } catch (e) {
-        return fail('设置渐变背景失败: ' + e.message);
-    }
-});
-
-registerHandler('setShapeGradient', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var shapeName = params.shapeName || params.name;
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            var s = slide.Shapes.Item(j);
-            if (s.Name === shapeName) {
-                s.Fill.OneColorGradient(1, 1, 0.5);
-                return ok({});
-            }
+registerHandler('setShapeFullStyle', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var shapeName = params.shapeName || params.name;
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      var s = slide.Shapes.Item(j);
+      if (s.Name === shapeName) {
+        if (params.fillColor) {
+          var fc = toRgb(params.fillColor);
+          if (fc === null) return fail('无效的填充颜色: ' + params.fillColor);
+          s.Fill.ForeColor.RGB = fc;
+          s.Fill.Visible = 1;
         }
-        return fail('未找到形状: ' + shapeName);
-    } catch (e) {
-        return fail('设置形状渐变失败: ' + e.message);
-    }
-});
-
-registerHandler('setShapeFullStyle', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var shapeName = params.shapeName || params.name;
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            var s = slide.Shapes.Item(j);
-            if (s.Name === shapeName) {
-                if (params.fillColor) {
-                    var fc = toRgb(params.fillColor);
-                    if (fc === null) return fail('无效的填充颜色: ' + params.fillColor);
-                    s.Fill.ForeColor.RGB = fc;
-                    s.Fill.Visible = 1;
-                }
-                if (params.lineColor) {
-                    var lc = toRgb(params.lineColor);
-                    if (lc === null) return fail('无效的线条颜色: ' + params.lineColor);
-                    s.Line.ForeColor.RGB = lc;
-                    s.Line.Visible = 1;
-                }
-                if (params.lineWeight) s.Line.Weight = params.lineWeight;
-                if (params.shadow) { s.Shadow.Visible = 1; }
-                return ok({});
-            }
+        if (params.lineColor) {
+          var lc = toRgb(params.lineColor);
+          if (lc === null) return fail('无效的线条颜色: ' + params.lineColor);
+          s.Line.ForeColor.RGB = lc;
+          s.Line.Visible = 1;
         }
-        return fail('未找到形状: ' + shapeName);
-    } catch (e) {
-        return fail('设置形状完整样式失败: ' + e.message);
-    }
-});
-
-registerHandler('setShapeRoundness', function(params) {
-    try {
-        var pres = getPPT();
-        if (!pres) return fail('没有打开的演示文稿');
-        var idx = params.slideIndex || 1;
-        var slide = pres.Slides.Item(idx);
-        var shapeName = params.shapeName || params.name;
-        for (var j = 1; j <= slide.Shapes.Count; j++) {
-            var s = slide.Shapes.Item(j);
-            if (s.Name === shapeName) {
-                // 仅圆角矩形（msoShapeRoundedRectangle=5）支持圆角调整，其它形状无 Adjustments 或类型不匹配
-                if (s.Type !== 5 && s.AutoShapeType !== 5) {
-                    return fail('仅支持对圆角矩形设置圆角，当前形状类型: ' + s.Type);
-                }
-                // WPS JSAPI 写法：Item(索引, 值) 传第二参数（与 Mac 版 opencode-wps-assistant 一致），
-                // 不能用 Item(1) = value 赋值（那是 VBA 语法，JS 运行时必报 Invalid left-hand side）
-                try { s.Adjustments.Item(1, params.roundness || 0.2); } catch (adjE) {
-                    return fail('设置圆角失败: ' + adjE.message);
-                }
-                return ok({});
-            }
-        }
-        return fail('未找到形状: ' + shapeName);
-    } catch (e) {
-        return fail('设置形状圆角失败: ' + e.message);
-    }
-});
-
-registerHandler('setFontColor', function(params) {
-    try {
-        var pres = Application.ActivePresentation;
-        if (!pres) return fail('没有打开的演示文稿');
-        var slideIndex = params.slideIndex || 1;
-        var slide = pres.Slides.Item(slideIndex);
-        var shape = findShape(slide, params.shapeIndex !== undefined ? params.shapeIndex : params.shapeName);
-        if (!shape) return fail('未找到形状');
-        var textRange = shape.TextFrame.TextRange;
-        // PPT ForeColor.RGB 需要 RGB 顺序（非 BGR），统一走 toRgb（数字直返/字符串解析/非法 fail）
-        var color = toRgb(params.color);
-        if (color === null) return fail('无效的颜色值: ' + params.color + '，支持 #RRGGBB/RRGGBB/数字');
-        textRange.Font.Color.RGB = color;
-        if (params.size) textRange.Font.Size = params.size;
-        if (params.bold !== undefined) textRange.Font.Bold = params.bold;
-        return ok({});
-    } catch (e) {
-        return fail('设置字体颜色失败: ' + e.message);
-    }
-});
-
-registerHandler('setSlideSize', function(params) {
-    try {
-        var pres = Application.ActivePresentation;
-        if (!pres) return fail('没有打开的演示文稿');
-        // 显式数值转换 + 校验（避免字符串宽度被真值判断放行后 COM 抛类型错误；width=0 非法）
-        if (params.width !== undefined) {
-            var w = parseInt(params.width, 10);
-            if (isNaN(w) || w <= 0) return fail('无效的幻灯片宽度: ' + params.width + '（必须为正数）');
-            pres.PageSetup.SlideWidth = w;
-        }
-        if (params.height !== undefined) {
-            var h = parseInt(params.height, 10);
-            if (isNaN(h) || h <= 0) return fail('无效的幻灯片高度: ' + params.height + '（必须为正数）');
-            pres.PageSetup.SlideHeight = h;
+        if (params.lineWeight) s.Line.Weight = params.lineWeight;
+        if (params.shadow) {
+          s.Shadow.Visible = 1;
         }
         return ok({});
-    } catch (e) {
-        return fail('设置幻灯片大小失败: ' + e.message);
+      }
     }
+    return fail('未找到形状: ' + shapeName);
+  } catch (e) {
+    return fail('设置形状完整样式失败: ' + e.message);
+  }
 });
 
-registerHandler('setShapeFill', function(params) {
-    try {
-        var pres = Application.ActivePresentation;
-        if (!pres) return fail('没有打开的演示文稿');
-        var slideIndex = params.slideIndex || 1;
-        var slide = pres.Slides.Item(slideIndex);
-        var shape = findShape(slide, params.shapeIndex !== undefined ? params.shapeIndex : params.shapeName);
-        if (!shape) return fail('未找到形状');
-        if (params.fillColor !== undefined) {
-            var color = toRgb(params.fillColor);
-            if (color === null) return fail('无效的填充颜色: ' + params.fillColor + '，支持 #RRGGBB/RRGGBB/数字');
-            shape.Fill.ForeColor.RGB = color;
+registerHandler('setShapeRoundness', function (params) {
+  try {
+    var pres = getPPT();
+    if (!pres) return fail('没有打开的演示文稿');
+    var idx = params.slideIndex || 1;
+    var slide = pres.Slides.Item(idx);
+    var shapeName = params.shapeName || params.name;
+    for (var j = 1; j <= slide.Shapes.Count; j++) {
+      var s = slide.Shapes.Item(j);
+      if (s.Name === shapeName) {
+        // 仅圆角矩形（msoShapeRoundedRectangle=5）支持圆角调整，其它形状无 Adjustments 或类型不匹配
+        if (s.Type !== 5 && s.AutoShapeType !== 5) {
+          return fail('仅支持对圆角矩形设置圆角，当前形状类型: ' + s.Type);
         }
-        if (params.transparency !== undefined) shape.Fill.Transparency = params.transparency;
-        if (params.gradient !== undefined) shape.Fill.OneColorGradient(params.gradient.style, params.gradient.variant || 1, params.gradient.degree || 1);
+        // WPS JSAPI 写法：Item(索引, 值) 传第二参数（与 Mac 版 opencode-wps-assistant 一致），
+        // 不能用 Item(1) = value 赋值（那是 VBA 语法，JS 运行时必报 Invalid left-hand side）
+        try {
+          s.Adjustments.Item(1, params.roundness || 0.2);
+        } catch (adjE) {
+          return fail('设置圆角失败: ' + adjE.message);
+        }
         return ok({});
-    } catch (e) {
-        return fail('设置形状填充失败: ' + e.message);
+      }
     }
+    return fail('未找到形状: ' + shapeName);
+  } catch (e) {
+    return fail('设置形状圆角失败: ' + e.message);
+  }
 });
 
-registerHandler('setSlideTheme', function(params) {
-    try {
-        var pres = Application.ActivePresentation;
-        if (!pres) return fail('没有打开的演示文稿');
-        var theme = params.theme;
-        if (typeof pres.ApplyTemplate === 'function') {
-            pres.ApplyTemplate(theme);
-        } else if (typeof pres.ApplyTheme === 'function') {
-            pres.ApplyTheme(theme);
-        } else {
-            return fail('此 WPS 版本不支持 ApplyTemplate/ApplyTheme');
-        }
-        return ok({});
-    } catch (e) {
-        return fail('设置主题失败: ' + e.message);
+registerHandler('setFontColor', function (params) {
+  try {
+    var pres = Application.ActivePresentation;
+    if (!pres) return fail('没有打开的演示文稿');
+    var slideIndex = params.slideIndex || 1;
+    var slide = pres.Slides.Item(slideIndex);
+    var shape = findShape(
+      slide,
+      params.shapeIndex !== undefined ? params.shapeIndex : params.shapeName
+    );
+    if (!shape) return fail('未找到形状');
+    var textRange = shape.TextFrame.TextRange;
+    // PPT ForeColor.RGB 需要 RGB 顺序（非 BGR），统一走 toRgb（数字直返/字符串解析/非法 fail）
+    var color = toRgb(params.color);
+    if (color === null) return fail('无效的颜色值: ' + params.color + '，支持 #RRGGBB/RRGGBB/数字');
+    textRange.Font.Color.RGB = color;
+    if (params.size) textRange.Font.Size = params.size;
+    if (params.bold !== undefined) textRange.Font.Bold = params.bold;
+    return ok({});
+  } catch (e) {
+    return fail('设置字体颜色失败: ' + e.message);
+  }
+});
+
+registerHandler('setSlideSize', function (params) {
+  try {
+    var pres = Application.ActivePresentation;
+    if (!pres) return fail('没有打开的演示文稿');
+    // 显式数值转换 + 校验（避免字符串宽度被真值判断放行后 COM 抛类型错误；width=0 非法）
+    if (params.width !== undefined) {
+      var w = parseInt(params.width, 10);
+      if (isNaN(w) || w <= 0) return fail('无效的幻灯片宽度: ' + params.width + '（必须为正数）');
+      pres.PageSetup.SlideWidth = w;
     }
+    if (params.height !== undefined) {
+      var h = parseInt(params.height, 10);
+      if (isNaN(h) || h <= 0) return fail('无效的幻灯片高度: ' + params.height + '（必须为正数）');
+      pres.PageSetup.SlideHeight = h;
+    }
+    return ok({});
+  } catch (e) {
+    return fail('设置幻灯片大小失败: ' + e.message);
+  }
+});
+
+registerHandler('setShapeFill', function (params) {
+  try {
+    var pres = Application.ActivePresentation;
+    if (!pres) return fail('没有打开的演示文稿');
+    var slideIndex = params.slideIndex || 1;
+    var slide = pres.Slides.Item(slideIndex);
+    var shape = findShape(
+      slide,
+      params.shapeIndex !== undefined ? params.shapeIndex : params.shapeName
+    );
+    if (!shape) return fail('未找到形状');
+    if (params.fillColor !== undefined) {
+      var color = toRgb(params.fillColor);
+      if (color === null)
+        return fail('无效的填充颜色: ' + params.fillColor + '，支持 #RRGGBB/RRGGBB/数字');
+      shape.Fill.ForeColor.RGB = color;
+    }
+    if (params.transparency !== undefined) shape.Fill.Transparency = params.transparency;
+    if (params.gradient !== undefined)
+      shape.Fill.OneColorGradient(
+        params.gradient.style,
+        params.gradient.variant || 1,
+        params.gradient.degree || 1
+      );
+    return ok({});
+  } catch (e) {
+    return fail('设置形状填充失败: ' + e.message);
+  }
+});
+
+registerHandler('setSlideTheme', function (params) {
+  try {
+    var pres = Application.ActivePresentation;
+    if (!pres) return fail('没有打开的演示文稿');
+    var theme = params.theme;
+    if (typeof pres.ApplyTemplate === 'function') {
+      pres.ApplyTemplate(theme);
+    } else if (typeof pres.ApplyTheme === 'function') {
+      pres.ApplyTheme(theme);
+    } else {
+      return fail('此 WPS 版本不支持 ApplyTemplate/ApplyTheme');
+    }
+    return ok({});
+  } catch (e) {
+    return fail('设置主题失败: ' + e.message);
+  }
 });

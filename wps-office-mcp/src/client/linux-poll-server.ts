@@ -16,10 +16,7 @@ import MacPollServer from './mac-poll-server';
 import * as path from 'path';
 
 // Linux 版应用切换脚本路径 - 在 opencode-wps-linux 目录下
-const LINUX_SWITCH_SCRIPT = path.join(
-  __dirname,
-  '../../../opencode-wps-linux/wps-auto.sh'
-);
+const LINUX_SWITCH_SCRIPT = path.join(__dirname, '../../../opencode-wps-linux/wps-auto.sh');
 
 /**
  * Linux 轮询服务器单例

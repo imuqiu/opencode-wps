@@ -39,13 +39,17 @@ for (const dir of toolDirs) {
 
 // COM Actions：gateway/index.ts 的 COM_ACTIONS 数组条目
 const gatewaySrc = fs.readFileSync(path.join(toolRoot, 'gateway', 'index.ts'), 'utf8');
-const comActionsBlock = gatewaySrc.match(/const COM_ACTIONS: ToolIndexItem\[\] = \[([\s\S]*?)\n\];/);
+const comActionsBlock = gatewaySrc.match(
+  /const COM_ACTIONS: ToolIndexItem\[\] = \[([\s\S]*?)\n\];/
+);
 const comActionsCount = comActionsBlock
   ? (comActionsBlock[1].match(/name:\s*'[^']+'/g) || []).length
   : 0;
 
 console.log(`实际数量（以代码为准）:`);
-console.log(`  注册工具: ${registeredTotal} (Excel ${counts.excel} / Word ${counts.word} / PPT ${counts.ppt} / Common ${counts.common})`);
+console.log(
+  `  注册工具: ${registeredTotal} (Excel ${counts.excel} / Word ${counts.word} / PPT ${counts.ppt} / Common ${counts.common})`
+);
 console.log(`  COM Actions: ${comActionsCount}`);
 console.log(`  内置工具: 12`);
 console.log(`  总计: ${12 + registeredTotal + comActionsCount}\n`);
@@ -73,7 +77,9 @@ for (const rel of docFiles) {
   for (const re of stalePatterns) {
     const m = src.match(re);
     if (m) {
-      errors.push(`${rel}: 残留过时数字「${m[0].trim()}」（第 ${src.slice(0, m.index).split('\n').length} 行）`);
+      errors.push(
+        `${rel}: 残留过时数字「${m[0].trim()}」（第 ${src.slice(0, m.index).split('\n').length} 行）`
+      );
     }
   }
 }

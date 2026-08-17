@@ -108,7 +108,8 @@ export const createPivotTableDefinition: ToolDefinition = {
       },
       valueFields: {
         type: 'array',
-        description: '值字段配置列表。每项包含field(字段名)和aggregation(聚合方式:SUM/COUNT/AVERAGE/MAX/MIN)',
+        description:
+          '值字段配置列表。每项包含field(字段名)和aggregation(聚合方式:SUM/COUNT/AVERAGE/MAX/MIN)',
         items: {
           type: 'object',
           properties: {
@@ -205,10 +206,12 @@ export const createPivotTableHandler: ToolHandler = async (
       return {
         id: uuidv4(),
         success: false,
-        content: [{
-          type: 'text',
-          text: `聚合类型(aggregation)必须是${validAggregations.join('/')}之一，当前值"${vf.aggregation}"无效`
-        }],
+        content: [
+          {
+            type: 'text',
+            text: `聚合类型(aggregation)必须是${validAggregations.join('/')}之一，当前值"${vf.aggregation}"无效`,
+          },
+        ],
         error: '参数错误：aggregation无效',
       };
     }
@@ -425,10 +428,12 @@ export const updatePivotTableHandler: ToolHandler = async (
     return {
       id: uuidv4(),
       success: false,
-      content: [{
-        type: 'text',
-        text: '请指定目标透视表，提供 pivotTableName 或 pivotTableCell'
-      }],
+      content: [
+        {
+          type: 'text',
+          text: '请指定目标透视表，提供 pivotTableName 或 pivotTableCell',
+        },
+      ],
       error: '参数错误：未指定透视表',
     };
   }
@@ -450,17 +455,22 @@ export const updatePivotTableHandler: ToolHandler = async (
     return {
       id: uuidv4(),
       success: false,
-      content: [{
-        type: 'text',
-        text: '未指定任何操作参数，请至少指定一个更新操作'
-      }],
+      content: [
+        {
+          type: 'text',
+          text: '未指定任何操作参数，请至少指定一个更新操作',
+        },
+      ],
       error: '参数错误：无操作',
     };
   }
 
   // 校验值字段的聚合类型
   const validAggregations: AggregationType[] = ['SUM', 'COUNT', 'AVERAGE', 'MAX', 'MIN'];
-  const validateValueFields = (fields: PivotValueField[] | undefined, fieldName: string): ToolCallResult | null => {
+  const validateValueFields = (
+    fields: PivotValueField[] | undefined,
+    fieldName: string
+  ): ToolCallResult | null => {
     if (!fields) return null;
     for (const vf of fields) {
       if (!vf.field || vf.field.trim() === '') {
@@ -475,10 +485,12 @@ export const updatePivotTableHandler: ToolHandler = async (
         return {
           id: uuidv4(),
           success: false,
-          content: [{
-            type: 'text',
-            text: `${fieldName}中的聚合类型必须是${validAggregations.join('/')}之一`
-          }],
+          content: [
+            {
+              type: 'text',
+              text: `${fieldName}中的聚合类型必须是${validAggregations.join('/')}之一`,
+            },
+          ],
           error: `参数错误：${fieldName}中aggregation无效`,
         };
       }

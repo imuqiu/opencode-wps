@@ -216,8 +216,22 @@ describe('MCP Server 内置工具注册', () => {
         tool_name: 'proofreadAccumulate',
         arguments: {
           session_id: '11111111-2222-3333-4444-555555555555',
-          issues: [{ offset: 0, length: 4, original: '测试', suggestion: '测试2', type: '测试', source: 'mcp' }],
-          doc_info: { fileName: '测试.docx', filePath: 'C:/test/测试.docx', totalParagraphs: 1, totalWords: 2 },
+          issues: [
+            {
+              offset: 0,
+              length: 4,
+              original: '测试',
+              suggestion: '测试2',
+              type: '测试',
+              source: 'mcp',
+            },
+          ],
+          doc_info: {
+            fileName: '测试.docx',
+            filePath: 'C:/test/测试.docx',
+            totalParagraphs: 1,
+            totalWords: 2,
+          },
         },
       });
       const accResult = await registry.callTool(accRequest);

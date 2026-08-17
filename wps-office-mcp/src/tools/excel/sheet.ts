@@ -70,11 +70,7 @@ export const createSheetHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       name: string;
       index: number;
-    }>(
-      'createSheet',
-      { name, position },
-      WpsAppType.SPREADSHEET
-    );
+    }>('createSheet', { name, position }, WpsAppType.SPREADSHEET);
 
     if (!response.success || !response.data) {
       return {
@@ -133,11 +129,7 @@ export const deleteSheetHandler: ToolHandler = async (
   try {
     const response = await wpsClient.executeMethod<{
       deleted: string;
-    }>(
-      'deleteSheet',
-      { name },
-      WpsAppType.SPREADSHEET
-    );
+    }>('deleteSheet', { name }, WpsAppType.SPREADSHEET);
 
     if (!response.success) {
       return {
@@ -204,11 +196,7 @@ export const renameSheetHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       oldName: string;
       newName: string;
-    }>(
-      'renameSheet',
-      { oldName, newName },
-      WpsAppType.SPREADSHEET
-    );
+    }>('renameSheet', { oldName, newName }, WpsAppType.SPREADSHEET);
 
     if (!response.success) {
       return {
@@ -281,11 +269,7 @@ export const copySheetHandler: ToolHandler = async (
       sourceName: string;
       newName: string;
       index: number;
-    }>(
-      'copySheet',
-      { name, newName, position },
-      WpsAppType.SPREADSHEET
-    );
+    }>('copySheet', { name, newName, position }, WpsAppType.SPREADSHEET);
 
     if (!response.success || !response.data) {
       return {
@@ -341,11 +325,7 @@ export const getSheetListHandler: ToolHandler = async (
         active: boolean;
       }>;
       count: number;
-    }>(
-      'getSheetList',
-      {},
-      WpsAppType.SPREADSHEET
-    );
+    }>('getSheetList', {}, WpsAppType.SPREADSHEET);
 
     if (!response.success || !response.data) {
       return {
@@ -359,7 +339,7 @@ export const getSheetListHandler: ToolHandler = async (
     const { sheets, count } = response.data;
     let output = `当前工作簿共有 ${count} 个工作表：\n\n`;
 
-    sheets.forEach((sheet) => {
+    sheets.forEach(sheet => {
       const activeFlag = sheet.active ? ' [活动]' : '';
       output += `${sheet.index + 1}. ${sheet.name}${activeFlag}\n`;
     });
@@ -407,11 +387,7 @@ export const switchSheetHandler: ToolHandler = async (
   try {
     const response = await wpsClient.executeMethod<{
       activatedSheet: string;
-    }>(
-      'switchSheet',
-      { name },
-      WpsAppType.SPREADSHEET
-    );
+    }>('switchSheet', { name }, WpsAppType.SPREADSHEET);
 
     if (!response.success) {
       return {
@@ -478,11 +454,7 @@ export const moveSheetHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       name: string;
       newPosition: number;
-    }>(
-      'moveSheet',
-      { name, position },
-      WpsAppType.SPREADSHEET
-    );
+    }>('moveSheet', { name, position }, WpsAppType.SPREADSHEET);
 
     if (!response.success) {
       return {
@@ -536,11 +508,7 @@ export const getSelectionHandler: ToolHandler = async (
       rowCount: number;
       columnCount: number;
       sheet: string;
-    }>(
-      'getSelection',
-      {},
-      WpsAppType.SPREADSHEET
-    );
+    }>('getSelection', {}, WpsAppType.SPREADSHEET);
 
     if (!response.success || !response.data) {
       return {
@@ -605,11 +573,7 @@ export const deleteRowHandler: ToolHandler = async (
   try {
     const response = await wpsClient.executeMethod<{
       deletedRows: number;
-    }>(
-      'deleteRows',
-      { row, count },
-      WpsAppType.SPREADSHEET
-    );
+    }>('deleteRows', { row, count }, WpsAppType.SPREADSHEET);
 
     if (!response.success) {
       return {
@@ -672,11 +636,7 @@ export const insertColumnHandler: ToolHandler = async (
   try {
     const response = await wpsClient.executeMethod<{
       insertedColumns: number;
-    }>(
-      'insertColumns',
-      { column, count },
-      WpsAppType.SPREADSHEET
-    );
+    }>('insertColumns', { column, count }, WpsAppType.SPREADSHEET);
 
     if (!response.success) {
       return {
@@ -739,11 +699,7 @@ export const deleteColumnHandler: ToolHandler = async (
   try {
     const response = await wpsClient.executeMethod<{
       deletedColumns: number;
-    }>(
-      'deleteColumns',
-      { column, count },
-      WpsAppType.SPREADSHEET
-    );
+    }>('deleteColumns', { column, count }, WpsAppType.SPREADSHEET);
 
     if (!response.success) {
       return {
@@ -804,7 +760,11 @@ export const freezePanesDefinition: ToolDefinition = {
 export const freezePanesHandler: ToolHandler = async (
   args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  const { row, column, freeze = true } = args as {
+  const {
+    row,
+    column,
+    freeze = true,
+  } = args as {
     row?: number;
     column?: number;
     freeze?: boolean;
@@ -813,11 +773,7 @@ export const freezePanesHandler: ToolHandler = async (
   try {
     const response = await wpsClient.executeMethod<{
       frozen: boolean;
-    }>(
-      'freezePanes',
-      { row, column, freeze },
-      WpsAppType.SPREADSHEET
-    );
+    }>('freezePanes', { row, column, freeze }, WpsAppType.SPREADSHEET);
 
     if (!response.success) {
       return {
@@ -884,11 +840,7 @@ export const autoFillHandler: ToolHandler = async (
   try {
     const response = await wpsClient.executeMethod<{
       filled: boolean;
-    }>(
-      'fillSeries',
-      { sourceRange, targetRange },
-      WpsAppType.SPREADSHEET
-    );
+    }>('fillSeries', { sourceRange, targetRange }, WpsAppType.SPREADSHEET);
 
     if (!response.success) {
       return {
@@ -955,11 +907,7 @@ export const setNamedRangeHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       name: string;
       range: string;
-    }>(
-      'createNamedRange',
-      { name, range },
-      WpsAppType.SPREADSHEET
-    );
+    }>('createNamedRange', { name, range }, WpsAppType.SPREADSHEET);
 
     if (!response.success) {
       return {
@@ -1021,7 +969,11 @@ export const hideColumnDefinition: ToolDefinition = {
 export const hideColumnHandler: ToolHandler = async (
   args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  const { column, count = 1, hide } = args as {
+  const {
+    column,
+    count = 1,
+    hide,
+  } = args as {
     column: number;
     count: number;
     hide: boolean;
@@ -1032,11 +984,7 @@ export const hideColumnHandler: ToolHandler = async (
       column: number;
       count: number;
       hidden: boolean;
-    }>(
-      'hideColumns',
-      { column, count, hide },
-      WpsAppType.SPREADSHEET
-    );
+    }>('hideColumns', { column, count, hide }, WpsAppType.SPREADSHEET);
 
     if (!response.success) {
       return {
@@ -1105,11 +1053,7 @@ export const autoSumHandler: ToolHandler = async (
       range: string;
       targetCell: string;
       result: number;
-    }>(
-      'autoSum',
-      { range, targetCell },
-      WpsAppType.SPREADSHEET
-    );
+    }>('autoSum', { range, targetCell }, WpsAppType.SPREADSHEET);
 
     if (!response.success) {
       return {

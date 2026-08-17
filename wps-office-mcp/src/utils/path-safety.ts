@@ -33,17 +33,17 @@ export function validateFilePath(filePath: string, allowedRoots: string[]): stri
     throw new Error('filePath must be a non-empty string');
   }
   const normalized = path.resolve(filePath);
-  
+
   // Check path traversal
   if (PATH_TRAVERSAL_REGEX.test(filePath) || PATH_TRAVERSAL_REGEX.test(normalized)) {
     throw new Error('Path traversal detected: ' + filePath);
   }
-  
+
   // Check DOS device paths (Windows only: \\.\COM1, \\?\C:\...)
   if (IS_WIN && DOS_DEVICE_PATH_REGEX.test(filePath)) {
     throw new Error('DOS device paths are not allowed: ' + filePath);
   }
-  
+
   // Check NTFS alternate data streams (Windows only: file:stream)
   if (IS_WIN) {
     const colonIdx = normalized.indexOf(':');
@@ -51,10 +51,10 @@ export function validateFilePath(filePath: string, allowedRoots: string[]): stri
       throw new Error('NTFS alternate data streams are not allowed: ' + filePath);
     }
   }
-  
+
   // Check allowed roots
   if (allowedRoots && allowedRoots.length > 0) {
-    const allowed = allowedRoots.some(function(root) {
+    const allowed = allowedRoots.some(function (root) {
       var resolvedRoot = path.resolve(root);
       return normalized === resolvedRoot || normalized.startsWith(resolvedRoot + path.sep);
     });
@@ -62,7 +62,7 @@ export function validateFilePath(filePath: string, allowedRoots: string[]): stri
       throw new Error('Path not allowed: ' + filePath);
     }
   }
-  
+
   return normalized;
 }
 
@@ -74,7 +74,7 @@ export function isAllowedUrl(url: string): boolean {
   try {
     var parsed = new URL(url);
     return ALLOWED_PROTOCOLS.indexOf(parsed.protocol) >= 0;
-  } catch(e) {
+  } catch (e) {
     return false;
   }
 }

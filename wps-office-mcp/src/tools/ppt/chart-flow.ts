@@ -62,7 +62,8 @@ export const insertPptChartDefinition: ToolDefinition = {
       },
       data: {
         type: 'object',
-        description: '图表数据，包含 categories（类别数组）和 series（系列数组，每个系列含 name 和 values）',
+        description:
+          '图表数据，包含 categories（类别数组）和 series（系列数组，每个系列含 name 和 values）',
       },
       left: {
         type: 'number',
@@ -93,11 +94,7 @@ export const insertPptChartHandler: ToolHandler = async (
       success: boolean;
       message: string;
       chartIndex: number;
-    }>(
-      'insertPptChart',
-      { slideIndex, chartType, data, left, top },
-      WpsAppType.PRESENTATION
-    );
+    }>('insertPptChart', { slideIndex, chartType, data, left, top }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       const chartTypeName: Record<string, string> = {
@@ -187,11 +184,7 @@ export const setPptChartDataHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'setPptChartData',
-      { slideIndex, chartIndex, data },
-      WpsAppType.PRESENTATION
-    );
+    }>('setPptChartData', { slideIndex, chartIndex, data }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {
@@ -279,11 +272,7 @@ export const setPptChartStyleHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'setPptChartStyle',
-      { slideIndex, chartIndex, style },
-      WpsAppType.PRESENTATION
-    );
+    }>('setPptChartStyle', { slideIndex, chartIndex, style }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       const styleItems = Object.keys(style).join('、');
@@ -480,11 +469,7 @@ export const createOrgChartHandler: ToolHandler = async (
       message: string;
       nodeCount: number;
       levelCount: number;
-    }>(
-      'createOrgChart',
-      { slideIndex, data },
-      WpsAppType.PRESENTATION
-    );
+    }>('createOrgChart', { slideIndex, data }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       return {
@@ -574,11 +559,7 @@ export const createTimelineHandler: ToolHandler = async (
       success: boolean;
       message: string;
       eventCount: number;
-    }>(
-      'createTimeline',
-      { slideIndex, events },
-      WpsAppType.PRESENTATION
-    );
+    }>('createTimeline', { slideIndex, events }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       return {

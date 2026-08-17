@@ -74,7 +74,8 @@ expect.extend({
       };
     }
     return {
-      message: () => `expected ${JSON.stringify(received)} to be a valid tool result with success and content properties`,
+      message: () =>
+        `expected ${JSON.stringify(received)} to be a valid tool result with success and content properties`,
       pass: false,
     };
   },

@@ -13,7 +13,10 @@ import { searchTools, executeTool, TOOLS_INDEX } from '../../tools/gateway';
 jest.mock('../../utils/logger', () => ({
   log: { info: jest.fn(), debug: jest.fn(), warn: jest.fn(), error: jest.fn() },
   createChildLogger: jest.fn(() => ({
-    info: jest.fn(), debug: jest.fn(), warn: jest.fn(), error: jest.fn(),
+    info: jest.fn(),
+    debug: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
   })),
 }));
 
@@ -35,9 +38,9 @@ afterEach(() => {
 });
 
 describe('TOOLS_INDEX 完整性验证', () => {
-    it('索引数量应为 257 个', () => {
-      expect(TOOLS_INDEX.length).toBe(257);
-    });
+  it('索引数量应为 257 个', () => {
+    expect(TOOLS_INDEX.length).toBe(257);
+  });
 
   it('索引名称应该唯一（无重复）', () => {
     const names = TOOLS_INDEX.map(t => t.name);
@@ -46,7 +49,7 @@ describe('TOOLS_INDEX 完整性验证', () => {
   });
 
   it('所有条目必须有 name、description、category、appType', () => {
-    TOOLS_INDEX.forEach((item) => {
+    TOOLS_INDEX.forEach(item => {
       expect(item.name).toBeTruthy();
       expect(item.description).toBeTruthy();
       expect(item.category).toBeTruthy();
@@ -71,9 +74,17 @@ describe('TOOLS_INDEX 完整性验证', () => {
 
   it('关键 Excel 工具必须存在', () => {
     const required = [
-      'setFormula', 'getRangeData', 'setRangeData', 'createSheet',
-      'createPivotTable', 'createChart', 'cleanData', 'removeDuplicates',
-      'sortRange', 'autoFilter', 'diagnoseFormula',
+      'setFormula',
+      'getRangeData',
+      'setRangeData',
+      'createSheet',
+      'createPivotTable',
+      'createChart',
+      'cleanData',
+      'removeDuplicates',
+      'sortRange',
+      'autoFilter',
+      'diagnoseFormula',
     ];
     const names = TOOLS_INDEX.map(t => t.name);
     required.forEach(name => {
@@ -83,9 +94,15 @@ describe('TOOLS_INDEX 完整性验证', () => {
 
   it('关键 Word 工具必须存在', () => {
     const required = [
-      'setFont', 'applyStyle', 'generateTOC', 'findReplace',
-      'insertTable', 'insertImage', 'getDocumentParagraphs',
-      'smartFillField', 'replaceBookmarkContent',
+      'setFont',
+      'applyStyle',
+      'generateTOC',
+      'findReplace',
+      'insertTable',
+      'insertImage',
+      'getDocumentParagraphs',
+      'smartFillField',
+      'replaceBookmarkContent',
     ];
     const names = TOOLS_INDEX.map(t => t.name);
     required.forEach(name => {
@@ -109,8 +126,13 @@ describe('TOOLS_INDEX 完整性验证', () => {
 
   it('关键 PPT 工具必须存在', () => {
     const required = [
-      'addSlide', 'deleteSlide', 'beautifySlide', 'beautifyAllSlides',
-      'unifyFont', 'setSlideTransition', 'addAnimation',
+      'addSlide',
+      'deleteSlide',
+      'beautifySlide',
+      'beautifyAllSlides',
+      'unifyFont',
+      'setSlideTransition',
+      'addAnimation',
     ];
     const names = TOOLS_INDEX.map(t => t.name);
     required.forEach(name => {
@@ -246,16 +268,15 @@ describe('executeTool 执行功能', () => {
       tool_name: 'openFile', // openFile ∈ COM_ACTIONS 但无 TS handler
       arguments: {},
     });
-    expect(mockedWpsClient.executeMethod).toHaveBeenCalledWith(
-      'openFile',
-      {},
-      expect.anything()
-    );
+    expect(mockedWpsClient.executeMethod).toHaveBeenCalledWith('openFile', {}, expect.anything());
     expect(result.success).toBe(true);
   });
 
   it('存在的工具名, 有对应 TS handler 应走 handler 路径', async () => {
-    mockedWpsClient.executeMethod.mockResolvedValue({ success: true, data: { settings: { fontName: '微软雅黑' } } });
+    mockedWpsClient.executeMethod.mockResolvedValue({
+      success: true,
+      data: { settings: { fontName: '微软雅黑' } },
+    });
     const result = await executeTool({
       tool_name: 'setFont',
       arguments: { font_name: '微软雅黑', fontSize: 12 },
@@ -311,9 +332,9 @@ describe('executeTool 执行功能', () => {
 describe('网关路由 proofread 报告工具（#25 验收 TC-13）', () => {
   it('search 搜"报告"能返回 generateProofreadReport', () => {
     const r = searchTools({ query: '报告' });
-    expect(r.results.some((x) => x.name === 'generateProofreadReport')).toBe(true);
+    expect(r.results.some(x => x.name === 'generateProofreadReport')).toBe(true);
     const r2 = searchTools({ query: 'accumulate' });
-    expect(r2.results.some((x) => x.name === 'proofreadAccumulate')).toBe(true);
+    expect(r2.results.some(x => x.name === 'proofreadAccumulate')).toBe(true);
   });
 
   it('executeTool 走 handler 路径而非 PS1 透传（累加器）', async () => {
@@ -321,8 +342,22 @@ describe('网关路由 proofread 报告工具（#25 验收 TC-13）', () => {
       tool_name: 'proofreadAccumulate',
       arguments: {
         session_id: '11111111-2222-3333-4444-555555555555',
-        issues: [{ offset: 0, length: 4, original: '测试', suggestion: '测试2', type: '测试', source: 'mcp' }],
-        doc_info: { fileName: '测试.docx', filePath: 'C:/test/测试.docx', totalParagraphs: 1, totalWords: 2 },
+        issues: [
+          {
+            offset: 0,
+            length: 4,
+            original: '测试',
+            suggestion: '测试2',
+            type: '测试',
+            source: 'mcp',
+          },
+        ],
+        doc_info: {
+          fileName: '测试.docx',
+          filePath: 'C:/test/测试.docx',
+          totalParagraphs: 1,
+          totalWords: 2,
+        },
       },
     });
     const text = result.content[0].text || '';
@@ -337,8 +372,22 @@ describe('网关路由 proofread 报告工具（#25 验收 TC-13）', () => {
       tool_name: 'proofreadAccumulate',
       arguments: {
         session_id: '11111111-2222-3333-4444-555555555555',
-        issues: [{ offset: 0, length: 4, original: '测试', suggestion: '测试2', type: '测试', source: 'mcp' }],
-        doc_info: { fileName: '测试.docx', filePath: 'C:/test/测试.docx', totalParagraphs: 1, totalWords: 2 },
+        issues: [
+          {
+            offset: 0,
+            length: 4,
+            original: '测试',
+            suggestion: '测试2',
+            type: '测试',
+            source: 'mcp',
+          },
+        ],
+        doc_info: {
+          fileName: '测试.docx',
+          filePath: 'C:/test/测试.docx',
+          totalParagraphs: 1,
+          totalWords: 2,
+        },
       },
     });
     expect(acc.success).toBe(true);

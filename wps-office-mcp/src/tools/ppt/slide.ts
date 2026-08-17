@@ -97,13 +97,14 @@ export const addSlideHandler: ToolHandler = async (
     );
 
     if (response.success && response.data) {
-      const layoutName = {
-        title: '标题页',
-        title_content: '标题+内容',
-        blank: '空白页',
-        two_column: '两栏内容',
-        comparison: '对比布局',
-      }[response.data.layout] || response.data.layout;
+      const layoutName =
+        {
+          title: '标题页',
+          title_content: '标题+内容',
+          blank: '空白页',
+          two_column: '两栏内容',
+          comparison: '对比布局',
+        }[response.data.layout] || response.data.layout;
 
       return {
         id: uuidv4(),
@@ -218,12 +219,13 @@ export const beautifyHandler: ToolHandler = async (
 
     if (response.success && response.data) {
       const result = response.data;
-      const schemeName = {
-        business: '商务风',
-        tech: '科技风',
-        creative: '创意风',
-        minimal: '简约风',
-      }[color_scheme || 'business'] || color_scheme;
+      const schemeName =
+        {
+          business: '商务风',
+          tech: '科技风',
+          creative: '创意风',
+          minimal: '简约风',
+        }[color_scheme || 'business'] || color_scheme;
 
       let output = `幻灯片美化完成！\n`;
       output += `范围: ${beautify_all ? '所有幻灯片' : `第 ${result.slideIndex} 页`}\n`;
@@ -231,13 +233,14 @@ export const beautifyHandler: ToolHandler = async (
       output += `字体: ${font || '微软雅黑'}\n\n`;
       output += `优化详情：\n`;
 
-      result.operations.forEach((op) => {
-        const opName = {
-          unify_font: '统一字体',
-          apply_color_scheme: '应用配色',
-          align: '对齐元素',
-          optimize_spacing: '优化间距',
-        }[op.operation] || op.operation;
+      result.operations.forEach(op => {
+        const opName =
+          {
+            unify_font: '统一字体',
+            apply_color_scheme: '应用配色',
+            align: '对齐元素',
+            optimize_spacing: '优化间距',
+          }[op.operation] || op.operation;
         output += `- ${opName}: 处理了 ${op.count} 个元素\n`;
       });
 
@@ -414,11 +417,7 @@ export const setFontColorHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'setFontColor',
-      { slideIndex, shapeIndex, color },
-      WpsAppType.PRESENTATION
-    );
+    }>('setFontColor', { slideIndex, shapeIndex, color }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {
@@ -483,7 +482,16 @@ export const alignObjectsDefinition: ToolDefinition = {
       alignment: {
         type: 'string',
         description: '对齐方式',
-        enum: ['left', 'center', 'right', 'top', 'middle', 'bottom', 'distribute_h', 'distribute_v'],
+        enum: [
+          'left',
+          'center',
+          'right',
+          'top',
+          'middle',
+          'bottom',
+          'distribute_h',
+          'distribute_v',
+        ],
       },
     },
     required: ['slideIndex', 'alignment'],
@@ -503,11 +511,7 @@ export const alignObjectsHandler: ToolHandler = async (
       success: boolean;
       message: string;
       count?: number;
-    }>(
-      'alignShapes',
-      { slideIndex, alignment },
-      WpsAppType.PRESENTATION
-    );
+    }>('alignShapes', { slideIndex, alignment }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       const alignName: Record<string, string> = {

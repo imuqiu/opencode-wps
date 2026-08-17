@@ -6,9 +6,9 @@
 var HANDLERS = {};
 
 function registerHandler(action, handlerFn) {
-    HANDLERS[action] = handlerFn;
+  HANDLERS[action] = handlerFn;
 }
 
 function getHandler(action) {
-    return HANDLERS[action];
+  return HANDLERS[action];
 }

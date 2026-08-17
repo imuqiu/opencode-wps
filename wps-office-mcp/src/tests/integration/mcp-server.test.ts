@@ -31,7 +31,10 @@ jest.mock('@modelcontextprotocol/sdk/types.js', () => ({
   ListToolsRequestSchema: { method: 'tools/list' },
   ErrorCode: { InternalError: -32603, InvalidParams: -32602 },
   McpError: class MockMcpError extends Error {
-    constructor(public code: number, message: string) {
+    constructor(
+      public code: number,
+      message: string
+    ) {
       super(message);
     }
   },
@@ -64,7 +67,11 @@ jest.mock('../../client/wps-client', () => ({
 // Mock错误类
 jest.mock('../../utils/error', () => ({
   McpError: class McpError extends Error {
-    constructor(message: string, public code: string, public details?: unknown) {
+    constructor(
+      message: string,
+      public code: string,
+      public details?: unknown
+    ) {
       super(message);
       this.name = 'McpError';
     }
@@ -87,7 +94,10 @@ jest.mock('../../utils/error', () => ({
     }
   },
   InvalidParamsError: class InvalidParamsError extends Error {
-    constructor(message: string, public details?: unknown) {
+    constructor(
+      message: string,
+      public details?: unknown
+    ) {
       super(message);
       this.name = 'InvalidParamsError';
     }
@@ -118,7 +128,7 @@ describe('WpsMcpServer集成测试', () => {
         },
         category: ToolCategory.COMMON,
       },
-      handler: async (args) => ({
+      handler: async args => ({
         id: 'echo-result',
         success: true,
         content: [{ type: 'text', text: `Echo: ${args.message}` }],
@@ -138,7 +148,7 @@ describe('WpsMcpServer集成测试', () => {
         },
         category: ToolCategory.SPREADSHEET,
       },
-      handler: async (args) => ({
+      handler: async args => ({
         id: 'add-result',
         success: true,
         content: [{ type: 'text', text: `Result: ${Number(args.a) + Number(args.b)}` }],
@@ -200,9 +210,9 @@ describe('WpsMcpServer集成测试', () => {
       const { tools } = registry.listTools();
 
       expect(tools).toHaveLength(3);
-      expect(tools.map((t) => t.name)).toContain('integration.test.echo');
-      expect(tools.map((t) => t.name)).toContain('integration.test.add');
-      expect(tools.map((t) => t.name)).toContain('integration.test.fail');
+      expect(tools.map(t => t.name)).toContain('integration.test.echo');
+      expect(tools.map(t => t.name)).toContain('integration.test.add');
+      expect(tools.map(t => t.name)).toContain('integration.test.fail');
     });
 
     it('应该能按分类获取Tools', () => {
@@ -288,10 +298,10 @@ describe('WpsMcpServer集成测试', () => {
         ToolRegistry.createRequest('integration.test.add', { a: 3, b: 4 }),
       ];
 
-      const results = await Promise.all(requests.map((req) => registry.callTool(req)));
+      const results = await Promise.all(requests.map(req => registry.callTool(req)));
 
       expect(results).toHaveLength(4);
-      expect(results.every((r) => r.success)).toBe(true);
+      expect(results.every(r => r.success)).toBe(true);
     });
   });
 
@@ -307,7 +317,7 @@ describe('WpsMcpServer集成测试', () => {
         },
       };
 
-      const dynamicHandler: ToolHandler = async (args) => ({
+      const dynamicHandler: ToolHandler = async args => ({
         id: 'dynamic',
         success: true,
         content: [{ type: 'text', text: `Dynamic: ${args.value}` }],
@@ -357,7 +367,7 @@ describe('端到端场景测试', () => {
       category: ToolCategory.SPREADSHEET,
     };
 
-    const setFormulaHandler: ToolHandler = async (args) => {
+    const setFormulaHandler: ToolHandler = async args => {
       const { range, formula } = args as { range: string; formula: string };
 
       // 验证公式格式
@@ -425,7 +435,7 @@ describe('端到端场景测试', () => {
       category: ToolCategory.DOCUMENT,
     };
 
-    const insertTextHandler: ToolHandler = async (args) => {
+    const insertTextHandler: ToolHandler = async args => {
       const { text, position } = args as { text: string; position?: number };
 
       return {

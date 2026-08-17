@@ -172,11 +172,7 @@ export const removeAnimationHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'removeAnimation',
-      { slideIndex, animationIndex },
-      WpsAppType.PRESENTATION
-    );
+    }>('removeAnimation', { slideIndex, animationIndex }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {
@@ -249,11 +245,7 @@ export const getAnimationsHandler: ToolHandler = async (
         trigger: string;
         shapeName: string;
       }>;
-    }>(
-      'getAnimations',
-      { slideIndex },
-      WpsAppType.PRESENTATION
-    );
+    }>('getAnimations', { slideIndex }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       const animations = response.data.animations;
@@ -277,7 +269,7 @@ export const getAnimationsHandler: ToolHandler = async (
       };
 
       let output = `第 ${slideIndex} 页的动画效果（共 ${animations.length} 个）：\n`;
-      animations.forEach((anim) => {
+      animations.forEach(anim => {
         output += `  ${anim.index}. [${anim.shapeName}] ${anim.effect} - ${triggerName[anim.trigger] || anim.trigger}\n`;
       });
 
@@ -352,11 +344,7 @@ export const setAnimationOrderHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'setAnimationOrder',
-      { slideIndex, animationIndex, newOrder },
-      WpsAppType.PRESENTATION
-    );
+    }>('setAnimationOrder', { slideIndex, animationIndex, newOrder }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {
@@ -446,11 +434,7 @@ export const addAnimationPresetHandler: ToolHandler = async (
       success: boolean;
       message: string;
       animationIndex: number;
-    }>(
-      'addAnimationPreset',
-      { slideIndex, shapeIndex, preset },
-      WpsAppType.PRESENTATION
-    );
+    }>('addAnimationPreset', { slideIndex, shapeIndex, preset }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       const presetName: Record<string, string> = {
@@ -548,11 +532,7 @@ export const addEmphasisAnimationHandler: ToolHandler = async (
       success: boolean;
       message: string;
       animationIndex: number;
-    }>(
-      'addEmphasisAnimation',
-      { slideIndex, shapeIndex, effect },
-      WpsAppType.PRESENTATION
-    );
+    }>('addEmphasisAnimation', { slideIndex, shapeIndex, effect }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       const effectName: Record<string, string> = {
@@ -731,11 +711,7 @@ export const removeSlideTransitionHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'removeSlideTransition',
-      { slideIndex },
-      WpsAppType.PRESENTATION
-    );
+    }>('removeSlideTransition', { slideIndex }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {

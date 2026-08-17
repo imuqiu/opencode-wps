@@ -388,9 +388,12 @@ describe('proofread rule engine — fluency & conciseness rules', () => {
     });
 
     test('7 条新规则不误报正常文本', () => {
-      const cleanText = '经过充分调查，研究团队通过深入分析并决定实施新方案。根据以上结果，针对该问题已经妥善处理。';
+      const cleanText =
+        '经过充分调查，研究团队通过深入分析并决定实施新方案。根据以上结果，针对该问题已经妥善处理。';
       const issues = runBasicProofreading(cleanText);
-      const newRuleIssues = issues.filter(i => i.metric === 'fluency' || i.metric === 'conciseness');
+      const newRuleIssues = issues.filter(
+        i => i.metric === 'fluency' || i.metric === 'conciseness'
+      );
       // "经过..." 不触发"通过A使B"，"根据以上结果"后面没有"显示"
       // "针对该问题"后面没有"这一问题"
       // "决定"前面没有"作出"，"处理"前面没有"进行/予以"
@@ -410,7 +413,9 @@ describe('proofread rule engine — fluency & conciseness rules', () => {
 
     test('纯英文文本不触发新规则', () => {
       const issues = runBasicProofreading('The team conducted research and made decisions.');
-      const newRuleIssues = issues.filter(i => i.metric === 'fluency' || i.metric === 'conciseness');
+      const newRuleIssues = issues.filter(
+        i => i.metric === 'fluency' || i.metric === 'conciseness'
+      );
       expect(newRuleIssues).toHaveLength(0);
     });
 

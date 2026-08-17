@@ -45,7 +45,8 @@ export const setCellFormatDefinition: ToolDefinition = {
       },
       format: {
         type: 'object',
-        description: '格式设置对象，可包含 bold(粗体)、italic(斜体)、fontSize(字号)、fontName(字体名)、fontColor(字体颜色，如#FF0000)、bgColor(背景颜色)、underline(下划线)、strikethrough(删除线)、horizontalAlignment(水平对齐: left/center/right)、verticalAlignment(垂直对齐: top/center/bottom)、wrapText(自动换行)、numberFormat(数字格式，如 #,##0.00、0.00%)',
+        description:
+          '格式设置对象，可包含 bold(粗体)、italic(斜体)、fontSize(字号)、fontName(字体名)、fontColor(字体颜色，如#FF0000)、bgColor(背景颜色)、underline(下划线)、strikethrough(删除线)、horizontalAlignment(水平对齐: left/center/right)、verticalAlignment(垂直对齐: top/center/bottom)、wrapText(自动换行)、numberFormat(数字格式，如 #,##0.00、0.00%)',
         properties: {
           bold: { type: 'boolean', description: '是否粗体' },
           italic: { type: 'boolean', description: '是否斜体' },
@@ -55,8 +56,16 @@ export const setCellFormatDefinition: ToolDefinition = {
           bgColor: { type: 'string', description: '背景颜色，十六进制如 #FFFF00' },
           underline: { type: 'boolean', description: '是否下划线' },
           strikethrough: { type: 'boolean', description: '是否删除线' },
-          horizontalAlignment: { type: 'string', description: '水平对齐方式', enum: ['left', 'center', 'right'] },
-          verticalAlignment: { type: 'string', description: '垂直对齐方式', enum: ['top', 'center', 'bottom'] },
+          horizontalAlignment: {
+            type: 'string',
+            description: '水平对齐方式',
+            enum: ['left', 'center', 'right'],
+          },
+          verticalAlignment: {
+            type: 'string',
+            description: '垂直对齐方式',
+            enum: ['top', 'center', 'bottom'],
+          },
           wrapText: { type: 'boolean', description: '是否自动换行' },
           numberFormat: { type: 'string', description: '数字格式，如 #,##0.00、0.00%' },
         },
@@ -77,7 +86,12 @@ export const setCellFormatDefinition: ToolDefinition = {
 export const setCellFormatHandler: ToolHandler = async (
   args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  const { range, format = {}, numberFormat, sheet } = args as {
+  const {
+    range,
+    format = {},
+    numberFormat,
+    sheet,
+  } = args as {
     range: string;
     format?: Record<string, unknown>;
     numberFormat?: string;
@@ -143,7 +157,8 @@ export const setCellStyleDefinition: ToolDefinition = {
       },
       style: {
         type: 'string',
-        description: '预定义样式名称，如 标题、强调、好、差、适中、输入、输出、计算、检查单元格、解释性文本、汇总 等',
+        description:
+          '预定义样式名称，如 标题、强调、好、差、适中、输入、输出、计算、检查单元格、解释性文本、汇总 等',
       },
       sheet: {
         type: 'string',
@@ -723,7 +738,12 @@ export const hideRowDefinition: ToolDefinition = {
 export const hideRowHandler: ToolHandler = async (
   args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  const { row, count = 1, hide = true, sheet } = args as {
+  const {
+    row,
+    count = 1,
+    hide = true,
+    sheet,
+  } = args as {
     row: number;
     count?: number;
     hide?: boolean;
@@ -793,11 +813,13 @@ export const setDataValidationDefinition: ToolDefinition = {
       },
       type: {
         type: 'string',
-        description: '验证类型：list(下拉列表)、whole(整数)、decimal(小数)、date(日期)、textLength(文本长度)、custom(自定义)',
+        description:
+          '验证类型：list(下拉列表)、whole(整数)、decimal(小数)、date(日期)、textLength(文本长度)、custom(自定义)',
       },
       formula: {
         type: 'string',
-        description: '验证公式。list类型用逗号分隔值如"选项1,选项2,选项3"；数值类型如"1,100"表示范围；custom类型为Excel公式',
+        description:
+          '验证公式。list类型用逗号分隔值如"选项1,选项2,选项3"；数值类型如"1,100"表示范围；custom类型为Excel公式',
       },
       sheet: {
         type: 'string',

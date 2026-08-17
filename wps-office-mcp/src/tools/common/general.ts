@@ -65,9 +65,7 @@ export const saveHandler: ToolHandler = async (
       return {
         id: uuidv4(),
         success: true,
-        content: [
-          { type: 'text', text: `文档保存成功！${response.data?.message || ''}` },
-        ],
+        content: [{ type: 'text', text: `文档保存成功！${response.data?.message || ''}` }],
       };
     } else {
       return {
@@ -222,9 +220,7 @@ export const pingHandler: ToolHandler = async (
       return {
         id: uuidv4(),
         success: true,
-        content: [
-          { type: 'text', text: `WPS连接正常！${response.data?.message || 'pong'}` },
-        ],
+        content: [{ type: 'text', text: `WPS连接正常！${response.data?.message || 'pong'}` }],
       };
     } else {
       return {
@@ -434,9 +430,7 @@ export const getSelectedTextHandler: ToolHandler = async (
       return {
         id: uuidv4(),
         success: true,
-        content: [
-          { type: 'text', text: `选中的文本内容：\n${text}` },
-        ],
+        content: [{ type: 'text', text: `选中的文本内容：\n${text}` }],
       };
     } else {
       return {
@@ -510,9 +504,7 @@ export const setSelectedTextHandler: ToolHandler = async (
       return {
         id: uuidv4(),
         success: true,
-        content: [
-          { type: 'text', text: `选中文本已替换成功！${response.data?.message || ''}` },
-        ],
+        content: [{ type: 'text', text: `选中文本已替换成功！${response.data?.message || ''}` }],
       };
     } else {
       return {

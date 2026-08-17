@@ -56,7 +56,7 @@ export class ToolRegistry {
     this.categories = new Map();
 
     // 初始化分类
-    Object.values(ToolCategory).forEach((category) => {
+    Object.values(ToolCategory).forEach(category => {
       this.categories.set(category, new Set());
     });
 
@@ -149,7 +149,7 @@ export class ToolRegistry {
    * 获取所有Tool定义 - MCP的tools/list用的
    */
   listTools(): ListToolsResponse {
-    const tools = Array.from(this.tools.values()).map((t) => t.definition);
+    const tools = Array.from(this.tools.values()).map(t => t.definition);
     return { tools };
   }
 
@@ -163,7 +163,7 @@ export class ToolRegistry {
     }
 
     return Array.from(toolNames)
-      .map((name) => this.tools.get(name)?.definition)
+      .map(name => this.tools.get(name)?.definition)
       .filter((t): t is ToolDefinition => t !== undefined);
   }
 
@@ -229,10 +229,7 @@ export class ToolRegistry {
   /**
    * 验证参数 - 检查必填参数是否都有
    */
-  private validateArguments(
-    definition: ToolDefinition,
-    args: Record<string, unknown>
-  ): void {
+  private validateArguments(definition: ToolDefinition, args: Record<string, unknown>): void {
     const { inputSchema } = definition;
     const required = inputSchema.required || [];
     const properties = inputSchema.properties || {};
@@ -284,7 +281,7 @@ export class ToolRegistry {
    */
   clear(): void {
     this.tools.clear();
-    this.categories.forEach((set) => set.clear());
+    this.categories.forEach(set => set.clear());
     logger.warn('All tools cleared');
   }
 
@@ -292,10 +289,7 @@ export class ToolRegistry {
    * 创建Tool调用请求 - 辅助方法
    * 注：uuid 包仅在此处使用，如需减少依赖可替换为 crypto.randomUUID()
    */
-  static createRequest(
-    name: string,
-    args: Record<string, unknown>
-  ): ToolCallRequest {
+  static createRequest(name: string, args: Record<string, unknown>): ToolCallRequest {
     return {
       id: uuidv4(),
       name,
@@ -326,22 +320,26 @@ export function RegisterTool(definition: ToolDefinition) {
 /**
  * 快捷注册函数
  */
-export const registerTool = (
-  definition: ToolDefinition,
-  handler: ToolHandler
-): void => {
+export const registerTool = (definition: ToolDefinition, handler: ToolHandler): void => {
   toolRegistry.register(definition, handler);
 };
 
 function validateType(value: unknown, expectedType: string): boolean {
   switch (expectedType) {
-    case 'string': return typeof value === 'string';
-    case 'number': return typeof value === 'number';
-    case 'integer': return typeof value === 'number' && Number.isInteger(value);
-    case 'boolean': return typeof value === 'boolean';
-    case 'object': return typeof value === 'object' && value !== null && !Array.isArray(value);
-    case 'array': return Array.isArray(value);
-    default: return true;
+    case 'string':
+      return typeof value === 'string';
+    case 'number':
+      return typeof value === 'number';
+    case 'integer':
+      return typeof value === 'number' && Number.isInteger(value);
+    case 'boolean':
+      return typeof value === 'boolean';
+    case 'object':
+      return typeof value === 'object' && value !== null && !Array.isArray(value);
+    case 'array':
+      return Array.isArray(value);
+    default:
+      return true;
   }
 }
 

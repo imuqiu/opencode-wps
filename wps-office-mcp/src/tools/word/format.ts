@@ -81,11 +81,7 @@ export const applyStyleHandler: ToolHandler = async (
       success: boolean;
       message: string;
       affectedText: string;
-    }>(
-      'applyStyle',
-      { styleName: style_name, range },
-      WpsAppType.WRITER
-    );
+    }>('applyStyle', { styleName: style_name, range }, WpsAppType.WRITER);
 
     if (response.success && response.data) {
       return {
@@ -180,12 +176,20 @@ export const setFontHandler: ToolHandler = async (
   };
 
   // 至少要设置一个属性吧
-  if (!font_name && !font_size && bold === undefined && italic === undefined &&
-      underline === undefined && !color) {
+  if (
+    !font_name &&
+    !font_size &&
+    bold === undefined &&
+    italic === undefined &&
+    underline === undefined &&
+    !color
+  ) {
     return {
       id: uuidv4(),
       success: false,
-      content: [{ type: 'text', text: '请至少指定一个字体属性（如 font_name、font_size、bold 等）' }],
+      content: [
+        { type: 'text', text: '请至少指定一个字体属性（如 font_name、font_size、bold 等）' },
+      ],
       error: '没有指定任何字体属性',
     };
   }
@@ -374,11 +378,7 @@ export const insertBookmarkHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'insertBookmark',
-      { name },
-      WpsAppType.WRITER
-    );
+    }>('insertBookmark', { name }, WpsAppType.WRITER);
 
     if (response.success) {
       return {
@@ -463,12 +463,19 @@ export const setPageSetupHandler: ToolHandler = async (
     marginRight?: number;
   };
 
-  if (!orientation && marginTop === undefined && marginBottom === undefined &&
-      marginLeft === undefined && marginRight === undefined) {
+  if (
+    !orientation &&
+    marginTop === undefined &&
+    marginBottom === undefined &&
+    marginLeft === undefined &&
+    marginRight === undefined
+  ) {
     return {
       id: uuidv4(),
       success: false,
-      content: [{ type: 'text', text: '请至少指定一个页面设置属性（如 orientation、marginTop 等）' }],
+      content: [
+        { type: 'text', text: '请至少指定一个页面设置属性（如 orientation、marginTop 等）' },
+      ],
       error: '没有指定任何页面设置属性',
     };
   }

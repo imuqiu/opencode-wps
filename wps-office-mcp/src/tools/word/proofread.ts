@@ -72,11 +72,7 @@ export const enableTrackChangesHandler: ToolHandler = async (
       success: boolean;
       trackChanges: boolean;
       active: boolean;
-    }>(
-      'enableTrackChanges',
-      { enable: enable === true },
-      WpsAppType.WRITER
-    );
+    }>('enableTrackChanges', { enable: enable === true }, WpsAppType.WRITER);
 
     if (response.success && response.data) {
       const status = response.data.active ? '已开启' : '已关闭';
@@ -134,11 +130,7 @@ export const getTrackChangesStatusHandler: ToolHandler = async (
       success: boolean;
       trackChanges: boolean;
       revisionCount: number;
-    }>(
-      'getTrackChangesStatus',
-      {},
-      WpsAppType.WRITER
-    );
+    }>('getTrackChangesStatus', {}, WpsAppType.WRITER);
 
     if (response.success && response.data) {
       const d = response.data;
@@ -170,7 +162,6 @@ export const getTrackChangesStatusHandler: ToolHandler = async (
     };
   }
 };
-
 
 /**
  * 按段落+文本匹配替换（修订模式下跟踪）
@@ -231,14 +222,15 @@ export const replaceInParagraphDefinition: ToolDefinition = {
 export const replaceInParagraphHandler: ToolHandler = async (
   args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  const { paragraph_index, find_text, replace_text, match_case, match_whole_word, replace_all } = args as {
-    paragraph_index: number;
-    find_text: string;
-    replace_text: string;
-    match_case?: boolean;
-    match_whole_word?: boolean;
-    replace_all?: boolean;
-  };
+  const { paragraph_index, find_text, replace_text, match_case, match_whole_word, replace_all } =
+    args as {
+      paragraph_index: number;
+      find_text: string;
+      replace_text: string;
+      match_case?: boolean;
+      match_whole_word?: boolean;
+      replace_all?: boolean;
+    };
 
   if (paragraph_index === undefined || paragraph_index === null) {
     return {
@@ -249,7 +241,11 @@ export const replaceInParagraphHandler: ToolHandler = async (
     };
   }
 
-  if (typeof paragraph_index !== 'number' || !Number.isInteger(paragraph_index) || paragraph_index < 1) {
+  if (
+    typeof paragraph_index !== 'number' ||
+    !Number.isInteger(paragraph_index) ||
+    paragraph_index < 1
+  ) {
     return {
       id: uuidv4(),
       success: false,
@@ -362,7 +358,8 @@ export const proofreadBasicDefinition: ToolDefinition = {
       text: {
         type: 'string',
         maxLength: 5000,
-        description: '要校对的文本内容（text 和 file_path 至少提供一个）。' +
+        description:
+          '要校对的文本内容（text 和 file_path 至少提供一个）。' +
           '注意：text ≥ 5000 字符或含 \\f 等控制字符时请改用 file_path，' +
           '否则 JSON 解析可能失败。',
       },
@@ -372,7 +369,8 @@ export const proofreadBasicDefinition: ToolDefinition = {
       },
       file_path: {
         type: 'string',
-        description: '从文件读取文本的路径（text 和 file_path 至少提供一个）。' +
+        description:
+          '从文件读取文本的路径（text 和 file_path 至少提供一个）。' +
           '当文本含 \\f 等控制字符导致 JSON 解析失败时，先用 bash 写入文件再传此路径。',
       },
     },
@@ -394,7 +392,6 @@ interface ProofreadIssue {
   metric?: 'fluency' | 'conciseness';
 }
 
-
 type Rule = {
   pattern: RegExp;
   type: string;
@@ -405,25 +402,27 @@ type Rule = {
 const rules: Rule[] = [
   // ===== 的/得/地 混淆 =====
   {
-    pattern: /(狠|很|真|非|极|异|格|大|更|最|顶|十|万)的(好|坏|快|慢|多|少|高|低|长|短|大|小|厚|薄|深|浅|早|晚|对|像|开心|难过|高兴|努力)/g,
+    pattern:
+      /(狠|很|真|非|极|异|格|大|更|最|顶|十|万)的(好|坏|快|慢|多|少|高|低|长|短|大|小|厚|薄|深|浅|早|晚|对|像|开心|难过|高兴|努力)/g,
     type: '的得混淆',
-    getSuggestion: (m) => m.replace('的', '得'),
+    getSuggestion: m => m.replace('的', '得'),
   },
   {
-    pattern: /(?:(?:动词|形容|努力|飞快|慢慢|静静|默默|悄悄|使劲|不断|不停|一口|一致|大力|全力|肆意)的|不停的)/g,
+    pattern:
+      /(?:(?:动词|形容|努力|飞快|慢慢|静静|默默|悄悄|使劲|不断|不停|一口|一致|大力|全力|肆意)的|不停的)/g,
     type: '的地混淆',
-    getSuggestion: (m) => m.replace('的', '地'),
+    getSuggestion: m => m.replace('的', '地'),
   },
   // 常见"的得地"上下文模式
   {
     pattern: /(做|搞|弄|写|说|画|跑|跳|走|看|听|吃|喝)的(太|很|非常|比较|极为|十分|挺|有点|有些)/g,
     type: '的得混淆',
-    getSuggestion: (m) => m.replace(/(做|搞|弄|写|说|画|跑|跳|走|看|听|吃|喝)的/, '$1得'),
+    getSuggestion: m => m.replace(/(做|搞|弄|写|说|画|跑|跳|走|看|听|吃|喝)的/, '$1得'),
   },
   {
     pattern: /(笑|哭|叫|闹|做)的(合不拢嘴|不停|不亦乐乎|很|出神)/g,
     type: '的得混淆',
-    getSuggestion: (m) => m.replace(/(笑|哭|叫|闹|做)的/, '$1得'),
+    getSuggestion: m => m.replace(/(笑|哭|叫|闹|做)的/, '$1得'),
   },
 
   // ===== 在/再 混淆 =====
@@ -433,21 +432,21 @@ const rules: Rule[] = [
   {
     pattern: /(?<![正现])在(次|来|去)/g,
     type: '在再混淆',
-    getSuggestion: (m) => '再' + m.substring(1),
+    getSuggestion: m => '再' + m.substring(1),
   },
 
   // ===== 重复字符 =====
   {
     pattern: /([\u4e00-\u9fff])\1{2,}/g,
     type: '重复字符',
-    getSuggestion: (m) => m[0],
+    getSuggestion: m => m[0],
   },
 
   // ===== 重复标点 =====
   {
     pattern: /([，。；：、！？]){2,}/g,
     type: '重复标点',
-    getSuggestion: (m) => m[0],
+    getSuggestion: m => m[0],
   },
   {
     pattern: /(\.\.\.+|……+)\.*/g,
@@ -464,29 +463,29 @@ const rules: Rule[] = [
   {
     pattern: /[a-zA-Z]+[，]/g,
     type: '中英混排',
-    getSuggestion: (m) => m.replace('，', ','),
+    getSuggestion: m => m.replace('，', ','),
   },
   {
     pattern: /[，][a-zA-Z]+/g,
     type: '中英混排',
-    getSuggestion: (m) => m.replace('，', ','),
+    getSuggestion: m => m.replace('，', ','),
   },
   {
     pattern: /[。][a-zA-Z]/g,
     type: '中英混排',
-    getSuggestion: (m) => m.replace('。', '.'),
+    getSuggestion: m => m.replace('。', '.'),
   },
 
   // ===== 数字前后异常空格 =====
   {
     pattern: /(\d) ([,.;:!?])/g,
     type: '数字空格',
-    getSuggestion: (m) => m.replace(' ', ''),
+    getSuggestion: m => m.replace(' ', ''),
   },
   {
     pattern: /([,.;:!?]) (\d)/g,
     type: '数字空格',
-    getSuggestion: (m) => m.replace(' ', ''),
+    getSuggestion: m => m.replace(' ', ''),
   },
 
   // ===== 常见错误搭配 =====
@@ -505,7 +504,7 @@ const rules: Rule[] = [
     // 限定中间字符数防止误报（如"大约在左右"这类合法用法）
     pattern: /大约([^，。；！？\n]{1,8})(左右|上下)/g,
     type: '句式冗余',
-    getSuggestion: (m) => '大约' + m.replace(/^大约/, '').replace(/(左右|上下)$/, ''),
+    getSuggestion: m => '大约' + m.replace(/^大约/, '').replace(/(左右|上下)$/, ''),
   },
   {
     pattern: /目的是为了/g,
@@ -515,7 +514,7 @@ const rules: Rule[] = [
   {
     pattern: /可以(说|看成|认为)是/g,
     type: '句式冗余',
-    getSuggestion: (m) => '可' + m.substring(2),
+    getSuggestion: m => '可' + m.substring(2),
   },
   {
     pattern: /被(广大|众多)所/g,
@@ -570,35 +569,35 @@ const rules: Rule[] = [
   {
     pattern: /(干|有|说|做)啥/g,
     type: '口语化',
-    getSuggestion: (m) => m.replace('啥', '什么'),
+    getSuggestion: m => m.replace('啥', '什么'),
   },
   {
     pattern: /啥(都|也|的|呀)/g,
     type: '口语化',
-    getSuggestion: (m) => '什' + '么' + m[1],
+    getSuggestion: m => '什' + '么' + m[1],
   },
   // "挺"在正式文档中应替换
   {
     pattern: /挺(好|大|多|快|高|长|难|重|重要|不错|合适|特别|关键)/g,
     type: '口语化',
-    getSuggestion: (m) => '很' + m.substring(1),
+    getSuggestion: m => '很' + m.substring(1),
   },
   // "反正"太口语化
   {
     pattern: /(这|那)反正/g,
     type: '口语化',
-    getSuggestion: (m) => m[0].includes('这') ? '这无论如何' : '那无论如何',
+    getSuggestion: m => (m[0].includes('这') ? '这无论如何' : '那无论如何'),
   },
   {
     pattern: /反正(说|就是|都|也)/g,
     type: '口语化',
-    getSuggestion: (m) => '无论' + (m.substring(2) === '说' ? '如何' : m.substring(2)),
+    getSuggestion: m => '无论' + (m.substring(2) === '说' ? '如何' : m.substring(2)),
   },
   // "然后"过多（仅在句号/逗号后）
   {
     pattern: /([。，])然后/g,
     type: '口语化',
-    getSuggestion: (m) => m.startsWith('。') ? '。随后' : '，接着',
+    getSuggestion: m => (m.startsWith('。') ? '。随后' : '，接着'),
   },
   // "就是说"在正式文档中可优化
   {
@@ -615,7 +614,7 @@ const rules: Rule[] = [
   {
     pattern: /特别(好|大|多|快|高|长|重要|明显|突出|优秀)/g,
     type: '口语化',
-    getSuggestion: (m) => '十分' + m.substring(2),
+    getSuggestion: m => '十分' + m.substring(2),
   },
 
   // ===== 常见错别字模式 =====
@@ -624,7 +623,7 @@ const rules: Rule[] = [
   {
     pattern: /即(然|而)/g,
     type: '即既混淆',
-    getSuggestion: (m) => '既' + m.substring(1),
+    getSuggestion: m => '既' + m.substring(1),
   },
   {
     pattern: /变的/g,
@@ -642,18 +641,18 @@ const rules: Rule[] = [
   {
     pattern: /签定(合同|协议|合约|约定)/g,
     type: '法律术语',
-    getSuggestion: (m) => '签订' + m.substring(2),
+    getSuggestion: m => '签订' + m.substring(2),
   },
   // 权力→权利（法律/知识产权语境）
   {
     pattern: /(知识|所有|著作|专利|商标|许可)(权)力/g,
     type: '法律术语',
-    getSuggestion: (m) => m.replace(/权力$/, '权利'),
+    getSuggestion: m => m.replace(/权力$/, '权利'),
   },
   {
     pattern: /权力(维护|保护|保障|归属)/g,
     type: '法律术语',
-    getSuggestion: (m) => '权利' + m.substring(2),
+    getSuggestion: m => '权利' + m.substring(2),
   },
 
   // ===== 工程/技术术语常见错误 =====
@@ -665,14 +664,14 @@ const rules: Rule[] = [
   {
     pattern: /算数(错误|问题|计算|统计)/g,
     type: '常见错别字',
-    getSuggestion: (m) => '算术' + m.substring(2),
+    getSuggestion: m => '算术' + m.substring(2),
   },
 
   // ===== 数字量词搭配不当 =====
   {
     pattern: /([2-9])大(方面|部分|模块|功能|内容|阶段|类型|类别|层次|层面)/g,
     type: '量词搭配',
-    getSuggestion: (m) => m.replace(/(\d)大/, '$1个'),
+    getSuggestion: m => m.replace(/(\d)大/, '$1个'),
   },
 
   // ===== "其它"→"其他" =====
@@ -680,7 +679,7 @@ const rules: Rule[] = [
   {
     pattern: /其它(人|事|物|方面|单位|情况|问题|费用|知识产权|的|，|。|；|：)/g,
     type: '用词统一',
-    getSuggestion: (m) => '其他' + m.substring(2),
+    getSuggestion: m => '其他' + m.substring(2),
   },
 
   // ===== 多余点号 =====
@@ -694,13 +693,13 @@ const rules: Rule[] = [
   {
     pattern: /([\u4e00-\u9fff])(\.\.|。\.)/g,
     type: '多余点号',
-    getSuggestion: (m) => m[1] + '.',
+    getSuggestion: m => m[1] + '.',
   },
   // 句号后直接跟中文（标准编号如GB/T内带"."的不在此列）
   {
     pattern: /([\u4e00-\u9fff])\。\.([\u4e00-\u9fff])/g,
     type: '多余点号',
-    getSuggestion: (m) => m[1] + '。' + m[2],
+    getSuggestion: m => m[1] + '。' + m[2],
   },
 
   // ===== 中文标点规范 =====
@@ -708,19 +707,19 @@ const rules: Rule[] = [
   {
     pattern: /([\u4e00-\u9fff]):([\u4e00-\u9fff])/g,
     type: '中文标点',
-    getSuggestion: (m) => m[0].replace(':', '：'),
+    getSuggestion: m => m[0].replace(':', '：'),
   },
   // 英文逗号在中文文本中
   {
     pattern: /([\u4e00-\u9fff]),([\u4e00-\u9fff])/g,
     type: '中文标点',
-    getSuggestion: (m) => m[0].replace(',', '，'),
+    getSuggestion: m => m[0].replace(',', '，'),
   },
   // 分号误用为冒号场景
   {
     pattern: /(包括|以下|如下|例如|比如|主要有)(的|以下)?；(?!\s)/g,
     type: '中文标点',
-    getSuggestion: (m) => m.replace('；', '：'),
+    getSuggestion: m => m.replace('；', '：'),
   },
   // 中文正文中英文句点不应直接跟随中文（排除标准编号如GB/T）
   // 此场景过于复杂，留AI处理
@@ -772,7 +771,7 @@ const rules: Rule[] = [
   {
     pattern: /并(非|不)是/g,
     type: '多字',
-    getSuggestion: (m) => (m.includes('非') ? '并非' : '并不'),
+    getSuggestion: m => (m.includes('非') ? '并非' : '并不'),
   },
   {
     pattern: /必须要/g,
@@ -797,16 +796,16 @@ const rules: Rule[] = [
   {
     pattern: /最为(重要|关键|核心|突出|显著)/g,
     type: '多字',
-    getSuggestion: (m) => '最' + m[1],
+    getSuggestion: m => '最' + m[1],
   },
-
 
   // ===== 少字（缺字） =====
   // 数字缺少量词（以下三→以下三种）
   {
-    pattern: /以下([一二三四五六七八九十两])(控制|方面|类型|方式|阶段|部分|模块|方法|条件|要求|类别|层次|层面)/g,
+    pattern:
+      /以下([一二三四五六七八九十两])(控制|方面|类型|方式|阶段|部分|模块|方法|条件|要求|类别|层次|层面)/g,
     type: '少字',
-    getSuggestion: (m) => m.replace(/([一二三四五六七八九十两])/, '$1种'),
+    getSuggestion: m => m.replace(/([一二三四五六七八九十两])/, '$1种'),
   },
 
   // ===== 评测/测评 混淆 =====
@@ -835,14 +834,15 @@ const rules: Rule[] = [
 
   // ===== 测试/占位文本检测 =====
   {
-    pattern: /(?:check|test|sample|todo|fixme|placeholder|lorem ipsum)\s+(?:\w+\s+){0,5}(?:check|test|sample|todo|fixme|placeholder|lorem ipsum)/gi,
+    pattern:
+      /(?:check|test|sample|todo|fixme|placeholder|lorem ipsum)\s+(?:\w+\s+){0,5}(?:check|test|sample|todo|fixme|placeholder|lorem ipsum)/gi,
     type: '占位文本',
     getSuggestion: () => '[需补充正式内容]',
   },
   {
     pattern: /(?:xx|xxx|xxx|xxxx)\s*(?:有限公司|公司|项目|部门|单位)/gi,
     type: '占位文本',
-    getSuggestion: (m) => m.replace(/x+/gi, '[名称]'),
+    getSuggestion: m => m.replace(/x+/gi, '[名称]'),
   },
 
   // ===== 通顺/简洁规则 — metric 驱动 =====
@@ -851,7 +851,7 @@ const rules: Rule[] = [
     pattern: /通过(.*?)(使|让|令)/g,
     type: '句式杂糅',
     metric: 'fluency',
-    getSuggestion: (m) => {
+    getSuggestion: m => {
       // "通过A使B" → "A使B" 或 "通过A，B"
       // 原original捕获完整短语，建议去除"通过"
       return m.replace(/^通过/, '');
@@ -861,7 +861,7 @@ const rules: Rule[] = [
     pattern: /根据(.*?)(显示|表明|证实)/g,
     type: '句式杂糅',
     metric: 'fluency',
-    getSuggestion: (m) => {
+    getSuggestion: m => {
       // "根据A显示" → "根据A" 或 "A显示"
       return m.replace(/^根据/, '').replace(/(显示|表明|证实)$/, '');
     },
@@ -872,7 +872,7 @@ const rules: Rule[] = [
     pattern: /由于(.*?)的原因(导致|使|造成)/g,
     type: '句式杂糅',
     metric: 'fluency',
-    getSuggestion: (m) => {
+    getSuggestion: m => {
       // "由于A的原因导致B" → "由于A，B" 或 "A导致B"
       // 去除"的原因"，保留因果逻辑
       return m.replace('的原因', '');
@@ -882,34 +882,35 @@ const rules: Rule[] = [
   // 冗余词（conciseness）：动词本身已表达完整语义，额外成分是赘余
   // "进行/进行了" + 可选修饰语 + 动词 — 如"进行研究"、"进行了讨论"、"进行深入的分析"
   {
-    pattern: /进行(了)?((深入|详细|认真|充分|全面|系统|细致|专门|彻底|有效)[的])?(研究|分析|讨论|处理|调查)/g,
+    pattern:
+      /进行(了)?((深入|详细|认真|充分|全面|系统|细致|专门|彻底|有效)[的])?(研究|分析|讨论|处理|调查)/g,
     type: '冗余词',
     metric: 'conciseness',
-    getSuggestion: (m) => m.replace(/^进行(了)?/, ''),
+    getSuggestion: m => m.replace(/^进行(了)?/, ''),
   },
   {
     pattern: /作出(了)?(决定|部署|安排)/g,
     type: '冗余词',
     metric: 'conciseness',
-    getSuggestion: (m) => m.replace(/^作出(了)?/, ''),
+    getSuggestion: m => m.replace(/^作出(了)?/, ''),
   },
   {
     pattern: /予以(了)?(解决|处理|落实)/g,
     type: '冗余词',
     metric: 'conciseness',
-    getSuggestion: (m) => m.replace(/^予以(了)?/, ''),
+    getSuggestion: m => m.replace(/^予以(了)?/, ''),
   },
   {
     pattern: /加以(了)?(解决|完善|规范)/g,
     type: '冗余词',
     metric: 'conciseness',
-    getSuggestion: (m) => m.replace(/^加以(了)?/, ''),
+    getSuggestion: m => m.replace(/^加以(了)?/, ''),
   },
   {
     pattern: /针对(.*?)这一问题/g,
     type: '冗余词',
     metric: 'conciseness',
-    getSuggestion: (m) => {
+    getSuggestion: m => {
       // "针对A这一问题" → "针对A" 或 "对A"
       return m.replace(/针对/, '对').replace(/这一问题$/, '');
     },
@@ -934,7 +935,6 @@ export function runBasicProofreading(text: string, baseOffset: number = 0): Proo
   // 如果没有控制字符，直接用原文本避免额外开销
   const useCleaned = cleaned.length !== text.length;
   const effectiveText = useCleaned ? cleaned : text;
-
 
   for (const rule of rules) {
     let match: RegExpExecArray | null;

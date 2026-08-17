@@ -76,11 +76,7 @@ export const createProgressBarHandler: ToolHandler = async (
       success: boolean;
       message: string;
       shapeId?: number;
-    }>(
-      'createProgressBar',
-      { slideIndex, value, label: label || '' },
-      WpsAppType.PRESENTATION
-    );
+    }>('createProgressBar', { slideIndex, value, label: label || '' }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       return {
@@ -163,11 +159,7 @@ export const createGaugeHandler: ToolHandler = async (
       success: boolean;
       message: string;
       shapeId?: number;
-    }>(
-      'createGauge',
-      { slideIndex, value, max: maxValue },
-      WpsAppType.PRESENTATION
-    );
+    }>('createGauge', { slideIndex, value, max: maxValue }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       return {
@@ -244,11 +236,7 @@ export const createMiniChartsHandler: ToolHandler = async (
       success: boolean;
       message: string;
       chartCount: number;
-    }>(
-      'createMiniCharts',
-      { slideIndex, data },
-      WpsAppType.PRESENTATION
-    );
+    }>('createMiniCharts', { slideIndex, data }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       return {
@@ -304,7 +292,8 @@ export const createDonutChartDefinition: ToolDefinition = {
       },
       data: {
         type: 'array',
-        description: '数据数组，如 [{label:"产品A",value:40},{label:"产品B",value:30},{label:"其他",value:30}]',
+        description:
+          '数据数组，如 [{label:"产品A",value:40},{label:"产品B",value:30},{label:"其他",value:30}]',
         items: { type: 'object' },
       },
     },
@@ -325,11 +314,7 @@ export const createDonutChartHandler: ToolHandler = async (
       success: boolean;
       message: string;
       shapeId?: number;
-    }>(
-      'createDonutChart',
-      { slideIndex, data },
-      WpsAppType.PRESENTATION
-    );
+    }>('createDonutChart', { slideIndex, data }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       return {
@@ -402,11 +387,7 @@ export const autoLayoutHandler: ToolHandler = async (
       success: boolean;
       message: string;
       adjustedCount?: number;
-    }>(
-      'autoLayout',
-      { slideIndex },
-      WpsAppType.PRESENTATION
-    );
+    }>('autoLayout', { slideIndex }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {
@@ -482,11 +463,7 @@ export const smartDistributeHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'smartDistribute',
-      { slideIndex, shapeIndices },
-      WpsAppType.PRESENTATION
-    );
+    }>('smartDistribute', { slideIndex, shapeIndices }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {
@@ -567,11 +544,7 @@ export const createGridHandler: ToolHandler = async (
       success: boolean;
       message: string;
       cellCount?: number;
-    }>(
-      'createGrid',
-      { slideIndex, rows, cols },
-      WpsAppType.PRESENTATION
-    );
+    }>('createGrid', { slideIndex, rows, cols }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {

@@ -48,7 +48,10 @@ jest.mock('../../utils/error', () => ({
     }
   },
   InvalidParamsError: class InvalidParamsError extends Error {
-    constructor(message: string, public details?: unknown) {
+    constructor(
+      message: string,
+      public details?: unknown
+    ) {
       super(message);
       this.name = 'InvalidParamsError';
     }
@@ -92,7 +95,7 @@ describe('ToolRegistry', () => {
   };
 
   // 测试用的Handler
-  const testHandler: ToolHandler = jest.fn(async (args) => ({
+  const testHandler: ToolHandler = jest.fn(async args => ({
     id: 'test-id',
     success: true,
     content: [{ type: 'text' as const, text: `Received: ${JSON.stringify(args)}` }],
@@ -158,7 +161,7 @@ describe('ToolRegistry', () => {
       registry.register(noCategory, testHandler);
 
       const commonTools = registry.getToolsByCategory(ToolCategory.COMMON);
-      expect(commonTools.some((t) => t.name === 'no.category')).toBe(true);
+      expect(commonTools.some(t => t.name === 'no.category')).toBe(true);
     });
   });
 
@@ -181,8 +184,14 @@ describe('ToolRegistry', () => {
     it('GATEWAY_ONLY 工具即使 registerAll 也不会直连注册（结构性防护）', () => {
       // 模拟未来误调用 registerAll(allTools)：黑名单工具必须被 register() 拦截跳过
       const gatewayOnly = [
-        { definition: { ...testToolDefinition, name: 'wps_word_proofread_accumulate' }, handler: testHandler },
-        { definition: { ...testToolDefinition, name: 'wps_word_generate_proofread_report' }, handler: testHandler },
+        {
+          definition: { ...testToolDefinition, name: 'wps_word_proofread_accumulate' },
+          handler: testHandler,
+        },
+        {
+          definition: { ...testToolDefinition, name: 'wps_word_generate_proofread_report' },
+          handler: testHandler,
+        },
         { definition: { ...testToolDefinition, name: 'normal-tool' }, handler: testHandler },
       ];
 
@@ -241,8 +250,8 @@ describe('ToolRegistry', () => {
       const result = registry.listTools();
 
       expect(result.tools).toHaveLength(2);
-      expect(result.tools.map((t) => t.name)).toContain('list.tool1');
-      expect(result.tools.map((t) => t.name)).toContain('list.tool2');
+      expect(result.tools.map(t => t.name)).toContain('list.tool1');
+      expect(result.tools.map(t => t.name)).toContain('list.tool2');
     });
   });
 

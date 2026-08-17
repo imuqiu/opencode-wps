@@ -187,7 +187,7 @@ export const generateFormulaHandler: ToolHandler = async (
 当前选中: ${context.selectedCell}
 数据范围: ${context.usedRangeAddress}
 表头信息:
-${context.headers.map((h) => `  ${h.column}列: ${h.value}`).join('\n')}
+${context.headers.map(h => `  ${h.column}列: ${h.value}`).join('\n')}
 
 用户需求: ${description}
 目标单元格: ${target_cell || '待确认'}
@@ -339,17 +339,33 @@ export const evaluateFormulaHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   try {
     const response = await wpsClient.executeMethod<{ success: boolean; result: unknown }>(
-      'evaluateFormula', args, WpsAppType.SPREADSHEET
+      'evaluateFormula',
+      args,
+      WpsAppType.SPREADSHEET
     );
 
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `公式计算失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `公式计算失败: ${response.error}` }],
+        error: response.error,
+      };
     }
 
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: JSON.stringify(response.data) }] };
+    return {
+      id: uuidv4(),
+      success: true,
+      content: [{ type: 'text', text: JSON.stringify(response.data) }],
+    };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `公式计算出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `公式计算出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -369,17 +385,29 @@ export const setPrintAreaHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   try {
     const response = await wpsClient.executeMethod<{ success: boolean }>(
-      'setPrintArea', args, WpsAppType.SPREADSHEET
+      'setPrintArea',
+      args,
+      WpsAppType.SPREADSHEET
     );
 
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置打印区域失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `设置打印区域失败: ${response.error}` }],
+        error: response.error,
+      };
     }
 
     return { id: uuidv4(), success: true, content: [{ type: 'text', text: '打印区域已设置' }] };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置打印区域出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `设置打印区域出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -399,17 +427,29 @@ export const zoomHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   try {
     const response = await wpsClient.executeMethod<{ success: boolean }>(
-      'setZoom', args, WpsAppType.SPREADSHEET
+      'setZoom',
+      args,
+      WpsAppType.SPREADSHEET
     );
 
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置缩放失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `设置缩放失败: ${response.error}` }],
+        error: response.error,
+      };
     }
 
     return { id: uuidv4(), success: true, content: [{ type: 'text', text: '缩放已设置' }] };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置缩放出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `设置缩放出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 

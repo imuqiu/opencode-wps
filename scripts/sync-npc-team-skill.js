@@ -37,7 +37,11 @@ if (!/你是「NPC Team 总指挥」/.test(prompt)) {
 }
 
 if (!fs.existsSync(SKILL_FILE)) {
-  console.error('✖ 目标 SKILL.md 不存在（' + SKILL_FILE + '），无法同步。请检查 .codebuddy/skills/npc-team/ 目录是否完整');
+  console.error(
+    '✖ 目标 SKILL.md 不存在（' +
+      SKILL_FILE +
+      '），无法同步。请检查 .codebuddy/skills/npc-team/ 目录是否完整'
+  );
   process.exit(1);
 }
 

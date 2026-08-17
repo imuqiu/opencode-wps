@@ -62,11 +62,7 @@ export const getSlideMasterHandler: ToolHandler = async (
       success: boolean;
       message: string;
       master: Record<string, unknown>;
-    }>(
-      'getSlideMaster',
-      {},
-      WpsAppType.PRESENTATION
-    );
+    }>('getSlideMaster', {}, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       return {
@@ -118,7 +114,8 @@ export const setMasterBackgroundDefinition: ToolDefinition = {
     properties: {
       background: {
         type: 'object',
-        description: '背景配置对象，支持 {type:"solid",color:"#xxx"}, {type:"gradient",colors:[...]}, {type:"image",path:"..."}',
+        description:
+          '背景配置对象，支持 {type:"solid",color:"#xxx"}, {type:"gradient",colors:[...]}, {type:"image",path:"..."}',
       },
     },
     required: ['background'],
@@ -136,11 +133,7 @@ export const setMasterBackgroundHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'setMasterBackground',
-      { background },
-      WpsAppType.PRESENTATION
-    );
+    }>('setMasterBackground', { background }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {
@@ -192,7 +185,8 @@ export const addMasterElementDefinition: ToolDefinition = {
     properties: {
       element: {
         type: 'object',
-        description: '元素配置对象，如 {type:"textbox",text:"...",left:0,top:0,width:100,height:50} 或 {type:"image",path:"...",left:0,top:0}',
+        description:
+          '元素配置对象，如 {type:"textbox",text:"...",left:0,top:0,width:100,height:50} 或 {type:"image",path:"...",left:0,top:0}',
       },
     },
     required: ['element'],
@@ -211,11 +205,7 @@ export const addMasterElementHandler: ToolHandler = async (
       success: boolean;
       message: string;
       elementId?: number;
-    }>(
-      'addMasterElement',
-      { element },
-      WpsAppType.PRESENTATION
-    );
+    }>('addMasterElement', { element }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       return {
@@ -297,11 +287,7 @@ export const set3DRotationHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'set3DRotation',
-      { slideIndex, shapeIndex, rotation },
-      WpsAppType.PRESENTATION
-    );
+    }>('set3DRotation', { slideIndex, shapeIndex, rotation }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {
@@ -381,11 +367,7 @@ export const set3DDepthHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'set3DDepth',
-      { slideIndex, shapeIndex, depth },
-      WpsAppType.PRESENTATION
-    );
+    }>('set3DDepth', { slideIndex, shapeIndex, depth }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {
@@ -452,7 +434,8 @@ export const set3DMaterialDefinition: ToolDefinition = {
       },
       material: {
         type: 'string',
-        description: '材质类型：matte(哑光)、plastic(塑料)、metal(金属)、wireframe(线框)、soft_edge(柔化)、flat(平面)、dark_edge(暗边)',
+        description:
+          '材质类型：matte(哑光)、plastic(塑料)、metal(金属)、wireframe(线框)、soft_edge(柔化)、flat(平面)、dark_edge(暗边)',
       },
     },
     required: ['slideIndex', 'shapeIndex', 'material'],
@@ -472,11 +455,7 @@ export const set3DMaterialHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'set3DMaterial',
-      { slideIndex, shapeIndex, material },
-      WpsAppType.PRESENTATION
-    );
+    }>('set3DMaterial', { slideIndex, shapeIndex, material }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       const materialName: Record<string, string> = {
@@ -546,7 +525,8 @@ export const create3DTextDefinition: ToolDefinition = {
       },
       style: {
         type: 'object',
-        description: '可选的3D样式参数，如 {depth:30,material:"metal",color:"#FFD700",fontSize:48,rotation:{rotX:20,rotY:30}}',
+        description:
+          '可选的3D样式参数，如 {depth:30,material:"metal",color:"#FFD700",fontSize:48,rotation:{rotX:20,rotY:30}}',
       },
     },
     required: ['slideIndex', 'text'],
@@ -567,11 +547,7 @@ export const create3DTextHandler: ToolHandler = async (
       success: boolean;
       message: string;
       shapeId?: number;
-    }>(
-      'create3DText',
-      { slideIndex, text, style: style || {} },
-      WpsAppType.PRESENTATION
-    );
+    }>('create3DText', { slideIndex, text, style: style || {} }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       return {
@@ -653,11 +629,7 @@ export const addPptHyperlinkHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'addPptHyperlink',
-      { slideIndex, shapeIndex, url },
-      WpsAppType.PRESENTATION
-    );
+    }>('addPptHyperlink', { slideIndex, shapeIndex, url }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {
@@ -730,11 +702,7 @@ export const removePptHyperlinkHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'removePptHyperlink',
-      { slideIndex, shapeIndex },
-      WpsAppType.PRESENTATION
-    );
+    }>('removePptHyperlink', { slideIndex, shapeIndex }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {
@@ -812,11 +780,7 @@ export const findPptTextHandler: ToolHandler = async (
         text: string;
       }>;
       count: number;
-    }>(
-      'findPptText',
-      { text },
-      WpsAppType.PRESENTATION
-    );
+    }>('findPptText', { text }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       const result = response.data;
@@ -906,11 +870,7 @@ export const replacePptTextHandler: ToolHandler = async (
       success: boolean;
       message: string;
       count: number;
-    }>(
-      'replacePptText',
-      { find, replace },
-      WpsAppType.PRESENTATION
-    );
+    }>('replacePptText', { find, replace }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       return {
@@ -982,11 +942,7 @@ export const startSlideShowHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'startSlideShow',
-      { fromSlide: fromSlide || 1 },
-      WpsAppType.PRESENTATION
-    );
+    }>('startSlideShow', { fromSlide: fromSlide || 1 }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {

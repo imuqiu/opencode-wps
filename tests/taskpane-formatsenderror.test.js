@@ -34,12 +34,24 @@ function assertTrue(actual, msg) {
 }
 function assertEqual(actual, expected, msg) {
   if (actual !== expected) {
-    throw new Error((msg || 'assertEqual') + ': expected ' + JSON.stringify(expected) + ', got ' + JSON.stringify(actual));
+    throw new Error(
+      (msg || 'assertEqual') +
+        ': expected ' +
+        JSON.stringify(expected) +
+        ', got ' +
+        JSON.stringify(actual)
+    );
   }
 }
 function assertIncludes(haystack, needle, msg) {
   if (haystack.indexOf(needle) === -1) {
-    throw new Error((msg || 'assertIncludes') + ': expected to include ' + JSON.stringify(needle) + ', got ' + JSON.stringify(haystack));
+    throw new Error(
+      (msg || 'assertIncludes') +
+        ': expected to include ' +
+        JSON.stringify(needle) +
+        ', got ' +
+        JSON.stringify(haystack)
+    );
   }
 }
 
@@ -53,29 +65,76 @@ function loadTaskpaneScript() {
     CONFIG: {
       opencode: { apiBase: 'http://127.0.0.1:14096' },
       network: { timeout: 5000, uploadTimeout: 15000 },
-      plugin: { userHome: 'C:/Users/test' }
+      plugin: { userHome: 'C:/Users/test' },
     },
     document: {
-      getElementById: function () { return { classList: { add: function () {}, remove: function () {}, contains: function () { return true; } }, appendChild: function () {}, innerHTML: '', textContent: '', style: {} }; },
-      createElement: function () { return { classList: { add: function () {}, remove: function () {}, contains: function () { return true; } }, appendChild: function () {}, innerHTML: '', textContent: '', style: {} }; },
-      body: { appendChild: function () {} }
+      getElementById: function () {
+        return {
+          classList: {
+            add: function () {},
+            remove: function () {},
+            contains: function () {
+              return true;
+            },
+          },
+          appendChild: function () {},
+          innerHTML: '',
+          textContent: '',
+          style: {},
+        };
+      },
+      createElement: function () {
+        return {
+          classList: {
+            add: function () {},
+            remove: function () {},
+            contains: function () {
+              return true;
+            },
+          },
+          appendChild: function () {},
+          innerHTML: '',
+          textContent: '',
+          style: {},
+        };
+      },
+      body: { appendChild: function () {} },
     },
     window: {
-      Application: { PluginStorage: { getItem: function () { return ''; }, setItem: function () {} } },
+      Application: {
+        PluginStorage: {
+          getItem: function () {
+            return '';
+          },
+          setItem: function () {},
+        },
+      },
       addEventListener: function () {},
-      removeEventListener: function () {}
+      removeEventListener: function () {},
     },
     console: { log: function () {}, warn: function () {}, error: function () {} },
     alert: function () {},
-    EventSource: function () { this.close = function () {}; },
-    XMLHttpRequest: function () { this.open = function () {}; this.send = function () {}; this.setRequestHeader = function () {}; this.readyState = 4; this.status = 0; },
-    setTimeout: function () { return 1; },
+    EventSource: function () {
+      this.close = function () {};
+    },
+    XMLHttpRequest: function () {
+      this.open = function () {};
+      this.send = function () {};
+      this.setRequestHeader = function () {};
+      this.readyState = 4;
+      this.status = 0;
+    },
+    setTimeout: function () {
+      return 1;
+    },
     clearTimeout: function () {},
-    setInterval: function () { return 1; },
+    setInterval: function () {
+      return 1;
+    },
     clearInterval: function () {},
     fetchJSON: function () {},
     onServerConnected: function () {},
-    updateServerStatus: function () {}
+    updateServerStatus: function () {},
   };
   vm.createContext(sandbox);
   vm.runInContext(src, sandbox, { filename: TASKPANE_HTML });
@@ -87,7 +146,13 @@ var formatSendError = sandbox.formatSendError;
 
 // ---------- 用例 ----------
 test('formatSendError: UnknownError 含 ref/message 给出可操作引导', function () {
-  var resp = JSON.stringify({ name: 'UnknownError', data: { message: 'Unexpected server error. Check server logs for details.', ref: 'err_edae3507' } });
+  var resp = JSON.stringify({
+    name: 'UnknownError',
+    data: {
+      message: 'Unexpected server error. Check server logs for details.',
+      ref: 'err_edae3507',
+    },
+  });
   var out = formatSendError(500, resp);
   assertIncludes(out, 'UnknownError', '应识别 UnknownError');
   assertIncludes(out, 'err_edae3507', '应包含引用号');
@@ -130,12 +195,20 @@ test('formatSendError: respText 为 null/undefined 时回退到 status', functio
 
 console.log('\n========== 测试结果 ==========');
 console.log('总计: ' + testCount + ' 个测试');
-var fail = testResults.filter(function (r) { return r.status === 'FAIL'; }).length;
+var fail = testResults.filter(function (r) {
+  return r.status === 'FAIL';
+}).length;
 console.log('通过: ' + (testCount - fail) + ' 个');
 console.log('失败: ' + fail + ' 个');
 
 if (fail > 0) {
-  testResults.filter(function (r) { return r.status === 'FAIL'; }).forEach(function (r) { console.log(r.error); });
+  testResults
+    .filter(function (r) {
+      return r.status === 'FAIL';
+    })
+    .forEach(function (r) {
+      console.log(r.error);
+    });
   process.exit(1);
 }
 console.log('\n✓ 所有 formatSendError 测试通过!');

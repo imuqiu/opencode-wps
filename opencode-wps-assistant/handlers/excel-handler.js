@@ -739,7 +739,8 @@ registerHandler('setRowHeight', function (params) {
     var row = parseInt(params.row, 10);
     if (isNaN(row) || row < 1) return fail('无效的行参数: ' + params.row + '（必须为正整数）');
     var height = parseFloat(params.height);
-    if (isNaN(height) || height <= 0) return fail('无效的行高: ' + params.height + '（必须为正数）');
+    if (isNaN(height) || height <= 0)
+      return fail('无效的行高: ' + params.height + '（必须为正数）');
     sheet.Rows(row).RowHeight = height;
     return ok({});
   } catch (e) {
@@ -789,8 +790,7 @@ registerHandler('insertRows', function (params) {
     var sheet = Application.ActiveSheet;
     // 行参数校验：row 必须为正整数，count 默认 1 且非负（与列侧 resolveColumnLetter 校验语义对齐）
     var row = parseInt(params.row, 10);
-    if (isNaN(row) || row < 1)
-      return fail('无效的行参数: ' + params.row + '（必须为正整数）');
+    if (isNaN(row) || row < 1) return fail('无效的行参数: ' + params.row + '（必须为正整数）');
     var count = parseInt(params.count, 10) || 1;
     if (count < 1) return fail('无效的插入行数: ' + params.count);
     sheet.Rows(row + ':' + (row + count - 1)).Insert();
@@ -804,8 +804,7 @@ registerHandler('deleteRows', function (params) {
   try {
     var sheet = Application.ActiveSheet;
     var row = parseInt(params.row, 10);
-    if (isNaN(row) || row < 1)
-      return fail('无效的行参数: ' + params.row + '（必须为正整数）');
+    if (isNaN(row) || row < 1) return fail('无效的行参数: ' + params.row + '（必须为正整数）');
     var count = parseInt(params.count, 10) || 1;
     if (count < 1) return fail('无效的删除行数: ' + params.count);
     sheet.Rows(row + ':' + (row + count - 1)).Delete();
@@ -854,8 +853,7 @@ registerHandler('hideRows', function (params) {
   try {
     var sheet = Application.ActiveSheet;
     var row = parseInt(params.row, 10);
-    if (isNaN(row) || row < 1)
-      return fail('无效的行参数: ' + params.row + '（必须为正整数）');
+    if (isNaN(row) || row < 1) return fail('无效的行参数: ' + params.row + '（必须为正整数）');
     var count = parseInt(params.count, 10) || 1;
     if (count < 1) return fail('无效的行数: ' + params.count);
     sheet.Rows(row + ':' + (row + count - 1)).Hidden = true;
@@ -881,8 +879,7 @@ registerHandler('showRows', function (params) {
   try {
     var sheet = Application.ActiveSheet;
     var row = parseInt(params.row, 10);
-    if (isNaN(row) || row < 1)
-      return fail('无效的行参数: ' + params.row + '（必须为正整数）');
+    if (isNaN(row) || row < 1) return fail('无效的行参数: ' + params.row + '（必须为正整数）');
     var count = parseInt(params.count, 10) || 1;
     if (count < 1) return fail('无效的行数: ' + params.count);
     sheet.Rows(row + ':' + (row + count - 1)).Hidden = false;
@@ -1401,8 +1398,7 @@ registerHandler('groupRows', function (params) {
   try {
     var sheet = Application.ActiveSheet;
     var row = parseInt(params.row, 10);
-    if (isNaN(row) || row < 1)
-      return fail('无效的行参数: ' + params.row + '（必须为正整数）');
+    if (isNaN(row) || row < 1) return fail('无效的行参数: ' + params.row + '（必须为正整数）');
     var count = parseInt(params.count, 10) || 1;
     if (count < 1) return fail('无效的行数: ' + params.count);
     var range = sheet.Range(row + ':' + (row + count - 1));

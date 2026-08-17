@@ -11,23 +11,15 @@ module.exports = {
   testEnvironment: 'node',
 
   // 测试文件匹配规则
-  testMatch: [
-    '<rootDir>/src/tests/**/*.test.ts',
-    '<rootDir>/src/tests/**/*.spec.ts'
-  ],
+  testMatch: ['<rootDir>/src/tests/**/*.test.ts', '<rootDir>/src/tests/**/*.spec.ts'],
 
   // 模块路径映射，和tsconfig保持一致
   moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/src/$1'
+    '^@/(.*)$': '<rootDir>/src/$1',
   },
 
   // 覆盖率配置 - 要看看测试覆盖多少代码
-  collectCoverageFrom: [
-    'src/**/*.ts',
-    '!src/tests/**',
-    '!src/**/*.d.ts',
-    '!src/index.ts'
-  ],
+  collectCoverageFrom: ['src/**/*.ts', '!src/tests/**', '!src/**/*.d.ts', '!src/index.ts'],
 
   // 覆盖率报告目录
   coverageDirectory: 'coverage',
@@ -43,8 +35,8 @@ module.exports = {
       branches: 5,
       functions: 20,
       lines: 40,
-      statements: 40
-    }
+      statements: 40,
+    },
   },
 
   // 设置超时时间（毫秒）
@@ -67,11 +59,14 @@ module.exports = {
 
   // 使用ts-jest转换TypeScript
   transform: {
-    '^.+\\.tsx?$': ['ts-jest', {
-      tsconfig: 'tsconfig.json'
-    }]
+    '^.+\\.tsx?$': [
+      'ts-jest',
+      {
+        tsconfig: 'tsconfig.json',
+      },
+    ],
   },
 
   // 测试运行前的设置文件
-  setupFilesAfterEnv: ['<rootDir>/src/tests/setup.ts']
+  setupFilesAfterEnv: ['<rootDir>/src/tests/setup.ts'],
 };

@@ -101,7 +101,7 @@ describe('proofreadBasicHandler — T1 结构化输出（#55 P0-1）', () => {
     });
     const parsed = extractIssuesJson(result.content[0].text!);
     expect(parsed).not.toBeNull();
-    const metrics = parsed!.issues.map((i) => (i as Record<string, unknown>).metric);
+    const metrics = parsed!.issues.map(i => (i as Record<string, unknown>).metric);
     // 通顺/简洁规则应携带 metric（fluency/conciseness）
     expect(metrics).toContain('fluency');
     expect(metrics).toContain('conciseness');
@@ -113,9 +113,8 @@ describe('proofreadBasicHandler — T1 结构化输出（#55 P0-1）', () => {
     });
     const parsed = extractIssuesJson(result.content[0].text!);
     expect(parsed).not.toBeNull();
-    const issue = parsed!.issues.find(
-      (i) => (i as Record<string, unknown>).type === '的得混淆'
-    ) as Record<string, unknown> | undefined;
+    const issue = parsed!.issues.find(i => (i as Record<string, unknown>).type === '的得混淆') as
+      Record<string, unknown> | undefined;
     expect(issue).toBeDefined();
     expect(issue!.metric).toBeUndefined();
   });

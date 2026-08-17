@@ -26,7 +26,6 @@ import { validateFilePath, ALLOWED_WRITE_ROOTS } from '../../utils/path-safety';
  * 根据文件扩展名判断应该用哪个WPS应用类型
  */
 
-
 /**
  * 根据输出格式获取对应的文件格式代码
  * WPS的格式代码和微软Office基本兼容，但也有自己的一套
@@ -44,15 +43,15 @@ export const getFormatCode = (format: string, appType: WpsAppType): number => {
       // wdFormatXPS = 18
       // wdFormatHTML = 8
       const wordFormats: Record<string, number> = {
-        'doc': 0,
-        'docx': 16,
-        'pdf': 17,
-        'rtf': 6,
-        'xps': 18,
-        'html': 8,
-        'htm': 8,
-        'txt': 2,  // wdFormatText
-        'xml': 11, // wdFormatXML
+        doc: 0,
+        docx: 16,
+        pdf: 17,
+        rtf: 6,
+        xps: 18,
+        html: 8,
+        htm: 8,
+        txt: 2, // wdFormatText
+        xml: 11, // wdFormatXML
       };
       return wordFormats[formatLower] ?? 16; // 默认docx
 
@@ -64,15 +63,15 @@ export const getFormatCode = (format: string, appType: WpsAppType): number => {
       // xlCSV = 6
       // xlHtml = 44
       const excelFormats: Record<string, number> = {
-        'xls': -4143,
-        'xlsx': 51,
-        'xlsm': 52,
-        'xlsb': 50,
-        'csv': 6,
-        'html': 44,
-        'htm': 44,
-        'pdf': 0, // 特殊处理
-        'xps': 1, // 特殊处理
+        xls: -4143,
+        xlsx: 51,
+        xlsm: 52,
+        xlsb: 50,
+        csv: 6,
+        html: 44,
+        htm: 44,
+        pdf: 0, // 特殊处理
+        xps: 1, // 特殊处理
       };
       return excelFormats[formatLower] ?? 51; // 默认xlsx
 
@@ -83,18 +82,18 @@ export const getFormatCode = (format: string, appType: WpsAppType): number => {
       // ppSaveAsPDF = 32
       // ppSaveAsHTML = 12
       const pptFormats: Record<string, number> = {
-        'ppt': 1,
-        'pptx': 24,
-        'pptm': 25,
-        'pdf': 32,
-        'xps': 33,
-        'html': 12,
-        'htm': 12,
-        'png': 18,
-        'jpg': 17,
-        'jpeg': 17,
-        'gif': 16,
-        'bmp': 19,
+        ppt: 1,
+        pptx: 24,
+        pptm: 25,
+        pdf: 32,
+        xps: 33,
+        html: 12,
+        htm: 12,
+        png: 18,
+        jpg: 17,
+        jpeg: 17,
+        gif: 16,
+        bmp: 19,
       };
       return pptFormats[formatLower] ?? 24; // 默认pptx
 

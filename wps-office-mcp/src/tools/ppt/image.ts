@@ -100,7 +100,16 @@ export const insertPptImageHandler: ToolHandler = async (
       imageIndex?: number;
     }>(
       'insertPptImage',
-      { slideIndex, filePath: safePath, path: safePath, imagePath: safePath, left, top, width, height },
+      {
+        slideIndex,
+        filePath: safePath,
+        path: safePath,
+        imagePath: safePath,
+        left,
+        top,
+        width,
+        height,
+      },
       WpsAppType.PRESENTATION
     );
 
@@ -173,11 +182,7 @@ export const deletePptImageHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'deletePptImage',
-      { slideIndex, imageIndex },
-      WpsAppType.PRESENTATION
-    );
+    }>('deletePptImage', { slideIndex, imageIndex }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {
@@ -289,11 +294,7 @@ export const setImageStyleHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'setImageStyle',
-      { slideIndex, imageIndex, style },
-      WpsAppType.PRESENTATION
-    );
+    }>('setImageStyle', { slideIndex, imageIndex, style }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {

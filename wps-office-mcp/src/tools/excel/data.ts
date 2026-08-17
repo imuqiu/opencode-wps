@@ -77,7 +77,17 @@ export const readRangeHandler: ToolHandler = async (
       return {
         id: uuidv4(),
         success: false,
-        content: [{ type: 'text', text: 'Range too large. Maximum is ' + MAX_ROWS + ' rows x ' + MAX_COLS + ' cols. Use smaller ranges.' }],
+        content: [
+          {
+            type: 'text',
+            text:
+              'Range too large. Maximum is ' +
+              MAX_ROWS +
+              ' rows x ' +
+              MAX_COLS +
+              ' cols. Use smaller ranges.',
+          },
+        ],
         error: 'Range too large',
       };
     }
@@ -272,7 +282,7 @@ export const cleanDataHandler: ToolHandler = async (
 
   // 校验操作列表
   const validOperations = ['trim', 'remove_duplicates', 'unify_date', 'remove_empty_rows'];
-  const invalidOps = operations.filter((op) => !validOperations.includes(op));
+  const invalidOps = operations.filter(op => !validOperations.includes(op));
 
   if (invalidOps.length > 0) {
     return {
@@ -297,11 +307,7 @@ export const cleanDataHandler: ToolHandler = async (
         message: string;
       }>;
       message: string;
-    }>(
-      'cleanData',
-      { range, operations, sheet },
-      WpsAppType.SPREADSHEET
-    );
+    }>('cleanData', { range, operations, sheet }, WpsAppType.SPREADSHEET);
 
     if (!response.success || !response.data) {
       return {
@@ -315,7 +321,7 @@ export const cleanDataHandler: ToolHandler = async (
     const result = response.data;
     let output = `数据清洗完成！\n范围: ${result.range}\n\n操作结果：\n`;
 
-    result.operations.forEach((op) => {
+    result.operations.forEach(op => {
       const status = op.success ? '成功' : '失败';
       output += `- ${op.operation}: ${status} - ${op.message}\n`;
     });
@@ -465,12 +471,31 @@ export const sortRangeHandler: ToolHandler = async (
       WpsAppType.SPREADSHEET
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `排序失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `排序失败: ${response.error}` }],
+        error: response.error,
+      };
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `排序完成！范围: ${range}，按第${column}列${ascending !== false ? '升序' : '降序'}` }] };
+    return {
+      id: uuidv4(),
+      success: true,
+      content: [
+        {
+          type: 'text',
+          text: `排序完成！范围: ${range}，按第${column}列${ascending !== false ? '升序' : '降序'}`,
+        },
+      ],
+    };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `排序出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `排序出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -507,13 +532,29 @@ export const findReplaceHandler: ToolHandler = async (
       WpsAppType.SPREADSHEET
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `查找替换失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `查找替换失败: ${response.error}` }],
+        error: response.error,
+      };
     }
     const count = response.data?.count || 0;
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `查找替换完成！将"${find}"替换为"${replace}"，共替换${count}处` }] };
+    return {
+      id: uuidv4(),
+      success: true,
+      content: [
+        { type: 'text', text: `查找替换完成！将"${find}"替换为"${replace}"，共替换${count}处` },
+      ],
+    };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `查找替换出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `查找替换出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -546,12 +587,26 @@ export const insertRowHandler: ToolHandler = async (
       WpsAppType.SPREADSHEET
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `插入行失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `插入行失败: ${response.error}` }],
+        error: response.error,
+      };
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `插入行完成！在第${row}行前插入了${insertCount}行` }] };
+    return {
+      id: uuidv4(),
+      success: true,
+      content: [{ type: 'text', text: `插入行完成！在第${row}行前插入了${insertCount}行` }],
+    };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `插入行出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `插入行出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -583,12 +638,26 @@ export const addCommentHandler: ToolHandler = async (
       WpsAppType.SPREADSHEET
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `添加批注失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `添加批注失败: ${response.error}` }],
+        error: response.error,
+      };
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `批注添加成功！单元格: ${cell}` }] };
+    return {
+      id: uuidv4(),
+      success: true,
+      content: [{ type: 'text', text: `批注添加成功！单元格: ${cell}` }],
+    };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `添加批注出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `添加批注出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -621,12 +690,28 @@ export const protectSheetHandler: ToolHandler = async (
       WpsAppType.SPREADSHEET
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `${doProtect ? '保护' : '取消保护'}工作表失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [
+          { type: 'text', text: `${doProtect ? '保护' : '取消保护'}工作表失败: ${response.error}` },
+        ],
+        error: response.error,
+      };
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `工作表${doProtect ? '保护' : '取消保护'}成功！` }] };
+    return {
+      id: uuidv4(),
+      success: true,
+      content: [{ type: 'text', text: `工作表${doProtect ? '保护' : '取消保护'}成功！` }],
+    };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `${doProtect ? '保护' : '取消保护'}工作表出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `${doProtect ? '保护' : '取消保护'}工作表出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -659,12 +744,31 @@ export const setConditionalFormatHandler: ToolHandler = async (
       WpsAppType.SPREADSHEET
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置条件格式失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `设置条件格式失败: ${response.error}` }],
+        error: response.error,
+      };
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `条件格式设置成功！范围: ${range}，条件: ${condition}，格式: ${format}` }] };
+    return {
+      id: uuidv4(),
+      success: true,
+      content: [
+        {
+          type: 'text',
+          text: `条件格式设置成功！范围: ${range}，条件: ${condition}，格式: ${format}`,
+        },
+      ],
+    };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置条件格式出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `设置条件格式出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -696,12 +800,28 @@ export const protectWorkbookHandler: ToolHandler = async (
       WpsAppType.SPREADSHEET
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `${protect ? '保护' : '取消保护'}工作簿失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [
+          { type: 'text', text: `${protect ? '保护' : '取消保护'}工作簿失败: ${response.error}` },
+        ],
+        error: response.error,
+      };
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `工作簿${protect ? '保护' : '取消保护'}成功！` }] };
+    return {
+      id: uuidv4(),
+      success: true,
+      content: [{ type: 'text', text: `工作簿${protect ? '保护' : '取消保护'}成功！` }],
+    };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `${protect ? '保护' : '取消保护'}工作簿出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `${protect ? '保护' : '取消保护'}工作簿出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -726,7 +846,12 @@ export const setZoomHandler: ToolHandler = async (
 ): Promise<ToolCallResult> => {
   const { percent } = args as { percent: number };
   if (percent < 10 || percent > 400) {
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: '缩放比例必须在10-400之间' }], error: '缩放比例超出范围' };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: '缩放比例必须在10-400之间' }],
+      error: '缩放比例超出范围',
+    };
   }
   try {
     const response = await wpsClient.executeMethod<{ message: string }>(
@@ -735,12 +860,26 @@ export const setZoomHandler: ToolHandler = async (
       WpsAppType.SPREADSHEET
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置缩放失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `设置缩放失败: ${response.error}` }],
+        error: response.error,
+      };
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `缩放比例已设置为${percent}%` }] };
+    return {
+      id: uuidv4(),
+      success: true,
+      content: [{ type: 'text', text: `缩放比例已设置为${percent}%` }],
+    };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `设置缩放出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `设置缩放出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 

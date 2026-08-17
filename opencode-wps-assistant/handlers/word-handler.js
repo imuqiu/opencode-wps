@@ -423,14 +423,33 @@ registerHandler('setPageSetup', function (params) {
       ps.Orientation = params.orientation === 'landscape' ? 1 : 0;
     }
     // 边距/页面尺寸显式数值化：字符串（'2.5'）直赋 COM 抛类型错误（与 setLineSpacing 语义对齐）
-    var marginKeys = ['topMargin', 'bottomMargin', 'leftMargin', 'rightMargin', 'pageWidth', 'pageHeight'];
+    var marginKeys = [
+      'topMargin',
+      'bottomMargin',
+      'leftMargin',
+      'rightMargin',
+      'pageWidth',
+      'pageHeight',
+    ];
     for (var mi = 0; mi < marginKeys.length; mi++) {
       var mk = marginKeys[mi];
       if (params[mk] !== undefined) {
         var mv = parseFloat(params[mk]);
         if (isNaN(mv) || mv < 0)
           return fail('无效的 ' + mk + ': ' + params[mk] + '（必须为非负数）');
-        ps[mk === 'topMargin' ? 'TopMargin' : mk === 'bottomMargin' ? 'BottomMargin' : mk === 'leftMargin' ? 'LeftMargin' : mk === 'rightMargin' ? 'RightMargin' : mk === 'pageWidth' ? 'PageWidth' : 'PageHeight'] = mv;
+        ps[
+          mk === 'topMargin'
+            ? 'TopMargin'
+            : mk === 'bottomMargin'
+              ? 'BottomMargin'
+              : mk === 'leftMargin'
+                ? 'LeftMargin'
+                : mk === 'rightMargin'
+                  ? 'RightMargin'
+                  : mk === 'pageWidth'
+                    ? 'PageWidth'
+                    : 'PageHeight'
+        ] = mv;
       }
     }
     return ok({});
@@ -457,7 +476,9 @@ registerHandler('setParagraph', function (params) {
       // 数字也做范围校验（Word 对齐常量合法范围 0~4），越界显式 fail 而非抛泛化 COM 错误
       if (typeof align !== 'number' || align < 0 || align > 4 || isNaN(align))
         return fail(
-          '无效的对齐值: ' + params.alignment + '（支持 left/center/right/justify/distribute 或 0~4）'
+          '无效的对齐值: ' +
+            params.alignment +
+            '（支持 left/center/right/justify/distribute 或 0~4）'
         );
       para.Alignment = align;
     }
@@ -469,12 +490,14 @@ registerHandler('setParagraph', function (params) {
     }
     if (params.spaceBefore !== undefined) {
       var sb = parseFloat(params.spaceBefore);
-      if (isNaN(sb) || sb < 0) return fail('无效的段前距: ' + params.spaceBefore + '（必须为非负数）');
+      if (isNaN(sb) || sb < 0)
+        return fail('无效的段前距: ' + params.spaceBefore + '（必须为非负数）');
       para.SpaceBefore = sb;
     }
     if (params.spaceAfter !== undefined) {
       var sa = parseFloat(params.spaceAfter);
-      if (isNaN(sa) || sa < 0) return fail('无效的段后距: ' + params.spaceAfter + '（必须为非负数）');
+      if (isNaN(sa) || sa < 0)
+        return fail('无效的段后距: ' + params.spaceAfter + '（必须为非负数）');
       para.SpaceAfter = sa;
     }
     if (params.firstLineIndent !== undefined) {

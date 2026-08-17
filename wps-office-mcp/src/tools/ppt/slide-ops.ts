@@ -79,11 +79,7 @@ export const deleteSlideHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'deleteSlide',
-      { slideIndex },
-      WpsAppType.PRESENTATION
-    );
+    }>('deleteSlide', { slideIndex }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {
@@ -150,11 +146,7 @@ export const duplicateSlideHandler: ToolHandler = async (
       success: boolean;
       message: string;
       newSlideIndex: number;
-    }>(
-      'duplicateSlide',
-      { slideIndex },
-      WpsAppType.PRESENTATION
-    );
+    }>('duplicateSlide', { slideIndex }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       return {
@@ -227,11 +219,7 @@ export const moveSlideHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'moveSlide',
-      { fromIndex, toIndex },
-      WpsAppType.PRESENTATION
-    );
+    }>('moveSlide', { fromIndex, toIndex }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {
@@ -291,11 +279,7 @@ export const getSlideCountHandler: ToolHandler = async (
       success: boolean;
       message: string;
       count: number;
-    }>(
-      'getSlideCount',
-      {},
-      WpsAppType.PRESENTATION
-    );
+    }>('getSlideCount', {}, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       return {
@@ -369,11 +353,7 @@ export const getSlideInfoHandler: ToolHandler = async (
         type: string;
         text?: string;
       }>;
-    }>(
-      'getSlideInfo',
-      { slideIndex },
-      WpsAppType.PRESENTATION
-    );
+    }>('getSlideInfo', { slideIndex }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       const info = response.data;
@@ -450,11 +430,7 @@ export const switchSlideHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'switchSlide',
-      { slideIndex },
-      WpsAppType.PRESENTATION
-    );
+    }>('switchSlide', { slideIndex }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {
@@ -536,11 +512,7 @@ export const setSlideLayoutHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'setSlideLayout',
-      { slideIndex, layout },
-      WpsAppType.PRESENTATION
-    );
+    }>('setSlideLayout', { slideIndex, layout }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       const layoutName: Record<string, string> = {
@@ -617,11 +589,7 @@ export const getSlideNotesHandler: ToolHandler = async (
       success: boolean;
       message: string;
       notes: string;
-    }>(
-      'getSlideNotes',
-      { slideIndex },
-      WpsAppType.PRESENTATION
-    );
+    }>('getSlideNotes', { slideIndex }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       const notes = response.data.notes;
@@ -697,11 +665,7 @@ export const setSlideNotesHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'setSlideNotes',
-      { slideIndex, notes },
-      WpsAppType.PRESENTATION
-    );
+    }>('setSlideNotes', { slideIndex, notes }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {
@@ -768,7 +732,18 @@ export const addShapeDefinition: ToolDefinition = {
       type: {
         type: 'string',
         description: '形状类型',
-        enum: ['rectangle', 'oval', 'triangle', 'diamond', 'pentagon', 'hexagon', 'arrow', 'star', 'heart', 'cloud'],
+        enum: [
+          'rectangle',
+          'oval',
+          'triangle',
+          'diamond',
+          'pentagon',
+          'hexagon',
+          'arrow',
+          'star',
+          'heart',
+          'cloud',
+        ],
       },
       left: {
         type: 'number',
@@ -836,9 +811,16 @@ export const addShapeHandler: ToolHandler = async (
 
     if (response.success && response.data) {
       const shapeNameMap: Record<string, string> = {
-        rectangle: '矩形', oval: '椭圆', triangle: '三角形', diamond: '菱形',
-        pentagon: '五边形', hexagon: '六边形', arrow: '箭头', star: '星形',
-        heart: '心形', cloud: '云形',
+        rectangle: '矩形',
+        oval: '椭圆',
+        triangle: '三角形',
+        diamond: '菱形',
+        pentagon: '五边形',
+        hexagon: '六边形',
+        arrow: '箭头',
+        star: '星形',
+        heart: '心形',
+        cloud: '云形',
       };
       const typeName = shapeNameMap[type || 'rectangle'] || type;
 
@@ -1262,17 +1244,18 @@ export const setShapeTextHandler: ToolHandler = async (
       success: boolean;
       message: string;
       name: string;
-    }>(
-      'setShapeText',
-      { slideIndex, shapeIndex, text },
-      WpsAppType.PRESENTATION
-    );
+    }>('setShapeText', { slideIndex, shapeIndex, text }, WpsAppType.PRESENTATION);
 
     if (response.success && response.data) {
       return {
         id: uuidv4(),
         success: true,
-        content: [{ type: 'text', text: `形状文字设置成功！\n形状: ${response.data.name}\n文字: "${text}"` }],
+        content: [
+          {
+            type: 'text',
+            text: `形状文字设置成功！\n形状: ${response.data.name}\n文字: "${text}"`,
+          },
+        ],
       };
     } else {
       return {
@@ -1330,7 +1313,8 @@ export const setAnimationDefinition: ToolDefinition = {
       },
       animationType: {
         type: 'string',
-        description: '动画类型，如 fadeIn, flyIn, wipeIn, zoomIn, bounceIn, spinIn, fadeOut, flyOut',
+        description:
+          '动画类型，如 fadeIn, flyIn, wipeIn, zoomIn, bounceIn, spinIn, fadeOut, flyOut',
       },
     },
     required: ['slideIndex', 'shapeIndex', 'animationType'],
@@ -1481,11 +1465,7 @@ export const setSlideSizeHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'setSlideSize',
-      { width, height },
-      WpsAppType.PRESENTATION
-    );
+    }>('setSlideSize', { width, height }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {
@@ -1649,11 +1629,7 @@ export const setShapeFillHandler: ToolHandler = async (
     const response = await wpsClient.executeMethod<{
       success: boolean;
       message: string;
-    }>(
-      'setShapeFill',
-      { slideIndex, shapeIndex, fillColor },
-      WpsAppType.PRESENTATION
-    );
+    }>('setShapeFill', { slideIndex, shapeIndex, fillColor }, WpsAppType.PRESENTATION);
 
     if (response.success) {
       return {

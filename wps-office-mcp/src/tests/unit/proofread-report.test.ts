@@ -134,16 +134,37 @@ describe('proofreadAccumulateHandler', () => {
     await proofreadAccumulateHandler({
       session_id: 'test-session-2',
       issues: [
-        { offset: 10, length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+        {
+          offset: 10,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          context: '...',
+          source: 'mcp',
+        },
       ],
-      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+      doc_info: {
+        fileName: 'test.docx',
+        filePath: 'C:\\test.docx',
+        totalParagraphs: 50,
+        totalWords: 5000,
+      },
     });
 
     // Second call — no doc_info needed
     await proofreadAccumulateHandler({
       session_id: 'test-session-2',
       issues: [
-        { offset: 50, length: 2, original: '的了', suggestion: '得了', type: '的得混淆', context: '...', source: 'mcp' },
+        {
+          offset: 50,
+          length: 2,
+          original: '的了',
+          suggestion: '得了',
+          type: '的得混淆',
+          context: '...',
+          source: 'mcp',
+        },
       ],
     });
 
@@ -155,16 +176,37 @@ describe('proofreadAccumulateHandler', () => {
     await proofreadAccumulateHandler({
       session_id: 'test-session-3',
       issues: [
-        { offset: 10, length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+        {
+          offset: 10,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          context: '...',
+          source: 'mcp',
+        },
       ],
-      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+      doc_info: {
+        fileName: 'test.docx',
+        filePath: 'C:\\test.docx',
+        totalParagraphs: 50,
+        totalWords: 5000,
+      },
     });
 
     // Same issue again
     await proofreadAccumulateHandler({
       session_id: 'test-session-3',
       issues: [
-        { offset: 10, length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+        {
+          offset: 10,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          context: '...',
+          source: 'mcp',
+        },
       ],
     });
 
@@ -176,16 +218,35 @@ describe('proofreadAccumulateHandler', () => {
     await proofreadAccumulateHandler({
       session_id: 'test-session-3b',
       issues: [
-        { length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+        {
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          context: '...',
+          source: 'mcp',
+        },
       ],
-      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+      doc_info: {
+        fileName: 'test.docx',
+        filePath: 'C:\\test.docx',
+        totalParagraphs: 50,
+        totalWords: 5000,
+      },
     });
 
     // 同原文但无 offset：无法确认同一位置，保守保留（不再误并）
     await proofreadAccumulateHandler({
       session_id: 'test-session-3b',
       issues: [
-        { length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+        {
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          context: '...',
+          source: 'mcp',
+        },
       ],
     });
 
@@ -197,10 +258,31 @@ describe('proofreadAccumulateHandler', () => {
     await proofreadAccumulateHandler({
       session_id: 'test-session-3c',
       issues: [
-        { offset: 10, length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
-        { offset: 25, length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+        {
+          offset: 10,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          context: '...',
+          source: 'mcp',
+        },
+        {
+          offset: 25,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          context: '...',
+          source: 'mcp',
+        },
       ],
-      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+      doc_info: {
+        fileName: 'test.docx',
+        filePath: 'C:\\test.docx',
+        totalParagraphs: 50,
+        totalWords: 5000,
+      },
     });
 
     const session = sessionIssues.get('test-session-3c')!;
@@ -211,10 +293,32 @@ describe('proofreadAccumulateHandler', () => {
     await proofreadAccumulateHandler({
       session_id: 'test-session-3d',
       issues: [
-        { offset: 10, length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
-        { offset: 10, length: 2, original: '的的', suggestion: '的的', type: '重复字符', context: '...', source: 'ai' as const, reason: '重复字符' },
+        {
+          offset: 10,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          context: '...',
+          source: 'mcp',
+        },
+        {
+          offset: 10,
+          length: 2,
+          original: '的的',
+          suggestion: '的的',
+          type: '重复字符',
+          context: '...',
+          source: 'ai' as const,
+          reason: '重复字符',
+        },
       ],
-      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+      doc_info: {
+        fileName: 'test.docx',
+        filePath: 'C:\\test.docx',
+        totalParagraphs: 50,
+        totalWords: 5000,
+      },
     });
 
     const session = sessionIssues.get('test-session-3d')!;
@@ -228,11 +332,33 @@ describe('proofreadAccumulateHandler', () => {
       session_id: 'test-session-3d2',
       issues: [
         // MCP：Layer 1 手工指定具体 type（假设规则命中）
-        { offset: 10, length: 6, original: '完全陌生词XYZ', suggestion: '陌生词', type: '重复字符', context: '...', source: 'mcp' },
+        {
+          offset: 10,
+          length: 6,
+          original: '完全陌生词XYZ',
+          suggestion: '陌生词',
+          type: '重复字符',
+          context: '...',
+          source: 'mcp',
+        },
         // AI：type 无法由规则推断 → 兜底为「未分类」→ 应保留 MCP 的「重复字符」
-        { offset: 10, length: 6, original: '完全陌生词XYZ', suggestion: '陌生词', type: '未分类', context: '...', source: 'ai' as const, reason: 'AI 判定' },
+        {
+          offset: 10,
+          length: 6,
+          original: '完全陌生词XYZ',
+          suggestion: '陌生词',
+          type: '未分类',
+          context: '...',
+          source: 'ai' as const,
+          reason: 'AI 判定',
+        },
       ],
-      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+      doc_info: {
+        fileName: 'test.docx',
+        filePath: 'C:\\test.docx',
+        totalParagraphs: 50,
+        totalWords: 5000,
+      },
     });
 
     const session = sessionIssues.get('test-session-3d2')!;
@@ -245,10 +371,32 @@ describe('proofreadAccumulateHandler', () => {
     await proofreadAccumulateHandler({
       session_id: 'test-session-3d3',
       issues: [
-        { offset: 10, length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
-        { offset: 10, length: 2, original: '的的', suggestion: '的', type: '口语化', context: '...', source: 'ai' as const, reason: 'AI 认为口语化' },
+        {
+          offset: 10,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          context: '...',
+          source: 'mcp',
+        },
+        {
+          offset: 10,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '口语化',
+          context: '...',
+          source: 'ai' as const,
+          reason: 'AI 认为口语化',
+        },
       ],
-      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+      doc_info: {
+        fileName: 'test.docx',
+        filePath: 'C:\\test.docx',
+        totalParagraphs: 50,
+        totalWords: 5000,
+      },
     });
 
     const session = sessionIssues.get('test-session-3d3')!;
@@ -261,14 +409,31 @@ describe('proofreadAccumulateHandler', () => {
     await proofreadAccumulateHandler({
       session_id: 'edge-session-1',
       issues: [
-        { offset: 10, length: 6, original: '完全陌生词XYZ', suggestion: '陌生词', type: '未分类', context: '...', source: 'ai' as const, reason: 'AI 判定' },
+        {
+          offset: 10,
+          length: 6,
+          original: '完全陌生词XYZ',
+          suggestion: '陌生词',
+          type: '未分类',
+          context: '...',
+          source: 'ai' as const,
+          reason: 'AI 判定',
+        },
       ],
       doc_info: { fileName: 't.docx', filePath: '/p/t.docx', totalParagraphs: 5, totalWords: 100 },
     });
     await proofreadAccumulateHandler({
       session_id: 'edge-session-1',
       issues: [
-        { offset: 10, length: 6, original: '完全陌生词XYZ', suggestion: '陌生词', type: '重复字符', context: '...', source: 'mcp' },
+        {
+          offset: 10,
+          length: 6,
+          original: '完全陌生词XYZ',
+          suggestion: '陌生词',
+          type: '重复字符',
+          context: '...',
+          source: 'mcp',
+        },
       ],
     });
     const session = sessionIssues.get('edge-session-1')!;
@@ -281,14 +446,31 @@ describe('proofreadAccumulateHandler', () => {
     await proofreadAccumulateHandler({
       session_id: 'edge-session-2',
       issues: [
-        { offset: 20, length: 6, original: '完全陌生词XYZ', suggestion: '陌生词', type: '重复字符', context: '...', source: 'mcp' },
+        {
+          offset: 20,
+          length: 6,
+          original: '完全陌生词XYZ',
+          suggestion: '陌生词',
+          type: '重复字符',
+          context: '...',
+          source: 'mcp',
+        },
       ],
       doc_info: { fileName: 't.docx', filePath: '/p/t.docx', totalParagraphs: 5, totalWords: 100 },
     });
     await proofreadAccumulateHandler({
       session_id: 'edge-session-2',
       issues: [
-        { offset: 20, length: 6, original: '完全陌生词XYZ', suggestion: '陌生词', type: '未分类', context: '...', source: 'ai' as const, reason: 'AI 判定' },
+        {
+          offset: 20,
+          length: 6,
+          original: '完全陌生词XYZ',
+          suggestion: '陌生词',
+          type: '未分类',
+          context: '...',
+          source: 'ai' as const,
+          reason: 'AI 判定',
+        },
       ],
     });
     const session = sessionIssues.get('edge-session-2')!;
@@ -301,10 +483,31 @@ describe('proofreadAccumulateHandler', () => {
     await proofreadAccumulateHandler({
       session_id: 'test-session-3d4',
       issues: [
-        { offset: 10, length: 3, original: 'A|B', suggestion: 'AB', type: '用词统一', context: '...', source: 'mcp' },
-        { offset: 10, length: 3, original: 'A|B', suggestion: 'A、B', type: '用词统一', context: '...', source: 'mcp' },
+        {
+          offset: 10,
+          length: 3,
+          original: 'A|B',
+          suggestion: 'AB',
+          type: '用词统一',
+          context: '...',
+          source: 'mcp',
+        },
+        {
+          offset: 10,
+          length: 3,
+          original: 'A|B',
+          suggestion: 'A、B',
+          type: '用词统一',
+          context: '...',
+          source: 'mcp',
+        },
       ],
-      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+      doc_info: {
+        fileName: 'test.docx',
+        filePath: 'C:\\test.docx',
+        totalParagraphs: 50,
+        totalWords: 5000,
+      },
     });
 
     const session = sessionIssues.get('test-session-3d4')!;
@@ -316,10 +519,30 @@ describe('proofreadAccumulateHandler', () => {
     const result = await proofreadAccumulateHandler({
       session_id: 'test-session-3e',
       issues: [
-        { length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
-        { offset: 10, length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+        {
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          context: '...',
+          source: 'mcp',
+        },
+        {
+          offset: 10,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          context: '...',
+          source: 'mcp',
+        },
       ],
-      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+      doc_info: {
+        fileName: 'test.docx',
+        filePath: 'C:\\test.docx',
+        totalParagraphs: 50,
+        totalWords: 5000,
+      },
     });
 
     const text = result.content[0].text!;
@@ -331,17 +554,54 @@ describe('proofreadAccumulateHandler', () => {
     await proofreadAccumulateHandler({
       session_id: 'test-session-3f',
       issues: [
-        { offset: 10, length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+        {
+          offset: 10,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          context: '...',
+          source: 'mcp',
+        },
       ],
-      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+      doc_info: {
+        fileName: 'test.docx',
+        filePath: 'C:\\test.docx',
+        totalParagraphs: 50,
+        totalWords: 5000,
+      },
     });
     // 第二批：与第一批重复 1 条（跨批重复） + 本批内重复 1 条 → 本批去重数应只计 1（本批内重复）
     const result = await proofreadAccumulateHandler({
       session_id: 'test-session-3f',
       issues: [
-        { offset: 10, length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
-        { offset: 20, length: 2, original: '的了', suggestion: '得了', type: '的得混淆', context: '...', source: 'mcp' },
-        { offset: 20, length: 2, original: '的了', suggestion: '得了', type: '的得混淆', context: '...', source: 'mcp' },
+        {
+          offset: 10,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          context: '...',
+          source: 'mcp',
+        },
+        {
+          offset: 20,
+          length: 2,
+          original: '的了',
+          suggestion: '得了',
+          type: '的得混淆',
+          context: '...',
+          source: 'mcp',
+        },
+        {
+          offset: 20,
+          length: 2,
+          original: '的了',
+          suggestion: '得了',
+          type: '的得混淆',
+          context: '...',
+          source: 'mcp',
+        },
       ],
     });
 
@@ -356,7 +616,12 @@ describe('proofreadAccumulateHandler', () => {
     await proofreadAccumulateHandler({
       session_id: 'test-session-4',
       issues: [],
-      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+      doc_info: {
+        fileName: 'test.docx',
+        filePath: 'C:\\test.docx',
+        totalParagraphs: 50,
+        totalWords: 5000,
+      },
       total_revisions: 15,
     });
 
@@ -370,7 +635,12 @@ describe('proofreadAccumulateHandler', () => {
     await proofreadAccumulateHandler({
       session_id: s,
       issues: [],
-      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+      doc_info: {
+        fileName: 'test.docx',
+        filePath: 'C:\\test.docx',
+        totalParagraphs: 50,
+        totalWords: 5000,
+      },
       total_revisions: 10,
     });
     expect(sessionIssues.get(s)!.totalRevisions).toBe(10);
@@ -401,7 +671,12 @@ describe('proofreadAccumulateHandler', () => {
     await proofreadAccumulateHandler({
       session_id: s,
       issues: [],
-      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+      doc_info: {
+        fileName: 'test.docx',
+        filePath: 'C:\\test.docx',
+        totalParagraphs: 50,
+        totalWords: 5000,
+      },
     });
     proofreadStore.saveBatchAllocations(s, [
       { batchId, range: { start: 1, end: 100 }, status: 'running', stepsLog: [] },
@@ -410,7 +685,17 @@ describe('proofreadAccumulateHandler', () => {
     // 执行 agent 提交本批逐步凭证
     const result = await proofreadAccumulateHandler({
       session_id: s,
-      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp', context: '...' }],
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp',
+          context: '...',
+        },
+      ],
       _batch_id: batchId,
       _steps_log: [
         { step: 'getDocumentParagraphs', paragraphIndex: 1 },
@@ -426,7 +711,7 @@ describe('proofreadAccumulateHandler', () => {
     expect(result.success).toBe(true);
     expect(result.data!.stepsPersisted).toBe(true);
     const allocations = proofreadStore.loadBatchAllocations(s);
-    const batch = allocations.find((b) => b.batchId === batchId)!;
+    const batch = allocations.find(b => b.batchId === batchId)!;
     expect(batch.stepsLog.length).toBe(6);
     // 管理 agent 监督：标准 6 步全链条完整，getMissingSteps 应无缺失
     expect(proofreadStore.getMissingSteps(s, batchId)).toEqual([]);
@@ -440,7 +725,12 @@ describe('proofreadAccumulateHandler', () => {
     await proofreadAccumulateHandler({
       session_id: s,
       issues: [],
-      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+      doc_info: {
+        fileName: 'test.docx',
+        filePath: 'C:\\test.docx',
+        totalParagraphs: 50,
+        totalWords: 5000,
+      },
     });
     // 未登记批次分配表，_batch_id 指向不存在的批次 → appendStepRecord 返回 false，stepsPersisted=false
     const result = await proofreadAccumulateHandler({
@@ -460,7 +750,12 @@ describe('proofreadAccumulateHandler', () => {
     const result = await proofreadAccumulateHandler({
       session_id: s,
       issues: [],
-      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 300, totalWords: 3000 },
+      doc_info: {
+        fileName: 'test.docx',
+        filePath: 'C:\\test.docx',
+        totalParagraphs: 300,
+        totalWords: 3000,
+      },
       _batch_allocations: [
         { batchId: 'batch-1', range: { start: 1, end: 100 }, status: 'pending' },
         { batchId: 'batch-2', range: { start: 101, end: 200 }, status: 'pending' },
@@ -472,7 +767,7 @@ describe('proofreadAccumulateHandler', () => {
     // 批次分配表应落盘，管理 agent 可读
     const allocations = proofreadStore.loadBatchAllocations(s);
     expect(allocations.length).toBe(3);
-    expect(allocations.map((a) => a.batchId)).toEqual(['batch-1', 'batch-2', 'batch-3']);
+    expect(allocations.map(a => a.batchId)).toEqual(['batch-1', 'batch-2', 'batch-3']);
     // 管理 agent 断点续跑：pending 批次都应重新入队
     expect(proofreadStore.getIncompleteBatches(s).length).toBe(3);
     proofreadStore.removeSessionFromDisk(s);
@@ -497,7 +792,12 @@ describe('generateProofreadReportHandler', () => {
   it('should generate empty report for session with no issues', async () => {
     sessionIssues.set('empty-session', {
       issues: [],
-      docInfo: { fileName: 'doc.docx', filePath: '/path/doc.docx', totalParagraphs: 10, totalWords: 100 },
+      docInfo: {
+        fileName: 'doc.docx',
+        filePath: '/path/doc.docx',
+        totalParagraphs: 10,
+        totalWords: 100,
+      },
       createdAt: new Date().toISOString(),
     });
 
@@ -514,11 +814,21 @@ describe('generateProofreadReportHandler', () => {
     sessionIssues.set('fluency-test', {
       issues: [
         {
-          offset: 10, length: 2, original: '三方', suggestion: '三方面',
-          type: '少字', context: '...以下三方...', source: 'mcp',
+          offset: 10,
+          length: 2,
+          original: '三方',
+          suggestion: '三方面',
+          type: '少字',
+          context: '...以下三方...',
+          source: 'mcp',
         },
       ],
-      docInfo: { fileName: 'doc.docx', filePath: '/path/doc.docx', totalParagraphs: 10, totalWords: 100 },
+      docInfo: {
+        fileName: 'doc.docx',
+        filePath: '/path/doc.docx',
+        totalParagraphs: 10,
+        totalWords: 100,
+      },
       createdAt: new Date().toISOString(),
     });
 
@@ -533,11 +843,21 @@ describe('generateProofreadReportHandler', () => {
     sessionIssues.set('completeness-test', {
       issues: [
         {
-          offset: 10, length: 10, original: 'xxx有限公司', suggestion: '[名称]有限公司',
-          type: '占位文本', context: '...xxx有限公司...', source: 'mcp',
+          offset: 10,
+          length: 10,
+          original: 'xxx有限公司',
+          suggestion: '[名称]有限公司',
+          type: '占位文本',
+          context: '...xxx有限公司...',
+          source: 'mcp',
         },
       ],
-      docInfo: { fileName: 'doc.docx', filePath: '/path/doc.docx', totalParagraphs: 10, totalWords: 100 },
+      docInfo: {
+        fileName: 'doc.docx',
+        filePath: '/path/doc.docx',
+        totalParagraphs: 10,
+        totalWords: 100,
+      },
       createdAt: new Date().toISOString(),
     });
 
@@ -561,7 +881,12 @@ describe('generateProofreadReportHandler', () => {
 
     sessionIssues.set('fluency-25', {
       issues,
-      docInfo: { fileName: 'doc.docx', filePath: '/path/doc.docx', totalParagraphs: 100, totalWords: 1000 },
+      docInfo: {
+        fileName: 'doc.docx',
+        filePath: '/path/doc.docx',
+        totalParagraphs: 100,
+        totalWords: 1000,
+      },
       createdAt: new Date().toISOString(),
     });
 
@@ -574,9 +899,22 @@ describe('generateProofreadReportHandler', () => {
   it('should include radar chart JSON data', async () => {
     sessionIssues.set('radar-test', {
       issues: [
-        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          context: '...',
+          source: 'mcp',
+        },
       ],
-      docInfo: { fileName: 'doc.docx', filePath: '/path/doc.docx', totalParagraphs: 10, totalWords: 100 },
+      docInfo: {
+        fileName: 'doc.docx',
+        filePath: '/path/doc.docx',
+        totalParagraphs: 10,
+        totalWords: 100,
+      },
       createdAt: new Date().toISOString(),
     });
 
@@ -591,11 +929,22 @@ describe('generateProofreadReportHandler', () => {
     sessionIssues.set('unknown-test', {
       issues: [
         {
-          offset: 0, length: 5, original: 'abcde', suggestion: 'abc',
-          type: '未来新类型', context: '...', source: 'ai' as const, reason: 'test',
+          offset: 0,
+          length: 5,
+          original: 'abcde',
+          suggestion: 'abc',
+          type: '未来新类型',
+          context: '...',
+          source: 'ai' as const,
+          reason: 'test',
         },
       ],
-      docInfo: { fileName: 'doc.docx', filePath: '/path/doc.docx', totalParagraphs: 10, totalWords: 100 },
+      docInfo: {
+        fileName: 'doc.docx',
+        filePath: '/path/doc.docx',
+        totalParagraphs: 10,
+        totalWords: 100,
+      },
       createdAt: new Date().toISOString(),
     });
 
@@ -633,13 +982,23 @@ describe('normalizeToTwoPointScale (indirect)', () => {
 
   it('maps rawScore=1 → normalized=0 → 0.0/10 (20 fluency issues = 5-4=1 → norm=0)', async () => {
     const issues = Array.from({ length: 20 }, (_, i) => ({
-      offset: i * 10, length: 2, original: '的的', suggestion: '的',
-      type: '的得混淆', context: '...', source: 'mcp' as const,
+      offset: i * 10,
+      length: 2,
+      original: '的的',
+      suggestion: '的',
+      type: '的得混淆',
+      context: '...',
+      source: 'mcp' as const,
     }));
 
     sessionIssues.set('normalize-1', {
       issues,
-      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 100, totalWords: 1000 },
+      docInfo: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 100,
+        totalWords: 1000,
+      },
       createdAt: new Date().toISOString(),
     });
 
@@ -653,7 +1012,15 @@ describe('normalizeToTwoPointScale (indirect)', () => {
   it('handles the completeness blocker (hasPlaceholder → 0)', async () => {
     sessionIssues.set('blocker', {
       issues: [
-        { offset: 0, length: 5, original: 'xxx公司', suggestion: '[名称]', type: '占位文本', context: '...', source: 'mcp' },
+        {
+          offset: 0,
+          length: 5,
+          original: 'xxx公司',
+          suggestion: '[名称]',
+          type: '占位文本',
+          context: '...',
+          source: 'mcp',
+        },
       ],
       docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
       createdAt: new Date().toISOString(),
@@ -676,7 +1043,15 @@ describe('TYPE_METRIC_MAP classification', () => {
     sessionIssues.clear();
     sessionIssues.set('cls-test', {
       issues: [
-        { offset: 0, length: 2, original: 'xx', suggestion: 'yy', type, context: '...', source: 'mcp' },
+        {
+          offset: 0,
+          length: 2,
+          original: 'xx',
+          suggestion: 'yy',
+          type,
+          context: '...',
+          source: 'mcp',
+        },
       ],
       docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
       createdAt: new Date().toISOString(),
@@ -763,13 +1138,34 @@ describe('Session isolation', () => {
   it('sessions should be independent (different session_ids)', async () => {
     await proofreadAccumulateHandler({
       session_id: 'session-a',
-      issues: [{ offset: 1, length: 1, original: 'a', suggestion: 'b', type: '的得混淆', context: '...', source: 'mcp' }],
+      issues: [
+        {
+          offset: 1,
+          length: 1,
+          original: 'a',
+          suggestion: 'b',
+          type: '的得混淆',
+          context: '...',
+          source: 'mcp',
+        },
+      ],
       doc_info: { fileName: 'a.docx', filePath: '/a.docx', totalParagraphs: 1, totalWords: 10 },
     });
 
     await proofreadAccumulateHandler({
       session_id: 'session-b',
-      issues: [{ offset: 2, length: 1, original: 'c', suggestion: 'd', type: '重复字符', context: '...', source: 'ai', reason: 'test' }],
+      issues: [
+        {
+          offset: 2,
+          length: 1,
+          original: 'c',
+          suggestion: 'd',
+          type: '重复字符',
+          context: '...',
+          source: 'ai',
+          reason: 'test',
+        },
+      ],
       doc_info: { fileName: 'b.docx', filePath: '/b.docx', totalParagraphs: 2, totalWords: 20 },
     });
 
@@ -791,27 +1187,70 @@ describe('inferIssueType — type 兜底推断（#55 P0-2）', () => {
 
   it('type 缺失（undefined）时按文本推断', () => {
     expect(inferIssueType({ original: '进行了研究', suggestion: '研究' })).toBe('冗余词');
-    expect(inferIssueType({ original: '通过加强监督使', suggestion: '加强监督使' })).toBe('句式杂糅');
-    expect(inferIssueType({ original: '根据调查结果显示', suggestion: '调查结果' })).toBe('句式杂糅');
-    expect(inferIssueType({ original: '由于天气的原因导致', suggestion: '由于天气导致' })).toBe('句式杂糅');
+    expect(inferIssueType({ original: '通过加强监督使', suggestion: '加强监督使' })).toBe(
+      '句式杂糅'
+    );
+    expect(inferIssueType({ original: '根据调查结果显示', suggestion: '调查结果' })).toBe(
+      '句式杂糅'
+    );
+    expect(inferIssueType({ original: '由于天气的原因导致', suggestion: '由于天气导致' })).toBe(
+      '句式杂糅'
+    );
   });
 
   it('type 为占位值 ai（旧代码覆盖 bug）时兜底推断', () => {
     // 旧 SKILL 合并代码把 Layer 2 的 type 覆盖为 'ai' → 需兜底
-    expect(inferIssueType({ type: 'ai', original: '加强重视安全问题', suggestion: '重视安全问题' })).toBe('动宾不当');
-    expect(inferIssueType({ type: 'ai', original: '他取得了显著的进步提高', suggestion: '他取得了显著的进步' })).toBe('语义重复');
-    expect(inferIssueType({ type: 'ai', original: '会议讨论了很多丰富的内容', suggestion: '会议讨论了很多内容' })).toBe('修饰不当');
-    expect(inferIssueType({ type: 'ai', original: '这一发现具有着深远的意义', suggestion: '这一发现具有深远的意义' })).toBe('搭配冗余');
-    expect(inferIssueType({ type: 'ai', original: '这个方案存在着很多不足之处', suggestion: '这个方案有很多不足之处' })).toBe('搭配冗余');
+    expect(
+      inferIssueType({ type: 'ai', original: '加强重视安全问题', suggestion: '重视安全问题' })
+    ).toBe('动宾不当');
+    expect(
+      inferIssueType({
+        type: 'ai',
+        original: '他取得了显著的进步提高',
+        suggestion: '他取得了显著的进步',
+      })
+    ).toBe('语义重复');
+    expect(
+      inferIssueType({
+        type: 'ai',
+        original: '会议讨论了很多丰富的内容',
+        suggestion: '会议讨论了很多内容',
+      })
+    ).toBe('修饰不当');
+    expect(
+      inferIssueType({
+        type: 'ai',
+        original: '这一发现具有着深远的意义',
+        suggestion: '这一发现具有深远的意义',
+      })
+    ).toBe('搭配冗余');
+    expect(
+      inferIssueType({
+        type: 'ai',
+        original: '这个方案存在着很多不足之处',
+        suggestion: '这个方案有很多不足之处',
+      })
+    ).toBe('搭配冗余');
   });
 
   it('F11–F15 语料推断为 fluency 类型', () => {
-    const f11 = inferIssueType({ original: '这个方案存在着很多不足之处', suggestion: '这个方案有很多不足之处' });
+    const f11 = inferIssueType({
+      original: '这个方案存在着很多不足之处',
+      suggestion: '这个方案有很多不足之处',
+    });
     expect(['搭配冗余', '冗余+搭配', '冗余搭配']).toContain(f11);
-    expect(inferIssueType({ original: '我们需要加强重视安全问题', suggestion: '我们需要重视安全问题' })).toBe('动宾不当');
-    expect(inferIssueType({ original: '他取得了显著的进步提高', suggestion: '他取得了显著的进步' })).toBe('语义重复');
-    expect(inferIssueType({ original: '会议讨论了很多丰富的内容', suggestion: '会议讨论了很多内容' })).toBe('修饰不当');
-    expect(inferIssueType({ original: '这一发现具有着深远的意义', suggestion: '这一发现具有深远的意义' })).toBe('搭配冗余');
+    expect(
+      inferIssueType({ original: '我们需要加强重视安全问题', suggestion: '我们需要重视安全问题' })
+    ).toBe('动宾不当');
+    expect(
+      inferIssueType({ original: '他取得了显著的进步提高', suggestion: '他取得了显著的进步' })
+    ).toBe('语义重复');
+    expect(
+      inferIssueType({ original: '会议讨论了很多丰富的内容', suggestion: '会议讨论了很多内容' })
+    ).toBe('修饰不当');
+    expect(
+      inferIssueType({ original: '这一发现具有着深远的意义', suggestion: '这一发现具有深远的意义' })
+    ).toBe('搭配冗余');
   });
 
   it('完全无法推断时返回未分类', () => {
@@ -819,7 +1258,9 @@ describe('inferIssueType — type 兜底推断（#55 P0-2）', () => {
   });
 
   it('占位文本推断为占位文本（completeness）', () => {
-    expect(inferIssueType({ original: 'xxx有限公司', suggestion: '[名称]有限公司' })).toBe('占位文本');
+    expect(inferIssueType({ original: 'xxx有限公司', suggestion: '[名称]有限公司' })).toBe(
+      '占位文本'
+    );
   });
 });
 
@@ -831,8 +1272,13 @@ describe('proofreadAccumulateHandler — type 兜底累加（#55 P0-2）', () =>
       session_id: 't2-infer-1',
       issues: [
         {
-          offset: 0, length: 5, original: '加强重视安全问题', suggestion: '重视安全问题',
-          context: '...', source: 'ai', reason: '动宾不当',
+          offset: 0,
+          length: 5,
+          original: '加强重视安全问题',
+          suggestion: '重视安全问题',
+          context: '...',
+          source: 'ai',
+          reason: '动宾不当',
           // 无 type 字段
         } as any,
       ],
@@ -849,8 +1295,13 @@ describe('proofreadAccumulateHandler — type 兜底累加（#55 P0-2）', () =>
       session_id: 't2-infer-2',
       issues: [
         {
-          offset: 0, length: 6, original: '进行了研究', suggestion: '研究',
-          context: '...', source: 'ai', type: 'ai',
+          offset: 0,
+          length: 6,
+          original: '进行了研究',
+          suggestion: '研究',
+          context: '...',
+          source: 'ai',
+          type: 'ai',
         } as any,
       ],
       doc_info: { fileName: 'd.docx', filePath: '/d.docx', totalParagraphs: 1, totalWords: 10 },
@@ -865,8 +1316,13 @@ describe('proofreadAccumulateHandler — type 兜底累加（#55 P0-2）', () =>
       session_id: 't2-report',
       issues: [
         {
-          offset: 0, length: 8, original: '加强重视安全问题', suggestion: '重视安全问题',
-          context: '...', source: 'ai', reason: '动宾不当',
+          offset: 0,
+          length: 8,
+          original: '加强重视安全问题',
+          suggestion: '重视安全问题',
+          context: '...',
+          source: 'ai',
+          reason: '动宾不当',
         } as any,
       ],
       doc_info: { fileName: 'd.docx', filePath: '/d.docx', totalParagraphs: 1, totalWords: 10 },
@@ -888,7 +1344,15 @@ describe('proofreadAccumulateHandler — type 兜底累加（#55 P0-2）', () =>
     await proofreadAccumulateHandler({
       session_id: 't2-unclassified',
       issues: [
-        { offset: 0, length: 4, original: 'zzzz', suggestion: 'yyyy', context: '...', source: 'ai', reason: 'x' } as any,
+        {
+          offset: 0,
+          length: 4,
+          original: 'zzzz',
+          suggestion: 'yyyy',
+          context: '...',
+          source: 'ai',
+          reason: 'x',
+        } as any,
       ],
       doc_info: { fileName: 'd.docx', filePath: '/d.docx', totalParagraphs: 1, totalWords: 10 },
     });
@@ -907,7 +1371,15 @@ describe('TC-12 修订数口径（#55 P1-3）', () => {
     await proofreadAccumulateHandler({
       session_id: 't3-tc12',
       issues: [
-        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', context: '...', source: 'mcp' },
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          context: '...',
+          source: 'mcp',
+        },
       ],
       doc_info: { fileName: 'd.docx', filePath: '/d.docx', totalParagraphs: 1, totalWords: 10 },
       total_revisions: 2,
@@ -921,27 +1393,51 @@ describe('TC-12 修订数口径（#55 P1-3）', () => {
   });
 });
 
-
 describe('releaseSession 时序：文件写入失败时保留会话', () => {
   const sessId = 'retry-session';
 
   const setupSession = (issues: Array<Record<string, unknown>> = []) => {
     sessionIssues.set(sessId, {
       issues: issues as any,
-      docInfo: { fileName: 'doc.docx', filePath: '/path/doc.docx', totalParagraphs: 10, totalWords: 100 },
+      docInfo: {
+        fileName: 'doc.docx',
+        filePath: '/path/doc.docx',
+        totalParagraphs: 10,
+        totalWords: 100,
+      },
       createdAt: new Date().toISOString(),
     });
   };
 
   it('不指定 output_file 时：报告生成后会话被回收', async () => {
-    setupSession([{ offset: 0, length: 2, original: 'xx', suggestion: 'yy', type: '的得混淆', context: '...', source: 'mcp' }]);
+    setupSession([
+      {
+        offset: 0,
+        length: 2,
+        original: 'xx',
+        suggestion: 'yy',
+        type: '的得混淆',
+        context: '...',
+        source: 'mcp',
+      },
+    ]);
     const result = await generateProofreadReportHandler({ session_id: sessId });
     expect(result.success).toBe(true);
     expect(sessionIssues.has(sessId)).toBe(false);
   });
 
   it('output_file 写入成功时：报告生成后会话被回收', async () => {
-    setupSession([{ offset: 0, length: 2, original: 'xx', suggestion: 'yy', type: '的得混淆', context: '...', source: 'mcp' }]);
+    setupSession([
+      {
+        offset: 0,
+        length: 2,
+        original: 'xx',
+        suggestion: 'yy',
+        type: '的得混淆',
+        context: '...',
+        source: 'mcp',
+      },
+    ]);
     const result = await generateProofreadReportHandler({
       session_id: sessId,
       output_file: path.join(tmpDir, `proofread-report-${Date.now()}.md`),
@@ -955,7 +1451,17 @@ describe('releaseSession 时序：文件写入失败时保留会话', () => {
     // writeFileSync 自动创建文件导致 flaky；评审建议：不用硬编码 /path 根目录路径——
     // 主分支 mkdirSync(recursive) 会在根目录真实创建 /path 目录，与 PR 自己修复
     // /tmp 残留的方向矛盾）；用 mock 而非真实路径，跨平台（Linux/Windows）均稳定
-    setupSession([{ offset: 0, length: 2, original: 'xx', suggestion: 'yy', type: '的得混淆', context: '...', source: 'mcp' }]);
+    setupSession([
+      {
+        offset: 0,
+        length: 2,
+        original: 'xx',
+        suggestion: 'yy',
+        type: '的得混淆',
+        context: '...',
+        source: 'mcp',
+      },
+    ]);
     (fs.writeFileSync as jest.Mock).mockImplementationOnce(() => {
       throw new Error('EACCES: permission denied');
     });
@@ -972,7 +1478,17 @@ describe('releaseSession 时序：文件写入失败时保留会话', () => {
   });
 
   it('output_file 写入失败后：修正路径重试可成功，且会话回收', async () => {
-    setupSession([{ offset: 0, length: 2, original: 'xx', suggestion: 'yy', type: '的得混淆', context: '...', source: 'mcp' }]);
+    setupSession([
+      {
+        offset: 0,
+        length: 2,
+        original: 'xx',
+        suggestion: 'yy',
+        type: '的得混淆',
+        context: '...',
+        source: 'mcp',
+      },
+    ]);
     // 第一次写入失败
     (fs.writeFileSync as jest.Mock).mockImplementationOnce(() => {
       throw new Error('EACCES: permission denied');
@@ -1047,7 +1563,9 @@ describe('AI_ONLY_PATTERN（评审建议：不再每条重建 RegExp）', () => 
 
 describe('inferTypeFromContent（#55 T2 兜底推断）', () => {
   it('原文含"通过…使" → 句式杂糅', () => {
-    expect(inferTypeFromContent('通过这次学习使我受益匪浅', '这次学习使我受益匪浅')).toBe('句式杂糅');
+    expect(inferTypeFromContent('通过这次学习使我受益匪浅', '这次学习使我受益匪浅')).toBe(
+      '句式杂糅'
+    );
   });
 
   it('原文含"根据…显示" → 句式杂糅', () => {
@@ -1059,7 +1577,9 @@ describe('inferTypeFromContent（#55 T2 兜底推断）', () => {
   });
 
   it('原文含"由于…的原因导致" → 句式杂糅', () => {
-    expect(inferTypeFromContent('由于天气的原因导致了航班延误', '由于天气导致了航班延误')).toBe('句式杂糅');
+    expect(inferTypeFromContent('由于天气的原因导致了航班延误', '由于天气导致了航班延误')).toBe(
+      '句式杂糅'
+    );
   });
 
   it('原文含"并（非|不）是" → 多字', () => {
@@ -1080,9 +1600,13 @@ describe('inferTypeFromContent（#55 T2 兜底推断）', () => {
 
   it('评审建议：F14 修正同时影响 inferIssueType（F14_MODIFIER_PATTERN 复用）', () => {
     // "丰富的经验"（正常搭配）不再推断为修饰不当，落入后续规则（占位/重复等不命中 → 未分类）
-    expect(inferIssueType({ original: '他有着丰富的经验', suggestion: '他经验丰富' })).toBe('未分类');
+    expect(inferIssueType({ original: '他有着丰富的经验', suggestion: '他经验丰富' })).toBe(
+      '未分类'
+    );
     // 真阳性仍命中
-    expect(inferIssueType({ original: '会议讨论了很多丰富的内容', suggestion: '会议讨论了很多内容' })).toBe('修饰不当');
+    expect(
+      inferIssueType({ original: '会议讨论了很多丰富的内容', suggestion: '会议讨论了很多内容' })
+    ).toBe('修饰不当');
   });
 
   it('无法推断 → undefined', () => {
@@ -1092,19 +1616,39 @@ describe('inferTypeFromContent（#55 T2 兜底推断）', () => {
 
 describe('normalizeIssueType（#55 T2）', () => {
   it('缺 type 的 issue 被兜底推断', () => {
-    const issue: any = { offset: 0, length: 4, original: '进行了研究', suggestion: '研究', source: 'mcp' };
+    const issue: any = {
+      offset: 0,
+      length: 4,
+      original: '进行了研究',
+      suggestion: '研究',
+      source: 'mcp',
+    };
     const normalized = normalizeIssueType(issue);
     expect(normalized.type).toBe('冗余词');
   });
 
   it('type="ai"（SKILL 合并 bug 产物）被兜底推断', () => {
-    const issue: any = { offset: 0, length: 4, original: '通过管理使效率提升', suggestion: '管理使效率提升', type: 'ai', source: 'ai' };
+    const issue: any = {
+      offset: 0,
+      length: 4,
+      original: '通过管理使效率提升',
+      suggestion: '管理使效率提升',
+      type: 'ai',
+      source: 'ai',
+    };
     const normalized = normalizeIssueType(issue);
     expect(normalized.type).toBe('句式杂糅');
   });
 
   it('type 正常时保持不变', () => {
-    const issue: any = { offset: 0, length: 4, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' };
+    const issue: any = {
+      offset: 0,
+      length: 4,
+      original: '的的',
+      suggestion: '的',
+      type: '重复字符',
+      source: 'mcp',
+    };
     const normalized = normalizeIssueType(issue);
     expect(normalized.type).toBe('重复字符');
   });
@@ -1112,53 +1656,172 @@ describe('normalizeIssueType（#55 T2）', () => {
   it('评审建议：type 带前后空格时 trim 归一化，TYPE_METRIC_MAP 查表不再落入未分类', () => {
     // 与 normalizeIssueSource 对称：有效 type 返回 trim 后归一化值，
     // 避免 ' 的得混淆 ' 在报告 metricForIssue 严格 === 查表时落入"未分类"（TC-13 同源）
-    const issue: any = { offset: 0, length: 4, original: '的的', suggestion: '的', type: ' 重复字符 ', source: 'mcp' };
+    const issue: any = {
+      offset: 0,
+      length: 4,
+      original: '的的',
+      suggestion: '的',
+      type: ' 重复字符 ',
+      source: 'mcp',
+    };
     const normalized = normalizeIssueType(issue);
     expect(normalized.type).toBe('重复字符');
   });
 
   it('无法推断 → 未分类', () => {
-    const issue: any = { offset: 0, length: 4, original: '完全陌生的内容xyz', suggestion: '也陌生', source: 'ai' };
+    const issue: any = {
+      offset: 0,
+      length: 4,
+      original: '完全陌生的内容xyz',
+      suggestion: '也陌生',
+      source: 'ai',
+    };
     const normalized = normalizeIssueType(issue);
     expect(normalized.type).toBe('未分类');
   });
 
   it('F11–F15 不合理搭配缺 type 时兜底为细粒度类型（#55 T3 凭据同步）', () => {
     expect(
-      normalizeIssueType({ offset: 0, length: 8, original: '这个方案存在着很多不足之处', suggestion: '这个方案存在很多不足之处', source: 'ai' } as any).type
+      normalizeIssueType({
+        offset: 0,
+        length: 8,
+        original: '这个方案存在着很多不足之处',
+        suggestion: '这个方案存在很多不足之处',
+        source: 'ai',
+      } as any).type
     ).toBe('搭配冗余');
     expect(
-      normalizeIssueType({ offset: 0, length: 6, original: '我们需要加强重视安全问题', suggestion: '我们需要重视安全问题', source: 'ai' } as any).type
+      normalizeIssueType({
+        offset: 0,
+        length: 6,
+        original: '我们需要加强重视安全问题',
+        suggestion: '我们需要重视安全问题',
+        source: 'ai',
+      } as any).type
     ).toBe('动宾不当');
     expect(
-      normalizeIssueType({ offset: 0, length: 6, original: '他取得了显著的进步提高', suggestion: '他取得了显著的进步', source: 'ai' } as any).type
+      normalizeIssueType({
+        offset: 0,
+        length: 6,
+        original: '他取得了显著的进步提高',
+        suggestion: '他取得了显著的进步',
+        source: 'ai',
+      } as any).type
     ).toBe('语义重复');
     expect(
-      normalizeIssueType({ offset: 0, length: 10, original: '会议讨论了很多丰富的内容', suggestion: '会议讨论了很多内容', source: 'ai' } as any).type
+      normalizeIssueType({
+        offset: 0,
+        length: 10,
+        original: '会议讨论了很多丰富的内容',
+        suggestion: '会议讨论了很多内容',
+        source: 'ai',
+      } as any).type
     ).toBe('修饰不当');
     expect(
-      normalizeIssueType({ offset: 0, length: 8, original: '这一发现具有着深远的意义', suggestion: '这一发现具有深远的意义', source: 'ai' } as any).type
+      normalizeIssueType({
+        offset: 0,
+        length: 8,
+        original: '这一发现具有着深远的意义',
+        suggestion: '这一发现具有深远的意义',
+        source: 'ai',
+      } as any).type
     ).toBe('搭配冗余');
   });
 });
 
 describe('normalizeIssueSource（验收遗留 TC-13）', () => {
   it('source 已为 mcp / ai 时保持不变', () => {
-    expect(normalizeIssueSource({ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' } as any).source).toBe('mcp');
-    expect(normalizeIssueSource({ offset: 0, length: 2, original: '存在着', suggestion: '', type: '搭配冗余', source: 'ai' } as any).source).toBe('ai');
+    expect(
+      normalizeIssueSource({
+        offset: 0,
+        length: 2,
+        original: '的的',
+        suggestion: '的',
+        type: '重复字符',
+        source: 'mcp',
+      } as any).source
+    ).toBe('mcp');
+    expect(
+      normalizeIssueSource({
+        offset: 0,
+        length: 2,
+        original: '存在着',
+        suggestion: '',
+        type: '搭配冗余',
+        source: 'ai',
+      } as any).source
+    ).toBe('ai');
   });
 
   it('评审建议：大小写变体（MCP/AI）归一化为小写，报告统计 === 不再失真', () => {
-    expect(normalizeIssueSource({ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'MCP' } as any).source).toBe('mcp');
-    expect(normalizeIssueSource({ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'Mcp' } as any).source).toBe('mcp');
-    expect(normalizeIssueSource({ offset: 0, length: 2, original: '存在着', suggestion: '', type: '搭配冗余', source: 'AI' } as any).source).toBe('ai');
-    expect(normalizeIssueSource({ offset: 0, length: 2, original: '存在着', suggestion: '', type: '搭配冗余', source: 'Ai' } as any).source).toBe('ai');
+    expect(
+      normalizeIssueSource({
+        offset: 0,
+        length: 2,
+        original: '的的',
+        suggestion: '的',
+        type: '重复字符',
+        source: 'MCP',
+      } as any).source
+    ).toBe('mcp');
+    expect(
+      normalizeIssueSource({
+        offset: 0,
+        length: 2,
+        original: '的的',
+        suggestion: '的',
+        type: '重复字符',
+        source: 'Mcp',
+      } as any).source
+    ).toBe('mcp');
+    expect(
+      normalizeIssueSource({
+        offset: 0,
+        length: 2,
+        original: '存在着',
+        suggestion: '',
+        type: '搭配冗余',
+        source: 'AI',
+      } as any).source
+    ).toBe('ai');
+    expect(
+      normalizeIssueSource({
+        offset: 0,
+        length: 2,
+        original: '存在着',
+        suggestion: '',
+        type: '搭配冗余',
+        source: 'Ai',
+      } as any).source
+    ).toBe('ai');
   });
 
   it('缺 source 时，Layer 1 规则命中（如 的的/句式杂糅）兜底为 mcp', () => {
-    expect(normalizeIssueSource({ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符' } as any).source).toBe('mcp');
-    expect(normalizeIssueSource({ offset: 0, length: 7, original: '通过加强监督使效率提升', suggestion: '加强监督使效率提升' } as any).source).toBe('mcp');
-    expect(normalizeIssueSource({ offset: 0, length: 4, original: '进行了研究', suggestion: '研究' } as any).source).toBe('mcp');
+    expect(
+      normalizeIssueSource({
+        offset: 0,
+        length: 2,
+        original: '的的',
+        suggestion: '的',
+        type: '重复字符',
+      } as any).source
+    ).toBe('mcp');
+    expect(
+      normalizeIssueSource({
+        offset: 0,
+        length: 7,
+        original: '通过加强监督使效率提升',
+        suggestion: '加强监督使效率提升',
+      } as any).source
+    ).toBe('mcp');
+    expect(
+      normalizeIssueSource({
+        offset: 0,
+        length: 4,
+        original: '进行了研究',
+        suggestion: '研究',
+      } as any).source
+    ).toBe('mcp');
   });
 
   it('评审建议：两层判断顺序——先 AI 专属后 Layer 1，F11–F15 不因 inferTypeFromContent 命中而误归 mcp', () => {
@@ -1166,37 +1829,103 @@ describe('normalizeIssueSource（验收遗留 TC-13）', () => {
     // 旧实现"非 AI 专属 → 全部 mcp"若先走 Layer 1 判断，会把这类 AI 专属问题误计为 MCP
     // （TC-13 来源失真反向复现）。修复后必须先判 AI 专属模式再判 Layer 1。
     expect(
-      normalizeIssueSource({ offset: 0, length: 6, original: '我们需要加强重视安全问题', suggestion: '我们需要重视安全问题' } as any).source
+      normalizeIssueSource({
+        offset: 0,
+        length: 6,
+        original: '我们需要加强重视安全问题',
+        suggestion: '我们需要重视安全问题',
+      } as any).source
     ).toBe('ai'); // F12 动宾不当（AI 专属）→ ai，而非 mcp
     expect(
-      normalizeIssueSource({ offset: 0, length: 8, original: '这个方案存在着很多不足之处', suggestion: '这个方案存在很多不足之处' } as any).source
+      normalizeIssueSource({
+        offset: 0,
+        length: 8,
+        original: '这个方案存在着很多不足之处',
+        suggestion: '这个方案存在很多不足之处',
+      } as any).source
     ).toBe('ai'); // F11 搭配冗余（AI 专属）→ ai
   });
 
   it('评审建议：无法识别的未知内容（Layer 1 不命中、非 F11–F15）保守兜底为 mcp', () => {
     // 口语化/语序不当等 Layer 1 规则与 F11–F15 正则均不检出的语义类问题，
     // 按注释第 4 步保守兜底为 mcp（Layer 1 规则引擎命中优先，AI 补充场景由 SKILL 约束）。
-    expect(normalizeIssueSource({ offset: 0, length: 4, original: '语气很口语化呢', suggestion: '语气较为书面' } as any).source).toBe('mcp');
+    expect(
+      normalizeIssueSource({
+        offset: 0,
+        length: 4,
+        original: '语气很口语化呢',
+        suggestion: '语气较为书面',
+      } as any).source
+    ).toBe('mcp');
   });
 
   it('评审建议：F14 不再误判正常表达——"丰富的经验"（丰富直接修饰经验）不归为 ai', () => {
     // 原 aiOnlyPattern `(很多|许多|大量|丰富).{0,6}(内容|经验|知识)` 会把正常搭配
     // "丰富的经验" 命中（丰富→经验 间隔 0）→ 误判 ai。修正后 F14 需数量词+丰富/充分
     // 同时出现（如"很多丰富的内容"），"丰富的经验"正常表达不再被 AI 专属模式捕获。
-    expect(normalizeIssueSource({ offset: 0, length: 5, original: '他有着丰富的经验', suggestion: '他经验丰富' } as any).source).toBe('mcp');
+    expect(
+      normalizeIssueSource({
+        offset: 0,
+        length: 5,
+        original: '他有着丰富的经验',
+        suggestion: '他经验丰富',
+      } as any).source
+    ).toBe('mcp');
     // F14 真阳性：数量词+丰富/充分 修饰名词 → ai
-    expect(normalizeIssueSource({ offset: 0, length: 10, original: '会议讨论了很多丰富的内容', suggestion: '会议讨论了很多内容' } as any).source).toBe('ai');
+    expect(
+      normalizeIssueSource({
+        offset: 0,
+        length: 10,
+        original: '会议讨论了很多丰富的内容',
+        suggestion: '会议讨论了很多内容',
+      } as any).source
+    ).toBe('ai');
   });
 
   it('缺 source 时，F11–F15 AI 专属模式（存在着/加强重视/进步提高等）兜底为 ai', () => {
-    expect(normalizeIssueSource({ offset: 0, length: 8, original: '这个方案存在着很多不足之处', suggestion: '这个方案存在很多不足之处' } as any).source).toBe('ai');
-    expect(normalizeIssueSource({ offset: 0, length: 6, original: '我们需要加强重视安全问题', suggestion: '我们需要重视安全问题' } as any).source).toBe('ai');
-    expect(normalizeIssueSource({ offset: 0, length: 6, original: '他取得了显著的进步提高', suggestion: '他取得了显著的进步' } as any).source).toBe('ai');
-    expect(normalizeIssueSource({ offset: 0, length: 10, original: '会议讨论了很多丰富的内容', suggestion: '会议讨论了很多内容' } as any).source).toBe('ai');
+    expect(
+      normalizeIssueSource({
+        offset: 0,
+        length: 8,
+        original: '这个方案存在着很多不足之处',
+        suggestion: '这个方案存在很多不足之处',
+      } as any).source
+    ).toBe('ai');
+    expect(
+      normalizeIssueSource({
+        offset: 0,
+        length: 6,
+        original: '我们需要加强重视安全问题',
+        suggestion: '我们需要重视安全问题',
+      } as any).source
+    ).toBe('ai');
+    expect(
+      normalizeIssueSource({
+        offset: 0,
+        length: 6,
+        original: '他取得了显著的进步提高',
+        suggestion: '他取得了显著的进步',
+      } as any).source
+    ).toBe('ai');
+    expect(
+      normalizeIssueSource({
+        offset: 0,
+        length: 10,
+        original: '会议讨论了很多丰富的内容',
+        suggestion: '会议讨论了很多内容',
+      } as any).source
+    ).toBe('ai');
   });
 
   it('缺 source 且无法按内容推断时，保守兜底为 mcp', () => {
-    expect(normalizeIssueSource({ offset: 0, length: 2, original: '完全陌生的内容xyz', suggestion: '也陌生' } as any).source).toBe('mcp');
+    expect(
+      normalizeIssueSource({
+        offset: 0,
+        length: 2,
+        original: '完全陌生的内容xyz',
+        suggestion: '也陌生',
+      } as any).source
+    ).toBe('mcp');
   });
 });
 
@@ -1438,7 +2167,13 @@ describe('proofreadAccumulate — 缺 type 自动兜底（#55 T2）', () => {
     await proofreadAccumulateHandler({
       session_id: 't2-session-1',
       issues: [
-        { offset: 0, length: 4, original: '进行了研究', suggestion: '研究', source: 'mcp' as const },
+        {
+          offset: 0,
+          length: 4,
+          original: '进行了研究',
+          suggestion: '研究',
+          source: 'mcp' as const,
+        },
       ],
       doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
     });
@@ -1460,7 +2195,14 @@ describe('proofreadAccumulate — 缺 type 自动兜底（#55 T2）', () => {
     await proofreadAccumulateHandler({
       session_id: 't2-session-2',
       issues: [
-        { offset: 0, length: 8, original: '通过管理使效率提升', suggestion: '管理使效率提升', type: 'ai', source: 'ai' as const },
+        {
+          offset: 0,
+          length: 8,
+          original: '通过管理使效率提升',
+          suggestion: '管理使效率提升',
+          type: 'ai',
+          source: 'ai' as const,
+        },
       ],
       doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
     });
@@ -1476,8 +2218,22 @@ describe('generateProofreadReport — TC-12 修订数口径（#55 T3）', () => 
     await proofreadAccumulateHandler({
       session_id: 't3-session-1',
       issues: [
-        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
-        { offset: 10, length: 2, original: '在去', suggestion: '再去', type: '在再混淆', source: 'mcp' as const },
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+        },
+        {
+          offset: 10,
+          length: 2,
+          original: '在去',
+          suggestion: '再去',
+          type: '在再混淆',
+          source: 'mcp' as const,
+        },
       ],
       doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
       total_revisions: 60, // 30 处问题 × 2 条修订记录
@@ -1495,7 +2251,14 @@ describe('generateProofreadReport — TC-12 修订数口径（#55 T3）', () => 
     await proofreadAccumulateHandler({
       session_id: 't3-session-odd',
       issues: [
-        { offset: 0, length: 8, original: '这个方案存在着很多不足之处', suggestion: '这个方案存在很多不足之处', type: '搭配冗余', source: 'ai' as const },
+        {
+          offset: 0,
+          length: 8,
+          original: '这个方案存在着很多不足之处',
+          suggestion: '这个方案存在很多不足之处',
+          type: '搭配冗余',
+          source: 'ai' as const,
+        },
       ],
       doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
       total_revisions: 63, // 验收现场：63 条修订（含删除类“存在着→空”等奇数修订）
@@ -1518,7 +2281,14 @@ describe('generateProofreadReport — TC-12 修订数口径（#55 T3）', () => 
     await proofreadAccumulateHandler({
       session_id: 't3-session-even',
       issues: [
-        { offset: 0, length: 2, original: '在去', suggestion: '再去', type: '在再混淆', source: 'mcp' as const },
+        {
+          offset: 0,
+          length: 2,
+          original: '在去',
+          suggestion: '再去',
+          type: '在再混淆',
+          source: 'mcp' as const,
+        },
       ],
       doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
       total_revisions: 2,
@@ -1563,7 +2333,14 @@ describe('proofreadAccumulate — 必填字段校验（Issue #116 问题六）',
     const result = await proofreadAccumulateHandler({
       session_id: 'required-check-3',
       issues: [
-        { offset: 0, length: 2, original: '', suggestion: '的', type: '重复字符', source: 'mcp' as const },
+        {
+          offset: 0,
+          length: 2,
+          original: '',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+        },
       ],
       doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
     });
@@ -1577,9 +2354,21 @@ describe('proofreadAccumulate — 必填字段校验（Issue #116 问题六）',
     const result = await proofreadAccumulateHandler({
       session_id: 'required-check-blank-1',
       issues: [
-        { offset: 10, length: 2, original: '  ', suggestion: ' ', type: '异常空格', source: 'mcp' as const },
+        {
+          offset: 10,
+          length: 2,
+          original: '  ',
+          suggestion: ' ',
+          type: '异常空格',
+          source: 'mcp' as const,
+        },
       ],
-      doc_info: { fileName: 'blank.docx', filePath: '/p/blank.docx', totalParagraphs: 1, totalWords: 10 },
+      doc_info: {
+        fileName: 'blank.docx',
+        filePath: '/p/blank.docx',
+        totalParagraphs: 1,
+        totalWords: 10,
+      },
     });
     expect(result.success).toBe(true);
     expect(result.content[0].text).toContain('已累加 1 条问题');
@@ -1589,9 +2378,21 @@ describe('proofreadAccumulate — 必填字段校验（Issue #116 问题六）',
     const result = await proofreadAccumulateHandler({
       session_id: 'required-check-blank-2',
       issues: [
-        { offset: 20, length: 2, original: '\u3000\u3000', suggestion: ' ', type: '异常空格', source: 'mcp' as const },
+        {
+          offset: 20,
+          length: 2,
+          original: '\u3000\u3000',
+          suggestion: ' ',
+          type: '异常空格',
+          source: 'mcp' as const,
+        },
       ],
-      doc_info: { fileName: 'blank2.docx', filePath: '/p/blank2.docx', totalParagraphs: 1, totalWords: 10 },
+      doc_info: {
+        fileName: 'blank2.docx',
+        filePath: '/p/blank2.docx',
+        totalParagraphs: 1,
+        totalWords: 10,
+      },
     });
     expect(result.success).toBe(true);
     expect(result.content[0].text).toContain('已累加 1 条问题');
@@ -1601,7 +2402,14 @@ describe('proofreadAccumulate — 必填字段校验（Issue #116 问题六）',
     const result = await proofreadAccumulateHandler({
       session_id: 'required-check-4',
       issues: [
-        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+        },
       ],
       doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
     });
@@ -1617,7 +2425,14 @@ describe('proofreadAccumulate — 必填字段校验（Issue #116 问题六）',
       session_id: 'partial-success-1',
       issues: [
         // 有效条目
-        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+        },
         // 缺 suggestion 的无效条目
         { offset: 10, length: 2, original: '的了', type: '的得混淆', source: 'mcp' as const },
       ],
@@ -1635,7 +2450,14 @@ describe('proofreadAccumulate — 必填字段校验（Issue #116 问题六）',
     const result2 = await proofreadAccumulateHandler({
       session_id: 'partial-success-1',
       issues: [
-        { offset: 20, length: 2, original: '的得', suggestion: '的的', type: '的得混淆', source: 'mcp' as const },
+        {
+          offset: 20,
+          length: 2,
+          original: '的得',
+          suggestion: '的的',
+          type: '的得混淆',
+          source: 'mcp' as const,
+        },
       ],
     });
     expect(result2.success).toBe(true);
@@ -1659,7 +2481,9 @@ describe('proofread-store 落盘持久化（Issue #116 问题十二）', () => {
   const proofreadStore = jest.requireActual('../../tools/word/proofread-store');
   const testSessionId = 'persist-test-session';
   const testData = {
-    issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' }],
+    issues: [
+      { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' },
+    ],
     docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
     createdAt: '2026-08-14T00:00:00.000Z',
   };
@@ -1718,8 +2542,14 @@ describe('proofread-store 落盘持久化（Issue #116 问题十二）', () => {
     // a/b 与 a_b 经安全化都会得到 safeId=a_b，若不追加 hash 后缀会互相覆盖
     const idWithSlash = 'a/b';
     const idWithUnderscore = 'a_b';
-    const dataA = { ...testData, issues: [{ ...testData.issues[0], original: '甲', suggestion: '乙' }] };
-    const dataB = { ...testData, issues: [{ ...testData.issues[0], original: '丙', suggestion: '丁' }] };
+    const dataA = {
+      ...testData,
+      issues: [{ ...testData.issues[0], original: '甲', suggestion: '乙' }],
+    };
+    const dataB = {
+      ...testData,
+      issues: [{ ...testData.issues[0], original: '丙', suggestion: '丁' }],
+    };
     proofreadStore.saveSessionToDisk(idWithSlash, dataA);
     proofreadStore.saveSessionToDisk(idWithUnderscore, dataB);
     const loadedA = proofreadStore.loadSessionFromDisk(idWithSlash);
@@ -1747,8 +2577,22 @@ describe('服务重启后从磁盘恢复（Issue #116 问题七/九）', () => {
     await proofreadAccumulateHandler({
       session_id: 'restore-session',
       issues: [
-        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
-        { offset: 10, length: 2, original: '在去', suggestion: '再去', type: '在再混淆', source: 'mcp' as const },
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+        },
+        {
+          offset: 10,
+          length: 2,
+          original: '在去',
+          suggestion: '再去',
+          type: '在再混淆',
+          source: 'mcp' as const,
+        },
       ],
       doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
     });
@@ -1781,11 +2625,32 @@ describe('疑似问题（Issue #116 问题十一）', () => {
     await proofreadAccumulateHandler({
       session_id: 'suspect-session',
       issues: [
-        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+        },
       ],
       suspected_issues: [
-        { offset: 100, length: 4, original: '已未形成', suggestion: '尚未形成', type: '疑似', source: 'ai' as const },
-        { offset: 200, length: 5, original: '重点下雪', suggestion: '重点方向', type: '疑似', source: 'ai' as const },
+        {
+          offset: 100,
+          length: 4,
+          original: '已未形成',
+          suggestion: '尚未形成',
+          type: '疑似',
+          source: 'ai' as const,
+        },
+        {
+          offset: 200,
+          length: 5,
+          original: '重点下雪',
+          suggestion: '重点方向',
+          type: '疑似',
+          source: 'ai' as const,
+        },
       ],
       doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
     });
@@ -1805,7 +2670,14 @@ describe('疑似问题（Issue #116 问题十一）', () => {
     await proofreadAccumulateHandler({
       session_id: 'suspect-session',
       issues: [
-        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+        },
       ],
       doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
     });
@@ -1821,7 +2693,14 @@ describe('疑似问题（Issue #116 问题十一）', () => {
       session_id: 'suspect-session',
       issues: [],
       suspected_issues: [
-        { offset: 100, length: 4, original: '已未形成', suggestion: '尚未形成', type: '疑似', source: 'ai' as const },
+        {
+          offset: 100,
+          length: 4,
+          original: '已未形成',
+          suggestion: '尚未形成',
+          type: '疑似',
+          source: 'ai' as const,
+        },
       ],
       doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
     });
@@ -1843,7 +2722,14 @@ describe('疑似问题（Issue #116 问题十一）', () => {
     const result = await proofreadAccumulateHandler({
       session_id: 'suspect-session',
       issues: [
-        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+        },
       ],
       suspected_issues: [
         // 缺 suggestion
@@ -1865,7 +2751,14 @@ describe('疑似问题（Issue #116 问题十一）', () => {
     await proofreadAccumulateHandler({
       session_id: 'suspect-session',
       issues: [
-        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+        },
       ],
       doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
     });
@@ -1874,9 +2767,18 @@ describe('疑似问题（Issue #116 问题十一）', () => {
     const result = await proofreadAccumulateHandler({
       session_id: 'suspect-session',
       issues: [
-        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+        },
       ],
-      suspected_issues: [{ offset: 100, length: 4, original: '已未形成', type: '疑似', source: 'ai' as const }],
+      suspected_issues: [
+        { offset: 100, length: 4, original: '已未形成', type: '疑似', source: 'ai' as const },
+      ],
       doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
     });
     expect(result.success).toBe(true);
@@ -1891,10 +2793,24 @@ describe('疑似问题（Issue #116 问题十一）', () => {
     await proofreadAccumulateHandler({
       session_id: 'suspect-session',
       issues: [
-        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+        },
       ],
       suspected_issues: [
-        { offset: 100, length: 4, original: '已未形成', suggestion: '尚未形成', type: '疑似', source: 'ai' as const },
+        {
+          offset: 100,
+          length: 4,
+          original: '已未形成',
+          suggestion: '尚未形成',
+          type: '疑似',
+          source: 'ai' as const,
+        },
       ],
       doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
     });
@@ -1902,10 +2818,24 @@ describe('疑似问题（Issue #116 问题十一）', () => {
     await proofreadAccumulateHandler({
       session_id: 'suspect-session',
       issues: [
-        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const },
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+        },
       ],
       suspected_issues: [
-        { offset: 100, length: 4, original: '已未形成', suggestion: '尚未形成', type: '疑似', source: 'ai' as const },
+        {
+          offset: 100,
+          length: 4,
+          original: '已未形成',
+          suggestion: '尚未形成',
+          type: '疑似',
+          source: 'ai' as const,
+        },
       ],
       doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
     });
@@ -1936,7 +2866,15 @@ describe('报告生成器 .replace() 兜底（Issue #116 问题一）', () => {
         // @ts-ignore 模拟历史坏数据：缺 suggestion
         { offset: 10, length: 2, original: '的的', type: '重复字符', source: 'mcp' },
         // 正常数据
-        { offset: 20, length: 2, original: '在去', suggestion: '再去', type: '在再混淆', source: 'mcp' as const, context: '...' },
+        {
+          offset: 20,
+          length: 2,
+          original: '在去',
+          suggestion: '再去',
+          type: '在再混淆',
+          source: 'mcp' as const,
+          context: '...',
+        },
       ],
       docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
       createdAt: new Date().toISOString(),
@@ -1962,7 +2900,24 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
   const sid = (label: string): string => `iss151-${label}-${SUFFIX}`;
 
   afterEach(() => {
-    for (const label of ['b-inc', 'b-complete', 'b-doneincomplete', 'cross-ok', 'cross-miss', 'cross-moderate', 'cross-zero', 'cross-reverse', 'cross-reverse-ok', 'conflict', 'gap', 'nobatch', 'overlap-report', 'docinfo-missing', 'exceed-range', 'over-limit']) {
+    for (const label of [
+      'b-inc',
+      'b-complete',
+      'b-doneincomplete',
+      'cross-ok',
+      'cross-miss',
+      'cross-moderate',
+      'cross-zero',
+      'cross-reverse',
+      'cross-reverse-ok',
+      'conflict',
+      'gap',
+      'nobatch',
+      'overlap-report',
+      'docinfo-missing',
+      'exceed-range',
+      'over-limit',
+    ]) {
       proofreadStore.removeSessionFromDisk(sid(label));
       sessionIssues.delete(sid(label));
     }
@@ -1971,8 +2926,23 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
   it('存在未完成批次时报告标注批次完整性告警', async () => {
     const s = sid('b-inc');
     sessionIssues.set(s, {
-      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const, context: '...' }],
-      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 200, totalWords: 1000 },
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
+      ],
+      docInfo: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 200,
+        totalWords: 1000,
+      },
       createdAt: new Date().toISOString(),
       totalRevisions: 2,
     });
@@ -1998,7 +2968,17 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
   it('全部批次完成时无批次完整性告警', async () => {
     const s = sid('b-complete');
     sessionIssues.set(s, {
-      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const, context: '...' }],
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
+      ],
       docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 100, totalWords: 500 },
       createdAt: new Date().toISOString(),
       totalRevisions: 2,
@@ -2022,18 +3002,33 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
   it('R2-3：done 但步骤凭证不完整的批次在报告中判定为未完成并告警（防幻觉盲区）', async () => {
     const s = sid('b-doneincomplete');
     sessionIssues.set(s, {
-      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const, context: '...' }],
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
+      ],
       docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 100, totalWords: 500 },
       createdAt: new Date().toISOString(),
       totalRevisions: 2,
     });
     // 批次被谎报 done，但 stepsLog 只覆盖部分步骤（凭证不完整）→ getIncompleteBatches 判为未完成
     proofreadStore.saveBatchAllocations(s, [
-      { batchId: 'b1', range: { start: 1, end: 100 }, status: 'done', stepsLog: [
-        { step: 'getDocumentParagraphs', timestamp: 1, paragraphIndex: 1 },
-        { step: 'proofreadBasic', timestamp: 2, paragraphIndex: 1 },
-        // 缺 getDocumentTextByRange/confirmBatchAiProofread/replaceInParagraph/proofreadAccumulate
-      ] },
+      {
+        batchId: 'b1',
+        range: { start: 1, end: 100 },
+        status: 'done',
+        stepsLog: [
+          { step: 'getDocumentParagraphs', timestamp: 1, paragraphIndex: 1 },
+          { step: 'proofreadBasic', timestamp: 2, paragraphIndex: 1 },
+          // 缺 getDocumentTextByRange/confirmBatchAiProofread/replaceInParagraph/proofreadAccumulate
+        ],
+      },
     ]);
     const result = await generateProofreadReportHandler({ session_id: s });
     const text = result.content[0].text!;
@@ -2044,16 +3039,45 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
   it('存在并行 running 批次区间相交时报告标注并行区间冲突（评审第 3 轮 R4-2）', async () => {
     const s = sid('conflict');
     sessionIssues.set(s, {
-      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const, context: '...' }],
-      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 300, totalWords: 1500 },
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
+      ],
+      docInfo: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 300,
+        totalWords: 1500,
+      },
       createdAt: new Date().toISOString(),
       totalRevisions: 2,
     });
     // 两个 running 批次区间相交（并行隔离被破坏）→ hasParallelRangeConflict 应检测到并提示
     // R8-1 后 saveBatchAllocations 拒绝重叠，故用 saveSessionToDisk 直接写重叠数据（模拟异常/历史数据）
     proofreadStore.saveSessionToDisk(s, {
-      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' }],
-      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 300, totalWords: 1500 },
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp',
+        },
+      ],
+      docInfo: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 300,
+        totalWords: 1500,
+      },
       createdAt: new Date().toISOString(),
       totalRevisions: 2,
       batchAllocations: [
@@ -2069,7 +3093,17 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
   it('未登记批次分配表时报告提示未检测到批次（评审第 9 轮 R10-2）', async () => {
     const s = sid('nobatch');
     sessionIssues.set(s, {
-      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const, context: '...' }],
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
+      ],
       docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 100, totalWords: 500 },
       createdAt: new Date().toISOString(),
       totalRevisions: 2,
@@ -2083,8 +3117,23 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
   it('批次区间未连续覆盖全文档时报告标注覆盖缺口（评审第 5 轮 R6-1）', async () => {
     const s = sid('gap');
     sessionIssues.set(s, {
-      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const, context: '...' }],
-      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 300, totalWords: 1500 },
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
+      ],
+      docInfo: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 300,
+        totalWords: 1500,
+      },
       createdAt: new Date().toISOString(),
       totalRevisions: 2,
     });
@@ -2149,8 +3198,24 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
     // 2 处 issue，修订 2 条（每条 issue 至少 1 条修订，2 <= 2 不告警）
     sessionIssues.set(s, {
       issues: [
-        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const, context: '...' },
-        { offset: 10, length: 2, original: '在去', suggestion: '再去', type: '在再混淆', source: 'mcp' as const, context: '...' },
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
+        {
+          offset: 10,
+          length: 2,
+          original: '在去',
+          suggestion: '再去',
+          type: '在再混淆',
+          source: 'mcp' as const,
+          context: '...',
+        },
       ],
       docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 100, totalWords: 500 },
       createdAt: new Date().toISOString(),
@@ -2167,9 +3232,33 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
     // 0 仅表示"尚未获得修订基线"，不能据此判定批次丢失 → 不得误报"疑似统计缺失"
     sessionIssues.set(s, {
       issues: [
-        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const, context: '...' },
-        { offset: 10, length: 2, original: '在去', suggestion: '再去', type: '在再混淆', source: 'mcp' as const, context: '...' },
-        { offset: 20, length: 2, original: '做的', suggestion: '做的', type: '重复字符', source: 'mcp' as const, context: '...' },
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
+        {
+          offset: 10,
+          length: 2,
+          original: '在去',
+          suggestion: '再去',
+          type: '在再混淆',
+          source: 'mcp' as const,
+          context: '...',
+        },
+        {
+          offset: 20,
+          length: 2,
+          original: '做的',
+          suggestion: '做的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
       ],
       docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 100, totalWords: 500 },
       createdAt: new Date().toISOString(),
@@ -2184,7 +3273,15 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
     const s = sid('cross-reverse');
     sessionIssues.set(s, {
       issues: [
-        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const, context: '...' },
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
       ],
       docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 100, totalWords: 500 },
       createdAt: new Date().toISOString(),
@@ -2199,7 +3296,15 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
     const s = sid('cross-reverse-ok');
     sessionIssues.set(s, {
       issues: [
-        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const, context: '...' },
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
       ],
       docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 100, totalWords: 500 },
       createdAt: new Date().toISOString(),
@@ -2213,15 +3318,44 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
   it('R8-2：批次区间重叠时报告提示（不论状态，防规划阶段重叠静默通过）', async () => {
     const s = sid('overlap-report');
     sessionIssues.set(s, {
-      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const, context: '...' }],
-      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 200, totalWords: 1000 },
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
+      ],
+      docInfo: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 200,
+        totalWords: 1000,
+      },
       createdAt: new Date().toISOString(),
       totalRevisions: 2,
     });
     // 用 saveSessionToDisk 直接写入带重叠区间的批次（绕过 saveBatchAllocations 的重叠拦截，模拟历史/异常数据）
     proofreadStore.saveSessionToDisk(s, {
-      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' }],
-      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 200, totalWords: 1000 },
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp',
+        },
+      ],
+      docInfo: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 200,
+        totalWords: 1000,
+      },
       createdAt: new Date().toISOString(),
       totalRevisions: 2,
       batchAllocations: [
@@ -2237,7 +3371,17 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
   it('R10-2：docInfo 字段缺失时报告不显示 undefined（兜底为未知/0）', async () => {
     const s = sid('docinfo-missing');
     sessionIssues.set(s, {
-      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const, context: '...' }],
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
+      ],
       // 缺 fileName/totalWords 字段
       docInfo: { filePath: '/p/d.docx', totalParagraphs: 100 } as any,
       createdAt: new Date().toISOString(),
@@ -2252,14 +3396,43 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
   it('R10-3：批次区间超出文档总段数时报告提示', async () => {
     const s = sid('exceed-range');
     sessionIssues.set(s, {
-      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const, context: '...' }],
-      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 200, totalWords: 1000 },
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
+      ],
+      docInfo: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 200,
+        totalWords: 1000,
+      },
       createdAt: new Date().toISOString(),
       totalRevisions: 2,
     });
     proofreadStore.saveSessionToDisk(s, {
-      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' }],
-      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 200, totalWords: 1000 },
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp',
+        },
+      ],
+      docInfo: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 200,
+        totalWords: 1000,
+      },
       createdAt: new Date().toISOString(),
       totalRevisions: 2,
       batchAllocations: [
@@ -2275,14 +3448,43 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
   it('R11-2：running 批次数超过 3 时报告提示并行度超限', async () => {
     const s = sid('over-limit');
     sessionIssues.set(s, {
-      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const, context: '...' }],
-      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 500, totalWords: 2500 },
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
+      ],
+      docInfo: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 500,
+        totalWords: 2500,
+      },
       createdAt: new Date().toISOString(),
       totalRevisions: 2,
     });
     proofreadStore.saveSessionToDisk(s, {
-      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' }],
-      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 500, totalWords: 2500 },
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp',
+        },
+      ],
+      docInfo: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 500,
+        totalWords: 2500,
+      },
       createdAt: new Date().toISOString(),
       totalRevisions: 2,
       batchAllocations: [

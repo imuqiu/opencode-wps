@@ -82,12 +82,19 @@ function loadMainJs(appMock) {
     console: {
       log: function () {},
       warn: function () {},
-      error: function (msg) { errorLogs.push(String(msg)); }
+      error: function (msg) {
+        errorLogs.push(String(msg));
+      },
     },
     alert: function () {},
-    setInterval: function () { return 0; },
+    setInterval: function () {
+      return 0;
+    },
     clearInterval: function () {},
-    setTimeout: function (cb) { timeoutQueue.push(cb); return timeoutQueue.length; },
+    setTimeout: function (cb) {
+      timeoutQueue.push(cb);
+      return timeoutQueue.length;
+    },
     XMLHttpRequest: function () {
       this.open = function () {};
       this.send = function () {};
@@ -103,7 +110,7 @@ function loadMainJs(appMock) {
         n++;
       }
       return n;
-    }
+    },
   };
   vm.createContext(sandbox);
   vm.runInContext(src, sandbox, { filename: MAIN_JS });
@@ -117,12 +124,22 @@ test('WPS_Enum 无枚举值冲突：无 Top/Bottom，Right=2 且唯一', functio
   var WPS_Enum = sandbox.WPS_Enum;
   assertTrue(WPS_Enum, 'WPS_Enum 未定义');
   // 评审 ①：Top/Bottom 未引入（其值 1/3 与 msoFileDialogOpen=1 冲突）
-  assertTrue(typeof WPS_Enum.msoCTPDockPositionTop === 'undefined', 'msoCTPDockPositionTop 不应存在');
-  assertTrue(typeof WPS_Enum.msoCTPDockPositionBottom === 'undefined', 'msoCTPDockPositionBottom 不应存在');
+  assertTrue(
+    typeof WPS_Enum.msoCTPDockPositionTop === 'undefined',
+    'msoCTPDockPositionTop 不应存在'
+  );
+  assertTrue(
+    typeof WPS_Enum.msoCTPDockPositionBottom === 'undefined',
+    'msoCTPDockPositionBottom 不应存在'
+  );
   assertEqual(WPS_Enum.msoCTPDockPositionRight, 2, 'msoCTPDockPositionRight 应为 2');
   // 所有枚举值唯一
-  var values = Object.keys(WPS_Enum).map(function (k) { return WPS_Enum[k]; });
-  var unique = values.filter(function (v, i) { return values.indexOf(v) === i; });
+  var values = Object.keys(WPS_Enum).map(function (k) {
+    return WPS_Enum[k];
+  });
+  var unique = values.filter(function (v, i) {
+    return values.indexOf(v) === i;
+  });
   assertEqual(unique.length, values.length, '枚举值存在冲突（重复数值）');
 });
 
@@ -133,11 +150,15 @@ test('CreateTaskPane 仅传 url 单参数（评审 ② API 签名稳妥用法）
       createCalls.push({ url: url, argsCount: arguments.length });
       return { ID: 'tp-1', DockPosition: undefined, Visible: false };
     },
-    GetTaskPane: function () { return { DockPosition: undefined, Visible: false }; },
+    GetTaskPane: function () {
+      return { DockPosition: undefined, Visible: false };
+    },
     PluginStorage: {
-      getItem: function () { return ''; },
-      setItem: function () {}
-    }
+      getItem: function () {
+        return '';
+      },
+      setItem: function () {},
+    },
   };
   var sandbox = loadMainJs(appMock);
   // 触发按钮动作
@@ -149,12 +170,18 @@ test('CreateTaskPane 仅传 url 单参数（评审 ② API 签名稳妥用法）
 test('首次创建：CreateTaskPane 后 DockPosition 校正为 Right(2)', function () {
   var createdPane = { ID: 'tp-1', DockPosition: undefined, Visible: false };
   var appMock = {
-    CreateTaskPane: function () { return createdPane; },
-    GetTaskPane: function () { return { DockPosition: undefined, Visible: false }; },
+    CreateTaskPane: function () {
+      return createdPane;
+    },
+    GetTaskPane: function () {
+      return { DockPosition: undefined, Visible: false };
+    },
     PluginStorage: {
-      getItem: function () { return ''; },
-      setItem: function () {}
-    }
+      getItem: function () {
+        return '';
+      },
+      setItem: function () {},
+    },
   };
   var sandbox = loadMainJs(appMock);
   sandbox.OnAction({ Id: 'btnShowTaskPane' });
@@ -165,12 +192,18 @@ test('首次创建：CreateTaskPane 后 DockPosition 校正为 Right(2)', functi
 test('再次打开：已存在 taskpane_id 时重新校正 DockPosition', function () {
   var existingPane = { DockPosition: 0, Visible: false };
   var appMock = {
-    CreateTaskPane: function () { throw new Error('不应调用 CreateTaskPane'); },
-    GetTaskPane: function () { return existingPane; },
+    CreateTaskPane: function () {
+      throw new Error('不应调用 CreateTaskPane');
+    },
+    GetTaskPane: function () {
+      return existingPane;
+    },
     PluginStorage: {
-      getItem: function () { return 'tp-existing'; },
-      setItem: function () {}
-    }
+      getItem: function () {
+        return 'tp-existing';
+      },
+      setItem: function () {},
+    },
   };
   var sandbox = loadMainJs(appMock);
   sandbox.OnAction({ Id: 'btnShowTaskPane' });
@@ -182,18 +215,28 @@ test('GetTaskPane 返回 null（残留旧 taskpane_id）：回退重建窗格', 
   var recreatedPane = { ID: 'tp-new', DockPosition: undefined, Visible: false };
   var setItemCalls = [];
   var appMock = {
-    CreateTaskPane: function () { return recreatedPane; },
-    GetTaskPane: function () { return null; },
+    CreateTaskPane: function () {
+      return recreatedPane;
+    },
+    GetTaskPane: function () {
+      return null;
+    },
     PluginStorage: {
-      getItem: function () { return 'tp-stale'; },
-      setItem: function (k, v) { setItemCalls.push([k, v]); }
-    }
+      getItem: function () {
+        return 'tp-stale';
+      },
+      setItem: function (k, v) {
+        setItemCalls.push([k, v]);
+      },
+    },
   };
   var sandbox = loadMainJs(appMock);
   sandbox.OnAction({ Id: 'btnShowTaskPane' });
   assertEqual(recreatedPane.DockPosition, 2, '回退重建后 DockPosition 应校正为 2');
   assertEqual(recreatedPane.Visible, true, '回退重建后应可见');
-  var hasTaskPaneId = setItemCalls.some(function (c) { return c[0] === 'taskpane_id' && c[1] === 'tp-new'; });
+  var hasTaskPaneId = setItemCalls.some(function (c) {
+    return c[0] === 'taskpane_id' && c[1] === 'tp-new';
+  });
   assertTrue(hasTaskPaneId, '应更新 PluginStorage 中的 taskpane_id 为新窗格 ID');
 });
 
@@ -201,41 +244,69 @@ test('GetTaskPane 抛异常（个别版本对无效 id 抛错）：回退重建�
   var recreatedPane = { ID: 'tp-new2', DockPosition: undefined, Visible: false };
   var setItemCalls = [];
   var appMock = {
-    CreateTaskPane: function () { return recreatedPane; },
-    GetTaskPane: function () { throw new Error('invalid taskpane id'); },
+    CreateTaskPane: function () {
+      return recreatedPane;
+    },
+    GetTaskPane: function () {
+      throw new Error('invalid taskpane id');
+    },
     PluginStorage: {
-      getItem: function () { return 'tp-stale'; },
-      setItem: function (k, v) { setItemCalls.push([k, v]); }
-    }
+      getItem: function () {
+        return 'tp-stale';
+      },
+      setItem: function (k, v) {
+        setItemCalls.push([k, v]);
+      },
+    },
   };
   var sandbox = loadMainJs(appMock);
   sandbox.OnAction({ Id: 'btnShowTaskPane' });
   assertEqual(recreatedPane.DockPosition, 2, '回退重建后 DockPosition 应校正为 2');
   assertEqual(recreatedPane.Visible, true, '回退重建后应可见');
-  var hasTaskPaneId = setItemCalls.some(function (c) { return c[0] === 'taskpane_id' && c[1] === 'tp-new2'; });
+  var hasTaskPaneId = setItemCalls.some(function (c) {
+    return c[0] === 'taskpane_id' && c[1] === 'tp-new2';
+  });
   assertTrue(hasTaskPaneId, '应更新 PluginStorage 中的 taskpane_id 为新窗格 ID');
-  var hasError = sandbox.__errorLogs.some(function (l) { return l.indexOf('GetTaskPane 获取任务窗格失败') >= 0; });
-  assertTrue(hasError, '应输出 console.error 留痕，实际错误日志: ' + JSON.stringify(sandbox.__errorLogs));
+  var hasError = sandbox.__errorLogs.some(function (l) {
+    return l.indexOf('GetTaskPane 获取任务窗格失败') >= 0;
+  });
+  assertTrue(
+    hasError,
+    '应输出 console.error 留痕，实际错误日志: ' + JSON.stringify(sandbox.__errorLogs)
+  );
 });
 
 test('DockPosition 设置失败：console.error 留痕（评审 ③ 不空吞异常）', function () {
   var pane = {
     ID: 'tp-fail',
-    set DockPosition(v) { throw new Error('DockPosition 只读'); },
-    Visible: false
+    set DockPosition(v) {
+      throw new Error('DockPosition 只读');
+    },
+    Visible: false,
   };
   var appMock = {
-    CreateTaskPane: function () { return pane; },
-    GetTaskPane: function () { return pane; },
+    CreateTaskPane: function () {
+      return pane;
+    },
+    GetTaskPane: function () {
+      return pane;
+    },
     PluginStorage: {
-      getItem: function () { return ''; },
-      setItem: function () {}
-    }
+      getItem: function () {
+        return '';
+      },
+      setItem: function () {},
+    },
   };
   var sandbox = loadMainJs(appMock);
   sandbox.OnAction({ Id: 'btnShowTaskPane' });
-  var hasError = sandbox.__errorLogs.some(function (l) { return l.indexOf('设置任务窗格停靠位置失败') >= 0; });
-  assertTrue(hasError, '应输出 console.error 留痕，实际错误日志: ' + JSON.stringify(sandbox.__errorLogs));
+  var hasError = sandbox.__errorLogs.some(function (l) {
+    return l.indexOf('设置任务窗格停靠位置失败') >= 0;
+  });
+  assertTrue(
+    hasError,
+    '应输出 console.error 留痕，实际错误日志: ' + JSON.stringify(sandbox.__errorLogs)
+  );
   assertEqual(pane.Visible, true, '即使停靠设置失败，窗格仍应正常打开');
 });
 
@@ -248,18 +319,26 @@ test('createTaskPane 辅助函数：统一完成创建/存 ID/校正停靠/置�
       createCalls.push({ url: url, argsCount: arguments.length });
       return createdPane;
     },
-    GetTaskPane: function () { throw new Error('不应调用 GetTaskPane'); },
+    GetTaskPane: function () {
+      throw new Error('不应调用 GetTaskPane');
+    },
     PluginStorage: {
-      getItem: function () { return ''; },
-      setItem: function (k, v) { setItemCalls.push([k, v]); }
-    }
+      getItem: function () {
+        return '';
+      },
+      setItem: function (k, v) {
+        setItemCalls.push([k, v]);
+      },
+    },
   };
   var sandbox = loadMainJs(appMock);
   var ret = sandbox.createTaskPane();
   assertEqual(ret, createdPane, '应返回创建的任务窗格对象');
   assertEqual(createCalls.length, 1, 'CreateTaskPane 应被调用 1 次');
   assertEqual(createCalls[0].argsCount, 1, 'CreateTaskPane 第二参数不应传入');
-  var hasTaskPaneId = setItemCalls.some(function (c) { return c[0] === 'taskpane_id' && c[1] === 'tp-c'; });
+  var hasTaskPaneId = setItemCalls.some(function (c) {
+    return c[0] === 'taskpane_id' && c[1] === 'tp-c';
+  });
   assertTrue(hasTaskPaneId, '应存储 taskpane_id 为新窗格 ID');
   assertEqual(createdPane.DockPosition, 2, 'DockPosition 应校正为 2 (Right)');
   assertEqual(createdPane.Visible, true, '创建后应可见');
@@ -274,136 +353,231 @@ test('setTaskPaneDockPosition 直接调用：无效对象返回 false', function
 test('PluginStorage.getItem 抛异常（插件初始化未完成）：留痕并回退重建（评审 ⑥ 防御一致）', function () {
   var recreatedPane = { ID: 'tp-init-fail', DockPosition: undefined, Visible: false };
   var appMock = {
-    CreateTaskPane: function () { return recreatedPane; },
-    GetTaskPane: function () { throw new Error('不应调用 GetTaskPane'); },
+    CreateTaskPane: function () {
+      return recreatedPane;
+    },
+    GetTaskPane: function () {
+      throw new Error('不应调用 GetTaskPane');
+    },
     PluginStorage: {
-      getItem: function () { throw new Error('PluginStorage 未就绪'); },
-      setItem: function () {}
-    }
+      getItem: function () {
+        throw new Error('PluginStorage 未就绪');
+      },
+      setItem: function () {},
+    },
   };
   var sandbox = loadMainJs(appMock);
   sandbox.OnAction({ Id: 'btnShowTaskPane' });
   assertEqual(recreatedPane.DockPosition, 2, 'getItem 异常后回退重建，DockPosition 应校正为 2');
   assertEqual(recreatedPane.Visible, true, '回退重建后应可见');
-  var hasError = sandbox.__errorLogs.some(function (l) { return l.indexOf('读取 taskpane_id 失败') >= 0; });
-  assertTrue(hasError, '应输出 console.error 留痕，实际错误日志: ' + JSON.stringify(sandbox.__errorLogs));
+  var hasError = sandbox.__errorLogs.some(function (l) {
+    return l.indexOf('读取 taskpane_id 失败') >= 0;
+  });
+  assertTrue(
+    hasError,
+    '应输出 console.error 留痕，实际错误日志: ' + JSON.stringify(sandbox.__errorLogs)
+  );
 });
 
 test('CreateTaskPane 抛异常（路径无效等）：失败留痕并返回 null，不中断（评审 ⑥ 统一兜底）', function () {
   var appMock = {
-    CreateTaskPane: function () { throw new Error('taskpane.html 路径无效'); },
-    GetTaskPane: function () { throw new Error('不应调用 GetTaskPane'); },
+    CreateTaskPane: function () {
+      throw new Error('taskpane.html 路径无效');
+    },
+    GetTaskPane: function () {
+      throw new Error('不应调用 GetTaskPane');
+    },
     PluginStorage: {
-      getItem: function () { return ''; },
-      setItem: function () {}
-    }
+      getItem: function () {
+        return '';
+      },
+      setItem: function () {},
+    },
   };
   var sandbox = loadMainJs(appMock);
   sandbox.OnAction({ Id: 'btnShowTaskPane' }); // 不应抛异常
   assertEqual(sandbox.createTaskPane(), null, 'createTaskPane 失败应返回 null');
-  var hasError = sandbox.__errorLogs.some(function (l) { return l.indexOf('初始化任务窗格失败') >= 0; });
-  assertTrue(hasError, '应输出 console.error 留痕，实际错误日志: ' + JSON.stringify(sandbox.__errorLogs));
+  var hasError = sandbox.__errorLogs.some(function (l) {
+    return l.indexOf('初始化任务窗格失败') >= 0;
+  });
+  assertTrue(
+    hasError,
+    '应输出 console.error 留痕，实际错误日志: ' + JSON.stringify(sandbox.__errorLogs)
+  );
 });
 
 test('PluginStorage.setItem 抛异常（初始化未完成）：留痕后继续校正停靠并置可见（评审 ⑦ 统一兜底）', function () {
   var createdPane = { ID: 'tp-setitem-fail', DockPosition: undefined, Visible: false };
   var appMock = {
-    CreateTaskPane: function () { return createdPane; },
-    GetTaskPane: function () { throw new Error('不应调用 GetTaskPane'); },
+    CreateTaskPane: function () {
+      return createdPane;
+    },
+    GetTaskPane: function () {
+      throw new Error('不应调用 GetTaskPane');
+    },
     PluginStorage: {
-      getItem: function () { return ''; },
-      setItem: function () { throw new Error('PluginStorage 未就绪'); }
-    }
+      getItem: function () {
+        return '';
+      },
+      setItem: function () {
+        throw new Error('PluginStorage 未就绪');
+      },
+    },
   };
   var sandbox = loadMainJs(appMock);
   sandbox.OnAction({ Id: 'btnShowTaskPane' }); // 不应抛异常
   // setItem 失败不应中断后续初始化：DockPosition 校正 + Visible 置位照常执行
   assertEqual(createdPane.DockPosition, 2, 'setItem 失败后 DockPosition 仍应校正为 2');
   assertEqual(createdPane.Visible, true, 'setItem 失败后窗格仍应可见');
-  var hasError = sandbox.__errorLogs.some(function (l) { return l.indexOf('保存 taskpane_id 失败') >= 0; });
-  assertTrue(hasError, '应输出 console.error 留痕，实际错误日志: ' + JSON.stringify(sandbox.__errorLogs));
+  var hasError = sandbox.__errorLogs.some(function (l) {
+    return l.indexOf('保存 taskpane_id 失败') >= 0;
+  });
+  assertTrue(
+    hasError,
+    '应输出 console.error 留痕，实际错误日志: ' + JSON.stringify(sandbox.__errorLogs)
+  );
 });
 
 test('切换可见性失败（tp.Visible 只读）：留痕不中断按钮回调（评审 ⑧ 统一兜底）', function () {
   var existingPane = { DockPosition: 0 };
   Object.defineProperty(existingPane, 'Visible', {
-    get: function () { return false; },
-    set: function () { throw new Error('Visible 只读'); }
+    get: function () {
+      return false;
+    },
+    set: function () {
+      throw new Error('Visible 只读');
+    },
   });
   var appMock = {
-    CreateTaskPane: function () { throw new Error('不应调用 CreateTaskPane'); },
-    GetTaskPane: function () { return existingPane; },
+    CreateTaskPane: function () {
+      throw new Error('不应调用 CreateTaskPane');
+    },
+    GetTaskPane: function () {
+      return existingPane;
+    },
     PluginStorage: {
-      getItem: function () { return 'tp-existing'; },
-      setItem: function () {}
-    }
+      getItem: function () {
+        return 'tp-existing';
+      },
+      setItem: function () {},
+    },
   };
   var sandbox = loadMainJs(appMock);
   sandbox.OnAction({ Id: 'btnShowTaskPane' }); // 不应抛异常
   assertEqual(existingPane.DockPosition, 2, '切换前仍应完成 DockPosition 校正');
-  var hasError = sandbox.__errorLogs.some(function (l) { return l.indexOf('切换任务窗格可见性失败') >= 0; });
-  assertTrue(hasError, '应输出 console.error 留痕，实际错误日志: ' + JSON.stringify(sandbox.__errorLogs));
+  var hasError = sandbox.__errorLogs.some(function (l) {
+    return l.indexOf('切换任务窗格可见性失败') >= 0;
+  });
+  assertTrue(
+    hasError,
+    '应输出 console.error 留痕，实际错误日志: ' + JSON.stringify(sandbox.__errorLogs)
+  );
 });
 
 test('GetTaskPane 找回路径停靠校正失败：补充「窗格仍可用」留痕，不中断可见性切换（评审 ⑭ 行为一致性）', function () {
   // 已存在任务窗格（GetTaskPane 找回路径）：DockPosition 只读抛异常（停靠校正失败）
   var existingPane = { ID: 'tp-existing-dockfail', Visible: false };
   Object.defineProperty(existingPane, 'DockPosition', {
-    get: function () { return undefined; },
-    set: function () { throw new Error('DockPosition 只读'); }
+    get: function () {
+      return undefined;
+    },
+    set: function () {
+      throw new Error('DockPosition 只读');
+    },
   });
   var appMock = {
-    CreateTaskPane: function () { throw new Error('不应调用 CreateTaskPane'); },
-    GetTaskPane: function () { return existingPane; },
+    CreateTaskPane: function () {
+      throw new Error('不应调用 CreateTaskPane');
+    },
+    GetTaskPane: function () {
+      return existingPane;
+    },
     PluginStorage: {
-      getItem: function () { return 'tp-existing-dockfail'; },
-      setItem: function () {}
-    }
+      getItem: function () {
+        return 'tp-existing-dockfail';
+      },
+      setItem: function () {},
+    },
   };
   var sandbox = loadMainJs(appMock);
   sandbox.OnAction({ Id: 'btnShowTaskPane' }); // 不应抛异常
   // 停靠校正失败不阻断：可见性切换照常执行（false → true）
   assertEqual(existingPane.Visible, true, '停靠校正失败后可见性切换仍应执行');
   // 双层留痕：内部「设置任务窗格停靠位置失败」+ 增强「窗格仍可用」
-  var hasDockError = sandbox.__errorLogs.some(function (l) { return l.indexOf('设置任务窗格停靠位置失败') >= 0; });
-  assertTrue(hasDockError, '应输出停靠设置失败留痕（setTaskPaneDockPosition 内部），实际错误日志: ' + JSON.stringify(sandbox.__errorLogs));
-  var hasUsable = sandbox.__errorLogs.some(function (l) { return l.indexOf('任务窗格停靠校正失败（窗格仍可用') >= 0; });
-  assertTrue(hasUsable, '应输出「窗格仍可用」增强留痕，实际错误日志: ' + JSON.stringify(sandbox.__errorLogs));
+  var hasDockError = sandbox.__errorLogs.some(function (l) {
+    return l.indexOf('设置任务窗格停靠位置失败') >= 0;
+  });
+  assertTrue(
+    hasDockError,
+    '应输出停靠设置失败留痕（setTaskPaneDockPosition 内部），实际错误日志: ' +
+      JSON.stringify(sandbox.__errorLogs)
+  );
+  var hasUsable = sandbox.__errorLogs.some(function (l) {
+    return l.indexOf('任务窗格停靠校正失败（窗格仍可用') >= 0;
+  });
+  assertTrue(
+    hasUsable,
+    '应输出「窗格仍可用」增强留痕，实际错误日志: ' + JSON.stringify(sandbox.__errorLogs)
+  );
 });
 
 test('createTaskPane 内 Visible 置位失败：留痕后仍返回窗格对象（评审 ⑨ 自愈兜底）', function () {
   var createdPane = { ID: 'tp-visible-fail', DockPosition: undefined };
   Object.defineProperty(createdPane, 'Visible', {
-    get: function () { return false; },
-    set: function () { throw new Error('Visible 只读'); }
+    get: function () {
+      return false;
+    },
+    set: function () {
+      throw new Error('Visible 只读');
+    },
   });
   var appMock = {
-    CreateTaskPane: function () { return createdPane; },
-    GetTaskPane: function () { throw new Error('不应调用 GetTaskPane'); },
+    CreateTaskPane: function () {
+      return createdPane;
+    },
+    GetTaskPane: function () {
+      throw new Error('不应调用 GetTaskPane');
+    },
     PluginStorage: {
-      getItem: function () { return ''; },
-      setItem: function () {}
-    }
+      getItem: function () {
+        return '';
+      },
+      setItem: function () {},
+    },
   };
   var sandbox = loadMainJs(appMock);
   var ret = sandbox.createTaskPane();
   // 关键：不再返回 null，而是返回窗格对象——保留下次点击自愈机会（GetTaskPane 找回 → 重新校正 + 切换可见性）
   assertEqual(ret, createdPane, 'Visible 置位失败仍应返回窗格对象');
   assertEqual(createdPane.DockPosition, 2, 'DockPosition 仍应校正为 2');
-  var hasError = sandbox.__errorLogs.some(function (l) { return l.indexOf('置任务窗格可见失败') >= 0; });
-  assertTrue(hasError, '应输出 console.error 留痕，实际错误日志: ' + JSON.stringify(sandbox.__errorLogs));
+  var hasError = sandbox.__errorLogs.some(function (l) {
+    return l.indexOf('置任务窗格可见失败') >= 0;
+  });
+  assertTrue(
+    hasError,
+    '应输出 console.error 留痕，实际错误日志: ' + JSON.stringify(sandbox.__errorLogs)
+  );
 });
 
 test('setItem 持久化失败：内存 ID 兜底，再次点击不重复创建（评审 ⑩ 多窗格防叠加）', function () {
   var createdPane = { ID: 'tp-cache', DockPosition: undefined, Visible: false };
   var createCalls = 0;
   var appMock = {
-    CreateTaskPane: function () { createCalls++; return createdPane; },
-    GetTaskPane: function () { return createdPane; }, // 内存 ID 能找回窗格
+    CreateTaskPane: function () {
+      createCalls++;
+      return createdPane;
+    },
+    GetTaskPane: function () {
+      return createdPane;
+    }, // 内存 ID 能找回窗格
     PluginStorage: {
-      getItem: function () { throw new Error('PluginStorage 未就绪'); }, // 持久化读取也失败
-      setItem: function () { throw new Error('PluginStorage 未就绪'); }  // 持久化写入失败
-    }
+      getItem: function () {
+        throw new Error('PluginStorage 未就绪');
+      }, // 持久化读取也失败
+      setItem: function () {
+        throw new Error('PluginStorage 未就绪');
+      }, // 持久化写入失败
+    },
   };
   var sandbox = loadMainJs(appMock);
   // 第一次点击：创建 + setItem 失败（留痕），内存 ID 已记录
@@ -414,20 +588,33 @@ test('setItem 持久化失败：内存 ID 兜底，再次点击不重复创建�
   sandbox.OnAction({ Id: 'btnShowTaskPane' });
   assertEqual(createCalls, 1, '第二次点击应复用内存 ID，不重复创建');
   assertEqual(createdPane.Visible, false, '第二次点击后应切换为隐藏');
-  var hasError = sandbox.__errorLogs.some(function (l) { return l.indexOf('保存 taskpane_id 失败') >= 0; });
-  assertTrue(hasError, '应输出 setItem 失败留痕，实际错误日志: ' + JSON.stringify(sandbox.__errorLogs));
+  var hasError = sandbox.__errorLogs.some(function (l) {
+    return l.indexOf('保存 taskpane_id 失败') >= 0;
+  });
+  assertTrue(
+    hasError,
+    '应输出 setItem 失败留痕，实际错误日志: ' + JSON.stringify(sandbox.__errorLogs)
+  );
 });
 
 test('CreateTaskPane 返回的窗格 ID 为空：留痕但不覆盖既有内存缓存（评审 ⑫ 空值防御）', function () {
   var createdPane = { ID: undefined, DockPosition: undefined, Visible: false };
   var setItemCalls = [];
   var appMock = {
-    CreateTaskPane: function () { return createdPane; },
-    GetTaskPane: function () { throw new Error('不应调用 GetTaskPane'); },
+    CreateTaskPane: function () {
+      return createdPane;
+    },
+    GetTaskPane: function () {
+      throw new Error('不应调用 GetTaskPane');
+    },
     PluginStorage: {
-      getItem: function () { return ''; },
-      setItem: function (k, v) { setItemCalls.push([k, v]); }
-    }
+      getItem: function () {
+        return '';
+      },
+      setItem: function (k, v) {
+        setItemCalls.push([k, v]);
+      },
+    },
   };
   var sandbox = loadMainJs(appMock);
   // 先造一个既有缓存，验证 ID 为空时不覆盖
@@ -438,7 +625,9 @@ test('CreateTaskPane 返回的窗格 ID 为空：留痕但不覆盖既有内存�
   assertEqual(createdPane.Visible, true, '窗格仍应置可见');
   assertEqual(sandbox.taskpaneIdCache, 'tp-existing-cache', 'ID 为空时不应覆盖既有内存缓存');
   assertEqual(setItemCalls.length, 0, 'ID 为空时应跳过 setItem 持久化写入，避免覆盖既有有效 ID');
-  var hasError = sandbox.__errorLogs.some(function (l) { return l.indexOf('任务窗格 ID 为空') >= 0; });
+  var hasError = sandbox.__errorLogs.some(function (l) {
+    return l.indexOf('任务窗格 ID 为空') >= 0;
+  });
   assertTrue(hasError, '应输出 ID 为空留痕，实际错误日志: ' + JSON.stringify(sandbox.__errorLogs));
 });
 
@@ -453,54 +642,96 @@ test('errMsg 公共函数：Error 取 message，非 Error 值原样返回（评�
 
 test('CreateTaskPane 返回 null（而非抛异常）：立即判空 + 明确留痕 + 返回 null（评审 ⑬）', function () {
   var appMock = {
-    CreateTaskPane: function () { return null; },
-    GetTaskPane: function () { throw new Error('不应调用 GetTaskPane'); },
+    CreateTaskPane: function () {
+      return null;
+    },
+    GetTaskPane: function () {
+      throw new Error('不应调用 GetTaskPane');
+    },
     PluginStorage: {
-      getItem: function () { return ''; },
-      setItem: function () {}
-    }
+      getItem: function () {
+        return '';
+      },
+      setItem: function () {},
+    },
   };
   var sandbox = loadMainJs(appMock);
   var ret = sandbox.createTaskPane();
   assertEqual(ret, null, 'CreateTaskPane 返回 null 时 createTaskPane 应返回 null');
   // 留痕文案应明确指向「返回空对象」，而非误导性的「初始化任务窗格失败」
-  var hasError = sandbox.__errorLogs.some(function (l) { return l.indexOf('CreateTaskPane 返回空对象') >= 0; });
+  var hasError = sandbox.__errorLogs.some(function (l) {
+    return l.indexOf('CreateTaskPane 返回空对象') >= 0;
+  });
   assertTrue(hasError, '应输出明确留痕，实际错误日志: ' + JSON.stringify(sandbox.__errorLogs));
-  var hasMisleading = sandbox.__errorLogs.some(function (l) { return l.indexOf('初始化任务窗格失败') >= 0; });
-  assertTrue(!hasMisleading, '不应走到误导性的外层 catch 文案，实际错误日志: ' + JSON.stringify(sandbox.__errorLogs));
+  var hasMisleading = sandbox.__errorLogs.some(function (l) {
+    return l.indexOf('初始化任务窗格失败') >= 0;
+  });
+  assertTrue(
+    !hasMisleading,
+    '不应走到误导性的外层 catch 文案，实际错误日志: ' + JSON.stringify(sandbox.__errorLogs)
+  );
 });
 
 test('停靠校正失败但窗格可用：留痕说明窗格仍可用，仍返回窗格对象（评审 ⑬）', function () {
   var createdPane = { ID: 'tp-dock-fail', Visible: false };
   Object.defineProperty(createdPane, 'DockPosition', {
-    get: function () { return undefined; },
-    set: function () { throw new Error('DockPosition 只读'); }
+    get: function () {
+      return undefined;
+    },
+    set: function () {
+      throw new Error('DockPosition 只读');
+    },
   });
   var appMock = {
-    CreateTaskPane: function () { return createdPane; },
-    GetTaskPane: function () { throw new Error('不应调用 GetTaskPane'); },
+    CreateTaskPane: function () {
+      return createdPane;
+    },
+    GetTaskPane: function () {
+      throw new Error('不应调用 GetTaskPane');
+    },
     PluginStorage: {
-      getItem: function () { return ''; },
-      setItem: function () {}
-    }
+      getItem: function () {
+        return '';
+      },
+      setItem: function () {},
+    },
   };
   var sandbox = loadMainJs(appMock);
   var ret = sandbox.createTaskPane();
   // 停靠校正失败不阻断：仍置可见并返回窗格对象（下次点击经 GetTaskPane 找回重新校正，有自愈机会）
   assertEqual(ret, createdPane, '停靠校正失败仍应返回窗格对象');
   assertEqual(createdPane.Visible, true, '停靠校正失败后仍应置可见');
-  var hasDockError = sandbox.__errorLogs.some(function (l) { return l.indexOf('设置任务窗格停靠位置失败') >= 0; });
-  assertTrue(hasDockError, '应输出停靠设置失败留痕（setTaskPaneDockPosition 内部），实际错误日志: ' + JSON.stringify(sandbox.__errorLogs));
-  var hasUsable = sandbox.__errorLogs.some(function (l) { return l.indexOf('任务窗格停靠校正失败（窗格仍可用') >= 0; });
-  assertTrue(hasUsable, '应输出「窗格仍可用」增强留痕，实际错误日志: ' + JSON.stringify(sandbox.__errorLogs));
+  var hasDockError = sandbox.__errorLogs.some(function (l) {
+    return l.indexOf('设置任务窗格停靠位置失败') >= 0;
+  });
+  assertTrue(
+    hasDockError,
+    '应输出停靠设置失败留痕（setTaskPaneDockPosition 内部），实际错误日志: ' +
+      JSON.stringify(sandbox.__errorLogs)
+  );
+  var hasUsable = sandbox.__errorLogs.some(function (l) {
+    return l.indexOf('任务窗格停靠校正失败（窗格仍可用') >= 0;
+  });
+  assertTrue(
+    hasUsable,
+    '应输出「窗格仍可用」增强留痕，实际错误日志: ' + JSON.stringify(sandbox.__errorLogs)
+  );
 });
 
 // ==================== 测试结果汇总 ====================
 
 console.log('\n========== 测试结果 ==========');
 console.log('总计: ' + testCount + ' 个测试');
-console.log('通过: ' + testResults.filter(function (r) { return r.status === 'PASS'; }).length + ' 个');
-var failed = testResults.filter(function (r) { return r.status === 'FAIL'; });
+console.log(
+  '通过: ' +
+    testResults.filter(function (r) {
+      return r.status === 'PASS';
+    }).length +
+    ' 个'
+);
+var failed = testResults.filter(function (r) {
+  return r.status === 'FAIL';
+});
 console.log('失败: ' + failed.length + ' 个');
 
 if (failed.length === 0) {

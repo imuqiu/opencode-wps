@@ -61,7 +61,12 @@ function loadGovernancePlugin() {
 }
 
 // 构造 wps_office_execute 网关输入
-function execInput(sessionID: string, callID: string, tool_name: string, arguments_: Record<string, unknown> = {}) {
+function execInput(
+  sessionID: string,
+  callID: string,
+  tool_name: string,
+  arguments_: Record<string, unknown> = {}
+) {
   return {
     tool: 'wps_office_execute',
     sessionID,
@@ -88,22 +93,25 @@ describe('governance 并行模式适配（Issue #151 R1-2/R1-3）', () => {
     const after = plugin['tool.execute.after'];
 
     // 初始化文档
-    await after(
-      execInput('parallel-sess', 'c0', 'getActiveDocument'),
-      { output: '总段数: 300', isError: false }
-    );
+    await after(execInput('parallel-sess', 'c0', 'getActiveDocument'), {
+      output: '总段数: 300',
+      isError: false,
+    });
 
     // agent A（batch-1，区间 1-100）完整走一批，设置会话级 lastBatchParaIndex=100、batchStarted=true
     await after(
       execInput('parallel-sess', 'c1', 'getDocumentParagraphs', {
-        start_paragraph: 1, end_paragraph: 100,
-        _batch_id: 'batch-1', _batch_range: { start: 1, end: 100 },
+        start_paragraph: 1,
+        end_paragraph: 100,
+        _batch_id: 'batch-1',
+        _batch_range: { start: 1, end: 100 },
       }),
       { output: '[1] (正文) [0-100]\n[100] (正文) [9999-10000]', isError: false }
     );
     await after(
       execInput('parallel-sess', 'c2', 'proofreadBasic', {
-        startOffset: 0, text: '这是 agent A 的正常文本，长度超过二十字。',
+        startOffset: 0,
+        text: '这是 agent A 的正常文本，长度超过二十字。',
         _batch_id: 'batch-1',
       }),
       { output: '基础校对完成，未发现问题。\n{"issues":[]}', isError: false }
@@ -114,7 +122,9 @@ describe('governance 并行模式适配（Issue #151 R1-2/R1-3）', () => {
     );
     await after(
       execInput('parallel-sess', 'c4', 'replaceInParagraph', {
-        paragraphIndex: 50, findText: 'agent A 原文', replacement: '修正',
+        paragraphIndex: 50,
+        findText: 'agent A 原文',
+        replacement: '修正',
         _batch_id: 'batch-1',
       }),
       { output: '已替换', isError: false }
@@ -123,11 +133,17 @@ describe('governance 并行模式适配（Issue #151 R1-2/R1-3）', () => {
     // agent B（batch-2，区间 101-200）调用 getDocumentParagraphs(101,200)
     // 并行模式下不应被 P1/P2 误拦截（A 已推进到 100，B 的 start=101 若不跳过会被 P2 误判）
     const bGetInput = execInput('parallel-sess', 'c5', 'getDocumentParagraphs', {
-      start_paragraph: 101, end_paragraph: 200,
-      _batch_id: 'batch-2', _batch_range: { start: 101, end: 200 },
+      start_paragraph: 101,
+      end_paragraph: 200,
+      _batch_id: 'batch-2',
+      _batch_range: { start: 101, end: 200 },
     });
     let threw = false;
-    try { await before(bGetInput, {}); } catch (e: any) { threw = true; }
+    try {
+      await before(bGetInput, {});
+    } catch (e: any) {
+      threw = true;
+    }
     expect(threw).toBe(false); // 不应被拦截
   });
 
@@ -135,16 +151,18 @@ describe('governance 并行模式适配（Issue #151 R1-2/R1-3）', () => {
     const plugin = await loadGovernancePlugin()();
     const after = plugin['tool.execute.after'];
 
-    await after(
-      execInput('parallel-sess2', 'c0', 'getActiveDocument'),
-      { output: '总段数: 300', isError: false }
-    );
+    await after(execInput('parallel-sess2', 'c0', 'getActiveDocument'), {
+      output: '总段数: 300',
+      isError: false,
+    });
 
     // agent A 声明区间 1-100
     await after(
       execInput('parallel-sess2', 'c1', 'getDocumentParagraphs', {
-        start_paragraph: 1, end_paragraph: 100,
-        _batch_id: 'batch-1', _batch_range: { start: 1, end: 100 },
+        start_paragraph: 1,
+        end_paragraph: 100,
+        _batch_id: 'batch-1',
+        _batch_range: { start: 1, end: 100 },
       }),
       { output: '[1] (正文) [0-100]', isError: false }
     );
@@ -153,8 +171,10 @@ describe('governance 并行模式适配（Issue #151 R1-2/R1-3）', () => {
     const overflow = await expectIntercept(
       plugin,
       execInput('parallel-sess2', 'c2', 'getDocumentParagraphs', {
-        start_paragraph: 150, end_paragraph: 250,
-        _batch_id: 'batch-2', _batch_range: { start: 101, end: 200 },
+        start_paragraph: 150,
+        end_paragraph: 250,
+        _batch_id: 'batch-2',
+        _batch_range: { start: 101, end: 200 },
       }),
       'P19'
     );
@@ -166,26 +186,33 @@ describe('governance 并行模式适配（Issue #151 R1-2/R1-3）', () => {
     const before = plugin['tool.execute.before'];
     const after = plugin['tool.execute.after'];
 
-    await after(
-      execInput('parallel-sess3', 'c0', 'getActiveDocument'),
-      { output: '总段数: 300', isError: false }
-    );
-    await after(
-      execInput('parallel-sess3', 'c0b', 'enableTrackChanges', { enable: true }),
-      { output: '修订模式已开启', isError: false }
-    );
+    await after(execInput('parallel-sess3', 'c0', 'getActiveDocument'), {
+      output: '总段数: 300',
+      isError: false,
+    });
+    await after(execInput('parallel-sess3', 'c0b', 'enableTrackChanges', { enable: true }), {
+      output: '修订模式已开启',
+      isError: false,
+    });
 
     // agent A 声明区间 1-100（P19 在 before 阶段登记 assignedRanges['batch-1'] = {1,100}）
-    await before(execInput('parallel-sess3', 'c1', 'getDocumentParagraphs', {
-      start_paragraph: 1, end_paragraph: 100,
-      _batch_id: 'batch-1', _batch_range: { start: 1, end: 100 },
-    }), {});
+    await before(
+      execInput('parallel-sess3', 'c1', 'getDocumentParagraphs', {
+        start_paragraph: 1,
+        end_paragraph: 100,
+        _batch_id: 'batch-1',
+        _batch_range: { start: 1, end: 100 },
+      }),
+      {}
+    );
 
     // agent A 试图替换段落 150（超出自己分配区间 1-100）→ P19 拦截
     const overflowReplace = await expectIntercept(
       plugin,
       execInput('parallel-sess3', 'c2', 'replaceInParagraph', {
-        paragraphIndex: 150, findText: '越界替换', replacement: 'x',
+        paragraphIndex: 150,
+        findText: '越界替换',
+        replacement: 'x',
         _batch_id: 'batch-1',
       }),
       'P19'
@@ -198,28 +225,40 @@ describe('governance 并行模式适配（Issue #151 R1-2/R1-3）', () => {
     const before = plugin['tool.execute.before'];
     const after = plugin['tool.execute.after'];
 
-    await after(
-      execInput('parallel-sess4', 'c0', 'getActiveDocument'),
-      { output: '总段数: 300', isError: false }
-    );
-    await after(
-      execInput('parallel-sess4', 'c0b', 'enableTrackChanges', { enable: true }),
-      { output: '修订模式已开启', isError: false }
-    );
+    await after(execInput('parallel-sess4', 'c0', 'getActiveDocument'), {
+      output: '总段数: 300',
+      isError: false,
+    });
+    await after(execInput('parallel-sess4', 'c0b', 'enableTrackChanges', { enable: true }), {
+      output: '修订模式已开启',
+      isError: false,
+    });
     // 用 before() 触发 P19 登记批次区间（before 阶段执行 _batch_range 登记）
-    await before(execInput('parallel-sess4', 'c1', 'getDocumentParagraphs', {
-      start_paragraph: 1, end_paragraph: 100,
-      _batch_id: 'batch-1', _batch_range: { start: 1, end: 100 },
-    }), {});
+    await before(
+      execInput('parallel-sess4', 'c1', 'getDocumentParagraphs', {
+        start_paragraph: 1,
+        end_paragraph: 100,
+        _batch_id: 'batch-1',
+        _batch_range: { start: 1, end: 100 },
+      }),
+      {}
+    );
 
     // 批次区间内的替换放行（不抛错）
     let threw = false;
     try {
-      await before(execInput('parallel-sess4', 'c2', 'replaceInParagraph', {
-        paragraphIndex: 50, findText: '区间内替换', replacement: 'x',
-        _batch_id: 'batch-1',
-      }), {});
-    } catch (e: any) { threw = true; }
+      await before(
+        execInput('parallel-sess4', 'c2', 'replaceInParagraph', {
+          paragraphIndex: 50,
+          findText: '区间内替换',
+          replacement: 'x',
+          _batch_id: 'batch-1',
+        }),
+        {}
+      );
+    } catch (e: any) {
+      threw = true;
+    }
     expect(threw).toBe(false);
   });
 
@@ -229,15 +268,18 @@ describe('governance 并行模式适配（Issue #151 R1-2/R1-3）', () => {
 
     let threwP20 = false;
     try {
-      await after(execInput('parallel-sess5', 'c1', 'proofreadAccumulate', {
-        session_id: 'sess-r42',
-        issues: [],
-        _batch_id: 'batch-1',
-        _steps_log: [
-          { step: 'getDocumentParagraphs', paragraphIndex: 1 },
-          { step: 'aiDeepScan', paragraphIndex: 1 }, // 非法步骤名
-        ],
-      }), { content: [{ type: 'text', text: 'ok' }], isError: false });
+      await after(
+        execInput('parallel-sess5', 'c1', 'proofreadAccumulate', {
+          session_id: 'sess-r42',
+          issues: [],
+          _batch_id: 'batch-1',
+          _steps_log: [
+            { step: 'getDocumentParagraphs', paragraphIndex: 1 },
+            { step: 'aiDeepScan', paragraphIndex: 1 }, // 非法步骤名
+          ],
+        }),
+        { content: [{ type: 'text', text: 'ok' }], isError: false }
+      );
     } catch (e: any) {
       if (String(e.message).indexOf('P20') !== -1) threwP20 = true;
     }
@@ -250,16 +292,21 @@ describe('governance 并行模式适配（Issue #151 R1-2/R1-3）', () => {
 
     let threw = false;
     try {
-      await after(execInput('parallel-sess6', 'c1', 'proofreadAccumulate', {
-        session_id: 'sess-r42b',
-        issues: [],
-        _batch_id: 'batch-1',
-        _steps_log: [
-          { step: 'getDocumentParagraphs', paragraphIndex: 1 },
-          { step: 'proofreadAccumulate', paragraphIndex: 1 },
-        ],
-      }), { content: [{ type: 'text', text: 'ok' }], isError: false });
-    } catch (e: any) { threw = true; }
+      await after(
+        execInput('parallel-sess6', 'c1', 'proofreadAccumulate', {
+          session_id: 'sess-r42b',
+          issues: [],
+          _batch_id: 'batch-1',
+          _steps_log: [
+            { step: 'getDocumentParagraphs', paragraphIndex: 1 },
+            { step: 'proofreadAccumulate', paragraphIndex: 1 },
+          ],
+        }),
+        { content: [{ type: 'text', text: 'ok' }], isError: false }
+      );
+    } catch (e: any) {
+      threw = true;
+    }
     expect(threw).toBe(false); // 步骤名合法，P20 不拦截
   });
 
@@ -269,7 +316,8 @@ describe('governance 并行模式适配（Issue #151 R1-2/R1-3）', () => {
     const overflow = await expectIntercept(
       plugin,
       execInput('parallel-sess7', 'c1', 'getDocumentTextByRange', {
-        startOffset: 0, length: 50000,
+        startOffset: 0,
+        length: 50000,
         _batch_id: 'batch-1',
       }),
       'P13'
@@ -283,11 +331,17 @@ describe('governance 并行模式适配（Issue #151 R1-2/R1-3）', () => {
 
     let threw = false;
     try {
-      await before(execInput('parallel-sess8', 'c1', 'getDocumentTextByRange', {
-        startOffset: 0, length: 5000,
-        _batch_id: 'batch-1',
-      }), {});
-    } catch (e: any) { threw = true; }
+      await before(
+        execInput('parallel-sess8', 'c1', 'getDocumentTextByRange', {
+          startOffset: 0,
+          length: 5000,
+          _batch_id: 'batch-1',
+        }),
+        {}
+      );
+    } catch (e: any) {
+      threw = true;
+    }
     expect(threw).toBe(false);
   });
 
@@ -297,16 +351,21 @@ describe('governance 并行模式适配（Issue #151 R1-2/R1-3）', () => {
 
     let threw = false;
     try {
-      await after(execInput('parallel-sess9', 'c1', 'proofreadAccumulate', {
-        session_id: 'sess-r111',
-        issues: [],
-        _batch_id: 'batch-1',
-        _steps_log: [
-          { step: ' getDocumentParagraphs', paragraphIndex: 1 }, // 带前导空白
-          { step: 'proofreadAccumulate ', paragraphIndex: 1 },  // 带尾随空白
-        ],
-      }), { content: [{ type: 'text', text: 'ok' }], isError: false });
-    } catch (e: any) { threw = true; }
+      await after(
+        execInput('parallel-sess9', 'c1', 'proofreadAccumulate', {
+          session_id: 'sess-r111',
+          issues: [],
+          _batch_id: 'batch-1',
+          _steps_log: [
+            { step: ' getDocumentParagraphs', paragraphIndex: 1 }, // 带前导空白
+            { step: 'proofreadAccumulate ', paragraphIndex: 1 }, // 带尾随空白
+          ],
+        }),
+        { content: [{ type: 'text', text: 'ok' }], isError: false }
+      );
+    } catch (e: any) {
+      threw = true;
+    }
     expect(threw).toBe(false); // trim 后步骤名合法，P20 不拦截
   });
 });

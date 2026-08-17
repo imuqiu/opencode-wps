@@ -57,12 +57,26 @@ export const insertRowsHandler: ToolHandler = async (
       WpsAppType.SPREADSHEET
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `插入行失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `插入行失败: ${response.error}` }],
+        error: response.error,
+      };
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `插入行完成！在第${row}行前插入了${insertCount}行` }] };
+    return {
+      id: uuidv4(),
+      success: true,
+      content: [{ type: 'text', text: `插入行完成！在第${row}行前插入了${insertCount}行` }],
+    };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `插入行出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `插入行出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -96,12 +110,26 @@ export const insertColumnsHandler: ToolHandler = async (
       WpsAppType.SPREADSHEET
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `插入列失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `插入列失败: ${response.error}` }],
+        error: response.error,
+      };
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `插入列完成！在${column}列前插入了${insertCount}列` }] };
+    return {
+      id: uuidv4(),
+      success: true,
+      content: [{ type: 'text', text: `插入列完成！在${column}列前插入了${insertCount}列` }],
+    };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `插入列出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `插入列出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -135,12 +163,26 @@ export const deleteRowsHandler: ToolHandler = async (
       WpsAppType.SPREADSHEET
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `删除行失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `删除行失败: ${response.error}` }],
+        error: response.error,
+      };
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `删除行完成！从第${startRow}行开始删除了${deleteCount}行` }] };
+    return {
+      id: uuidv4(),
+      success: true,
+      content: [{ type: 'text', text: `删除行完成！从第${startRow}行开始删除了${deleteCount}行` }],
+    };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `删除行出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `删除行出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -174,12 +216,26 @@ export const deleteColumnsHandler: ToolHandler = async (
       WpsAppType.SPREADSHEET
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `删除列失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `删除列失败: ${response.error}` }],
+        error: response.error,
+      };
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `删除列完成！从${column}列开始删除了${deleteCount}列` }] };
+    return {
+      id: uuidv4(),
+      success: true,
+      content: [{ type: 'text', text: `删除列完成！从${column}列开始删除了${deleteCount}列` }],
+    };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `删除列出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `删除列出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -212,12 +268,26 @@ export const hideRowsHandler: ToolHandler = async (
       WpsAppType.SPREADSHEET
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `隐藏行失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `隐藏行失败: ${response.error}` }],
+        error: response.error,
+      };
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `隐藏行完成！已隐藏第${startRow}行到第${endRow}行` }] };
+    return {
+      id: uuidv4(),
+      success: true,
+      content: [{ type: 'text', text: `隐藏行完成！已隐藏第${startRow}行到第${endRow}行` }],
+    };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `隐藏行出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `隐藏行出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -250,12 +320,26 @@ export const showRowsHandler: ToolHandler = async (
       WpsAppType.SPREADSHEET
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `显示行失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `显示行失败: ${response.error}` }],
+        error: response.error,
+      };
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `显示行完成！已显示第${startRow}行到第${endRow}行` }] };
+    return {
+      id: uuidv4(),
+      success: true,
+      content: [{ type: 'text', text: `显示行完成！已显示第${startRow}行到第${endRow}行` }],
+    };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `显示行出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `显示行出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -280,7 +364,11 @@ export const showColumnsDefinition: ToolDefinition = {
 export const showColumnsHandler: ToolHandler = async (
   args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  const { startColumn, endColumn, sheet } = args as { startColumn: string; endColumn: string; sheet?: string };
+  const { startColumn, endColumn, sheet } = args as {
+    startColumn: string;
+    endColumn: string;
+    sheet?: string;
+  };
   try {
     const response = await wpsClient.executeMethod<{ message: string }>(
       'showColumns',
@@ -288,12 +376,26 @@ export const showColumnsHandler: ToolHandler = async (
       WpsAppType.SPREADSHEET
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `显示列失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `显示列失败: ${response.error}` }],
+        error: response.error,
+      };
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `显示列完成！已显示${startColumn}列到${endColumn}列` }] };
+    return {
+      id: uuidv4(),
+      success: true,
+      content: [{ type: 'text', text: `显示列完成！已显示${startColumn}列到${endColumn}列` }],
+    };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `显示列出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `显示列出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 
@@ -326,12 +428,26 @@ export const groupRowsHandler: ToolHandler = async (
       WpsAppType.SPREADSHEET
     );
     if (!response.success) {
-      return { id: uuidv4(), success: false, content: [{ type: 'text', text: `分组行失败: ${response.error}` }], error: response.error };
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [{ type: 'text', text: `分组行失败: ${response.error}` }],
+        error: response.error,
+      };
     }
-    return { id: uuidv4(), success: true, content: [{ type: 'text', text: `分组行完成！已将第${startRow}行到第${endRow}行分组` }] };
+    return {
+      id: uuidv4(),
+      success: true,
+      content: [{ type: 'text', text: `分组行完成！已将第${startRow}行到第${endRow}行分组` }],
+    };
   } catch (error) {
     const errMsg = error instanceof Error ? error.stack || error.message : String(error);
-    return { id: uuidv4(), success: false, content: [{ type: 'text', text: `分组行出错: ${errMsg}` }], error: errMsg };
+    return {
+      id: uuidv4(),
+      success: false,
+      content: [{ type: 'text', text: `分组行出错: ${errMsg}` }],
+      error: errMsg,
+    };
   }
 };
 

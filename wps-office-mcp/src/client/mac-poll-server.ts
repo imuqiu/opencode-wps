@@ -360,7 +360,9 @@ class MacPollServer {
               });
               res.on('end', () => {
                 if (tooBig) {
-                  settle(() => reject(new Error(`Port ${this.port} already in use by oversized service`)));
+                  settle(() =>
+                    reject(new Error(`Port ${this.port} already in use by oversized service`))
+                  );
                   return;
                 }
                 try {
@@ -379,7 +381,9 @@ class MacPollServer {
                 } catch (e) {
                   // 非 JSON 响应，视为不可用
                 }
-                settle(() => reject(new Error(`Port ${this.port} already in use by non-poll service`)));
+                settle(() =>
+                  reject(new Error(`Port ${this.port} already in use by non-poll service`))
+                );
               });
             }
           );
