@@ -47,6 +47,11 @@ import {
   saveSessionToDisk,
   loadSessionFromDisk,
   removeSessionFromDisk,
+  loadBatchAllocations,
+  appendStepRecord,
+  saveBatchAllocations,
+  hasParallelRangeConflict,
+  getIncompleteBatches,
 } from './proofread-store';
 import {
   ToolDefinition,
@@ -183,54 +188,54 @@ function getSessionOrLoad(sessionId: string): SessionData | undefined {
  */
 const TYPE_METRIC_MAP: Record<string, ProofreadMetric> = {
   // ── 流畅度 (fluency) ──
-  '句式杂糅': 'fluency',     // 新增：PR #37 Layer 1 规则（通顺）
-  '的得混淆': 'fluency',
-  '的地混淆': 'fluency',
-  '在再混淆': 'fluency',
-  '即既混淆': 'fluency',
-  '常见错别字': 'fluency',
-  '口语化': 'fluency',
-  '量词搭配': 'fluency',
-  '少字': 'fluency',          // ✅ 缺字 → 成分残缺 → 通顺度（架构评审修正）
+  句式杂糅: 'fluency', // 新增：PR #37 Layer 1 规则（通顺）
+  的得混淆: 'fluency',
+  的地混淆: 'fluency',
+  在再混淆: 'fluency',
+  即既混淆: 'fluency',
+  常见错别字: 'fluency',
+  口语化: 'fluency',
+  量词搭配: 'fluency',
+  少字: 'fluency', // ✅ 缺字 → 成分残缺 → 通顺度（架构评审修正）
   // ── 流畅度（AI Layer 2 常用类型，T2/T3：#55 F11–F15）──
-  '动宾不当': 'fluency',      // F12 加强重视安全问题
-  '语义重复': 'fluency',      // F13 显著的进步提高
-  '修饰不当': 'fluency',      // F14 很多丰富的内容
-  '搭配冗余': 'fluency',      // F15 具有着深远的意义
-  '冗余+搭配': 'fluency',     // F11 存在着很多不足之处
-  '冗余搭配': 'fluency',
-  '语序不当': 'fluency',
-  '成分残缺': 'fluency',
-  '句式混乱': 'fluency',
-  '关联词失配': 'fluency',
-  '指代不明': 'fluency',
-  '逻辑矛盾': 'fluency',
-  '语病': 'fluency',
-  '搭配不当': 'fluency',
-  '成分赘余': 'conciseness',  // 语义重复/赘余 → 简洁度
-  '重复表达': 'conciseness',
+  动宾不当: 'fluency', // F12 加强重视安全问题
+  语义重复: 'fluency', // F13 显著的进步提高
+  修饰不当: 'fluency', // F14 很多丰富的内容
+  搭配冗余: 'fluency', // F15 具有着深远的意义
+  '冗余+搭配': 'fluency', // F11 存在着很多不足之处
+  冗余搭配: 'fluency',
+  语序不当: 'fluency',
+  成分残缺: 'fluency',
+  句式混乱: 'fluency',
+  关联词失配: 'fluency',
+  指代不明: 'fluency',
+  逻辑矛盾: 'fluency',
+  语病: 'fluency',
+  搭配不当: 'fluency',
+  成分赘余: 'conciseness', // 语义重复/赘余 → 简洁度
+  重复表达: 'conciseness',
 
   // ── 简洁度 (conciseness) ──
-  '冗余词': 'conciseness',     // 新增：PR #37 Layer 1 规则（简洁）
-  '重复字符': 'conciseness',
-  '重复标点': 'conciseness',
-  '句式冗余': 'conciseness',
-  '多字': 'conciseness',
-  '多余点号': 'conciseness',
+  冗余词: 'conciseness', // 新增：PR #37 Layer 1 规则（简洁）
+  重复字符: 'conciseness',
+  重复标点: 'conciseness',
+  句式冗余: 'conciseness',
+  多字: 'conciseness',
+  多余点号: 'conciseness',
 
   // ── 准确性 (accuracy) ──
-  '法律术语': 'accuracy',
-  '工程术语': 'accuracy',
+  法律术语: 'accuracy',
+  工程术语: 'accuracy',
 
   // ── 一致性 (consistency，含原 standardization) ──
-  '中英混排': 'consistency',
-  '数字空格': 'consistency',
-  '中文标点': 'consistency',
-  '用词统一': 'consistency',
-  '异常空格': 'consistency',
+  中英混排: 'consistency',
+  数字空格: 'consistency',
+  中文标点: 'consistency',
+  用词统一: 'consistency',
+  异常空格: 'consistency',
 
   // ── 完整度 (completeness) ──
-  '占位文本': 'completeness',
+  占位文本: 'completeness',
 };
 
 // ==================== F14 修饰不当模式（评审修正 #70） ====================
@@ -281,7 +286,11 @@ export const AI_ONLY_PATTERN = new RegExp(
  * inferTypeFromContent（#55 T2 重构），本函数在当前生产代码中已无调用点，
  * 保留仅供测试与向后兼容（历史 SKILL 合并产物 type='ai' 的兜底口径相同）。
  */
-export function inferIssueType(issue: { type?: string; original?: string; suggestion?: string }): string {
+export function inferIssueType(issue: {
+  type?: string;
+  original?: string;
+  suggestion?: string;
+}): string {
   const rawType = issue.type;
   // 有效 type 直接使用（排除 'ai' 占位值与空值）
   if (rawType && rawType !== 'ai' && rawType !== '未分类') return rawType;
@@ -299,8 +308,8 @@ export function inferIssueType(issue: { type?: string; original?: string; sugges
   if (/根据.*?(显示|表明|证实)/.test(original)) return '句式杂糅';
   if (/由于.*?的原因(导致|使|造成)/.test(original)) return '句式杂糅';
   // ── F11–F15 典型模式（AI Layer 2，fluency）──
-  if (/存在着|具有着/.test(original)) return '搭配冗余';      // F11/F15
-  if (/加强重视/.test(original)) return '动宾不当';            // F12
+  if (/存在着|具有着/.test(original)) return '搭配冗余'; // F11/F15
+  if (/加强重视/.test(original)) return '动宾不当'; // F12
   if (/(进步|提升|提高)(提高|进步)/.test(original)) return '语义重复'; // F13
   // F14（评审修正：需数量词+丰富/充分 同时出现，避免"丰富的经验"误判）
   if (F14_MODIFIER_PATTERN.test(original)) return '修饰不当';
@@ -331,10 +340,10 @@ const METRIC_WEIGHT_FORMULA: Record<
   ProofreadMetric,
   (count: number, hasPlaceholder?: boolean) => number
 > = {
-  fluency: (c) => Math.max(0, 5 - c * 0.2),       // 下限 0（修正）
-  conciseness: (c) => Math.max(0, 5 - c * 0.3),
-  accuracy: (c) => Math.max(0, 5 - c * 1.0),
-  consistency: (c) => Math.max(0, 5 - c * 0.1),
+  fluency: c => Math.max(0, 5 - c * 0.2), // 下限 0（修正）
+  conciseness: c => Math.max(0, 5 - c * 0.3),
+  accuracy: c => Math.max(0, 5 - c * 1.0),
+  consistency: c => Math.max(0, 5 - c * 0.1),
   completeness: (_c, hasPlaceholder) => (hasPlaceholder ? 0 : 5),
 };
 
@@ -390,7 +399,10 @@ export function inferTypeFromContent(original: string, suggestion: string): stri
     [/(狠|很|真|非|极|异|格)的(好|坏|快|慢|多|少|高|低|长|短|大|小)/, '的得混淆'],
     [/在(次|来|去)/, '在再混淆'],
     // ── 简洁（conciseness） ──
-    [/进行(了)?((深入|详细|认真|充分|全面|系统|细致|专门|彻底|有效)[的])?(研究|分析|讨论|处理|调查)/, '冗余词'],
+    [
+      /进行(了)?((深入|详细|认真|充分|全面|系统|细致|专门|彻底|有效)[的])?(研究|分析|讨论|处理|调查)/,
+      '冗余词',
+    ],
     [/作出(了)?(决定|部署|安排)/, '冗余词'],
     [/予以(了)?(解决|处理|落实)/, '冗余词'],
     [/加以(了)?(解决|完善|规范)/, '冗余词'],
@@ -402,8 +414,8 @@ export function inferTypeFromContent(original: string, suggestion: string): stri
     [/并(非|不)是/, '多字'],
     [/(的的|了了|，，|。。|！！|？？)/, '重复字符'],
     // ── F11–F15 典型模式（AI Layer 2，fluency；#55 T3） ──
-    [/存在着|具有着/, '搭配冗余'],      // F11/F15
-    [/加强重视/, '动宾不当'],            // F12
+    [/存在着|具有着/, '搭配冗余'], // F11/F15
+    [/加强重视/, '动宾不当'], // F12
     [/(进步|提升|提高)(提高|进步)/, '语义重复'], // F13
     // F14（评审修正：数量词+丰富/充分，避免"丰富的经验"误判）
     [F14_MODIFIER_PATTERN, '修饰不当'],
@@ -488,9 +500,7 @@ export function normalizeIssueLocation(issue: ProofreadIssueEntry): ProofreadIss
   };
   // paragraphIndex 优先驼峰，其次蛇形旧别名（两种都可能带字符串数字）
   const paragraphIndex =
-    toFiniteNumber(raw.paragraphIndex) ??
-    toFiniteNumber(raw.paragraph_index) ??
-    undefined;
+    toFiniteNumber(raw.paragraphIndex) ?? toFiniteNumber(raw.paragraph_index) ?? undefined;
   // offset 仅接受绝对偏移数值（含字符串数字）；offset_in_paragraph 语义不同，绝不兜底
   const offset = toFiniteNumber(raw.offset);
   return { ...issue, paragraphIndex, offset };
@@ -577,7 +587,11 @@ export const proofreadAccumulateDefinition: ToolDefinition = {
         items: {
           type: 'object',
           properties: {
-            offset: { type: 'number', description: '文档绝对偏移位置（Layer 2 输出驼峰字段，缺失时报告位置列显示「位置未知」；兼容字符串数字如 "3"，自动归一化为数值）' },
+            offset: {
+              type: 'number',
+              description:
+                '文档绝对偏移位置（Layer 2 输出驼峰字段，缺失时报告位置列显示「位置未知」；兼容字符串数字如 "3"，自动归一化为数值）',
+            },
             length: { type: 'number', description: '问题文本长度' },
             original: { type: 'string', description: '原文（必填）' },
             suggestion: { type: 'string', description: '建议修改（必填）' },
@@ -585,7 +599,11 @@ export const proofreadAccumulateDefinition: ToolDefinition = {
             context: { type: 'string', description: '上下文' },
             source: { type: 'string', description: '检测来源: mcp（Layer 1）或 ai（Layer 2）' },
             paragraphIndex: { type: 'number', description: '段落索引（可选，从 1 开始）' },
-            paragraph_index: { type: 'number', description: '段落索引蛇形旧别名（兼容存量 AI 输出，自动归一化到 paragraphIndex；兼容字符串数字）' },
+            paragraph_index: {
+              type: 'number',
+              description:
+                '段落索引蛇形旧别名（兼容存量 AI 输出，自动归一化到 paragraphIndex；兼容字符串数字）',
+            },
             reason: { type: 'string', description: 'AI 检测理由（仅 source=ai 时有效）' },
           },
           required: ['original', 'suggestion'],
@@ -607,7 +625,8 @@ export const proofreadAccumulateDefinition: ToolDefinition = {
       },
       suspected_issues: {
         type: 'array',
-        description: '疑似问题列表（可选，Issue #116 问题十一）：AI 识别但未确认的问题，报告单独列出「待确认问题」节，不纳入五维评分',
+        description:
+          '疑似问题列表（可选，Issue #116 问题十一）：AI 识别但未确认的问题，报告单独列出「待确认问题」节，不纳入五维评分',
         items: {
           type: 'object',
           properties: {
@@ -631,13 +650,47 @@ export const proofreadAccumulateDefinition: ToolDefinition = {
 export const proofreadAccumulateHandler: ToolHandler = async (
   args: Record<string, unknown>
 ): Promise<ToolCallResult> => {
-  let { session_id, issues, doc_info, total_revisions, suspected_issues } = args as {
+  let {
+    session_id,
+    issues,
+    doc_info,
+    total_revisions,
+    suspected_issues,
+    _batch_id,
+    _steps_log,
+    _batch_allocations,
+  } = args as {
     session_id: string;
     issues?: ProofreadIssueEntry[];
     doc_info?: DocInfo;
     total_revisions?: number;
     /** 疑似问题（Issue #116 问题十一）：AI 识别但未确认的问题 */
     suspected_issues?: ProofreadIssueEntry[];
+    /** 批次标识（Issue #151 校对 subagent 并行重构）：执行 agent 声明本批所属批次，随凭证落盘 */
+    _batch_id?: string;
+    /** 本批逐步执行凭证（Issue #151 决策 5 防幻觉）：执行 agent 在 proofreadAccumulate 时一并提交，服务端落盘
+     *  R1-5：除驼峰字段外，允许 snake_case 变体（如 revisions_before），服务端消费时统一兼容 */
+    _steps_log?: Array<{
+      step: string;
+      timestamp?: number;
+      paragraphIndex?: number;
+      paragraph_index?: number;
+      revisionsBefore?: number;
+      revisionsAfter?: number;
+      issuesCount?: number;
+      revisions_before?: number;
+      revisions_after?: number;
+      issues_count?: number;
+      [key: string]: unknown;
+    }>;
+    /** 批次分配表（Issue #151 R3-2）：规划 agent 在初始化 session 时登记分批计划，供管理 agent 调度/断点续跑 */
+    _batch_allocations?: Array<{
+      batchId: string;
+      range: { start: number; end: number };
+      status?: 'pending' | 'running' | 'done' | 'failed';
+      assignee?: string;
+      stepsLog?: unknown[];
+    }>;
   };
 
   if (!session_id || typeof session_id !== 'string') {
@@ -700,8 +753,20 @@ export const proofreadAccumulateHandler: ToolHandler = async (
     // 修复：不再 trim 判断内容——只拒绝「字段不存在」（undefined/null/非字符串）或
     // 「真正为空字符串」（''，无原文可校对）；空白字符本身可能是文档的真实问题（异常空格），
     // 属合法校对发现，必须允许累加。
-    if (i.original === undefined || i.original === null || typeof i.original !== 'string' || i.original === '') missing.push('original');
-    if (i.suggestion === undefined || i.suggestion === null || typeof i.suggestion !== 'string' || i.suggestion === '') missing.push('suggestion');
+    if (
+      i.original === undefined ||
+      i.original === null ||
+      typeof i.original !== 'string' ||
+      i.original === ''
+    )
+      missing.push('original');
+    if (
+      i.suggestion === undefined ||
+      i.suggestion === null ||
+      typeof i.suggestion !== 'string' ||
+      i.suggestion === ''
+    )
+      missing.push('suggestion');
     if (missing.length > 0) {
       invalidIssues.push({ i, reason: `缺 ${missing.join('/')}` });
     } else {
@@ -712,8 +777,7 @@ export const proofreadAccumulateHandler: ToolHandler = async (
   // 兼容「仅携带 total_revisions / doc_info 的会话初始化调用」）。
   // 有效条目为空且确有无效条目（issues 非空但全部缺字段）时返回失败，给出更明确错误（含示例）。
   if (validIssues.length === 0 && invalidIssues.length > 0) {
-    const example =
-      ` 首条: { original: "${(invalidIssues[0].i.original || '').slice(0, 30)}", 缺字段: ${invalidIssues[0].reason} }`;
+    const example = ` 首条: { original: "${(invalidIssues[0].i.original || '').slice(0, 30)}", 缺字段: ${invalidIssues[0].reason} }`;
     return {
       id: uuidv4(),
       success: false,
@@ -723,7 +787,8 @@ export const proofreadAccumulateHandler: ToolHandler = async (
           text:
             `issues 中 ${invalidIssues.length} 条全部缺少必填字段 original/suggestion，无有效条目可累加。\n` +
             `每条校对问题必须携带 original（原文）和 suggestion（建议修改）两个必填字段。\n` +
-            example.trim() + `\n` +
+            example.trim() +
+            `\n` +
             `请补充缺失字段后重试；若为首次调用还需携带 doc_info 初始化会话。`,
         },
       ],
@@ -744,8 +809,20 @@ export const proofreadAccumulateHandler: ToolHandler = async (
       const missing: string[] = [];
       // Issue #116 session_ff63 问题一（P0）：与 issues 主校验一致——不再 trim 判断，
       // 只拒绝「字段不存在」或「真正为空字符串」；空白内容（异常空格等）是合法疑似问题，允许累加。
-      if (i.original === undefined || i.original === null || typeof i.original !== 'string' || i.original === '') missing.push('original');
-      if (i.suggestion === undefined || i.suggestion === null || typeof i.suggestion !== 'string' || i.suggestion === '') missing.push('suggestion');
+      if (
+        i.original === undefined ||
+        i.original === null ||
+        typeof i.original !== 'string' ||
+        i.original === ''
+      )
+        missing.push('original');
+      if (
+        i.suggestion === undefined ||
+        i.suggestion === null ||
+        typeof i.suggestion !== 'string' ||
+        i.suggestion === ''
+      )
+        missing.push('suggestion');
       if (missing.length > 0) {
         skippedSuspectedCount++;
       } else {
@@ -763,20 +840,27 @@ export const proofreadAccumulateHandler: ToolHandler = async (
   }
 
   // 更新修订数
+  // R2-2（评审第 2 轮）：并行 executor 各自调用 getTrackChangesStatus 会取到不同时刻的全局修订数，
+  // 直接整体覆盖存在"最后写入者胜出"的写竞争，值可能滞后/不准。
+  // 修订记录是单调累积的（校对过程中替换/删除会不断新增修订），故采用**取最大值**策略：
+  // 会话修订基线只增不减，无论并行 executor 何时上报，最终稳定在最大值，更接近真实最终修订数，
+  // 且不改变调用方协议（无需 executor 增量上报）。
   if (typeof total_revisions === 'number') {
-    session.totalRevisions = total_revisions;
+    if (session.totalRevisions === undefined || total_revisions > session.totalRevisions) {
+      session.totalRevisions = total_revisions;
+    }
   }
 
   // 追加 issues（#55 T2：入口统一规整 type，缺 type / type='ai' 时兜底推断；
   // 验收遗留：缺 source 时同样兜底推断，避免报告"未标注来源"失真 TC-13）
   // 「偏移 undefined」瑕疵：先归一化位置字段（蛇形 paragraph_index → 驼峰 paragraphIndex；
   // offset 仅接受绝对偏移数值，offset_in_paragraph 语义不同不兜底，缺失时报告降级「位置未知」）
-  const normalizedIssues = issues.map((i) =>
+  const normalizedIssues = issues.map(i =>
     normalizeIssueLocation(normalizeIssueSource(normalizeIssueType(i)))
   );
   // 本批中 offset 缺失的条数（评审 warning：返回文本需暴露这一可观测信号，
   // 报告侧「位置未知」需能区分是漏传还是计算失败）
-  const missingOffsetCount = normalizedIssues.filter((i) => i.offset === undefined).length;
+  const missingOffsetCount = normalizedIssues.filter(i => i.offset === undefined).length;
   // 先把本批追加进会话，再做全量去重（保留历史累计语义，便于报告侧统计）
   session.issues.push(...normalizedIssues);
 
@@ -846,7 +930,7 @@ export const proofreadAccumulateHandler: ToolHandler = async (
   // 必填校验已前置（评审第 2 轮 C2），此处不再重复；
   // 评审第 2 轮 W4：与正式 issues 一致，suspected_issues 也做去重（同 offset+original 不重复 push）
   if (suspected_issues && Array.isArray(suspected_issues)) {
-    const normalizedSuspected = suspected_issues.map((i) =>
+    const normalizedSuspected = suspected_issues.map(i =>
       normalizeIssueLocation(normalizeIssueSource(normalizeIssueType(i)))
     );
     if (!session.suspectedIssues) {
@@ -855,7 +939,9 @@ export const proofreadAccumulateHandler: ToolHandler = async (
     // 去重：仅对携带绝对 offset 的条目按 dedupKey 去重（与正式 issues 口径一致），
     // offset 缺失时保守不去重（保留全部）
     const existingKeys = new Set(
-      session.suspectedIssues.filter((i) => i.offset !== undefined).map((i) => dedupKey(i.offset!, i.original))
+      session.suspectedIssues
+        .filter(i => i.offset !== undefined)
+        .map(i => dedupKey(i.offset!, i.original))
     );
     for (const entry of normalizedSuspected) {
       if (entry.offset === undefined) {
@@ -869,6 +955,52 @@ export const proofreadAccumulateHandler: ToolHandler = async (
     }
   }
 
+  // Issue #151 R3-2：批次分配表登记（规划 agent 在初始化 session 时调用）
+  // 规划 agent 一次性产出分批计划后，通过 _batch_allocations 落盘批次分配表，
+  // 供管理 agent 调度（并行≤3）/ 断点续跑（非 done 批次重新入队）使用。
+  // 落盘失败不阻塞主流程（返回警告而非失败），但需向 AI 暴露信号。
+  let batchAllocationsPersisted = false;
+  if (Array.isArray(_batch_allocations) && _batch_allocations.length > 0) {
+    try {
+      batchAllocationsPersisted = saveBatchAllocations(session_id, _batch_allocations as never);
+    } catch {
+      batchAllocationsPersisted = false;
+    }
+  }
+
+  // Issue #151 决策 5 防幻觉：逐步执行凭证落盘（R3-1 修复）
+  // 执行 agent 在 proofreadAccumulate 时携带 _batch_id + _steps_log 提交本批逐步凭证。
+  // 服务端在此消费并追加到对应批次的 stepsLog（proofread-store 的 appendStepRecord 落盘），
+  // 使管理 agent 的 getMissingSteps 监督 / 断点续跑有真实磁盘数据可依。
+  // 注：governance P20 已拦截"带 _batch_id 却缺 _steps_log"的调用，此处仅做防御性兜底。
+  // R1-5：对 _steps_log 条目的字段做驼峰/snake_case 兼容（如 revisions_before → revisionsBefore），
+  // 避免执行 agent 输出 snake_case 被静默丢弃导致步骤凭证字段缺失。
+  let stepsPersisted = false;
+  if (_batch_id && Array.isArray(_steps_log) && _steps_log.length > 0) {
+    try {
+      let allOk = true;
+      for (const rec of _steps_log) {
+        const normalizeNum = (v: unknown): number | undefined =>
+          typeof v === 'number' ? v : typeof v === 'string' && v !== '' ? Number(v) : undefined;
+        const ok = appendStepRecord(session_id, _batch_id, {
+          step: rec.step as never,
+          timestamp: normalizeNum(rec.timestamp) ?? Date.now(),
+          paragraphIndex: normalizeNum(rec.paragraphIndex ?? rec.paragraph_index),
+          revisionsBefore: normalizeNum(rec.revisionsBefore ?? rec.revisions_before),
+          revisionsAfter: normalizeNum(rec.revisionsAfter ?? rec.revisions_after),
+          issuesCount: normalizeNum(rec.issuesCount ?? rec.issues_count),
+        });
+        if (!ok) {
+          allOk = false; // 批次不存在或落盘失败，停止追加并标记失败
+          break;
+        }
+      }
+      stepsPersisted = allOk;
+    } catch {
+      stepsPersisted = false;
+    }
+  }
+
   // 增量落盘（Issue #116 问题十二）：每次累加后同步到磁盘，服务重启后可恢复
   // 落盘失败不阻塞主流程（返回警告而非失败），但需向 AI 暴露信号
   const diskWriteSuccess = saveSessionToDisk(session_id, session);
@@ -878,7 +1010,13 @@ export const proofreadAccumulateHandler: ToolHandler = async (
     success: true,
     // 评审第 4 轮 W6：增加可编程字段 data.diskPersisted，供 AI 程序化判断落盘状态，
     // 而非仅解析文本警告
-    data: { diskPersisted: diskWriteSuccess },
+    data: {
+      diskPersisted: diskWriteSuccess,
+      // Issue #151 R3-1：暴露逐步凭证落盘状态，供管理 agent / 报告程序化判断防幻觉监督是否生效
+      stepsPersisted,
+      // Issue #151 R3-2：暴露批次分配表登记状态，供规划 agent 判断分批计划是否落盘成功
+      batchAllocationsPersisted,
+    },
     content: [
       {
         type: 'text',
@@ -895,10 +1033,21 @@ export const proofreadAccumulateHandler: ToolHandler = async (
           (session.suspectedIssues && session.suspectedIssues.length > 0
             ? `；疑似问题 ${session.suspectedIssues.length} 条（待确认）`
             : '') +
-          (diskWriteSuccess ? '' : `\n⚠️ 会话数据落盘失败（存储目录不可写），服务重启后数据可能丢失`)
-          +
+          (diskWriteSuccess
+            ? ''
+            : `\n⚠️ 会话数据落盘失败（存储目录不可写），服务重启后数据可能丢失`) +
           (missingOffsetCount > 0
             ? `；其中 ${missingOffsetCount} 条未携带绝对 offset，未参与去重（报告位置列显示「位置未知」）`
+            : '') +
+          (_batch_id && Array.isArray(_steps_log) && _steps_log.length > 0
+            ? stepsPersisted
+              ? `\n本批 ${_batch_id} 步骤凭证已落盘（${_steps_log.length} 条）`
+              : `\n⚠️ 本批 ${_batch_id} 步骤凭证落盘失败（批次不存在或存储不可写），请检查批次分配表或磁盘`
+            : '') +
+          (Array.isArray(_batch_allocations) && _batch_allocations.length > 0
+            ? batchAllocationsPersisted
+              ? `\n批次分配表已登记（${_batch_allocations.length} 批）`
+              : `\n⚠️ 批次分配表登记失败（批次区间非法/重叠，或存储不可写），管理 agent 将无法调度/断点续跑；请检查批次区间是否连续且不重叠、存储是否可写`
             : '') +
           '。',
       },
@@ -987,17 +1136,19 @@ export const generateProofreadReportHandler: ToolHandler = async (
     return {
       id: uuidv4(),
       success: false,
-      content: [{
-        type: 'text',
-        text:
-          `session_id 不能为空！请在 arguments 中传入必填参数 session_id（校对开始时生成的 UUID v4）。\n` +
-          `正确示例：\n` +
-          `  wps_office_execute({\n` +
-          `    action: \"generateProofreadReport\",\n` +
-          `    arguments: { session_id: \"这里填校对开始时的 UUID v4，如 550e8400-e29b-41d4-a716-446655440000\" }\n` +
-          `  })\n` +
-          `session_id 必须在调用 proofreadAccumulate 累加问题后保持不变，用于汇总已累加的问题生成报告。`,
-      }],
+      content: [
+        {
+          type: 'text',
+          text:
+            `session_id 不能为空！请在 arguments 中传入必填参数 session_id（校对开始时生成的 UUID v4）。\n` +
+            `正确示例：\n` +
+            `  wps_office_execute({\n` +
+            `    action: \"generateProofreadReport\",\n` +
+            `    arguments: { session_id: \"这里填校对开始时的 UUID v4，如 550e8400-e29b-41d4-a716-446655440000\" }\n` +
+            `  })\n` +
+            `session_id 必须在调用 proofreadAccumulate 累加问题后保持不变，用于汇总已累加的问题生成报告。`,
+        },
+      ],
       error: '缺少 session_id',
     };
   }
@@ -1027,7 +1178,8 @@ export const generateProofreadReportHandler: ToolHandler = async (
     // 避免「✅ 未发现问题」与「⚠️ 待确认问题」语义并置引起困惑
     const hasSuspected = !!(suspectedIssues && suspectedIssues.length > 0);
     const emptyReport =
-      buildEmptyReport(docInfo, createdAt, hasSuspected) + (hasSuspected ? buildSuspectedSection(suspectedIssues!) : '');
+      buildEmptyReport(docInfo, createdAt, hasSuspected) +
+      (hasSuspected ? buildSuspectedSection(suspectedIssues!) : '');
     let wroteFile = false;
     let writeError: string | undefined;
     if (output_file) {
@@ -1056,7 +1208,8 @@ export const generateProofreadReportHandler: ToolHandler = async (
     if (writeError) {
       // 评审建议：失败返回不内嵌完整报告全文（长文档时消耗大量 token），
       // 改为截断预览（前 1500 字）+ 报告总长度提示，AI 可修正路径后重试重新生成完整报告。
-      const preview = emptyReport.length > 1500 ? emptyReport.slice(0, 1500) + '\n…(预览截断)' : emptyReport;
+      const preview =
+        emptyReport.length > 1500 ? emptyReport.slice(0, 1500) + '\n…(预览截断)' : emptyReport;
       return {
         id: uuidv4(),
         success: false,
@@ -1166,12 +1319,130 @@ export const generateProofreadReportHandler: ToolHandler = async (
 
   let report = '';
 
+  // ═══════════════════════════════════════════
+  // 批次完整性 + 统计准确性校验（Issue #151 校对重构，决策 3/5）
+  //  - 批次完整性：存在未完成批次时标注告警，禁止"假完整"报告
+  //  - 交叉校验：issue 数 vs 修订记录数（每次替换≈2 条），疑似缺失告警
+  // ═══════════════════════════════════════════
+  const batchAllocations = loadBatchAllocations(session_id);
+  // R2-3：报告批次完整性复用 getIncompleteBatches 语义（status !== done 或 done 但步骤凭证不完整）。
+  // 避免批次被谎报 done 但凭证缺失时，报告误判"全部完成"不告警（防幻觉盲区）。
+  const incompleteBatches = getIncompleteBatches(session_id);
+  const incompleteBatchCount = incompleteBatches.length;
+  const hasIncompleteBatches = incompleteBatchCount > 0;
+  // R4-2：并行区间重叠最终防线——若仍有 running 批次且段落区间相交，提示调度异常（并行隔离被破坏）
+  const hasRangeConflict = hasParallelRangeConflict(session_id);
+  // R11-2：并行度超限提示——WPS 单进程 COM 约束并行度 ≤3，running 批次数超过 3 时提示调度异常
+  const runningBatchCount = batchAllocations.filter(b => b.status === 'running').length;
+  const hasParallelOverLimit = runningBatchCount > 3;
+
+  // R6-1：批次区间覆盖完整性校验——批次区间应连续覆盖 1..totalParagraphs 且互不重叠。
+  // 若规划 agent 分批计划有遗漏/重叠，管理 agent 照单调度会漏校或重复校对。
+  // 合并所有批次区间，检查是否存在未被覆盖的段落段（静态校验，不依赖 running 状态）。
+  let coverageGaps: Array<{ start: number; end: number }> = [];
+  const totalParagraphsNum = docInfo?.totalParagraphs ?? 0;
+  if (totalParagraphsNum > 0 && batchAllocations.length > 0) {
+    // 按起始位置排序，逐段合并检查缺口
+    const sorted = batchAllocations.map(b => b.range).sort((a, b) => a.start - b.start);
+    let cursor = 1;
+    for (const r of sorted) {
+      if (r.start > cursor) {
+        coverageGaps.push({ start: cursor, end: r.start - 1 }); // 缺口
+      }
+      cursor = Math.max(cursor, r.end + 1);
+    }
+    if (cursor <= totalParagraphsNum) {
+      coverageGaps.push({ start: cursor, end: totalParagraphsNum }); // 尾部缺口
+    }
+    // 去掉负向/无效区间（防御）
+    coverageGaps = coverageGaps.filter(g => g.start <= g.end);
+  }
+  const hasCoverageGap = coverageGaps.length > 0;
+
+  // R10-3：批次区间超出文档总段数检测（规划 agent 多登记批次）——超出部分无对应文档段落，属规划异常。
+  let hasExceedRange = false;
+  if (totalParagraphsNum > 0 && batchAllocations.length > 0) {
+    hasExceedRange = batchAllocations.some(b => b.range.end > totalParagraphsNum);
+  }
+
+  // R8-2：批次区间重叠检测（不论状态）——规划阶段批次重叠且都已 done 时，
+  // hasParallelRangeConflict（只查 running）不会触发，此处补查任意状态的区间重叠。
+  let hasOverlap = false;
+  if (batchAllocations.length > 0) {
+    const ranges = batchAllocations.map(b => b.range);
+    outer: for (let i = 0; i < ranges.length; i++) {
+      for (let j = i + 1; j < ranges.length; j++) {
+        const a = ranges[i];
+        const b = ranges[j];
+        if (a.start <= b.end && b.start <= a.end) {
+          hasOverlap = true;
+          break outer;
+        }
+      }
+    }
+  }
+
+  // 交叉校验：修订记录可解释的修复量上限 = totalRevisions
+  // 每条 issue（一次修复）至少消耗 1 条修订（删除类=1，替换类=2），故 totalRevisions 条修订最多解释 totalRevisions 个 issue。
+  // 当累计 issue 数 > 修订可解释的修复量时，存在"累加未落盘/批次丢失"的疑似缺失风险
+  let crossCheckWarning: string | null = null;
+  // 交叉校验仅在存在真实修订基线（totalRevisions > 0）时启用：
+  //  - totalRevisions === 0 表示会话尚未获得修订基线数据（如 planner 初始化显式传 0），
+  //    此时不能据此判定"批次丢失"，否则会对合法会话误报"疑似统计缺失"（评审第 2 轮 R2-1）。
+  //  - totalRevisions === undefined 表示未提供修订数据，同样不判定。
+  if (typeof totalRevisions === 'number' && totalRevisions > 0 && issues.length > 0) {
+    // 每条 issue 至少对应 1 条修订（删除类 1 条 / 替换类 2 条），即 issue 数 ≤ totalRevisions 恒成立；
+    // 若累计 issue 数 > totalRevisions，则必然有批次未正确累加（修订数不够解释这么多修复）。
+    // 注：修正自评审第 1 轮 R1-1——旧阈值 totalRevisions*2 方向取反，漏检 2 倍。
+    const maxExplainableByRevisions = totalRevisions; // 每条 issue 至少消耗 1 条修订的保守上界
+    if (issues.length > maxExplainableByRevisions) {
+      const suspectedMissing = issues.length - totalRevisions;
+      crossCheckWarning =
+        `⚠️ **疑似统计缺失**：累计 issue ${issues.length} 处，但修订记录仅 ${totalRevisions} 条。` +
+        `即使按最紧口径（每条 issue 至少消耗 1 条修订，删除类修复）也无法解释 ${suspectedMissing} 处，` +
+        `存在批次未正确累加/丢失的可能，请人工核对修订记录与问题清单，必要时重跑缺失批次。`;
+    }
+    // R7-1：反向校验——修订数远多于 issue 数（全替换修复下修订≈2×issue），可能存在未记录的修复或非校对修订。
+    // 用宽松倍数（3 倍）避免 normal baseline/手动编辑误报（修订可能含校对开始前的既有修订基线）。
+    const reverseThreshold = issues.length * 3;
+    if (totalRevisions > reverseThreshold) {
+      crossCheckWarning =
+        `⚠️ **疑似未记录修复**：修订记录 ${totalRevisions} 条，但仅累计 ${issues.length} 处问题（全替换修复下修订约 2×问题数=${issues.length * 2}）。` +
+        `修订数明显多于问题数，可能存在未累加的修复或非校对产生的修订，请人工核对修订记录与问题清单。`;
+    }
+  }
+
   report += `# 校对报告\n\n`;
-  report += `- **文档**: ${docInfo.fileName}\n`;
-  report += `- **路径**: \`${docInfo.filePath}\`\n`;
+  report += `- **文档**: ${docInfo.fileName ?? '未知'}\n`;
+  report += `- **路径**: \`${docInfo.filePath ?? '未知'}\`\n`;
   report += `- **校对时间**: ${reportDate}\n`;
-  report += `- **总段数**: ${docInfo.totalParagraphs}\n`;
-  report += `- **总字数**: ${docInfo.totalWords}\n`;
+  report += `- **总段数**: ${docInfo.totalParagraphs ?? 0}\n`;
+  report += `- **总字数**: ${docInfo.totalWords ?? 0}\n`;
+  if (batchAllocations.length === 0) {
+    // R10-2：未检测到批次分配表——4-subagent 重构下规划 agent 应登记批次，空分配表可能是异常
+    report += `- **⚠️ 未检测到批次分配表**: 未找到任何批次（规划 agent 应通过 _batch_allocations 登记分批计划），本报告无法核验批次完整性/断点续跑\n`;
+  }
+  if (hasIncompleteBatches) {
+    report += `- **⚠️ 批次完整性**: 仍有 ${incompleteBatchCount} 批未完成（共 ${batchAllocations.length} 批），**统计可能不全**，请先完成剩余批次再重新生成报告\n`;
+  }
+  if (hasRangeConflict) {
+    report += `- **⚠️ 并行区间冲突**: 仍有 running 批次的段落区间相交（并行隔离被破坏），请修正调度后重新校对/生成报告\n`;
+  }
+  if (hasParallelOverLimit) {
+    report += `- **⚠️ 并行度超限**: 当前 ${runningBatchCount} 个批次并行运行（上限 3，WPS 单进程 COM 约束），请减少并行批次或排队\n`;
+  }
+  if (hasCoverageGap) {
+    const gaps = coverageGaps
+      .map(g => (g.start === g.end ? `${g.start}` : `${g.start}-${g.end}`))
+      .join(', ');
+    report += `- **⚠️ 批次区间未覆盖完整**: 段落 ${gaps} 未被任何批次分配，可能漏校，请修正分批计划后重新校对/生成报告\n`;
+  }
+  if (hasOverlap) {
+    report += `- **⚠️ 批次区间重叠**: 批次分配表中存在段落区间相交的批次（可能重复校对），请修正分批计划后重新校对/生成报告\n`;
+  }
+  if (hasExceedRange) {
+    report += `- **⚠️ 批次区间超出文档总段数**: 存在批次结束段大于文档总段数 ${totalParagraphsNum}，规划 agent 多登记了批次，请修正分批计划后重新校对/生成报告\n`;
+  }
   if (totalRevisions !== undefined) {
     // TC-12 口径：WPS 修订模式下每次替换 = 1 次删除 + 1 次插入，即 2 条修订记录。
     // 报告「发现问题」与「修订总数」是两个独立维度：发现问题按 issue 条数计；
@@ -1190,6 +1461,9 @@ export const generateProofreadReportHandler: ToolHandler = async (
   }
   if (unknownTypeIssues.length > 0) {
     report += `- **⚠️ 未分类问题**: ${unknownTypeIssues.length} 处（未计入五维评分，见下方"未分类问题"节；请检查 AI 层是否输出 type 字段）\n`;
+  }
+  if (crossCheckWarning) {
+    report += `\n> ${crossCheckWarning}\n`;
   }
   report += `\n`;
 
@@ -1211,7 +1485,7 @@ export const generateProofreadReportHandler: ToolHandler = async (
   report += `\`\`\`json\n`;
   report += JSON.stringify(
     {
-      metrics: metricOrder.map((m) => ({
+      metrics: metricOrder.map(m => ({
         name: metricLabels[m],
         key: m,
         count: scores[m].count,
@@ -1252,7 +1526,8 @@ export const generateProofreadReportHandler: ToolHandler = async (
   if (unknownTypeIssues.length > 0) {
     report += `### ⚠️ 未分类问题（未计入五维评分） — ${unknownTypeIssues.length} 处\n\n`;
     // #55 T2：未分类问题不计入五维评分，提示补充 type 以便纳入统计
-    report += `> **提示**：以下问题未携带有效的 type 字段（或 type 不在 TYPE_METRIC_MAP 映射表中），` +
+    report +=
+      `> **提示**：以下问题未携带有效的 type 字段（或 type 不在 TYPE_METRIC_MAP 映射表中），` +
       `无法归入五维评分。请检查 AI 层（Layer 2）输出是否携带正确的 type 字段，` +
       `或补充 TYPE_METRIC_MAP 映射。\n\n`;
     report += `| # | 位置 | 原文 | 建议修改 | 类型 | 来源 |\n`;
@@ -1285,9 +1560,9 @@ export const generateProofreadReportHandler: ToolHandler = async (
 
   // 统计摘要（T2，#55：source 缺失时单独列出，防止"正则 0 处 + AI 0 处"失真假象）
   report += `## 统计摘要\n\n`;
-  const mcpCount = issues.filter((i) => i.source === 'mcp').length;
-  const aiCount = issues.filter((i) => i.source === 'ai').length;
-  const unknownSourceCount = issues.filter((i) => i.source !== 'mcp' && i.source !== 'ai').length;
+  const mcpCount = issues.filter(i => i.source === 'mcp').length;
+  const aiCount = issues.filter(i => i.source === 'ai').length;
+  const unknownSourceCount = issues.filter(i => i.source !== 'mcp' && i.source !== 'ai').length;
   report += `| 来源 | 数量 |\n`;
   report += `|------|------|\n`;
   report += `| 正则基础校对 (MCP) | ${mcpCount} 处 |\n`;
@@ -1399,11 +1674,11 @@ function buildEmptyReport(docInfo: DocInfo, _createdAt: string, hasSuspected = f
   return [
     `# 校对报告`,
     ``,
-    `- **文档**: ${docInfo.fileName}`,
-    `- **路径**: \`${docInfo.filePath}\``,
+    `- **文档**: ${docInfo.fileName ?? '未知'}`,
+    `- **路径**: \`${docInfo.filePath ?? '未知'}\``,
     `- **校对时间**: ${reportDate}`,
-    `- **总段数**: ${docInfo.totalParagraphs}`,
-    `- **总字数**: ${docInfo.totalWords}`,
+    `- **总段数**: ${docInfo.totalParagraphs ?? 0}`,
+    `- **总字数**: ${docInfo.totalWords ?? 0}`,
     `- **发现问题**: 0 处`,
     ``,
     `## 五维评分`,

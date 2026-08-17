@@ -6,6 +6,21 @@
 // 设置测试超时时间
 jest.setTimeout(10000);
 
+// Issue #151 QA 6/12：为每个 Jest worker 隔离校对会话存储目录，消除并行不稳定。
+// 根因：Jest 并行 worker 默认共享同一 ~/.opencode-wps/proofread-sessions，且
+// proofread-report.test.ts 的 beforeEach 会 `readdirSync` 后删除目录内全部文件，
+// 导致并发运行的 proofread-store.test.ts（R3-2/R6-1/R7-1 等真实文件 RMW）被删除/干扰
+// 而偶发陈旧读。此处为每个 worker（JEST_WORKER_ID）分配独立临时目录，测试互不干扰。
+// 仅在 Jest 测试环境设置（process.env.JEST_WORKER_ID 存在），不影响生产。
+if (process.env.JEST_WORKER_ID && !process.env.OPENCODE_WPS_PROOFREAD_DIR) {
+  const os = require('os');
+  const path = require('path');
+  process.env.OPENCODE_WPS_PROOFREAD_DIR = path.join(
+    os.tmpdir(),
+    `opencode-wps-proofread-test-${process.env.JEST_WORKER_ID}`
+  );
+}
+
 // 全局Mock console.error，不然测试日志太乱
 const originalConsoleError = console.error;
 beforeAll(() => {

@@ -40,6 +40,7 @@ import {
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import * as proofreadStore from '../../tools/word/proofread-store';
 
 // 评审建议：重试用例真实写盘不再用 /tmp（Windows 上解析为盘符根，且残留垃圾文件），
 // 改用 os.tmpdir() 并每次生成唯一子目录，用例结束后清理。
@@ -58,8 +59,9 @@ beforeEach(() => {
   sessionIssues.clear();
   // Issue #116 落盘持久化：同时清理磁盘上可能残留的测试会话文件，
   // 避免 getSessionOrLoad 从磁盘恢复旧数据导致测试隔离失效
-  // 存储目录为 ~/.opencode-wps/proofread-sessions
-  const proofreadDir = path.join(os.homedir(), '.opencode-wps', 'proofread-sessions');
+  // Issue #151 QA 6/12：改用 getProofreadDir() 获取实际存储目录（可能被测试隔离到
+  // 每 worker 临时目录），而非硬编码默认路径，避免并发 worker 间删除干扰。
+  const proofreadDir = proofreadStore.getProofreadDir();
   try {
     if (fs.existsSync(proofreadDir)) {
       const files = fs.readdirSync(proofreadDir);
@@ -359,6 +361,121 @@ describe('proofreadAccumulateHandler', () => {
     });
 
     expect(sessionIssues.get('test-session-4')!.totalRevisions).toBe(15);
+  });
+
+  it('should keep the maximum total_revisions across concurrent writers（评审第 2 轮 R2-2）', async () => {
+    // 并行 executor 各自上报不同时刻的全局修订数，直接整体覆盖会产生"最后写入者胜出"的写竞争。
+    // 修订记录单调累积，应取最大值（只增不减），后续较小上报不得回退基线。
+    const s = 'test-session-r2-2';
+    await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+      total_revisions: 10,
+    });
+    expect(sessionIssues.get(s)!.totalRevisions).toBe(10);
+
+    // 并行 executor A 观察到 18
+    await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      total_revisions: 18,
+    });
+    expect(sessionIssues.get(s)!.totalRevisions).toBe(18);
+
+    // 并行 executor B 因时序较晚/快照较早只观察到 12 —— 不得把基线回退到 12（旧实现整体覆盖会回退）
+    await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      total_revisions: 12,
+    });
+    expect(sessionIssues.get(s)!.totalRevisions).toBe(18);
+  });
+
+  it('随 proofreadAccumulate 提交的 _steps_log 落盘到批次凭证（评审第 3 轮 R3-1）', async () => {
+    // 执行 agent 按 executor.md 在 proofreadAccumulate 时携带 _batch_id + _steps_log 提交逐步凭证，
+    // 服务端必须消费并落盘到批次 stepsLog（供管理 agent getMissingSteps 监督/断点续跑）。
+    const s = 'test-session-r3-1';
+    const batchId = 'batch-1';
+    // 先初始化会话 + 登记批次分配表
+    await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+    });
+    proofreadStore.saveBatchAllocations(s, [
+      { batchId, range: { start: 1, end: 100 }, status: 'running', stepsLog: [] },
+    ]);
+
+    // 执行 agent 提交本批逐步凭证
+    const result = await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp', context: '...' }],
+      _batch_id: batchId,
+      _steps_log: [
+        { step: 'getDocumentParagraphs', paragraphIndex: 1 },
+        { step: 'getDocumentTextByRange', paragraphIndex: 1 },
+        { step: 'proofreadBasic', paragraphIndex: 1 },
+        { step: 'confirmBatchAiProofread', paragraphIndex: 1 },
+        { step: 'replaceInParagraph', paragraphIndex: 1 },
+        { step: 'proofreadAccumulate', paragraphIndex: 1, issuesCount: 1 },
+      ],
+    });
+
+    // 凭证应落盘到批次 stepsLog
+    expect(result.success).toBe(true);
+    expect(result.data!.stepsPersisted).toBe(true);
+    const allocations = proofreadStore.loadBatchAllocations(s);
+    const batch = allocations.find((b) => b.batchId === batchId)!;
+    expect(batch.stepsLog.length).toBe(6);
+    // 管理 agent 监督：标准 6 步全链条完整，getMissingSteps 应无缺失
+    expect(proofreadStore.getMissingSteps(s, batchId)).toEqual([]);
+
+    // 清理
+    proofreadStore.removeSessionFromDisk(s);
+  });
+
+  it('批次不存在时 _steps_log 落盘失败但主流程仍成功（评审第 3 轮 R3-1 防御性）', async () => {
+    const s = 'test-session-r3-1b';
+    await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 50, totalWords: 5000 },
+    });
+    // 未登记批次分配表，_batch_id 指向不存在的批次 → appendStepRecord 返回 false，stepsPersisted=false
+    const result = await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      _batch_id: 'ghost-batch',
+      _steps_log: [{ step: 'proofreadBasic', paragraphIndex: 1 }],
+    });
+    expect(result.success).toBe(true); // 主流程不阻塞
+    expect(result.data!.stepsPersisted).toBe(false);
+    proofreadStore.removeSessionFromDisk(s);
+  });
+
+  it('规划 agent 初始化时通过 _batch_allocations 登记批次分配表（评审第 3 轮 R3-2）', async () => {
+    const s = 'test-session-r3-2';
+    // 规划 agent 首次初始化 session 时携带分批计划
+    const result = await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      doc_info: { fileName: 'test.docx', filePath: 'C:\\test.docx', totalParagraphs: 300, totalWords: 3000 },
+      _batch_allocations: [
+        { batchId: 'batch-1', range: { start: 1, end: 100 }, status: 'pending' },
+        { batchId: 'batch-2', range: { start: 101, end: 200 }, status: 'pending' },
+        { batchId: 'batch-3', range: { start: 201, end: 300 }, status: 'pending' },
+      ],
+    });
+    expect(result.success).toBe(true);
+    expect(result.data!.batchAllocationsPersisted).toBe(true);
+    // 批次分配表应落盘，管理 agent 可读
+    const allocations = proofreadStore.loadBatchAllocations(s);
+    expect(allocations.length).toBe(3);
+    expect(allocations.map((a) => a.batchId)).toEqual(['batch-1', 'batch-2', 'batch-3']);
+    // 管理 agent 断点续跑：pending 批次都应重新入队
+    expect(proofreadStore.getIncompleteBatches(s).length).toBe(3);
+    proofreadStore.removeSessionFromDisk(s);
   });
 });
 
@@ -1832,5 +1949,351 @@ describe('报告生成器 .replace() 兜底（Issue #116 问题一）', () => {
     // 正常数据仍正确展示
     expect(text).toContain('在去');
     expect(text).toContain('再去');
+  });
+});
+
+// Issue #151 校对重构：批次完整性 + 交叉校验告警
+describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', () => {
+  const proofreadStore = jest.requireActual('../../tools/word/proofread-store');
+
+  // 评审第 1 轮 R1-2：会话 ID 加每次运行唯一后缀，避免与其它并行测试 worker 在共享
+  // PROOFREAD_DIR 目录下因跨运行残留/并发写产生偶发失败（稳定并行测试）。
+  const SUFFIX = Date.now().toString(36);
+  const sid = (label: string): string => `iss151-${label}-${SUFFIX}`;
+
+  afterEach(() => {
+    for (const label of ['b-inc', 'b-complete', 'b-doneincomplete', 'cross-ok', 'cross-miss', 'cross-moderate', 'cross-zero', 'cross-reverse', 'cross-reverse-ok', 'conflict', 'gap', 'nobatch', 'overlap-report', 'docinfo-missing', 'exceed-range', 'over-limit']) {
+      proofreadStore.removeSessionFromDisk(sid(label));
+      sessionIssues.delete(sid(label));
+    }
+  });
+
+  it('存在未完成批次时报告标注批次完整性告警', async () => {
+    const s = sid('b-inc');
+    sessionIssues.set(s, {
+      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const, context: '...' }],
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 200, totalWords: 1000 },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 2,
+    });
+    // 登记批次分配表：1 批完成（含完整凭证），1 批未完成
+    const FULL_STEPS = [
+      { step: 'getDocumentParagraphs', timestamp: 1, paragraphIndex: 1 },
+      { step: 'getDocumentTextByRange', timestamp: 2, paragraphIndex: 1 },
+      { step: 'proofreadBasic', timestamp: 3, paragraphIndex: 1 },
+      { step: 'confirmBatchAiProofread', timestamp: 4, paragraphIndex: 1 },
+      { step: 'replaceInParagraph', timestamp: 5, paragraphIndex: 1 },
+      { step: 'proofreadAccumulate', timestamp: 6, paragraphIndex: 1 },
+    ];
+    proofreadStore.saveBatchAllocations(s, [
+      { batchId: 'b1', range: { start: 1, end: 100 }, status: 'done', stepsLog: FULL_STEPS },
+      { batchId: 'b2', range: { start: 101, end: 200 }, status: 'pending', stepsLog: [] },
+    ]);
+    const result = await generateProofreadReportHandler({ session_id: s });
+    const text = result.content[0].text!;
+    expect(text).toContain('仍有 1 批未完成');
+    expect(text).toContain('统计可能不全');
+  });
+
+  it('全部批次完成时无批次完整性告警', async () => {
+    const s = sid('b-complete');
+    sessionIssues.set(s, {
+      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const, context: '...' }],
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 100, totalWords: 500 },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 2,
+    });
+    const FULL_STEPS = [
+      { step: 'getDocumentParagraphs', timestamp: 1, paragraphIndex: 1 },
+      { step: 'getDocumentTextByRange', timestamp: 2, paragraphIndex: 1 },
+      { step: 'proofreadBasic', timestamp: 3, paragraphIndex: 1 },
+      { step: 'confirmBatchAiProofread', timestamp: 4, paragraphIndex: 1 },
+      { step: 'replaceInParagraph', timestamp: 5, paragraphIndex: 1 },
+      { step: 'proofreadAccumulate', timestamp: 6, paragraphIndex: 1 },
+    ];
+    proofreadStore.saveBatchAllocations(s, [
+      { batchId: 'b1', range: { start: 1, end: 100 }, status: 'done', stepsLog: FULL_STEPS },
+    ]);
+    const result = await generateProofreadReportHandler({ session_id: s });
+    const text = result.content[0].text!;
+    expect(text).not.toContain('仍有');
+  });
+
+  it('R2-3：done 但步骤凭证不完整的批次在报告中判定为未完成并告警（防幻觉盲区）', async () => {
+    const s = sid('b-doneincomplete');
+    sessionIssues.set(s, {
+      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const, context: '...' }],
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 100, totalWords: 500 },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 2,
+    });
+    // 批次被谎报 done，但 stepsLog 只覆盖部分步骤（凭证不完整）→ getIncompleteBatches 判为未完成
+    proofreadStore.saveBatchAllocations(s, [
+      { batchId: 'b1', range: { start: 1, end: 100 }, status: 'done', stepsLog: [
+        { step: 'getDocumentParagraphs', timestamp: 1, paragraphIndex: 1 },
+        { step: 'proofreadBasic', timestamp: 2, paragraphIndex: 1 },
+        // 缺 getDocumentTextByRange/confirmBatchAiProofread/replaceInParagraph/proofreadAccumulate
+      ] },
+    ]);
+    const result = await generateProofreadReportHandler({ session_id: s });
+    const text = result.content[0].text!;
+    expect(text).toContain('仍有 1 批未完成');
+    expect(text).toContain('统计可能不全');
+  });
+
+  it('存在并行 running 批次区间相交时报告标注并行区间冲突（评审第 3 轮 R4-2）', async () => {
+    const s = sid('conflict');
+    sessionIssues.set(s, {
+      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const, context: '...' }],
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 300, totalWords: 1500 },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 2,
+    });
+    // 两个 running 批次区间相交（并行隔离被破坏）→ hasParallelRangeConflict 应检测到并提示
+    // R8-1 后 saveBatchAllocations 拒绝重叠，故用 saveSessionToDisk 直接写重叠数据（模拟异常/历史数据）
+    proofreadStore.saveSessionToDisk(s, {
+      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' }],
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 300, totalWords: 1500 },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 2,
+      batchAllocations: [
+        { batchId: 'b1', range: { start: 1, end: 150 }, status: 'running', stepsLog: [] },
+        { batchId: 'b2', range: { start: 100, end: 200 }, status: 'running', stepsLog: [] }, // 与 b1 在 100-150 相交
+      ],
+    });
+    const result = await generateProofreadReportHandler({ session_id: s });
+    const text = result.content[0].text!;
+    expect(text).toContain('并行区间冲突');
+  });
+
+  it('未登记批次分配表时报告提示未检测到批次（评审第 9 轮 R10-2）', async () => {
+    const s = sid('nobatch');
+    sessionIssues.set(s, {
+      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const, context: '...' }],
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 100, totalWords: 500 },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 2,
+    });
+    // 不登记批次分配表（batchAllocations 为空）→ 应提示无法核验批次完整性/断点续跑
+    const result = await generateProofreadReportHandler({ session_id: s });
+    const text = result.content[0].text!;
+    expect(text).toContain('未检测到批次分配表');
+  });
+
+  it('批次区间未连续覆盖全文档时报告标注覆盖缺口（评审第 5 轮 R6-1）', async () => {
+    const s = sid('gap');
+    sessionIssues.set(s, {
+      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const, context: '...' }],
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 300, totalWords: 1500 },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 2,
+    });
+    // 批次只覆盖 1-150 和 250-300，中间 151-249 未被分配（覆盖缺口）
+    proofreadStore.saveBatchAllocations(s, [
+      { batchId: 'b1', range: { start: 1, end: 150 }, status: 'done', stepsLog: [] },
+      { batchId: 'b2', range: { start: 250, end: 300 }, status: 'done', stepsLog: [] },
+    ]);
+    const result = await generateProofreadReportHandler({ session_id: s });
+    const text = result.content[0].text!;
+    expect(text).toContain('批次区间未覆盖完整');
+    expect(text).toContain('151-249');
+  });
+
+  it('issue 数远超修订数可解释量时输出疑似统计缺失告警', async () => {
+    const s = sid('cross-miss');
+    // 20 处 issue 但修订记录仅 2 条（每条 issue 至少消耗 1 条修订，20 > 2 → 告警）
+    const issues = Array.from({ length: 20 }, (_, i) => ({
+      offset: i * 10,
+      length: 2,
+      original: '的的',
+      suggestion: '的',
+      type: '重复字符' as const,
+      source: 'mcp' as const,
+      context: '...',
+    }));
+    sessionIssues.set(s, {
+      issues,
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 100, totalWords: 500 },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 2,
+    });
+    const result = await generateProofreadReportHandler({ session_id: s });
+    const text = result.content[0].text!;
+    expect(text).toContain('疑似统计缺失');
+  });
+
+  it('issue 数刚超修订数（每 issue 至少 1 条修订）时触发告警（评审第 1 轮 R1-1 回归）', async () => {
+    const s = sid('cross-moderate');
+    // 3 处 issue，修订 2 条：3 次修复至少需 3 条修订，修订数不足 → 应告警（旧阈值 totalRevisions*2=4 会漏报）
+    sessionIssues.set(s, {
+      issues: Array.from({ length: 3 }, (_, i) => ({
+        offset: i * 10,
+        length: 2,
+        original: '的的',
+        suggestion: '的',
+        type: '重复字符' as const,
+        source: 'mcp' as const,
+        context: '...',
+      })),
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 100, totalWords: 500 },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 2,
+    });
+    const result = await generateProofreadReportHandler({ session_id: s });
+    const text = result.content[0].text!;
+    expect(text).toContain('疑似统计缺失');
+  });
+
+  it('issue 数与修订数可解释量一致时不触发缺失告警', async () => {
+    const s = sid('cross-ok');
+    // 2 处 issue，修订 2 条（每条 issue 至少 1 条修订，2 <= 2 不告警）
+    sessionIssues.set(s, {
+      issues: [
+        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const, context: '...' },
+        { offset: 10, length: 2, original: '在去', suggestion: '再去', type: '在再混淆', source: 'mcp' as const, context: '...' },
+      ],
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 100, totalWords: 500 },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 2,
+    });
+    const result = await generateProofreadReportHandler({ session_id: s });
+    const text = result.content[0].text!;
+    expect(text).not.toContain('疑似统计缺失');
+  });
+
+  it('修订基线为 0（无修订数据）时不误报缺失告警（评审第 2 轮 R2-1 回归）', async () => {
+    const s = sid('cross-zero');
+    // planner 初始化显式传 total_revisions:0，随后有真实 issue 累加：
+    // 0 仅表示"尚未获得修订基线"，不能据此判定批次丢失 → 不得误报"疑似统计缺失"
+    sessionIssues.set(s, {
+      issues: [
+        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const, context: '...' },
+        { offset: 10, length: 2, original: '在去', suggestion: '再去', type: '在再混淆', source: 'mcp' as const, context: '...' },
+        { offset: 20, length: 2, original: '做的', suggestion: '做的', type: '重复字符', source: 'mcp' as const, context: '...' },
+      ],
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 100, totalWords: 500 },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 0, // 无修订基线（旧逻辑会因 3 > 0 误报）
+    });
+    const result = await generateProofreadReportHandler({ session_id: s });
+    const text = result.content[0].text!;
+    expect(text).not.toContain('疑似统计缺失');
+  });
+
+  it('R7-1：修订数远多于 issue 数时输出疑似未记录修复提示（反向校验）', async () => {
+    const s = sid('cross-reverse');
+    sessionIssues.set(s, {
+      issues: [
+        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const, context: '...' },
+      ],
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 100, totalWords: 500 },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 50, // 修订 50 条 vs 1 处 issue（3×1=3 < 50）→ 触发反向提示
+    });
+    const result = await generateProofreadReportHandler({ session_id: s });
+    const text = result.content[0].text!;
+    expect(text).toContain('疑似未记录修复');
+  });
+
+  it('R7-1：修订数略多于 issue 数（在 3 倍内）不触发反向提示', async () => {
+    const s = sid('cross-reverse-ok');
+    sessionIssues.set(s, {
+      issues: [
+        { offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const, context: '...' },
+      ],
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 100, totalWords: 500 },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 2, // 修订 2 条 vs 1 issue（3×1=3，2 < 3）→ 不触发
+    });
+    const result = await generateProofreadReportHandler({ session_id: s });
+    const text = result.content[0].text!;
+    expect(text).not.toContain('疑似未记录修复');
+  });
+
+  it('R8-2：批次区间重叠时报告提示（不论状态，防规划阶段重叠静默通过）', async () => {
+    const s = sid('overlap-report');
+    sessionIssues.set(s, {
+      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const, context: '...' }],
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 200, totalWords: 1000 },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 2,
+    });
+    // 用 saveSessionToDisk 直接写入带重叠区间的批次（绕过 saveBatchAllocations 的重叠拦截，模拟历史/异常数据）
+    proofreadStore.saveSessionToDisk(s, {
+      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' }],
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 200, totalWords: 1000 },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 2,
+      batchAllocations: [
+        { batchId: 'b1', range: { start: 1, end: 100 }, status: 'done', stepsLog: [] },
+        { batchId: 'b2', range: { start: 90, end: 200 }, status: 'done', stepsLog: [] }, // 与 b1 重叠
+      ],
+    });
+    const result = await generateProofreadReportHandler({ session_id: s });
+    const text = result.content[0].text!;
+    expect(text).toContain('批次区间重叠');
+  });
+
+  it('R10-2：docInfo 字段缺失时报告不显示 undefined（兜底为未知/0）', async () => {
+    const s = sid('docinfo-missing');
+    sessionIssues.set(s, {
+      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const, context: '...' }],
+      // 缺 fileName/totalWords 字段
+      docInfo: { filePath: '/p/d.docx', totalParagraphs: 100 } as any,
+      createdAt: new Date().toISOString(),
+      totalRevisions: 2,
+    });
+    const result = await generateProofreadReportHandler({ session_id: s });
+    const text = result.content[0].text!;
+    expect(text).toContain('**文档**: 未知');
+    expect(text).toContain('**总字数**: 0');
+  });
+
+  it('R10-3：批次区间超出文档总段数时报告提示', async () => {
+    const s = sid('exceed-range');
+    sessionIssues.set(s, {
+      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const, context: '...' }],
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 200, totalWords: 1000 },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 2,
+    });
+    proofreadStore.saveSessionToDisk(s, {
+      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' }],
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 200, totalWords: 1000 },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 2,
+      batchAllocations: [
+        { batchId: 'b1', range: { start: 1, end: 100 }, status: 'done', stepsLog: [] },
+        { batchId: 'b2', range: { start: 101, end: 300 }, status: 'done', stepsLog: [] }, // end=300 > totalParagraphs=200
+      ],
+    });
+    const result = await generateProofreadReportHandler({ session_id: s });
+    const text = result.content[0].text!;
+    expect(text).toContain('批次区间超出文档总段数');
+  });
+
+  it('R11-2：running 批次数超过 3 时报告提示并行度超限', async () => {
+    const s = sid('over-limit');
+    sessionIssues.set(s, {
+      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' as const, context: '...' }],
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 500, totalWords: 2500 },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 2,
+    });
+    proofreadStore.saveSessionToDisk(s, {
+      issues: [{ offset: 0, length: 2, original: '的的', suggestion: '的', type: '重复字符', source: 'mcp' }],
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 500, totalWords: 2500 },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 2,
+      batchAllocations: [
+        { batchId: 'b1', range: { start: 1, end: 100 }, status: 'running', stepsLog: [] },
+        { batchId: 'b2', range: { start: 101, end: 200 }, status: 'running', stepsLog: [] },
+        { batchId: 'b3', range: { start: 201, end: 300 }, status: 'running', stepsLog: [] },
+        { batchId: 'b4', range: { start: 301, end: 400 }, status: 'running', stepsLog: [] }, // 第 4 个 running
+      ],
+    });
+    const result = await generateProofreadReportHandler({ session_id: s });
+    const text = result.content[0].text!;
+    expect(text).toContain('并行度超限');
   });
 });

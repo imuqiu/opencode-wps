@@ -125,4 +125,21 @@ before 钩子拦截违规 → 工具执行 → after 钩子更新状态 → befo
 
 > 📖 校对技术设计细节见 [proofread-fluency-conciseness-design.md](./proofread-fluency-conciseness-design.md)；治理插件实现见 [AGENTS.md](../AGENTS.md) 与 `.opencode/plugins/governance.js`。
 
-> ℹ️ P1-P16 共 16 条规则，表格中 P2-P3/P4-P7/P8-P10 为编号合并展示，实际每条规则均独立在 `governance.js` 实现。
+> ℹ️ P1-P16 共 16 条规则，表格中 P2-P3/P4-P7/P8-P10 为编号合并展示，实际每条规则均独立在 `governance.js` 实现。本次重构（Issue #151）在单 agent 逐批校对基础上，新增 **P19/P20/P21** 以支持「规划/管理/执行/报告」4-subagent 并行协同（详见下文「校对 Subagent 组协同」）。
+
+### 校对 Subagent 组协同（Issue #151 重构）
+
+> 针对大文档校对耗时过长、单 agent 上下文易压缩中断、统计易失真等问题，校对流程重构为**「规划 → 管理 → 执行(并行≤3) → 报告」4 个 subagent 协同**架构（定义见 `agents/`），由**规划 subagent 自动编排调度**，无插件 UI 分流。架构细节见 [PROOFREAD_SUBAGENTS.md](./PROOFREAD_SUBAGENTS.md)。
+
+| subagent | 职责 | 接触正文 |
+|----------|------|---------|
+| **规划 planner** | 一次性产出分批计划 + 生成唯一 `session_id` + 登记批次分配表 | 否 |
+| **管理 manager** | 调度执行 subagent（并行≤3）、监督逐步凭证落盘、断点续跑、归并 | 否 |
+| **执行 executor**（×3 可并行） | 专职逐批校对**独立段落区间**，走完整步骤链并逐步落盘凭证 | 是 |
+| **报告 reporter** | 从磁盘 session 归并真实数据生成五维报告，交叉校验 + 疑似缺失告警 | 否 |
+
+**四大核心机制**：
+1. **批次分配表落盘**：规划 agent 登记 `{batch_id, 段落区间, 状态}` 到磁盘 session，管理 agent 据此调度，断点续跑只重派非 done 批次（P19 归属越界拦截 + P21 并行区间重叠检测）。
+2. **逐步凭证落盘（防幻觉）**：执行 agent 每批携带 `_batch_id` + `_steps_log`（6 步凭证），管理 agent 对照标准步骤链核对缺步即重派；governance **P20** 拦截「带 `_batch_id` 却缺非空 `_steps_log`」。
+3. **并行隔离**：执行 agent 只修自己区间（`replaceInParagraph` 按 paragraphIndex 隔离），规避 WPS 单进程 COM 并发修订冲突；并行度 ≤3（P21 校验）。
+4. **统计准确优先**：报告从磁盘 session 归并真实 issue 数据（不以 AI 上下文中间态为准），批次完整性 + 修订数交叉校验，疑似缺失/未完成标注告警而非静默。

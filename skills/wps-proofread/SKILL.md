@@ -218,6 +218,53 @@ deduped.sort((a, b) => (a.offset ?? Infinity) - (b.offset ?? Infinity) || (a.par
 
 ---
 
+## 🤝 校对 subagent 组编排（Issue #151 文档校对重构）
+
+> 文档校对由 **4 个 subagent 协同**完成，由**规划 subagent 自动编排调度**（无插件 UI 分流）：
+> **规划 → 管理 → 执行(可并行≤3) → 报告**。本 skill 是所有 subagent 共用的校对规则与工具规范。
+
+### 4 个 subagent 职责分工
+
+| subagent | 定义文件 | 职责 | 是否接触文档正文 |
+|----------|---------|------|-----------------|
+| 规划 planner | `agents/wps-proofread-planner.md` | 一次性产出分批计划 + 生成唯一 session_id + 登记批次分配表，编排全局 | 否（只拿文档元数据） |
+| 管理 manager | `agents/wps-proofread-manager.md` | 调度执行 agent（并行度≤3）、监督逐步凭证落盘、断点续跑、归并 | 否（只维护元数据） |
+| 执行 executor | `agents/wps-proofread-executor.md` | 专职逐批校对独立段落区间，走完整步骤链 | 是（只载本批文本） |
+| 报告 reporter | `agents/wps-proofread-reporter.md` | 从磁盘 session 归并生成五维报告 + 交叉校验 | 否 |
+
+### 编排流程
+
+```
+planner → 获取文档 → 分批计划 → 生成 session_id → 登记分配表落盘
+        → 调用 manager
+manager → 读分配表 → 断点续跑(pending/failed批次重新入队)
+        → 调度 executor（≤3 并行，独立段落区间）
+        → 监督每 executor 逐步落盘凭证，缺步重派
+        → 全部 done 后交 reporter
+  executor ×3 → 只处理分配区间，逐批走完整步骤链，逐步落盘
+reporter → 从磁盘 session 归并 → 批次完整性校验 → 五维报告 + 交叉校验
+        → generateProofreadReport 落盘
+```
+
+### 并行关键约束（执行 agent 必须遵守）
+
+1. **唯一 session_id**：4 个 subagent 全程复用规划 agent 生成的**同一个 session_id**，严禁各自生成。
+2. **段落区间隔离**：每个执行 agent 只处理自己被分配的独立段落区间（管理 agent **分配区间**给执行 agent，执行 agent 每次 getDocumentParagraphs 请求携带 `_batch_range` 声明，governance P19 拦截越界）。
+   > 概念区分（避免混用）：`_batch_allocations` 是**规划 agent 初始化时一次性登记的整体分批计划表**（所有批次区间）；`_batch_range` 是**执行 agent 每次 getDocumentParagraphs 请求携带的本批区间声明**（单次请求）。两者区间必须一致：执行 agent 请求的 `_batch_range` 应落在其负责的 `_batch_allocations` 对应批次区间内。
+3. **并行度 ≤ 3**：管理 agent 调度，受 WPS 单进程 COM 并发约束；超出排队。
+4. **步骤凭证提交（防幻觉）**：每个执行 agent 须在 `proofreadAccumulate` 时一次性提交本批完整 6 步凭证（`_steps_log`）；`proofreadAccumulate` 携带 `_batch_id` 时必须同时携带 `_steps_log`（P20 拦截缺步/非法步骤名）。
+   > 实现说明（R4-2）：凭证为 `proofreadAccumulate` 时**一次性提交整批声明**（前 5 步无独立落盘钩子），故防幻觉依赖管理 agent 的**修订数交叉核对**（`getTrackChangesStatus` 实际修订增量 vs `revisionsBefore→After`）验证步骤真实性，而非仅信声明步骤名。
+   > `_steps_log` 为本批 6 步完整凭证数组，每项含 `step`（标准步骤名）/`timestamp`/`paragraphIndex`/`revisionsBefore`/`revisionsAfter`/`issuesCount`，随 `proofreadAccumulate` 一并提交，服务端落盘到批次 stepsLog（详见 executor.md）。
+5. **断点续跑**：中途关闭 WPS 后，管理 agent 读磁盘分配表，所有未完整完成批次重新入队（`getIncompleteBatches` 语义：`status !== done` **或** done 但步骤凭证不完整均重派，防谎报 done 漏校，R7-1），已完整 done 跳过。
+6. **无单 agent 串行兜底**：并行异常靠重派 + 断点续跑处理，不回退串行。
+
+### 调用 subagent 的方式
+
+- 规划 agent 通过 task 子任务 / agent 引用（`@wps-proofread-manager` / `@wps-proofread-executor` / `@wps-proofread-reporter`）编排。
+- 每个执行 agent 的 task prompt 中必须写明：`session_id`、`_batch_range`（区间）、当前 `getTrackChangesStatus` 修订数基线。
+
+---
+
 ## ⚠️ 批次大小限制（硬性规则）
 
 **`getDocumentParagraphs` 的 end_paragraph - start_paragraph + 1 不得超过 200。**

@@ -104,6 +104,11 @@ const NON_TOOL_NAMES = new Set([
   'lastBatchParaIndex',
   'sessionIssues',
   'filePath',
+  // Issue #151 校对 subagent 并行重构：governance P19-P21 内部校验参数（非 MCP 工具）
+  '_batch_range',
+  '_batch_id',
+  '_steps_log',
+  '_batch_allocations',
 ]);
 
 /**

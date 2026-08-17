@@ -49,6 +49,7 @@
 | [NPC_TEAM.md](./NPC_TEAM.md) | NPC Team 总指挥（**CNB 平台开发辅助工具**，零积分全流程，7 位专家含🔬研究员 RES，12 阶段含 PR 合并⏸CP3 确认 + 发布四要素，⚠️ 与 WPS 插件无关） |
 | [I18N_PLAN.md](./I18N_PLAN.md) | 国际化 (i18n) 支持规划（未来规划） |
 | [proofread-fluency-conciseness-design.md](./proofread-fluency-conciseness-design.md) | Word 校对通顺度/简洁度技术设计文档 |
+| [PROOFREAD_SUBAGENTS.md](./PROOFREAD_SUBAGENTS.md) | 文档校对 subagent 组架构（规划/管理/执行/报告 4 个 subagent 协同，Issue #151） |
 | [HISTORY.md](./HISTORY.md) | 演进历史与致谢 |
 | [superpowers/specs/](./superpowers/specs/) | 设计规格存档：[端口杀进程设计](./superpowers/specs/2026-05-05-port-kill-design.md) · [MCP 渐进式加载设计](./superpowers/specs/2026-05-08-mcp-progressive-loading-design.md) |
 

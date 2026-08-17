@@ -233,7 +233,18 @@ AI 回复**实时流式显示**（SSE，Server-Sent Events），边生成边展�
 - 自动路由到对应 Skills 处理
 - 适合不明确属于哪个应用的混合任务
 
-### 4.3 Agent 与 Skill 的对应关系
+### 4.3 校对 Subagent 组（文档校对，内部编排）
+
+> 针对大文档校对，`agents/` 内置 4 个**校对 subagent**，由**规划 subagent 自动编排调度**（非用户直接 `@` 调用），将单 agent 串行校对重构为「规划→管理→执行(并行≤3)→报告」协同，解决分批不稳、中途中断、上下文超限、统计不准、假装校对、耗时过长六大问题。架构详见 [PROOFREAD_SUBAGENTS.md](./PROOFREAD_SUBAGENTS.md)。
+
+| subagent | 职责 |
+|----------|------|
+| **wps-proofread-planner** | 规划：一次性分批计划 + 唯一 session_id + 登记批次分配表 + 编排调度 |
+| **wps-proofread-manager** | 管理：调度执行 subagent（≤3 并行）+ 监督逐步凭证落盘防幻觉 + 断点续跑 |
+| **wps-proofread-executor** | 执行：专职逐批校对独立段落区间，走完整步骤链并落盘凭证（可并行） |
+| **wps-proofread-reporter** | 报告：从磁盘 session 归并真实数据，五维报告 + 交叉校验 + 缺失告警 |
+
+### 4.4 Agent 与 Skill 的对应关系
 
 | Agent | 优先 Skill |
 |-------|-----------|
@@ -242,7 +253,7 @@ AI 回复**实时流式显示**（SSE，Server-Sent Events），边生成边展�
 | wps-excel | wps-excel |
 | wps-ppt | wps-ppt |
 
-### 4.4 自定义 Agents
+### 4.5 自定义 Agents
 
 - **定义位置**：`~/.config/opencode/agents/` + `~/.opencode/agents/`（两处均由 `install-addons*.js` 从源目录 `agents/` 同步）
 - **修改方式**：编辑源目录 `agents/*.md`，运行 `node install-addons.js` 同步，重启 OpenCode 生效

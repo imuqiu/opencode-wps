@@ -14,6 +14,9 @@
  *
  * ── 分批校对规则（校对激活时生效） ──
  * 规则 P1-P16：继承 enforce-batch.js 的全部 11 条规则 + P12-P16 严格逐批（P12：周期未完成禁止获取下一批；P13：getDocumentTextByRange 限本批范围；P14：confirmBatchAiProofread 前必须 proofreadBasic；P15：基础校对无 issue 时禁止 AI 自行大量修复；P16：替换内容与已知 issue 交叉校验）
+ * 规则 P17：禁止 AI 手动 write 伪造校对报告（报告必须走 generateProofreadReport）
+ * 规则 P18：禁止重复获取已处理段落范围（回卷重扫）
+ * 规则 P19-P21（Issue #151 校对 subagent 并行重构）：P19 批次归属校验（执行 agent 只取分配区间，越界拦截）；P20 逐步凭证落盘防幻觉（携带 _batch_id 必须同时携带 _steps_log）；P21 并行区间重叠检测（同一会话内并行执行 agent 区间不得相交）
  *
  * ── 模板填写工作流规则（模板填写时生效） ──
  * 规则 T1：填写前必须调用 getActiveDocument 评估文档规模
@@ -123,6 +126,17 @@ const PARAM_RANGES = {
 
 const AI_FIXES_NO_ISSUES_LIMIT = 1;
 
+// 校对标准步骤链（与 wps-office-mcp proofread-store 的 PROOFREAD_STEP_CHAIN 保持一致，R4-2）
+// 用于 P20 校验 _steps_log 的 step 名合法性，杜绝编造任意步骤名。
+const PROOFREAD_STEP_CHAIN = [
+  'getDocumentParagraphs',
+  'getDocumentTextByRange',
+  'proofreadBasic',
+  'confirmBatchAiProofread',
+  'replaceInParagraph',
+  'proofreadAccumulate',
+];
+
 const EXECUTE_METHOD_WHITELIST = new Set([
   "Application.ActiveDocument",
   "Application.ActiveWorkbook",
@@ -155,6 +169,13 @@ function createSessionState() {
     // 用于区分「合法 writeFile 落盘服务端报告」与「AI 手动 write 伪造报告」。
     reportGenerated: false,
     reportSessionId: '',
+    // P19-P21（Issue #151 校对 subagent 并行重构）：执行 agent 被分配的段落区间与并行隔离
+    // 管理 agent 派发执行 agent 时，通过 getDocumentParagraphs 参数 _batch_range 声明区间；
+    // governance 缓存并校验后续段落请求/替换不越界，并检测同一会话内并行区间重叠。
+    // R4-1：assignedRange 由单值改为按 batchId 的映射，避免并行多执行 agent 区间串扰（单值会被后声明者覆盖，
+    // 导致未带 _batch_range 的请求用错误区间校验而误判越界）。
+    assignedRanges: {}, // { [batchId]: { start, end } } 各执行 agent 分配的区间（按批次隔离）
+    registeredRanges: [], // [{ start, end, batchId }] 会话内已登记的区间（并行隔离用，区分批次避免同批重扫误判）
     appReadState: {
       word: { activeDocRead: false },
       excel: { activeWorkbookRead: false },
@@ -471,6 +492,36 @@ export const WpsGovernancePlugin = async () => {
         if (toolName === "proofreadAccumulate") {
           // 记录会话 ID（用于识别校对流程会话），即便未生成报告也便于 P17 判断在校对流程中
           st.reportSessionId = (innerArgs.session_id || st.reportSessionId || '');
+          // P20（Issue #151 校对重构，决策 5）：逐步凭证落盘防幻觉——
+          // 执行 agent 在并行校对中调用 proofreadAccumulate 时，若携带了 _batch_id 声明批次，
+          // 则必须同时携带 _steps_log（本批逐步执行凭证），供管理 agent 审计完整步骤链，
+          // 防止"大模型假装批量校对"（缺任何一步即判定该批未完成并重新派发）。
+          // R8-2：校验 _steps_log 为非空数组（空数组/缺数组均拦截，避免用空凭证绕过 P20）。
+          const hasStepsLog = Array.isArray(innerArgs._steps_log) && innerArgs._steps_log.length > 0;
+          if (innerArgs._batch_id && !hasStepsLog) {
+            throw new Error(
+              `【执行治理】【P20】本批 ${innerArgs._batch_id} 缺少逐步执行凭证（_steps_log 需为非空数组）。\n` +
+              `执行 agent 必须在校对过程中逐步落盘凭证，完整覆盖标准步骤链：\n` +
+              `getDocumentParagraphs → getDocumentTextByRange → proofreadBasic → ` +
+              `confirmBatchAiProofread → replaceInParagraph → proofreadAccumulate。\n` +
+              `缺少任一步即视为本批未完成，将重新派发。请补充非空的 _steps_log 后再累加。`
+            );
+          }
+          // R4-2：校验 _steps_log 的 step 名合法性——必须落在标准步骤链内，杜绝编造任意步骤名
+          // （如谎报"aiDeepScan"这类不存在的步骤名绕过步骤链完整性判定）。
+          // R11-1：对 step 名 trim 后校验，避免执行 agent 提交带空白步骤名被误拦。
+          if (innerArgs._batch_id && hasStepsLog) {
+            const illegalStep = innerArgs._steps_log.find(function (r) {
+              const s = typeof r.step === 'string' ? r.step.trim() : '';
+              return s === '' || PROOFREAD_STEP_CHAIN.indexOf(s) === -1;
+            });
+            if (illegalStep) {
+              throw new Error(
+                `【执行治理】【P20】本批 ${innerArgs._batch_id} 的 _steps_log 含非法步骤名 "${String(illegalStep && illegalStep.step)}"。\n` +
+                `标准步骤链：${PROOFREAD_STEP_CHAIN.join(' → ')}。`
+              );
+            }
+          }
           return;
         }
 
@@ -614,26 +665,32 @@ export const WpsGovernancePlugin = async () => {
 
       // ── 规则 P1 + P2：getDocumentParagraphs ──
       if (toolName === "getDocumentParagraphs") {
-        if (st.allBatchesComplete) {
+        // Issue #151 R1-2：并行模式（执行 agent 携带 _batch_id）下，P1/P2/P12/P18 这些
+        // **基于会话级单值**（st.batchStarted/st.lastBatchParaIndex 等）的串行连续性校验不适用——
+        // 并行多执行 agent 各处理独立区间，会话级单值会被互相覆盖而误拦截（如 agent B 的
+        // start=101 不满足「start = lastBatchParaIndex+1」）。并行模式下由 P19 的 _batch_range
+        // 区间隔离承担正确校验，故此处跳过程序级单值的串行连续性检查。
+        const isParallelBatch = !!innerArgs._batch_id;
+        if (!isParallelBatch && st.allBatchesComplete) {
           throw new Error(
             `【执行治理】所有 ${st.batchCount} 批已全部完成（段落 1-${st.lastBatchParaIndex}/${st.totalParagraphs}）。\n` +
             `请直接生成校对报告（.校对报告.md），不要再调用 getDocumentParagraphs。`
           );
         }
-        if (st.batchStarted && !st.proofreadCalledThisBatch) {
+        if (!isParallelBatch && st.batchStarted && !st.proofreadCalledThisBatch) {
           throw new Error(
             `【执行治理】【P12】当前批（段落 ${st.batchStartParaIndex}-${st.lastBatchParaIndex}）` +
             `尚未调用 proofreadBasic，不得获取下一批。\n` +
             `每批必须先调 proofreadBasic 进行基础校对，禁止仅凭视觉判断跳过。`
           );
         }
-        if (st.batchStarted && st.proofreadCalledThisBatch && !st.aiProofreadDoneThisBatch) {
+        if (!isParallelBatch && st.batchStarted && st.proofreadCalledThisBatch && !st.aiProofreadDoneThisBatch) {
           throw new Error(
             `【执行治理】【P12】当前批的 AI 智能校对尚未确认。` +
             `调完 proofreadBasic 后必须调用 confirmBatchAiProofread 确认 AI 校对完成。`
           );
         }
-        if (st.batchStarted && st.proofreadCalledThisBatch && st.proofreadHadIssues && !st.replaceCalledThisBatch) {
+        if (!isParallelBatch && st.batchStarted && st.proofreadCalledThisBatch && st.proofreadHadIssues && !st.replaceCalledThisBatch) {
           throw new Error(
             `【执行治理】【P12】当前批（段落 ${st.batchStartParaIndex}-${st.lastBatchParaIndex}）` +
             `的校对问题尚未修复，不得获取下一批。\n` +
@@ -661,12 +718,12 @@ export const WpsGovernancePlugin = async () => {
             `超过上限 200 段。请分多次获取。`
           );
         }
-        if (st.lastBatchParaIndex === 0 && start !== 1) {
+        if (!isParallelBatch && st.lastBatchParaIndex === 0 && start !== 1) {
           throw new Error(
             `【执行治理】首次 getDocumentParagraphs 必须从第 1 段开始（当前 start=${start}）。`
           );
         }
-        if (st.lastBatchParaIndex > 0 && start !== st.lastBatchParaIndex + 1) {
+        if (!isParallelBatch && st.lastBatchParaIndex > 0 && start !== st.lastBatchParaIndex + 1) {
           if (start !== 1) {
             throw new Error(
               `【执行治理】批次不连续：上一批结束于段落 ${st.lastBatchParaIndex}，` +
@@ -678,7 +735,9 @@ export const WpsGovernancePlugin = async () => {
         // 真实会话中 AI 在已处理完第 1-2 批后，再次 getDocumentParagraphs(start=1, end=201)
         // 把已检查过的段落重复跑了一遍，浪费 token 且使批次语义混乱。
         // 这里拦截「start=1 且已有已处理批次」的重复回卷获取；如需重新开始请先 getActiveDocument 重置。
-        if (st.lastBatchParaIndex > 0 && start === 1) {
+        // Issue #151 R1-2：并行模式下跳过（P19 的 _batch_range 区间隔离已按批次校验归属，
+        // 各执行 agent 独立区间不适用全局 lastBatchParaIndex 的回卷判断）。
+        if (!isParallelBatch && st.lastBatchParaIndex > 0 && start === 1) {
           throw new Error(
             `【执行治理】【P18】禁止重复获取已处理段落：已处理到段落 ${st.lastBatchParaIndex}，` +
             `当前又从段落 1 重新获取。\n` +
@@ -686,6 +745,56 @@ export const WpsGovernancePlugin = async () => {
             `禁止回卷重复扫描已检查过的段落范围。`
           );
         }
+
+        // ── 规则 P19：批次归属校验（Issue #151 校对 subagent 并行重构）──
+        // 执行 agent 并行校对时，只允许获取自己被分配的段落区间（管理 agent 通过 _batch_range 声明）。
+        // 越界获取（试图获取其它执行 agent 的区间）直接拦截，防止并行冲突与越权扫描。
+        // R4-1：区间按 batchId 隔离登记到 assignedRanges，未带 _batch_range 的请求用自己 batchId 的区间校验，
+        // 避免并行多执行 agent 因单值 assignedRange 被覆盖而误判越界。
+        const currentBatchId = innerArgs._batch_id || 'unset-batch';
+        if (typeof innerArgs._batch_range === 'object' && innerArgs._batch_range !== null) {
+          const declaredRange = innerArgs._batch_range;
+          const declStart = Number(declaredRange.start);
+          const declEnd = Number(declaredRange.end);
+          if (Number.isInteger(declStart) && Number.isInteger(declEnd) && declStart >= 1 && declEnd >= declStart) {
+            // 登记本批次的分配区间（R4-1：按 batchId 隔离，不覆盖其它批次）
+            st.assignedRanges[currentBatchId] = { start: declStart, end: declEnd };
+            // 请求区间必须落在分配区间内，否则越界（P19）
+            if (start < declStart || end > declEnd) {
+              throw new Error(
+                `【执行治理】【P19】批次归属越界：本执行 agent 分配区间为段落 ${declStart}-${declEnd}，` +
+                `当前请求 ${start}-${end} 超出该区间。\n` +
+                `执行 agent 只能获取自己被分配的段落区间，不得越界扫描其它区间。`
+              );
+            }
+            // 并行区间登记：若请求区间与其它**不同批次**已登记的区间重叠，判定并行冲突（P21）
+            // 评审第 1 轮 R1-3/R1-4：以 _batch_id 区分批次。同一批次（同一 _batch_id）的
+            // 顺序/续扫请求不算并行冲突（避免断点续跑重扫误判）；仅不同批次区间相交才拦截。
+            const overlap = st.registeredRanges.some(function(r) {
+              // 同批次（同 _batch_id）视为顺序处理，不判重叠；不同批次区间相交才判冲突
+              return r.batchId !== currentBatchId && !(end < r.start || start > r.end);
+            });
+            if (overlap) {
+              throw new Error(
+                `【执行治理】【P21】并行区间重叠：请求区间 ${start}-${end}（批次 ${currentBatchId}）与其它批次已登记的区间 ${JSON.stringify(st.registeredRanges)} 相交。\n` +
+                `并行执行 agent 必须处理互不重叠的段落区间，防止 COM 修订冲突。`
+              );
+            }
+            // 登记当前请求区间（供后续并行重叠检测，按批次标识）
+            st.registeredRanges.push({ start: start, end: end, batchId: currentBatchId });
+          }
+        } else if (currentBatchId !== 'unset-batch' && st.assignedRanges[currentBatchId]) {
+          // 未带 _batch_range 但携带 _batch_id 且已登记过区间 → 按本批次区间校验（R4-1：不再用会话级单值）
+          const mine = st.assignedRanges[currentBatchId];
+          if (start < mine.start || end > mine.end) {
+            throw new Error(
+              `【执行治理】【P19】批次归属越界：本执行 agent（批次 ${currentBatchId}）分配区间为段落 ${mine.start}-${mine.end}，` +
+              `当前请求 ${start}-${end} 超出该区间。`
+            );
+          }
+        }
+        // 未带 _batch_range 且未带 _batch_id（或批次未登记区间）→ 不做区间兜底校验（避免单值误判），
+        // 交由管理 agent 调度约束 + replaceInParagraph 段落级校验兜底。
         return;
       }
 
@@ -697,7 +806,12 @@ export const WpsGovernancePlugin = async () => {
             `输出分批校对计划后，再开始校对。`
           );
         }
-        if (!st.batchStarted) {
+        // Issue #151 R1-2：并行模式下（携带 _batch_id），st.batchStarted/st.proofreadCalledThisBatch/
+        // batchStartOffset 等**会话级单值**状态会被各执行 agent 互相覆盖，不适用串行连续性校验。
+        // 并行下各执行 agent 独立处理自己的批次，会话级批次状态无意义，故跳过（由 P19 区间隔离
+        // + P20 凭证落盘承担正确校验）。保留 docInfoFetched/startOffset 等全局基本校验。
+        const isParallelBatchProofread = !!innerArgs._batch_id;
+        if (!isParallelBatchProofread && !st.batchStarted) {
           throw new Error(
             `【执行治理】请先调用 getDocumentParagraphs 获取第一批段落，` +
             `确认分批计划后再调 proofreadBasic。`
@@ -710,19 +824,19 @@ export const WpsGovernancePlugin = async () => {
             `必须传入本批第一段的字符起始位置。`
           );
         }
-        if (st.proofreadCalledThisBatch) {
+        if (!isParallelBatchProofread && st.proofreadCalledThisBatch) {
           throw new Error(
             `【执行治理】本批已调过 proofreadBasic，禁止再次调用。` +
             `每批只准调 1 次。`
           );
         }
-        if (st.batchStartOffset !== null && so !== st.batchStartOffset) {
+        if (!isParallelBatchProofread && st.batchStartOffset !== null && so !== st.batchStartOffset) {
           throw new Error(
             `【执行治理】proofreadBasic startOffset=${so} 与本批第一段起始位置 ` +
             `${st.batchStartOffset} 不匹配。`
           );
         }
-        if (!innerArgs.file_path && st.batchEndOffset !== null) {
+        if (!isParallelBatchProofread && !innerArgs.file_path && st.batchEndOffset !== null) {
           const text = innerArgs.text || '';
           if (text.length === 0) {
             throw new Error(
@@ -753,7 +867,10 @@ export const WpsGovernancePlugin = async () => {
 
       // ── 规则 P13：getDocumentTextByRange 范围上限 ──
       if (toolName === "getDocumentTextByRange") {
-        if (st.batchStarted && st.batchStartOffset !== null && st.batchEndOffset !== null) {
+        // Issue #151 R1-2：并行模式下跳过会话级 batchStartOffset/batchEndOffset 单值校验
+        // （各执行 agent 独立区间，会话级 offset 会被互相覆盖），P19 已按 _batch_range 隔离。
+        const isParallelBatchText = !!innerArgs._batch_id;
+        if (!isParallelBatchText && st.batchStarted && st.batchStartOffset !== null && st.batchEndOffset !== null) {
           const requestedLen = innerArgs.length;
           if (requestedLen !== undefined && requestedLen !== null) {
             const expectedBatchLen = st.batchEndOffset - st.batchStartOffset;
@@ -767,12 +884,26 @@ export const WpsGovernancePlugin = async () => {
             }
           }
         }
+        // R7-2：并行模式下（携带 _batch_id）对 length 设兜底上限，防止执行 agent 拉取远超
+        // 自己批次的超长文本（如整篇文档）导致上下文超限。兜底按每批 ≤200 段、每段约 50 字符
+        // 的保守估算（上限 200×50=10000 字符）；执行 agent 应只拉自己批次文本。
+        if (isParallelBatchText) {
+          const requestedLen = innerArgs.length;
+          if (requestedLen !== undefined && requestedLen !== null && Number(requestedLen) > 10000) {
+            throw new Error(
+              `【执行治理】【P13】getDocumentTextByRange length=${requestedLen} 在并行校对模式下超出单批文本上限（10000 字符，约 200 段）。` +
+              `执行 agent 只能获取自己被分配批次的文本，禁止一次性拉取多批或整篇文档。`
+            );
+          }
+        }
         return;
       }
 
       // ── 规则 P14：confirmBatchAiProofread 必须 proofreadBasic 已调用 ──
       if (toolName === "confirmBatchAiProofread") {
-        if (st.batchStarted && !st.proofreadCalledThisBatch) {
+        // Issue #151 R1-2：并行模式下跳过会话级 batchStarted/proofreadCalledThisBatch 单值校验
+        const isParallelBatchConfirm = !!innerArgs._batch_id;
+        if (!isParallelBatchConfirm && st.batchStarted && !st.proofreadCalledThisBatch) {
           throw new Error(
             `【执行治理】【P14】confirmBatchAiProofread 必须在 proofreadBasic 之后调用。\n` +
             `当前批尚未进行基础校对，请先调用 proofreadBasic。` +
@@ -820,12 +951,15 @@ export const WpsGovernancePlugin = async () => {
           }
           // P10/P11：仅在校对流程中强制 proofreadBeforeReplace
           // 模板填写/修复场景（templateFilling.active）跳过此检查
-          if (!st.templateFilling.active && st.batchStarted && !st.proofreadCalledThisBatch) {
+          // Issue #151 R1-2/R1-3：并行模式下（携带 _batch_id）会话级 batchStarted/proofreadCalledThisBatch/
+          // aiProofreadDoneThisBatch 单值会被各执行 agent 互相覆盖，不适用；改由 P20 逐步凭证落盘校验完整性。
+          const isParallelBatchReplace = !!innerArgs._batch_id;
+          if (!isParallelBatchReplace && !st.templateFilling.active && st.batchStarted && !st.proofreadCalledThisBatch) {
             throw new Error(
               `【执行治理】replaceInParagraph 必须在同一批的 proofreadBasic 之后调用。`
             );
           }
-          if (!st.templateFilling.active && st.batchStarted && !st.aiProofreadDoneThisBatch) {
+          if (!isParallelBatchReplace && !st.templateFilling.active && st.batchStarted && !st.aiProofreadDoneThisBatch) {
             throw new Error(
               `【执行治理】AI 智能校对未完成。请在 proofreadBasic 之后调用 ` +
               `confirmBatchAiProofread 确认 AI 校对已完成，再执行替换操作。`
@@ -834,7 +968,7 @@ export const WpsGovernancePlugin = async () => {
           // P15：基础校对无 issue 时，禁止 AI 自行大量修复
           // 当 proofreadHadIssues = false（基础校对未发现问题），最多允许 1 次 AI 自定修复
           // 超过限制需传 _force_ai_fix: true 显式确认
-          if (!st.templateFilling.active && st.batchStarted && !st.proofreadHadIssues) {
+          if (!isParallelBatchReplace && !st.templateFilling.active && st.batchStarted && !st.proofreadHadIssues) {
             if (st.replaceCountThisBatch >= AI_FIXES_NO_ISSUES_LIMIT) {
               if (!innerArgs._force_ai_fix) {
                 throw new Error(
@@ -848,7 +982,7 @@ export const WpsGovernancePlugin = async () => {
           }
           // P16：交叉校验 — 替换内容应与已知校对 issue 对应
           // 防止 AI 擅自修复 proofreadBasic 未发现的问题（"把正确的改成错误的"）
-          if (!st.templateFilling.active && st.batchStarted && st.proofreadHadIssues && st.proofreadIssueOriginals.length > 0) {
+          if (!isParallelBatchReplace && !st.templateFilling.active && st.batchStarted && st.proofreadHadIssues && st.proofreadIssueOriginals.length > 0) {
             // 参数名兼容：AI 走网关时可能传 camelCase（findText）或 snake_case（find_text），
             // 两者都需兜底，否则 P16 会因 findText 为空而跳过校验（#55 遗留：F11–F15 零拦截）
             const findText =
@@ -870,18 +1004,33 @@ export const WpsGovernancePlugin = async () => {
               }
             }
           }
-          if (st.batchStarted) {
+          if (st.batchStarted || isParallelBatchReplace) {
             const paraIdx = innerArgs.paragraphIndex;
             if (paraIdx !== undefined) {
-              if (paraIdx < st.batchStartParaIndex) {
-                throw new Error(
-                  `【执行治理】replaceInParagraph paragraphIndex=${paraIdx} 在本批起始段落 ${st.batchStartParaIndex} 之前。`
-                );
-              }
-              if (paraIdx > st.lastBatchParaIndex) {
-                throw new Error(
-                  `【执行治理】replaceInParagraph paragraphIndex=${paraIdx} 超出本批结束段落 ${st.lastBatchParaIndex}。`
-                );
+              // Issue #151 R1-3：并行模式下会话级 batchStartParaIndex/lastBatchParaIndex 会被各执行
+              // agent 互相覆盖，改用**按批次隔离的分配区间**（assignedRanges[batchId]，由 P19 登记）校验，
+              // 防止并行替换越权到其它执行 agent 区间。未登记区间时跳过（由管理 agent 调度兜底）。
+              if (isParallelBatchReplace) {
+                const batchId = innerArgs._batch_id;
+                const mine = st.assignedRanges[batchId];
+                if (mine) {
+                  if (paraIdx < mine.start || paraIdx > mine.end) {
+                    throw new Error(
+                      `【执行治理】【P19】replaceInParagraph paragraphIndex=${paraIdx} 超出本执行 agent（批次 ${batchId}）分配区间 ${mine.start}-${mine.end}。`
+                    );
+                  }
+                }
+              } else if (st.batchStarted) {
+                if (paraIdx < st.batchStartParaIndex) {
+                  throw new Error(
+                    `【执行治理】replaceInParagraph paragraphIndex=${paraIdx} 在本批起始段落 ${st.batchStartParaIndex} 之前。`
+                  );
+                }
+                if (paraIdx > st.lastBatchParaIndex) {
+                  throw new Error(
+                    `【执行治理】replaceInParagraph paragraphIndex=${paraIdx} 超出本批结束段落 ${st.lastBatchParaIndex}。`
+                  );
+                }
               }
             }
           }

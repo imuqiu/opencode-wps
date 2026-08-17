@@ -231,7 +231,7 @@ AI 识别：使用 wps-ppt skill
 
 ### wps-proofread（文档校对专家）
 
-**能力**：错别字检测、语病检查、格式一致性校对（独立校对技能，P1-P16 铁律 3.0）。
+**能力**：错别字检测、语病检查、格式一致性校对（独立校对技能，P1-P21 铁律 3.0）。
 
 **典型流程**（严格逐批闭环）：
 ```text
@@ -243,6 +243,8 @@ AI 识别：使用 wps-ppt skill
 ```
 
 > ⚠️ 校对**必须**按 铁律 3.0 严格执行（proofread → confirm → fix），禁止跳批/编造。详见 [FEATURES.md](./FEATURES.md)。
+
+> 🧩 **大文档 Subagent 组协同（Issue #151 重构）**：针对长文档，校对流程可交由 `agents/` 下 4 个**校对 subagent**（`wps-proofread-planner/manager/executor/reporter`）协同完成——规划 agent 一次性分批并登记分配表，管理 agent 调度执行 agent **并行（≤3）** 校对独立段落区间并监督逐步凭证落盘（防幻觉），报告 agent 从磁盘归并生成五维报告。单 agent 串行流程不再作为兜底；架构详见 [PROOFREAD_SUBAGENTS.md](./PROOFREAD_SUBAGENTS.md)。
 
 ---
 
