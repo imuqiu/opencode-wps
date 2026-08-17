@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.8] - 2026-08-17
+
+### Added
+
+- **文档校对重构为「规划/管理/执行/报告」4 subagent 协同架构（Issue #151，PR #152）** — 将原单 agent 串行承担全部职责的文档校对流程，重构为 4 个 subagent 协同的稳定、准确、高效架构，解决六大执行不稳定问题（分批不稳 / 中途中断 / 上下文超限 / 统计不准 / 假装校对 / 耗时过长）：
+  - **`agents/` 新增 4 个校对 subagent**：`wps-proofread-planner`（规划：一次性分批计划 + 生成唯一 session_id + 登记批次分配表）、`wps-proofread-manager`（管理：调度执行 agent 并行 ≤3 + 监督逐步落盘防幻觉 + 断点续跑）、`wps-proofread-executor`（执行：专职逐批按独立段落区间走完 `getDocumentParagraphs → proofreadBasic → confirmBatchAiProofread → replaceInParagraph → proofreadAccumulate` 全链条）、`wps-proofread-reporter`（报告：从磁盘 session 归并 + 五维评分保留 + 修订记录交叉校验 + 疑似缺失告警）。
+  - **`skills/wps-proofread/SKILL.md`**：新增「校对 subagent 组编排」章节，规划 agent 自动编排调度（无插件 UI 分流，改动面最小）。
+  - **`governance.js`**：新增 P19（批次归属/越界拦截）、P20（逐步凭证落盘防幻觉）、P21（并行区间重叠检测）。
+  - **`proofread-store.ts`**：扩展批次分配表落盘 + 逐步执行凭证（stepsLog）持久化，支持断点续跑与每步审计。
+  - **`proofread-report.ts`**：批次完整性校验（未完成批告警）+ issue 数 vs 修订数交叉校验（疑似缺失告警），统计准确优先。
+  - **`docs/PROOFREAD_SUBAGENTS.md`**：新增架构说明文档；`docs/FEATURES.md` / `docs/USAGE.md` / `docs/SKILLS.md` 同步登记 4-subagent 组与 P19/P20/P21 规则。
+  - **用户决策固化**：并行度 ≤3（WPS 单进程 COM 约束）；不保留单 agent 串行兜底（靠重派 + 断点续跑替代）；统计准确优先、保留五维评分并强化校验；规划 agent 自动编排；管理 agent 监督逐步落盘防幻觉。
+  - 经 **24+ 轮评审-修复循环清零**（含追加 12 轮）+ QA 测试（410 用例全绿、并行稳定性 5 轮无回归）+ CI success 后合并。
+
+### Changed
+
+- **版本号升级至 1.5.8** — 根 `package.json` / `package-lock.json` / `opencode-wps/`（package.json、config.js、manifest.xml）/ `opencode-wps-linux/`（package.json、manifest.xml）/ `wps-office-mcp/`（package.json、package-lock.json）版本一致升级至 1.5.8，`validate-versions` 校验通过。
+
 ## [1.5.7] - 2026-08-16
 
 ### Added
