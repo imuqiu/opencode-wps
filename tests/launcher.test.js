@@ -6,6 +6,7 @@
 
 var path = require('path');
 var fs = require('fs');
+var os = require('os');
 
 // ==================== 加载真实 Launcher 实现 ====================
 // launcher.js 通过 require.main === module 保护，被 require 时不会启动 HTTP 服务，
@@ -156,30 +157,99 @@ test('findOpenCodeInDir: 目录为空或不存在时返回 null', function () {
   assertEqual(findOpenCodeInDir(missing), null, '不存在的目录应返回 null');
 });
 
-test('getOpenCodeBinDirs: 覆盖 .trae-cn/npm/Program Files 常见目录且去重', function () {
+test('getOpenCodeBinDirs: 覆盖 bun/npm/Program Files 常见目录且去重', function () {
   var dirs = getOpenCodeBinDirs();
   assertTrue(Array.isArray(dirs), '应返回数组');
-  assertTrue(dirs.length >= 7, '至少包含 7 个候选目录');
-  // 关键目录必须覆盖
+  // 关键目录必须覆盖（不变量：与 BUN_INSTALL / ProgramFiles 环境无关的强断言）
   var joined = dirs.join('\n');
   assertTrue(
-    /\.trae-cn[\\/]sdks[\\/]versions[\\/]node[\\/]current/.test(joined),
-    '应包含 Trae node 的 current bin 目录'
+    /\.bun[\\/]bin/.test(joined),
+    '应包含 bun 全局 bin 目录（用户已用 bun 全局重装 opencode）'
   );
-  assertTrue(/\.trae-cn[\\/]bin/.test(joined), '应包含 .trae-cn/bin');
+  assertTrue(!/\.trae-cn/.test(joined), '不再探测 .trae-cn（用户已删除该目录）');
   assertTrue(/npm/.test(joined), '应包含 npm 全局 bin');
   assertTrue(/Programs[\\/]opencode/.test(joined), '应包含 opencode 官方安装目录');
-  // 去重校验
+  // 去重校验（不变量：无论环境差异，去重后无重复）
   var lower = dirs.map(function (d) {
     return d.toLowerCase();
   });
   assertEqual(new Set(lower).size, dirs.length, '候选目录不应有重复');
+  // 环境无关的最小数量下限：bun/npm(2)/Programs/opencode/Program Files(1-2)
+  assertTrue(dirs.length >= 5, '至少包含 5 个唯一候选目录（去重后）');
+});
+
+test('getOpenCodeBinDirs: BUN_INSTALL 未设置时默认探测 ~/.bun/bin 且无重复', function () {
+  var oldBun = process.env.BUN_INSTALL;
+  if (oldBun !== undefined) {
+    delete process.env.BUN_INSTALL; // 确保未设置
+  }
+  try {
+    var dirs = getOpenCodeBinDirs();
+    var joined = dirs.join('\n');
+    // 默认 ~/.bun/bin 必须被探测（回归：用户默认 bun 安装位置）
+    assertTrue(/\.bun[\\/]bin/.test(joined), 'BUN_INSTALL 未设置时应包含默认 ~/.bun/bin');
+    // 未设置时不应出现两条相同的默认 bun bin（🟡-1 去重语义）
+    var bunCount = dirs.filter(function (d) {
+      return /\.bun[\\/]bin/.test(d.toLowerCase());
+    }).length;
+    assertEqual(bunCount, 1, 'BUN_INSTALL 未设置时默认 bun bin 仅出现一次');
+  } finally {
+    if (oldBun !== undefined) {
+      process.env.BUN_INSTALL = oldBun; // 恢复
+    }
+  }
+});
+
+test('getOpenCodeBinDirs: 尊重 BUN_INSTALL 环境变量自定义 bun 安装位置', function () {
+  var oldBun = process.env.BUN_INSTALL;
+  process.env.BUN_INSTALL = 'D:\\custom-bun'; // 用户自定义 bun 安装目录
+  try {
+    var dirs = getOpenCodeBinDirs();
+    var joined = dirs.join('\n');
+    assertTrue(/D:\\custom-bun[\\/]bin/.test(joined), '应优先使用 BUN_INSTALL 指定的 bun bin 目录');
+    // 🟡-2：自定义 BUN_INSTALL 时，默认 ~/.bun/bin 仍应作兜底探测
+    assertTrue(/\.bun[\\/]bin/.test(joined), 'BUN_INSTALL 自定义时默认 ~/.bun/bin 仍应兜底探测');
+  } finally {
+    // 恢复原环境变量，避免污染后续测试
+    if (oldBun === undefined) {
+      delete process.env.BUN_INSTALL;
+    } else {
+      process.env.BUN_INSTALL = oldBun;
+    }
+  }
 });
 
 test('findOpenCodeBin: 返回有效路径字符串（冒烟）', function () {
   var result = findOpenCodeBin();
   assertNotNull(result, '应返回路径');
   assertTrue(typeof result === 'string' && result.length > 0, '应返回非空字符串');
+});
+
+test('isBunShimPath: 识别 bun 全局 bin 路径，且不误判非 bun 路径', function () {
+  var user = path.join(os.homedir(), '.bun', 'bin');
+  var userBin = path.join(user, 'opencode.exe');
+  assertTrue(launcher.isBunShimPath(userBin), '应识别 ~/.bun/bin 下的 opencode.exe');
+  var npmPath = path.join(os.homedir(), 'AppData', 'Roaming', 'npm', 'opencode.cmd');
+  assertTrue(!launcher.isBunShimPath(npmPath), '不应误判 npm 全局路径');
+  assertTrue(!launcher.isBunShimPath('opencode'), '裸命令不应误判');
+  assertTrue(!launcher.isBunShimPath(null), 'null 应返回 false');
+  // BUN_INSTALL 自定义路径：需先设置环境变量，isBunShimPath 才识别
+  var oldBun = process.env.BUN_INSTALL;
+  process.env.BUN_INSTALL = 'D:\\custom-bun';
+  try {
+    var custom = path.join('D:\\custom-bun', 'bin', 'opencode.exe');
+    assertTrue(launcher.isBunShimPath(custom), '应识别 BUN_INSTALL 自定义路径下的 opencode.exe');
+    // 🟡-7：前缀子串不误判——BUN_INSTALL=D:\\bun 时 D:\\bunny\\bin 不应命中
+    process.env.BUN_INSTALL = 'D:\\bun';
+    var notBunny = path.join('D:\\bunny', 'bin', 'opencode.exe');
+    assertTrue(!launcher.isBunShimPath(notBunny), 'BUN_INSTALL=D:\\bun 时 D:\\bunny\\bin 不应误判');
+  } finally {
+    if (oldBun === undefined) {
+      delete process.env.BUN_INSTALL;
+    } else {
+      process.env.BUN_INSTALL = oldBun;
+    }
+  }
 });
 
 // --- step 3 `where opencode` 输出解析（评审建议：补单测拦截 .cmd 正则 bug）---

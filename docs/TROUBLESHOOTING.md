@@ -132,7 +132,7 @@ WPS 的 taskpane 是特殊的运行环境，document 对象和浏览器不一致
 ### 根因
 `launcher.js` 使用 Node.js 的 `spawn()` 启动 opencode serve。出现“已安装但启动失败”时，**最常见根因是 launcher 进程的运行期环境找不到 opencode 二进制**，而非 opencode 没装。具体有两种：
 
-1. **运行期 PATH 与交互终端不一致**（Issue #134 实测根因）：launcher 由计划任务 → VBS → `node launcher.js` 拉起，其 PATH **不继承**你登录 PowerShell 时由 shell 配置（如 Trae 的 `.trae-cn\sdks\versions\node\current`）注入的目录。结果 `spawn('opencode', ...)` 走 `cmd /c opencode serve` 时 `cmd` 找不到 opencode → `ENOENT` → 启动失败。
+1. **运行期 PATH 与交互终端不一致**（Issue #134 实测根因）：launcher 由计划任务 → VBS → `node launcher.js` 拉起，其 PATH **不继承**你登录 PowerShell 时由 shell 配置（如 npm / bun 全局 bin 目录）注入的目录。结果 `spawn('opencode', ...)` 走 `cmd /c opencode serve` 时 `cmd` 找不到 opencode → `ENOENT` → 启动失败。
 
 2. **opencode 是 `.ps1` PowerShell 脚本**：npm 全局安装会在 bin 目录同时生成 `opencode`、`opencode.cmd`、`opencode.ps1`。PowerShell 的 `Get-Command` 优先解析 `.ps1`，而 `cmd.exe` 只解析 `.exe/.cmd/.bat`。若 launcher 拿到裸的 `'opencode'` 且运行环境只有 `.ps1`，`spawn` 无法直接执行。
 
@@ -145,7 +145,7 @@ WPS 的 taskpane 是特殊的运行环境，document 对象和浏览器不一致
 
 ### 如何避坑（已修复，含增强）
 
-1. **launcher 探测真实二进制绝对路径**（`findOpenCodeBin`，已实现）：不再依赖运行期 PATH，按优先级 `显式配置 > 常见 bin 目录探测（.exe/.cmd/.ps1）> where 解析 > 裸 'opencode'` 查找。覆盖：`.trae-cn\sdks\versions\node\current`、`%APPDATA%\npm`、`%LOCALAPPDATA%\npm`、`Program Files` 等。命中 `.ps1` 时用 `powershell.exe -ExecutionPolicy Bypass -File` 启动。
+1. **launcher 探测真实二进制绝对路径**（`findOpenCodeBin`，已实现）：不再依赖运行期 PATH，按优先级 `显式配置 > 常见 bin 目录探测（.exe/.cmd/.ps1）> where 解析 > 裸 'opencode'` 查找。覆盖：bun 全局 bin（`~/.bun/bin` / `BUN_INSTALL`）、`%APPDATA%\npm`、`%LOCALAPPDATA%\npm`、`Program Files` 等。**不再探测 `.trae-cn`**（用户已删除该目录，且 `.trae-cn` 属历史遗留问题根源；如需兼容旧环境，可在 `getOpenCodeBinDirs()` 末尾自行追加对应目录）。命中 `.ps1` 时用 `powershell.exe -ExecutionPolicy Bypass -File` 启动。
 
 2. **spawn 失败原因落盘**（已实现）：`error` 事件把 `[launcher] spawn error: <原因> (opencodeBin=<路径>)` 写进 `opencode-serve.log`，不再出现“空日志”。
 
@@ -163,10 +163,10 @@ WPS 的 taskpane 是特殊的运行环境，document 对象和浏览器不一致
 
 4. **自检 opencode 真实形态（拉不起时用）**
    ```powershell
-   Get-Command opencode | Format-List Name, Source, CommandType  # 看是 .ps1/.cmd/.exe
-   # 若 .ps1 位于 .trae-cn\sdks\versions\node\current → 交给新版 launcher 自动探测即可
+   Get-Command opencode | Format-List Name, Source, CommandType  # 看是 .exe/.cmd/.ps1
+   # 若来自 bun 全局安装 → 应位于 ~/.bun/bin（或 BUN_INSTALL 指定位置）下的 opencode.exe shim
    # 检查是否也生成了 .cmd/.exe（cmd 能直接执行的形态）
-   dir "C:\Users\<你的用户名>\.trae-cn\sdks\versions\node\current\opencode.*"
+   dir "$env:USERPROFILE\.bun\bin\opencode.*"
    ```
 
 5. **一键诊断 `/diag`（推荐）**
@@ -231,7 +231,7 @@ Get-Content "$env:APPDATA\kingsoft\wps\jsaddons\authaddin.json"
 |-----|-------|---------|
 | 插件不显示 | authaddin.json 中 enable 是否为 true | 修改 authaddin.json |
 | 侧边栏空白 | main.js 的 GetUrlPath 是否用绝对路径 | 硬编码插件目录路径 |
-| Start Server 失败（opencode 已安装） | ① launcher 运行期 PATH 找不到二进制（计划任务环境不含 npm/.trae-cn 目录）② opencode 是 .ps1 | 已修复：`findOpenCodeBin` 按绝对路径探测（含 .exe/.cmd/.ps1），spawn 失败原因落盘到 opencode-serve.log；升级后重跑 `node install-addons.js` |
+| Start Server 失败（opencode 已安装） | ① launcher 运行期 PATH 找不到二进制（计划任务环境不含 npm/bun 目录）② opencode 是 .ps1 | 已修复：`findOpenCodeBin` 按绝对路径探测（含 .exe/.cmd/.ps1），spawn 失败原因落盘到 opencode-serve.log；升级后重跑 `node install-addons.js` |
 | 服务启动了但连不上 | 检查 14096 端口是否正常 | 手动测试 /global/health |
 | 服务运行中但状态栏显示"已停止" | ① 健康检查"一次失败即永久放弃"（历史版本）② `/global/health` 探测在 WPS Chromium 下受 CORS/环境差异影响持续失败 ③ **launcher（14097）未运行**导致 `/status` 交叉验证失效 | 升级到包含健康检查自动恢复 + **多源交叉验证**的版本：健康检查全局常驻，状态判定不再单一依赖 `/global/health`——`/status` 端口监听回退 + **SSE 连接成功联动**，任一可靠信号源确认服务在跑即恢复"运行中"（≤1 周期自动恢复）。当 **launcher 未运行** 时（`probeLauncherRunning` 不可达），前端改用 **SSE（EventSource，不受 XHR CORS 差异影响）作为第三信号源**探测：SSE onopen 成功即证明服务在跑并自动恢复 + 切回 chat（≥1.5.3） |
 | Proxy 连接失败 | opencode-proxy.js 端口 14098 是否启动 | 检查 14098 端口 |

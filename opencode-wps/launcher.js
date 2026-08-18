@@ -310,12 +310,22 @@ function startOpenCode(cwd, port) {
       var stdioArr = opencodeLogStream
         ? ['ignore', opencodeLogStream, opencodeLogStream]
         : ['ignore', 'ignore', 'ignore'];
-      opencodeProcess = hiddenSpawn(opencodeBin, opencodeArgs, {
+      var exeSpawnOptions = {
         cwd: cwd,
         stdio: stdioArr,
         detached: false,
         shell: false,
-      });
+      };
+      // bun 生成的 opencode shim 运行时依赖 bun（Issue #134 用户用 bun 全局重装）。
+      // 探测到 bun bin 时，把 bun 运行时目录前置注入 spawn 的 PATH，确保 shim 能解析到 bun。
+      if (isExe && isBunShimPath(opencodeBin)) {
+        var bunDir = path.dirname(opencodeBin);
+        var spawnEnv = Object.assign({}, process.env);
+        spawnEnv.PATH = bunDir + path.delimiter + (spawnEnv.PATH || '');
+        exeSpawnOptions.env = spawnEnv;
+        console.log('[launcher] bun shim detected, prepending PATH: ' + bunDir);
+      }
+      opencodeProcess = hiddenSpawn(opencodeBin, opencodeArgs, exeSpawnOptions);
     }
 
     if (logFile) {
@@ -654,7 +664,7 @@ function findOpenCodeInDir(dir) {
 
 /**
  * 收集 opencode 可能所在的 bin 目录（Windows）。
- * 覆盖 npm 全局安装、Trae 自带 node、以及 Program Files 等常见位置，
+ * 覆盖 npm / bun 全局安装、以及 Program Files 等常见位置，
  * 供 findOpenCodeBin 按扩展名逐一探测。
  * @returns {string[]} 候选目录列表（去重、按优先级排序）
  */
@@ -662,17 +672,28 @@ function getOpenCodeBinDirs() {
   var user = process.env.USERPROFILE || os.homedir() || '';
   var appdata = process.env.APPDATA || path.join(user, 'AppData', 'Roaming');
   var localAppData = process.env.LOCALAPPDATA || path.join(user, 'AppData', 'Local');
+  // bun 全局安装位置：`BUN_INSTALL` 环境变量（默认 ~/.bun），全局 bin 在其下 bin 目录。
+  // 用户反馈已用 `bun install -g` 全局重装 opencode（Issue #134），此处必须覆盖 bun bin。
+  // 注意：bun 生成的 opencode.exe 是 bun shim，spawn 时依赖 bun 运行时在 PATH；
+  // 但探测目的是定位到 shim 绝对路径，避免裸 'opencode' 依赖薄 PATH 而 ENOENT。
+  var bunInstall = process.env.BUN_INSTALL;
+  var bunInstallBin = bunInstall ? path.join(bunInstall, 'bin') : path.join(user, '.bun', 'bin');
   var dirs = [
-    // Trae 自带 node 的全局 bin（用户机器实测：opencode.ps1 位于此）
-    path.join(user, '.trae-cn', 'sdks', 'versions', 'node', 'current'),
-    path.join(user, '.trae-cn', 'bin'),
+    // bun 全局 bin（`bun install -g` 生成的 opencode.exe shim）
+    bunInstallBin,
+    // 默认 ~/.bun/bin 兜底：仅当 BUN_INSTALL 自定义了安装位置时补充，避免未设置时重复条目
+    bunInstall ? path.join(user, '.bun', 'bin') : null,
     // npm 全局 bin
     path.join(appdata, 'npm'),
     path.join(localAppData, 'npm'),
     // opencode 官方安装器
     path.join(localAppData, 'Programs', 'opencode'),
-    'C:\\Program Files\\opencode',
-    'C:\\Program Files (x86)\\opencode',
+    process.env['ProgramFiles']
+      ? path.join(process.env['ProgramFiles'], 'opencode')
+      : 'C:\\Program Files\\opencode',
+    process.env['ProgramFiles(x86)']
+      ? path.join(process.env['ProgramFiles(x86)'], 'opencode')
+      : 'C:\\Program Files (x86)\\opencode',
   ];
   var seen = {};
   var out = [];
@@ -684,6 +705,33 @@ function getOpenCodeBinDirs() {
     out.push(dirs[i]);
   }
   return out;
+}
+
+/**
+ * 判断 opencode 可执行路径是否位于 bun 全局 bin（`~/.bun/bin` 或 `BUN_INSTALL/bin`）。
+ * bun 生成的 opencode shim 运行时依赖 bun，spawn 时需把 bun bin 注入 PATH。
+ * @param {string} binPath - opencode 可执行文件绝对路径
+ * @returns {boolean} 命中 bun 全局 bin 返回 true
+ */
+function isBunShimPath(binPath) {
+  if (!binPath || typeof binPath !== 'string') return false;
+  var user = process.env.USERPROFILE || os.homedir() || '';
+  var bunDirs = [path.join(user, '.bun', 'bin')];
+  var bunInstall = process.env.BUN_INSTALL;
+  if (bunInstall) {
+    bunDirs.push(path.join(bunInstall, 'bin'));
+  }
+  var resolvedBin = path.resolve(binPath).toLowerCase();
+  for (var i = 0; i < bunDirs.length; i++) {
+    var resolvedDir = path.resolve(bunDirs[i]).toLowerCase();
+    // 用 path.relative 判断 binPath 是否位于 bunDir 下，规避前缀子串误判
+    //（如 BUN_INSTALL=D:\bun 时 D:\bunny\bin 不应命中）。
+    var rel = path.relative(resolvedDir, resolvedBin);
+    if (rel && rel !== '..' && !rel.startsWith('..' + path.sep) && !path.isAbsolute(rel)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -748,7 +796,7 @@ function findOpenCodeBin() {
   }
 
   // 3. 用 `where opencode` 从 PATH 解析真实路径（where 依赖本进程运行期 PATH，
-  //    计划任务/VBS 拉起的 launcher 不含 .trae-cn；真正覆盖 #134 的是第 2 步目录探测）
+  //    计划任务/VBS 拉起的 launcher 目录探测无法覆盖时，靠 where 兜底）
   try {
     var execSync = hiddenExecSync;
     var out = execSync('where opencode', {
@@ -1198,6 +1246,7 @@ module.exports = {
   findOpenCodeBin: findOpenCodeBin,
   findOpenCodeInDir: findOpenCodeInDir,
   getOpenCodeBinDirs: getOpenCodeBinDirs,
+  isBunShimPath: isBunShimPath,
   loadOpenCodeConfig: loadOpenCodeConfig,
   buildSpawnCommand: buildSpawnCommand,
   getDiagInfo: getDiagInfo,
