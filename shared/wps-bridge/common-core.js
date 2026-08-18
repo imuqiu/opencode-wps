@@ -1,15 +1,4 @@
 /**
- * 通用操作处理器（macOS 入口 · 生成产物）
- *
- * ⚠️ 本文件由 scripts/sync-wps-bridge.js 从 shared/wps-bridge/common-core.js
- * 自动生成，请勿手工编辑——改动请修改 shared/wps-bridge/common-core.js 后
- * 重新运行：node scripts/sync-wps-bridge.js
- * 平台差异仅通过下方注入的 BRIDGE_PLATFORM 标记隔离。
- */
-
-var BRIDGE_PLATFORM = 'mac';
-
-/**
  * WPS 桥接通用操作处理器（共享核心）
  *
  * 单一来源（single source of truth）：由 `scripts/sync-wps-bridge.js` 同步到

@@ -55,6 +55,12 @@ main:
             node --check opencode-wps-assistant/utils/response.js
             for f in opencode-wps-assistant/handlers/*.js; do node --check "$f" || exit 1; done
             bash -n opencode-wps-assistant/wps-auto.sh
+            # WPS 桥接共享层（消除三平台 handler 重复重构）
+            node tests/wps-bridge-shared.test.js
+            node --check shared/wps-bridge/response.js
+            node --check shared/wps-bridge/registry.js
+            node --check shared/wps-bridge/common-core.js
+            node scripts/sync-wps-bridge.js --check
             cd wps-office-mcp && npm ci && npm run test:unit
         - name: Docker build
           script: |

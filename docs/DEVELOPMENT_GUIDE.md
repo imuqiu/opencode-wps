@@ -69,6 +69,8 @@ opencode-wps/             # 仓库根目录
 ├── opencode-wps/          # Windows JS 插件（Chat UI + Launcher）
 ├── opencode-wps-assistant/# macOS JS 插件（反向轮询桥）
 ├── opencode-wps-linux/    # Linux JS 插件（反向轮询桥）
+├── shared/wps-bridge/     # 跨平台共享层（单一来源）：response/registry/common-core
+│   └── （由 scripts/sync-wps-bridge.js 同步到 Mac/Linux 平台目录）
 ├── wps-office-mcp/        # MCP 服务器（TypeScript，三层工具）
 ├── skills/                # 5 个 WPS Skills
 ├── agents/                # 4 个 WPS Agents
@@ -130,7 +132,7 @@ wps-office-mcp/
 │   │   └── wps-keepalive.ts    # 跨平台服务保活（Win/Mac 探测 :58890，Linux 探测 WPS 主进程）
 │   ├── tools/            # 三层工具
 │   │   ├── index.ts      # 注册工具（allTools）
-│   │   ├── gateway/      # Gateway（COM_ACTIONS 索引）
+│   │   ├── gateway/      # Gateway（COM_ACTIONS 索引，数据表已拆到 com-actions.ts）
 │   │   ├── common/       # 通用工具
 │   │   ├── excel/        # Excel 工具
 │   │   ├── word/         # Word 工具
@@ -214,6 +216,34 @@ skills/wps-word/
 ### 3.6 安装脚本（`install-addons*.js`）
 
 三平台一键安装脚本（Windows/macOS/Linux 各 7-8 步）：安装插件、编译 MCP、配置 OpenCode、同步 Skills/Agents/Plugins、注册自启。实现细节见 [INSTALL_SCRIPT.md](./INSTALL_SCRIPT.md)。
+
+### 3.7 跨平台共享层（`shared/wps-bridge/`）
+
+**背景**：Mac 与 Linux 反向轮询桥存在大量同构 handler 代码（`response.js`/`registry.js`/`common-handler.js`），历史上改一个 bug 需在两平台各改一遍、极易漏改。本次重构将其收敛为**单一来源（single source of truth）**：
+
+```
+shared/wps-bridge/                 # 单一来源（git 跟踪，改这里）
+├── response.js                    # 响应工具（ok/fail/invalidParam）
+├── registry.js                    # handler 注册表
+└── common-core.js                 # 通用 handler 核心（平台差异经 BRIDGE_PLATFORM 隔离）
+        │  由 scripts/sync-wps-bridge.js 同步生成
+        ▼
+opencode-wps-assistant/            # macOS 平台产物（生成，勿手编）
+    ├── utils/response.js
+    └── handlers/{registry.js, common-handler.js}
+opencode-wps-linux/                # Linux 平台产物（生成，勿手编）
+    ├── utils/response.js
+    └── handlers/{registry.js, common-handler.js}
+```
+
+**核心规则**：
+- **编辑源**：只改 `shared/wps-bridge/*.js`，平台目录文件是**生成产物**，禁止手工编辑（顶部注释已标明）。
+- **同步**：改完源后运行 `node scripts/sync-wps-bridge.js` 重新生成平台产物。
+- **平台差异**：通过全局 `BRIDGE_PLATFORM`（`'mac' | 'linux'`）隔离，由同步脚本按平台注入。例如 `ensureOutputDir`（saveAs/convertToPDF 前置校验输出目录）仅在 `BRIDGE_PLATFORM==='mac'` 启用。
+- **CI 漂移门禁**：`.cnb.yml` 用 `node scripts/sync-wps-bridge.js --check` 校验平台产物与共享层无漂移；本地用 `node scripts/sync-wps-bridge.js --check` 自查。
+- **测试**：`node tests/wps-bridge-shared.test.js`（单源一致性/生成正确性/平台差异隔离/漂移检测）。
+
+> 💡 详细架构说明见 [ARCHITECTURE.md](./ARCHITECTURE.md)「共享层说明」。
 
 ---
 
@@ -366,6 +396,7 @@ node tests/launcher.test.js
 node tests/e2e.test.js
 node tests/mac-bridge.test.js
 node tests/setcellformat-mac.test.js
+node tests/wps-bridge-shared.test.js
 node tests/taskpane-dock.test.js
 node tests/validate-npc-team-prompt.test.js
 
@@ -397,8 +428,9 @@ cd wps-office-mcp && npm run dev
 | 工具数量 | `node scripts/validate-tool-counts.js` | 12/240/257 |
 | NPC_TEAM | `node scripts/validate-npc-team-prompt.js` | 提示词双源一致性 |
 | NPC_TEAM 同步 | `node scripts/sync-npc-team-skill.js --check` | Skill 同步检查 |
-| 单测 | `node tests/*.test.js` | 安全/Launcher/Mac/Linux 回归 |
-| JS 语法 | `node --check <file>` | 三平台脚本语法门禁 |
+| 单测 | `node tests/*.test.js` | 安全/Launcher/Mac/Linux/桥接共享层回归 |
+| 桥接共享层漂移 | `node tests/wps-bridge-shared.test.js` + `node scripts/sync-wps-bridge.js --check` | 单一来源一致性 + 平台产物无漂移（消除三平台 handler 重复重构） |
+| JS 语法 | `node --check <file>` | 三平台脚本 + 共享层语法门禁 |
 | MCP | `cd wps-office-mcp && npm ci && npm run test:unit` | MCP 单测 |
 
 提交 PR 前建议本地跑一遍门禁，避免 CI 失败。

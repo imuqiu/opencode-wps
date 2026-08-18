@@ -35,6 +35,8 @@ opencode-wps/              # 第 1 层（Win）：WPS JS 插件（前台 Chat �
 │   ├── manifest.xml           # 插件清单
 │   ├── package.json           # 插件元数据
 │   └── wps-auto.sh            # Linux 应用切换脚本（wps/et/wpp + xdg-open）
+├── shared/wps-bridge/       # 跨平台共享层（单一来源）：response/registry/common-core
+│   └── （由 scripts/sync-wps-bridge.js 同步到 Mac/Linux 平台目录）
 ├── agents/                  # 第 2 层：Agents（跨平台通用，wps-expert/word/excel/ppt）
 ├── skills/                  # 第 3 层：Skills（跨平台通用，5 个技能）
 ├── .opencode/               # 项目级配置（跨平台通用，含 governance.js 治理插件）
@@ -73,6 +75,9 @@ opencode-wps/              # 第 1 层（Win）：WPS JS 插件（前台 Chat �
 | **install-addons-linux.js** | Linux 安装脚本（jsaddons + publish.xml + XDG autostart） | Linux |
 | **launcher-mac.js** | macOS Launcher 进程（lsof/kill/ps/open） | macOS |
 | **launcher-linux.js** | Linux Launcher 进程（/proc 扫描/kill/ps + xdg-open，无 lsof 依赖） | Linux |
+| **shared/wps-bridge** | 跨平台共享层（单一来源）：response.js / registry.js / common-core.js，由 `scripts/sync-wps-bridge.js` 同步到 Mac/Linux | 跨平台 |
+
+> 💡 **共享层说明**：Mac 与 Linux 反向轮询桥存在大量同构 handler 代码（历史上改 bug 需在两平台各改一遍）。`shared/wps-bridge/` 作为**单一来源**，平台目录文件（`common-handler.js`/`response.js`/`registry.js`）为**生成产物**。改动共享逻辑请改 `shared/` 后运行 `node scripts/sync-wps-bridge.js` 同步；CI 用 `node scripts/sync-wps-bridge.js --check` 校验漂移。
 
 ### MCP 工具体系（三层）
 
@@ -84,7 +89,7 @@ MCP 服务器采用三层工具体系，AI 通过不同的方式发现和调用�
 | **注册工具** | ~240 | `wps_xxx_xxx`（Excel ~82 / Word ~36 / PPT ~112 / Common ~10） | → Gateway 路由 | 通过 `tools/index.ts` 注册，有完整的 TypeScript handler（参数校验+类型安全），不注册到 MCP，由 Gateway 优先调用 |
 | **COM_ACTIONS** | ~257 | 短名称（`getCellValue`, `setFont`, `addSlide`） | `wps_office_search` → `wps_office_execute` → PS1 兜底 | Gateway 索引，按需发现。有 TS handler → 走 handler，无 handler → 透传 PS1 脚本 |
 
-> 各层数量随开发持续演进，**以代码为准**（内置工具见 `mcp-server.ts`，注册工具见 `tools/index.ts`，COM_ACTIONS 见 `gateway/index.ts`，校验见 `scripts/validate-tool-counts.js`）。
+> 各层数量随开发持续演进，**以代码为准**（内置工具见 `mcp-server.ts`，注册工具见 `tools/index.ts`，COM_ACTIONS 数据表见 `gateway/com-actions.ts`、路由逻辑见 `gateway/index.ts`，校验见 `scripts/validate-tool-counts.js`）。
 
 ### config.js — 全局配置中心
 

@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **代码质量重构：消除三平台 handler 重复 + 拆分 gateway 巨无霸（Issue #151 体检报告落地，PR #155）** — 针对仓库体检识别的「三平台 handler 大量复制粘贴 + `gateway/index.ts` 近 3000 行巨无霸」隐患，按「抽公共层 → 拆巨无霸 → 保持测试门禁」优先级重构，消除重复、降低维护成本、防止项目恶化为屎山：
+  - **新增 `shared/wps-bridge/` 跨平台共享层（单一来源）**：`response.js` / `registry.js` / `common-core.js` 作为 Mac 与 Linux 反向轮询桥的公共逻辑唯一来源，解决历史上「改 bug 需在两平台各改一遍、极易漏改」问题。平台目录对应文件（`utils/response.js`、`handlers/registry.js`、`handlers/common-handler.js`）改为**生成产物**。
+  - **新增 `scripts/sync-wps-bridge.js`**：将共享层同步到两个平台目录（生成平台化的 `common-handler.js`，按平台注入 `BRIDGE_PLATFORM` 标记）；`--check` 模式供 CI 漂移检测。
+  - **平台差异隔离**：`common-handler.js` 共享化后，mac 独有 `ensureOutputDir`（saveAs/convertToPDF 前置校验输出目录）仅在 `BRIDGE_PLATFORM==='mac'` 启用；`setSelectedText` 缺 text 校验对齐 mac 安全语义（linux 此前静默清空，现统一拒绝缺参）。
+  - **`gateway/index.ts` 数据表拆分**：将 `COM_ACTIONS`（~257 条，原内嵌近 2400 行）与类型定义（`VerificationStatus`/`ToolIndexItem`/`ToolParamSchema`）拆到独立 `com-actions.ts`，`index.ts` 从 2991 行瘦身至 ~580 行，专责 `searchTools`/`executeTool` 逻辑。
+  - **测试与门禁**：新增 `tests/wps-bridge-shared.test.js`（10 用例：单源一致性 / 生成正确性 / 平台差异隔离 / 漂移检测 / gateway 拆分）；`.cnb.yml` 增加共享层 `--check` 漂移门禁 + 共享文件语法门禁。
+  - 全量 **410+ 测试通过**（MCP 364 + 桥接共享层 10 + 既有 bridge/setcellformat/其他）+ `validate-versions`/`validate-toolcounts` 全绿，零回归。
+
 - **报告硬性完整性门禁 + 进度追踪 P22（Issue #151，PR #156）** — 彻底解决文档校对「假装完成 / 中途结束 / 匆忙生成报告」的遗留稳定性问题，根因修复为**服务端强制、非 opt-in**：
   - **`proofread-report.ts`**：`generateProofreadReport` 新增硬性完整性门禁——编排模式批次未完整 done / 覆盖有缺口 / 超界 / 重叠，或串行模式进度 `< totalParagraphs` 时，**直接返回 `success=false` 拒绝生成**（原先仅打软告警照样返回 success，AI 借此「假装完成 + 用 write 拼造假报告」）。
   - **`proofreadAccumulate` 强制进度追踪**：每次调用必报 `_processed_to_paragraph`，服务端在 session 记录 `progress.processedToParagraph`（取各批最大值，兼容并行），真实覆盖进度全程可核验，AI 无法跳过段落谎报完成。

@@ -20,7 +20,7 @@
 
 | 文档 | 说明 |
 |------|------|
-| [DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md) | **Wiki 级开发手册**（环境/项目结构/五大模块开发/流程/规范/测试/CI/CD/二次开发） |
+| [DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md) | **Wiki 级开发手册**（环境/项目结构/五大模块开发/跨平台共享层/流程/规范/测试/CI/CD/二次开发） |
 | [CODE_REVIEW_GUIDE.md](./CODE_REVIEW_GUIDE.md) | 代码审查规范与流程（分级标准/审查流程/场景策略/度量指标） |
 | [WPSJS_DEVELOPMENT.md](./WPSJS_DEVELOPMENT.md) | WPS JS 加载项开发与安装指南 |
 | [INSTALL_SCRIPT.md](./INSTALL_SCRIPT.md) | 安装脚本实现说明（install-addons*.js / wpsjs publish） |
