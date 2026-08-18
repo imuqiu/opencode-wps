@@ -210,27 +210,17 @@ function startOpenCode(cwd, port) {
   var opencodeBin = findOpenCodeBin();
   console.log('[launcher] Starting with: ' + opencodeBin);
 
-  var isPs1 = opencodeBin.endsWith('.ps1');
-  var isExe = /\.exe$/i.test(opencodeBin);
+  // 复用 buildSpawnCommand 统一构造 spawn 命令：
+  //   .ps1 → powershell.exe -ExecutionPolicy Bypass -File <bin> serve ...（脱离运行期 PATH）
+  //   .exe → 直接 CreateProcess
+  //   无扩展名/.cmd（npm 全局 shim）→ needShell=true，走 cmd.exe 包装
+  // Issue #134 回归：startOpenCode 此前自行复制一套 isPs1/isExe 分支，且 .ps1 分支
+  // 误走 `hiddenSpawn(bin, args)` 直接 spawn .ps1 文件——Node 的 spawn 无法直接执行
+  // .ps1 脚本（无解释器关联），必然 ENOENT 失败，导致用户 .ps1 场景启动必失败。
   var finalPort = parsedPort || 14096;
-  var opencodeArgs = [
-    'serve',
-    '--port',
-    String(finalPort),
-    '--hostname',
-    '127.0.0.1',
-    '--cors',
-    'file://',
-  ];
-  // Issue #116 权限自动确认：配置为 auto 时追加 --permission allow，
-  // 从服务端源头自动放行工具权限（根治侧边栏收不到权限请求导致长任务静默卡住）。
-  if (shouldAutoAllowPermission()) {
-    opencodeArgs.push('--permission', 'allow');
-  }
-  // .ps1 用 powershell.exe 直接执行、.exe 直接 CreateProcess，均无需 shell；
-  // 无扩展名（如 PATH 中的 'opencode'，npm 全局安装实为 .cmd 脚本）时，
-  // spawn 不带 shell 无法启动 .cmd 文件，必须保留 shell。
-  var needShell = !isPs1 && !isExe;
+  var spawnCmd = buildSpawnCommand(opencodeBin, finalPort);
+  var opencodeArgs = spawnCmd.args;
+  var needShell = spawnCmd.needShell;
 
   // 服务端日志落盘：stdio 由 'ignore' 改为管道，stdout/stderr 写入日志文件。
   // 之前 'ignore' 直接丢弃 opencode serve 的全部日志，导致用户无法查看
@@ -280,7 +270,10 @@ function startOpenCode(cwd, port) {
       // 改显式 cmd.exe 后 windowsHide（CREATE_NO_WINDOW）直接作用于 cmd.exe 进程树，
       // 与 hiddenExecSync（关闭服务修复）验证过的隐藏机制一致，彻底消除黑窗。
       // windowsVerbatimArguments:true 让 Node 不对 args 二次加引号，避免含空格路径被破坏。
-      var shellCmd = '"' + opencodeBin + '" ' + opencodeArgs.join(' ');
+      // 用 spawnCmd.command（即 buildSpawnCommand 返回的启动命令本体，needShell 场景下等于
+      // opencodeBin）构造被 cmd.exe 包装的命令，保持与 buildSpawnCommand 单一来源一致（R3-5）。
+      // cmd.exe 为固定系统组件，直接在此硬编码作为壳，无需走 buildSpawnCommand。
+      var shellCmd = '"' + spawnCmd.command + '" ' + opencodeArgs.join(' ');
       opencodeProcess = hiddenSpawn('cmd.exe', ['/d', '/s', '/c', shellCmd], {
         cwd: cwd,
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -307,6 +300,10 @@ function startOpenCode(cwd, port) {
         }
       }
     } else {
+      // 非 shell 分支：.exe 直接 CreateProcess；.ps1 用 powershell.exe -ExecutionPolicy
+      // Bypass -File <bin> 启动（spawnCmd.command 已封装，见 buildSpawnCommand）。
+      // 切勿直接 spawn .ps1 文件——Node 无法直接执行 .ps1（ENOENT），这正是用户 .ps1
+      // 场景启动失败的根因（Issue #134 回归）。
       var stdioArr = opencodeLogStream
         ? ['ignore', opencodeLogStream, opencodeLogStream]
         : ['ignore', 'ignore', 'ignore'];
@@ -318,14 +315,16 @@ function startOpenCode(cwd, port) {
       };
       // bun 生成的 opencode shim 运行时依赖 bun（Issue #134 用户用 bun 全局重装）。
       // 探测到 bun bin 时，把 bun 运行时目录前置注入 spawn 的 PATH，确保 shim 能解析到 bun。
-      if (isExe && isBunShimPath(opencodeBin)) {
+      // 仅在直接 CreateProcess 的 .exe 场景（spawnCmd.command 即二进制自身）注入；
+      // .ps1 场景 spawnCmd.command 为 powershell.exe，无需注入 bun 运行时目录。
+      if (spawnCmd.command === opencodeBin && isBunShimPath(opencodeBin)) {
         var bunDir = path.dirname(opencodeBin);
         var spawnEnv = Object.assign({}, process.env);
         spawnEnv.PATH = bunDir + path.delimiter + (spawnEnv.PATH || '');
         exeSpawnOptions.env = spawnEnv;
         console.log('[launcher] bun shim detected, prepending PATH: ' + bunDir);
       }
-      opencodeProcess = hiddenSpawn(opencodeBin, opencodeArgs, exeSpawnOptions);
+      opencodeProcess = hiddenSpawn(spawnCmd.command, opencodeArgs, exeSpawnOptions);
     }
 
     if (logFile) {
@@ -339,12 +338,16 @@ function startOpenCode(cwd, port) {
       // 常见 ENOENT = 找不到 opencode 二进制；EACCES = 权限不足。
       // 直接复用闭包中已算好的 opencodeBin，避免在此失败关键路径上再次触发
       // findOpenCodeBin() 里同步阻塞的 execSync('where opencode', {timeout:5000})。
+      // 同时记录实际 spawn 的 command（.ps1 场景为 powershell 绝对路径，.exe 为二进制路径），
+      // 避免 ENOENT/EACCES 时用户误以为是 .ps1 本身的问题（R4-1）。
       var errMsg =
         '[launcher] spawn error: ' +
         err.message +
         ' (opencodeBin=' +
         (opencodeBin || '<empty>') +
-        ')';
+        ', command=' +
+        (spawnCmd ? spawnCmd.command : '<empty>') +
+        ')'
       try {
         if (opencodeLogStream && opencodeLogStream.writable) {
           // 用 end(errMsg) 而非 write()+closeOpenCodeLogStream()：end 会在 flush
@@ -362,11 +365,13 @@ function startOpenCode(cwd, port) {
 
     // 把实际执行的 spawn 命令写进日志：便于用户在 opencode-serve.log 里核对
     // launcher 到底用哪个二进制、怎么启动的（Issue #134 空日志难排查的增强）。
-    // 注意日志写流可能在 spawn 前被下方 catch 替换，故在此闭包内用局部引用。
+    // 直接用 buildSpawnCommand 返回的 command+args（.ps1 即为 powershell.exe -File ...），
+    // 与真正 spawn 的命令保持一致。注意日志写流可能在 spawn 前被下方 catch 替换，
+    // 故在此闭包内用局部引用。
+    // R6-4/R7-3：对 command 及含空格的参数加引号（模块级 quoteIfNeeded），使日志中的
+    // spawn 命令可直接复制复现（如 .ps1 路径 C:\Users\A B\...\opencode.ps1 含空格时）。
     var spawnCmdLog =
-      (isPs1 ? 'powershell.exe -ExecutionPolicy Bypass -File ' + opencodeBin : opencodeBin) +
-      ' ' +
-      opencodeArgs.join(' ');
+      quoteIfNeeded(spawnCmd.command) + ' ' + opencodeArgs.map(quoteIfNeeded).join(' ');
     try {
       if (opencodeLogStream && opencodeLogStream.writable) {
         opencodeLogStream.write('[launcher] spawn: ' + spawnCmdLog + '\n');
@@ -397,6 +402,20 @@ function startOpenCode(cwd, port) {
       opencodeProcess = null;
       // 子进程退出后释放日志写流，确保末尾日志落盘
       closeOpenCodeLogStream();
+      // .ps1 场景：opencodeProcess 是 powershell 进程，真正的 opencode serve 是它的子进程。
+      // powershell 异常退出而 opencode 子进程仍存活时，端口可能仍被占用（R3-6），在此复核提示，
+      // 避免用户误以为服务已停止；stopOpenCodeByPort 已能在停止时按端口兜底清理。
+      try {
+        if (isPortListening(OPENCODE_PORT)) {
+          console.log(
+            '[launcher] Warning: opencode serve may still be running on port ' +
+              OPENCODE_PORT +
+              ' (spawned via ' +
+              (spawnCmd.command || opencodeBin) +
+              '), PID file removed but process tree may linger'
+          );
+        }
+      } catch (e) {}
       // 清理 PID 文件
       var pidFile = path.join(__dirname, 'opencode.pid');
       try {
@@ -823,18 +842,24 @@ function findOpenCodeBin() {
 /**
  * 构造实际 spawn 用的启动命令（与 startOpenCode 同一套逻辑，供 /diag 自检预览）。
  * .ps1 → powershell.exe -ExecutionPolicy Bypass -File <bin> serve ...（脱离运行期 PATH）；
- * .exe → 直接 <bin> serve ...；无扩展名（PATH 中裸 'opencode'）→ 依赖 shell 启动 .cmd shim。
+ *   ⚠️ 约束：该分支 needShell=false，opencodeProcess 跟踪的是 powershell 进程，真正的
+ *   opencode serve 是它的子进程。因此要求 .ps1 脚本前台阻塞运行 opencode serve
+ *   （不要用 Start-Process / 后台 & 拉起后立即返回），否则 powershell 提前退出会触发
+ *   exit 回调、误判服务已停止（R5-1）。
+ * .exe → 直接 <bin> serve ...；无扩展名（PATH 中裸 'opencode'）或 .cmd 后缀
+ *   （npm 全局安装的 shim）→ needShell=true，由调用方经 cmd.exe 包装启动。
  * @param {string} opencodeBin - findOpenCodeBin 解析出的可执行路径
+ * @param {number} [port] - 可选端口（默认 OPENCODE_PORT），供 startOpenCode 传入 body.port
  * @returns {{command: string, args: string[], needShell: boolean}} spawn 命令构成
  */
-function buildSpawnCommand(opencodeBin) {
+function buildSpawnCommand(opencodeBin, port) {
   var bin = opencodeBin || 'opencode';
   var isPs1 = bin.endsWith('.ps1');
   var isExe = /\.exe$/i.test(bin);
   var args = [
     'serve',
     '--port',
-    String(OPENCODE_PORT),
+    String(port || OPENCODE_PORT),
     '--hostname',
     '127.0.0.1',
     '--cors',
@@ -847,12 +872,42 @@ function buildSpawnCommand(opencodeBin) {
   var needShell = !isPs1 && !isExe;
   if (isPs1) {
     return {
-      command: 'powershell.exe',
+      command: resolvePowerShellExe(),
       args: ['-ExecutionPolicy', 'Bypass', '-File', bin].concat(args),
       needShell: false,
     };
   }
   return { command: bin, args: args, needShell: needShell };
+}
+
+// 对含空白/特殊字符的命令或参数加双引号，用于拼可复制复现的 spawn 命令日志（R6-4/R7-3）。
+// 不含空白则原样返回。注意：仅用于日志展示，真正的 spawn 走 Node 数组参数自动加引号。
+function quoteIfNeeded(s) {
+  return /\s/.test(String(s)) ? '"' + s + '"' : String(s);
+}
+
+// 解析 Windows PowerShell 可执行文件的绝对路径。launcher 可能由计划任务 / VBS / 服务
+// 在无人值守场景拉起，其 PATH 环境未必包含 PowerShell 所在目录，若直接 spawn 裸
+// 'powershell.exe' 可能 ENOENT（Issue #134 正是无人值守启动失败的场景）。用绝对路径
+// 可保证 .ps1 场景在任何 PATH 环境下都能解析到 powershell.exe。
+function resolvePowerShellExe() {
+  var sysRoot = process.env.SystemRoot || process.env.windir || 'C:\\Windows';
+  // 先探 64 位 System32，再兜底 32 位 SysWOW64（极端 32 位进程下 System32 经
+  // WOW64 重定向可能无 v1.0），最后回退裸命令让 Node 走 PATH 解析（R9-1）。
+  var candidates = [
+    path.join(sysRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
+    path.join(sysRoot, 'SysWOW64', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
+  ];
+  try {
+    for (var i = 0; i < candidates.length; i++) {
+      if (fs.existsSync(candidates[i])) {
+        return candidates[i];
+      }
+    }
+  } catch (e) {
+    /* 探测异常回退裸命令 */
+  }
+  return 'powershell.exe';
 }
 
 /**
@@ -892,11 +947,11 @@ function getDiagInfo() {
   // 环境信息
   info.homedir = os.homedir();
   info.userprofile = process.env.USERPROFILE || '';
-  // spawn 命令预览（不实际启动）
+  // spawn 命令预览（不实际启动）：统一用 command + args，避免非 shell 分支
+  // 因 command 是否为裸 'powershell.exe' 而丢前缀（.ps1 用绝对路径后三元的
+  // 'powershell.exe' 判断失效；.exe 本就不匹配）。R2-1 修复。
   var spawnCmd = buildSpawnCommand(info.opencodeBin);
-  info.spawnCommand = spawnCmd.needShell
-    ? spawnCmd.command + ' ' + spawnCmd.args.join(' ')
-    : (spawnCmd.command === 'powershell.exe' ? 'powershell.exe ' : '') + spawnCmd.args.join(' ');
+  info.spawnCommand = spawnCmd.command + ' ' + spawnCmd.args.join(' ');
   return info;
 }
 
@@ -1248,6 +1303,8 @@ module.exports = {
   getOpenCodeBinDirs: getOpenCodeBinDirs,
   isBunShimPath: isBunShimPath,
   loadOpenCodeConfig: loadOpenCodeConfig,
+  resolvePowerShellExe: resolvePowerShellExe,
+  quoteIfNeeded: quoteIfNeeded,
   buildSpawnCommand: buildSpawnCommand,
   getDiagInfo: getDiagInfo,
   configPathUsed: configPathUsed,

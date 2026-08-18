@@ -145,9 +145,9 @@ WPS 的 taskpane 是特殊的运行环境，document 对象和浏览器不一致
 
 ### 如何避坑（已修复，含增强）
 
-1. **launcher 探测真实二进制绝对路径**（`findOpenCodeBin`，已实现）：不再依赖运行期 PATH，按优先级 `显式配置 > 常见 bin 目录探测（.exe/.cmd/.ps1）> where 解析 > 裸 'opencode'` 查找。覆盖：bun 全局 bin（`~/.bun/bin` / `BUN_INSTALL`）、`%APPDATA%\npm`、`%LOCALAPPDATA%\npm`、`Program Files` 等。**不再探测 `.trae-cn`**（用户已删除该目录，且 `.trae-cn` 属历史遗留问题根源；如需兼容旧环境，可在 `getOpenCodeBinDirs()` 末尾自行追加对应目录）。命中 `.ps1` 时用 `powershell.exe -ExecutionPolicy Bypass -File` 启动。
+1. **launcher 探测真实二进制绝对路径**（`findOpenCodeBin`，已实现）：不再依赖运行期 PATH，按优先级 `显式配置 > 常见 bin 目录探测（.exe/.cmd/.ps1）> where 解析 > 裸 'opencode'` 查找。覆盖：bun 全局 bin（`~/.bun/bin` / `BUN_INSTALL`）、`%APPDATA%\npm`、`%LOCALAPPDATA%\npm`、`Program Files` 等。**不再探测 `.trae-cn`**（用户已删除该目录，且 `.trae-cn` 属历史遗留问题根源；如需兼容旧环境，可在 `getOpenCodeBinDirs()` 末尾自行追加对应目录）。命中 `.ps1` 时用 `resolvePowerShellExe()` 解析出的 **powershell 绝对路径**（`SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe`，极端 32 位进程回退 `SysWOW64`，精简系统回退裸 `powershell.exe` 走 PATH）以 `-ExecutionPolicy Bypass -File` 启动——用绝对路径可保证 launcher 由计划任务 / VBS / 服务在**无人值守场景**拉起时，其 PATH 不含 PowerShell 目录也能解析到 powershell.exe，避免再次 ENOENT。
 
-2. **spawn 失败原因落盘**（已实现）：`error` 事件把 `[launcher] spawn error: <原因> (opencodeBin=<路径>)` 写进 `opencode-serve.log`，不再出现“空日志”。
+2. **spawn 失败原因落盘**（已实现）：`error` 事件把 `[launcher] spawn error: <原因> (opencodeBin=<路径>, command=<实际启动命令>)` 写进 `opencode-serve.log`，不再出现“空日志”。其中 `command` 反映**真正 spawn 的可执行文件**（`.ps1` 场景为 powershell 绝对路径，`.exe` 为二进制路径），避免定位误导。
 
 3. **手动验证服务**
    ```powershell

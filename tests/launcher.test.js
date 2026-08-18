@@ -302,7 +302,12 @@ console.log('\n--- spawn 命令构造（buildSpawnCommand）---');
 
 test('buildSpawnCommand: .ps1 → powershell.exe -File（脱离运行期 PATH，Issue #134）', function () {
   var r = buildSpawnCommand('C:\\bin\\opencode.ps1');
-  assertEqual(r.command, 'powershell.exe', '.ps1 应由 powershell.exe 拉起');
+  // command 应为 powershell.exe：无人值守 PATH 下用绝对路径（resolvePowerShellExe），
+  // 精简系统回退裸命令。两种情况下 command 都以 powershell.exe 结尾。
+  assertTrue(
+    /powershell\.exe$/i.test(r.command),
+    '.ps1 应由 powershell.exe 拉起（command=' + r.command + '）'
+  );
   assertTrue(r.args.indexOf('-ExecutionPolicy') !== -1, '应带 -ExecutionPolicy');
   assertEqual(
     r.args[r.args.indexOf('-File') + 1],
@@ -331,6 +336,73 @@ test('buildSpawnCommand: 空值默认回退裸 opencode', function () {
   assertEqual(r.command, 'opencode', '空值应回退裸 opencode');
 });
 
+test('buildSpawnCommand: .cmd 后缀 → needShell=true 且 command 为 .cmd 路径（R4-2）', function () {
+  var r = buildSpawnCommand('C:\\npm\\opencode.cmd');
+  assertEqual(r.command, 'C:\\npm\\opencode.cmd', '.cmd 应作为 command');
+  assertEqual(r.needShell, true, '.cmd 需要 shell 经 cmd.exe 包装启动');
+  assertTrue(r.args.indexOf('serve') !== -1, '应含 serve 子命令');
+});
+
+test('resolvePowerShellExe: 返回以 powershell.exe 结尾的非空字符串（R4-2）', function () {
+  var p = launcher.resolvePowerShellExe ? launcher.resolvePowerShellExe() : null;
+  if (launcher.resolvePowerShellExe) {
+    assertTrue(
+      typeof p === 'string' && /powershell\.exe$/i.test(p),
+      'resolvePowerShellExe 应返回以 powershell.exe 结尾的路径（got=' + p + '）'
+    );
+  }
+});
+
+test('quoteIfNeeded: 含空格加引号、无空格原样（R7-3）', function () {
+  assertEqual(launcher.quoteIfNeeded('C:\\Users\\A B\\opencode.ps1'), '"C:\\Users\\A B\\opencode.ps1"', '含空格应加引号');
+  assertEqual(launcher.quoteIfNeeded('opencode'), 'opencode', '无空格应原样');
+  assertEqual(launcher.quoteIfNeeded('serve'), 'serve', '命令子项应原样');
+});
+
+// --- Issue #134 回归：startOpenCode 必须复用 buildSpawnCommand，.ps1 不能直接 spawn ---
+// 根因：startOpenCode 此前自行复制 isPs1/isExe 分支，.ps1 误走 hiddenSpawn(opencodeBin, args)
+// 直接 spawn .ps1 文件——Node 的 spawn 无法直接执行 .ps1（无解释器关联），必然 ENOENT 失败，
+// 导致用户 opencode.ps1（Trae 自带 node）场景启动必失败。修复后 startOpenCode 复用
+// buildSpawnCommand，.ps1 → powershell.exe -ExecutionPolicy Bypass -File <bin>。
+test('startOpenCode: 复用 buildSpawnCommand，非 shell 分支用 spawnCmd.command 启动', function () {
+  var src = fs.readFileSync(path.join(__dirname, '..', 'opencode-wps', 'launcher.js'), 'utf-8');
+  // startOpenCode 应调用 buildSpawnCommand(opencodeBin, finalPort) 构造 spawn 命令
+  assertTrue(
+    /var spawnCmd = buildSpawnCommand\(opencodeBin, finalPort\)/.test(src),
+    'startOpenCode 应复用 buildSpawnCommand 构造 spawn 命令'
+  );
+  // 非 shell 分支必须 spawn spawnCmd.command（.ps1 时为 powershell.exe），而非直接 spawn opencodeBin
+  assertTrue(
+    /opencodeProcess = hiddenSpawn\(spawnCmd\.command, opencodeArgs/.test(src),
+    '非 shell 分支应 spawn spawnCmd.command（.ps1 时为 powershell.exe），而非直接 spawn opencodeBin'
+  );
+  // 不再存在旧的 isPs1 分支逻辑直接 spawn opencodeBin
+  assertTrue(
+    !/hiddenSpawn\(opencodeBin, opencodeArgs/.test(src),
+    '不允许再直接 spawn opencodeBin（会直接执行 .ps1 导致 ENOENT）'
+  );
+});
+
+test('startOpenCode: needShell 分支复用 spawnCmd.command 并经 cmd.exe 包装（R8-4）', function () {
+  var src = fs.readFileSync(path.join(__dirname, '..', 'opencode-wps', 'launcher.js'), 'utf-8');
+  // needShell 分支（.cmd/无扩展名）应使用 spawnCmd.command 构造 shellCmd（R3-5），
+  // 而非重新用裸 opencodeBin，防止与 buildSpawnCommand 单一来源漂移。
+  assertTrue(
+    /var shellCmd = '"' \+ spawnCmd\.command \+ '" ' \+ opencodeArgs\.join\(' '\)/.test(src),
+    'needShell 分支应用 spawnCmd.command 构造 shellCmd（而非裸 opencodeBin）'
+  );
+  // needShell 分支应经 cmd.exe /d /s /c 包装启动
+  assertTrue(
+    /hiddenSpawn\('cmd\.exe', \['\/d', '\/s', '\/c', shellCmd\]/.test(src),
+    'needShell 分支应经 cmd.exe /d /s /c 包装'
+  );
+  // 不再有裸 opencodeBin 拼 shellCmd 的旧写法
+  assertTrue(
+    !/shellCmd = '"' \+ opencodeBin \+ '"'/.test(src),
+    '不允许再用裸 opencodeBin 构造 shellCmd'
+  );
+});
+
 // --- getDiagInfo / configPathUsed：GET /diag 自检 ---
 console.log('\n--- 诊断信息（getDiagInfo / configPathUsed）---');
 
@@ -356,10 +428,14 @@ test('getDiagInfo: 返回关键字段且结构稳定', function () {
 test('getDiagInfo: spawnCommand 与 buildSpawnCommand 一致', function () {
   var info = getDiagInfo();
   var cmd = buildSpawnCommand(info.opencodeBin);
-  var expected = cmd.needShell
-    ? cmd.command + ' ' + cmd.args.join(' ')
-    : (cmd.command === 'powershell.exe' ? 'powershell.exe ' : '') + cmd.args.join(' ');
+  // 统一用 command + args（R2-1：不再因 command 是否为裸 powershell.exe 而丢前缀）
+  var expected = cmd.command + ' ' + cmd.args.join(' ');
   assertEqual(info.spawnCommand, expected, 'spawnCommand 应与 buildSpawnCommand 输出一致');
+  // 预览必须以 command 开头（.ps1 用绝对路径 / .exe 用二进制路径均不应丢前缀）
+  assertTrue(
+    info.spawnCommand.indexOf(cmd.command) === 0,
+    'spawnCommand 应以 command 开头（command=' + cmd.command + '）'
+  );
 });
 
 test('configPathUsed: 返回字符串或 null（不抛错）', function () {
