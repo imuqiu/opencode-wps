@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] - 2026-08-18
+
+### Added
+
+- **launcher 探测目录新增 bun 全局 bin（`BUN_INSTALL` 与 `~/.bun/bin`）（Issue #134，PR #160）** — 修复「点击启动服务没反应」：用户删除 `.trae-cn` 并用 `bun install -g opencode-ai` 全局安装 opencode（bin 生成于 `~/.bun/bin`）后，launcher 的 `getOpenCodeBinDirs()` 原先只探测 `.trae-cn` / npm / Program Files，**探测不到 bun 全局 bin**，回退到裸 `opencode` 依赖瘦 PATH 导致 spawn ENOENT、服务起不来。本次修复：
+  - **新增 bun 全局 bin 探测**：`getOpenCodeBinDirs()` 支持 `BUN_INSTALL` 环境变量自定义安装位置（缺省 `~/.bun`），显式兜底 `~/.bun/bin`，去重逻辑保证无重复；`Program Files` / `Program Files (x86)` 由硬编码 `C:\` 改为读取 `process.env['ProgramFiles']` / `process.env['ProgramFiles(x86)']`（缺失回退硬编码），增强健壮性。
+  - **不再探测已删除的 `.trae-cn`**：用户明确 `.trae-cn` 已删除且是历史问题根源，移除两条 `.trae-cn` 探测目录；在 `docs/TROUBLESHOOTING.md` 补充兼容性说明（如需兼容旧环境可自行在 `getOpenCodeBinDirs()` 末尾追加）。
+  - **bun shim spawn 时注入 bun 运行时 PATH**：新增 `isBunShimPath()` 识别 bun 路径（用 `path.relative` 目录边界匹配，规避 `D:\bun` vs `D:\bunny` 前缀误判），命中 bun shim 的 `.exe` 分支时将该 bun bin 目录前置注入 `spawnEnv.PATH`，确保 shim 能解析到 bun 运行时。
+  - **测试与文档同步**：`tests/launcher.test.js` 新增 bun 探测去重 / `BUN_INSTALL` 自定义与默认兜底 / `isBunShimPath` 边界与前缀不误判等用例，**33 项全过**；`docs/TROUBLESHOOTING.md` 自检指引与残留 `.trae-cn` 举例统一为 bun / npm 场景。
+  - 经 **10 轮评审-修复循环清零**（每步在 PR 留痕）+ QA 测试（33 项全过、`isBunShimPath`/`getOpenCodeBinDirs`/bun PATH 注入边界验证通过）+ CI success 后合并。
+
+### Changed
+
+- **版本号升级至 1.6.1** — 根 `package.json` / `package-lock.json` / `opencode-wps/`（package.json、config.js、manifest.xml）/ `opencode-wps-linux/`（package.json、manifest.xml）/ `wps-office-mcp/`（package.json、package-lock.json）版本一致升级至 1.6.1（顺带修复上一版漏改根 `package-lock.json` 的漂移），`validate-versions` 校验通过。
+
 ## [1.6.0] - 2026-08-18
 
 ### Added
