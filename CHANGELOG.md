@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.2] - 2026-08-18
+
+### Fixed
+
+- **launcher 复用 `buildSpawnCommand`，`.ps1` 用 powershell.exe 绝对路径启动（Issue #134 回归，PR #159）** — 修复「启动服务」反复提示"启动失败，请检查 OpenCode 是否已安装"：当用户 opencode 为 `.ps1`（如 Trae 自带 node 生成的 `opencode.ps1`）时，上一轮 `findOpenCodeBin` 已能探测到 `.ps1`，但 `startOpenCode` 实际启动时**未复用 `buildSpawnCommand` 的 `.ps1 → powershell.exe` 转换**，误直接 `spawn` `.ps1` 文件（Node 无法执行无解释器关联的 `.ps1`）导致 `ENOENT`、进程起不来、14096 端口不监听。本次修复：
+  - **`startOpenCode` 复用 `buildSpawnCommand`**：新增可选 `port` 参数，用其返回的 `command/args/needShell` 执行 spawn；`.ps1` 走 `powershell.exe` 绝对路径（`resolvePowerShellExe()`，按 `System32 → SysWOW64 → 裸命令` 逐级兜底，保证计划任务/VBS/服务等**无人值守场景** PATH 缺 PowerShell 目录也能启动）启动，非 shell 分支改 `hiddenSpawn(spawnCmd.command, args)`，不再直接 spawn opencodeBin。
+  - **收敛重复分支**：`startOpenCode` 消除自行复制的 `isPs1/isExe/needShell` 分支，统一以 `buildSpawnCommand` 为单一来源；`.cmd`/无扩展名走 `cmd.exe /d /s /c` 包装且复用 `spawnCmd.command` 拼 shellCmd，消除漂移风险。
+  - **日志可复现、错误可定位**：spawn 日志对含空格路径加引号（`quoteIfNeeded` 提升为模块级函数）；spawn error 追加实际 spawn 的 `command` 字段；`.ps1` 场景 powershell 退出时对 14096 端口做 `isPortListening` 复核并提示「服务可能仍在运行」。
+  - **测试与文档同步**：`tests/launcher.test.js` 新增 `resolvePowerShellExe` 兜底探测 / `.ps1` 走 powershell 绝对路径 / `quoteIfNeeded` 引号 / needShell 分支复用 `spawnCmd.command` / getDiagInfo 预览前缀等专项用例，**38 项全过**；`docs/TROUBLESHOOTING.md` 补充 `.ps1` powershell 绝对路径启动与 spawn error `command` 字段说明。
+  - 经 **10 轮评审-修复循环清零**（每步在 PR 留痕）+ QA 测试（38/38 + `security.test.js` 31/31 + 全部 CI 门禁通过）+ CI success 后合并。
+
+### Changed
+
+- **版本号升级至 1.6.2** — 根 `package.json` / `package-lock.json` / `opencode-wps/`（package.json、config.js、manifest.xml）/ `opencode-wps-linux/`（package.json、manifest.xml）/ `wps-office-mcp/`（package.json、package-lock.json）版本一致升级至 1.6.2，`validate-versions` 校验通过。
+
 ## [1.6.1] - 2026-08-18
 
 ### Added
