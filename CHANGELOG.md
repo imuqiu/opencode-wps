@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.5.9] - 2026-08-18
+## [1.6.0] - 2026-08-18
 
 ### Added
 
@@ -16,6 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **`gateway/index.ts` 数据表拆分**：将 `COM_ACTIONS`（~257 条，原内嵌近 2400 行）与类型定义（`VerificationStatus`/`ToolIndexItem`/`ToolParamSchema`）拆到独立 `com-actions.ts`，`index.ts` 从 2991 行瘦身至 ~580 行，专责 `searchTools`/`executeTool` 逻辑。
   - **测试与门禁**：新增 `tests/wps-bridge-shared.test.js`（10 用例：单源一致性 / 生成正确性 / 平台差异隔离 / 漂移检测 / gateway 拆分）；`.cnb.yml` 增加共享层 `--check` 漂移门禁 + 共享文件语法门禁。
   - 全量 **410+ 测试通过**（MCP 364 + 桥接共享层 10 + 既有 bridge/setcellformat/其他）+ `validate-versions`/`validate-toolcounts` 全绿，零回归。
+
+### Changed
+
+- **版本号升级至 1.6.0** — 根 `package.json` / `package-lock.json` / `opencode-wps/`（package.json、config.js、manifest.xml）/ `opencode-wps-linux/`（package.json、manifest.xml）/ `wps-office-mcp/`（package.json、package-lock.json）版本一致升级至 1.6.0，`validate-versions` 校验通过。
+
+## [1.5.9] - 2026-08-18
+
+### Added
 
 - **报告硬性完整性门禁 + 进度追踪 P22（Issue #151，PR #156）** — 彻底解决文档校对「假装完成 / 中途结束 / 匆忙生成报告」的遗留稳定性问题，根因修复为**服务端强制、非 opt-in**：
   - **`proofread-report.ts`**：`generateProofreadReport` 新增硬性完整性门禁——编排模式批次未完整 done / 覆盖有缺口 / 超界 / 重叠，或串行模式进度 `< totalParagraphs` 时，**直接返回 `success=false` 拒绝生成**（原先仅打软告警照样返回 success，AI 借此「假装完成 + 用 write 拼造假报告」）。
