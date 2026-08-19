@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.4] - 2026-08-19
+
+### Fixed
+
+- **修复侧边栏 ChatUI 首次打开头部被遮挡、且压扁 WPS 顶部标签（开始/插入等）的问题（Issue #164，PR #166）** — 根因：在最大化窗口下**首次创建**任务窗格时，WPS 宿主（12.1.0.28022）会把任务窗格 WebView 的可见区域定位到文档窗口错误的顶边 Y（约偏移一个功能区高度），导致 ChatUI 顶部（`topbar` + `session-header`）被挤出可视区、被功能区盖住。关键证据：用户实测「新建 WPS 标签窗口再切回」可恢复，证明宿主在窗口/标签切换时会重算任务窗格的窗口矩形（含顶边 Y）——这是唯一可靠的恢复路径。页面内部（`getBoundingClientRect`/`window.innerHeight`）只能看到 WebView 内部视口、测不到宿主偏移，故此前 #78 六轮「页面内检测 + 强制 reflow + 宿主重绘」全部无效（方向从根上就错了）。本次修复：
+  - **在「首次创建」路径调度一次宿主重排校正（`scheduleFirstOpenLayoutCorrection`）**：延迟 1000ms（`FIRST_OPEN_RELAYOUT_DELAY_MS`，等 WebView 初始布局稳定）后，重新断言停靠位置为右侧、并短暂 `Visible=false → true` 强制宿主按正确几何重建任务窗格可见窗口——与「切换标签触发宿主重排」同源，精准补上首次打开缺失的那一次宿主重排。
+  - **只做首次、只做一次**：首次创建时宿主按错误几何布局**必现**（用户确认），之后宿主已正确重排，重复隐藏→显示反而可能闪屏，故用 `firstOpenLayoutCorrectionScheduled` 标记防重复调度；延迟窗口内若用户已手动隐藏面板则跳过（`Visible` 读回校验，尊重用户操作）；停靠位置校正失败时不再做无意义重排；校正失败只留痕不中断（下次打开仍有重排机会）。
+  - **降级开关 `WPS_LAYOUT_CORRECTION_ENABLED`（默认开启）**：若实机验证发现「Visible 切换等效切标签宿主重排」假设不成立，可将该常量改为 `false` 一键禁用校正（避免每次首开闪屏），无需改动逻辑；作为未来 WPS 升级或遮挡复发的逃生舱。
+  - 经验证：`tests/taskpane-dock.test.js` 新增用例后 **32/32 全绿**，经 **11 轮评审-修复循环清零**（每步在 PR #166 留痕）+ CI success 后合并。
+
+### Changed
+
+- **版本号升级至 1.6.4** — 根 `package.json` / `package-lock.json` / `opencode-wps/`（package.json、config.js、manifest.xml）/ `opencode-wps-linux/`（package.json、manifest.xml）/ `wps-office-mcp/`（package.json、package-lock.json）版本一致升级至 1.6.4，`validate-versions` 校验通过。
+
 ## [1.6.3] - 2026-08-18
 
 ### Fixed
