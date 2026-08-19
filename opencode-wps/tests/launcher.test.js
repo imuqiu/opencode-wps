@@ -60,6 +60,27 @@ test('shell:true 向 stdio 传 WriteStream 应抛 "stdio is invalid"（验证根
   assertTrue(threw, 'shell:true 时向 stdio 传 WriteStream 应抛 "stdio is invalid"');
 });
 
+// --- 1b. 验证根因（Issue #161 回归）：非 shell（直接 CreateProcess）时向 stdio 传
+// 尚未 open 的 WriteStream 同样会抛 "stdio is invalid"（fd:null）---
+test('非 shell 向 stdio 传未 open 的 WriteStream 应抛 "stdio is invalid"（Issue #161 根因）', function () {
+  var logPath = path.join(os.tmpdir(), 'launcher-stdio-test-' + Date.now() + '.log');
+  var stream = fs.createWriteStream(logPath, { flags: 'a' });
+  var threw = false;
+  try {
+    // 不设 shell，直接 CreateProcess；流刚创建、未等 'open' 事件即传入 stdio → fd:null
+    spawn(process.execPath, ['-e', ''], { stdio: ['ignore', stream, stream] });
+  } catch (e) {
+    threw = true;
+  }
+  try {
+    stream.close();
+  } catch (e) {}
+  try {
+    fs.unlinkSync(logPath);
+  } catch (e) {}
+  assertTrue(threw, '非 shell 向未 open 的 WriteStream 作为 stdio 应抛 "stdio is invalid"');
+});
+
 // --- 2. 修复验证：launcher.js shell 分支必须用 pipe 而非 WriteStream ---
 test('launcher.js 源码：shell 模式 stdio 用 pipe 而非 WriteStream（修复验证）', function () {
   var src = fs.readFileSync(LAUNCHER, 'utf-8');
@@ -77,10 +98,26 @@ test('launcher.js 源码：shell 模式 stdio 用 pipe 而非 WriteStream（修�
     /opencodeProcess\.stderr\.on\('data'/.test(src),
     'shell 模式应手动 pipe stderr 进日志流'
   );
-  // 非 shell 分支（.exe/.ps1 直启）保留 WriteStream 直接作为 stdio 的优化路径
+  // 非 shell 分支（.exe/.ps1 直启）也统一用 ['ignore','pipe','pipe'] + 手动转发到日志流
+  // （Issue #161 回归）：fs.createWriteStream 异步打开文件，若在 'open' 事件前就把
+  // WriteStream 传给 spawn 的 stdio，fd 仍为 null，Node 抛 "stdio is invalid"。
+  // 故两个分支都不得把 WriteStream 直接作为 stdio，统一用 pipe + 手动转发。
   assertTrue(
-    /stdioArr = opencodeLogStream \? \['ignore', opencodeLogStream, opencodeLogStream\]/.test(src),
-    '非 shell 模式应保留 WriteStream 直连 stdio'
+    /var stdioArr = \['ignore', 'pipe', 'pipe'\]/.test(src),
+    '非 shell 模式应使用 pipe 数组而非 WriteStream 直连 stdio'
+  );
+  assertTrue(
+    !/\['ignore', opencodeLogStream, opencodeLogStream\]/.test(src),
+    '不应再出现把 WriteStream 直接作为 stdio 的代码'
+  );
+  // 非 shell 分支也应手动把 stdout/stderr pipe 进日志流
+  assertTrue(
+    /opencodeProcess\.stdout\.on\('data'/.test(src),
+    '非 shell 模式应手动 pipe stdout 进日志流'
+  );
+  assertTrue(
+    /opencodeProcess\.stderr\.on\('data'/.test(src),
+    '非 shell 模式应手动 pipe stderr 进日志流'
   );
 });
 
@@ -251,10 +288,7 @@ test('权限自动确认：buildSpawnCommand 不再追加 --permission（Issue #
     assertTrue(cmd.args.indexOf('--port') !== -1, 'buildSpawnCommand 应含 --port');
     assertTrue(cmd.args.indexOf('--hostname') !== -1, 'buildSpawnCommand 应含 --hostname');
     assertTrue(cmd.args.indexOf('--cors') !== -1, 'buildSpawnCommand 应含 --cors');
-    assertTrue(
-      cmd.args.indexOf('file://') !== -1,
-      'buildSpawnCommand 的 --cors 后应为 file://'
-    );
+    assertTrue(cmd.args.indexOf('file://') !== -1, 'buildSpawnCommand 的 --cors 后应为 file://');
   } catch (e) {
     failed++;
     failures.push('权限自动确认 buildSpawnCommand 测试异常: ' + e.message);
