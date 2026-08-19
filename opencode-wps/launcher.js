@@ -1285,6 +1285,30 @@ var server = http.createServer(function (req, res) {
 
 // 仅在作为主模块运行时才启动 HTTP 服务（require 用于单测时跳过监听）
 if (require.main === module) {
+  server.on('error', function (err) {
+    // 端口被占用时（典型：旧 launcher 残留占着 14097，或多次 schtasks /Run 叠加启动），
+    // 不再无提示退出——把明确原因写入日志文件（schtasks/VBS 静默启动时 console 不可见，
+    // 只能靠落盘日志排查），供用户定位（Issue #175）。
+    var msg = (err && err.message) || String(err);
+    var lines = ['[launcher] FATAL: 启动失败——' + msg];
+    if (err && err.code === 'EADDRINUSE') {
+      lines.push('[launcher] 端口 ' + PORT + ' 已被占用。');
+      lines.push('[launcher] 可能原因：旧 launcher 进程仍存活（残留占用 14097），或重复 schtasks /Run 叠加启动。');
+      lines.push('[launcher] 处置：先结束占用该端口的旧进程，再重新启动。');
+      lines.push('[launcher]   netstat -ano | findstr :' + PORT);
+      lines.push('[launcher]   taskkill /F /PID <旧进程PID>');
+      lines.push('[launcher] 然后重新执行：schtasks /Run /TN "OpenCodeLauncher"');
+    }
+    for (var i = 0; i < lines.length; i++) { console.error(lines[i]); }
+    // 尽量把错误落盘到 launcher 目录下的 launcher.err.log，弥补静默启动场景日志不可见
+    try {
+      fs.appendFileSync(path.join(__dirname, 'launcher.err.log'), lines.join('\n') + '\n', 'utf-8');
+    } catch (e4) { /* 落盘失败不影响退出 */ }
+    server.close();
+    // 端口被占属于致命配置冲突，明确退出（区别于静默崩溃：已有落盘日志可查）。
+    // 但延迟到下一个 tick 退出，确保 close 完成、日志已写。
+    setTimeout(function () { process.exit(1); }, 100);
+  });
   server.listen(PORT, '127.0.0.1', function () {
     console.log('[launcher] Running on http://127.0.0.1:' + PORT);
   });

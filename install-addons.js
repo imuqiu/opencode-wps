@@ -639,8 +639,35 @@ if (fsEx.existsSync(launcherPath)) {
     } catch (e) {}
   }
 
-  // 立即启动 launcher
+  // 立即启动 launcher（先清理端口残留，防 EADDRINUSE 叠加启动——Issue #175）
+  // 若 14097 端口仍有旧 launcher 进程存活（如之前 schtasks /Run 已启动、残留占用），
+  // 直接再 spawn 新 launcher 必然因端口冲突静默崩溃。故启动前先结束占用该端口的旧进程，
+  // 保证本次启动的 launcher 是唯一实例、配置（opencode.json）一定能被新 serve 读到。
   try {
+    // 找到占用 14097 端口的进程 PID 并结束（幂等，旧进程不存在则无操作）
+    try {
+      const portCheck = execSync(
+        'powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 14097 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess"',
+        { encoding: 'utf8', stdio: 'pipe', windowsHide: true }
+      );
+      const oldPids = portCheck
+        .split(/\r?\n/)
+        .map(function (s) { return parseInt(s.trim(), 10); })
+        .filter(function (n) { return !isNaN(n) && n > 0; });
+      for (var i = 0; i < oldPids.length; i++) {
+        try {
+          execSync('taskkill /F /PID ' + oldPids[i] + ' 2>nul', {
+            shell: 'cmd.exe',
+            stdio: 'pipe',
+            windowsHide: true,
+          });
+          console.log('  已结束残留 launcher (旧 PID: ' + oldPids[i] + ')');
+        } catch (e3) {}
+      }
+    } catch (ePort) {
+      // 端口无人占用，无需清理
+    }
+
     const { spawn: spawnProc } = require('child_process');
     const child = spawnProc('node', [launcherPath], {
       detached: true,
