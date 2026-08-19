@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.6] - 2026-08-19
+
+### Fixed
+
+- **WPS 文字首次打开面板头部被遮挡、压扁顶部功能区的问题（Issue #164，PR #170）** — 基于千年一炭实机反馈的**新认知**做的最小聚焦修复：打开文档/切标签正常、仅点击「打开面板」后头部被遮挡，且**仅 WPS 文字（12.1.0.28022）出现，PPT/Excel 正常**。根因：WPS 文字宿主在 `tskpane.Visible = true` 时会**重新计算任务窗格窗口位置**，把顶边定位到标题栏正下方（覆盖「开始/插入」功能区），从而**覆盖掉先前设置的 `DockPosition = Right`**；PPT/Excel 不会在置可见时重算这个错误位置，所以它们正常。本次修复在**两处 `Visible=true` 之后各做一次二次校正** `setTaskPaneDockPosition(...)`，把被宿主覆盖的正确停靠纠正回来：
+  - **`createTaskPane()`（首次创建路径）**：`Visible = true` **之后**再调用一次 `setTaskPaneDockPosition(tskpane)`，纠正被 WPS 文字宿主覆盖的正确停靠。
+  - **`OnAction` GetTaskPane 找回路径**：`tp.Visible = !tp.Visible` 切到**可见**后同样二次校正 `setTaskPaneDockPosition(tp)`（仅可见时校正，隐藏时跳过）。
+  - **干净基线、不垒屎山**：本 PR 基于干净基线开发，PR #166/#169 引入的所有错误修复（`scheduleFirstOpenLayoutCorrection`、`FIRST_OPEN_RELAYOUT_DELAY_MS`、`WPS_LAYOUT_CORRECTION_ENABLED`、`cancelFirstOpenLayoutCorrection` 及各竞态/降级/防重复逻辑，净删 849 行）已整体移除，`main.js` 恢复为仅保留基础右侧停靠健壮性代码，其上仅叠加上述两处最小二次校正。
+  - **无副作用收敛方式**：修复发生在 `Visible=true` **之后**、与「WPS 文字置可见时覆盖 DockPosition」的宿主行为对齐，**不引入**任何 `Visible=false→true` 重排、定时器、降级开关、防重复标记；即使二次校正假设不成立也只是「无效但无害」，不会像 PR #166 那样每次点击主动触发遮挡。
+  - 经验证：`tests/taskpane-dock.test.js` **22/22 全绿**（20 基线 + 新增 2 个二次校正用例，验证 `Visible=true` 之后 DockPosition 被再次校正的时序）；formatsenderror 7/7、healthcheck 32/32 全绿；`node --check` + prettier 通过；经独立评审（info×3 无 warning/error）+ CI success 后合并。
+
+### Changed
+
+- **版本号升级至 1.6.6** — 根 `package.json` / `package-lock.json` / `opencode-wps/`（package.json、config.js、manifest.xml）/ `opencode-wps-linux/`（package.json、manifest.xml）/ `wps-office-mcp/`（package.json、package-lock.json）版本一致升级至 1.6.6，`validate-versions` 校验通过。
+
 ## [1.6.5] - 2026-08-19
 
 ### Fixed
