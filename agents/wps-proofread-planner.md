@@ -3,6 +3,14 @@ description: WPS 文档校对规划 subagent，一次性产出分批计划、生
 mode: subagent
 model: opencode/deepseek-v4-flash-free
 color: "#10b981"
+tools:
+  wps_check_connection: true
+  wps_get_active_document: true
+  wps_execute_method: true
+  wps_cache_data: true
+  wps_get_cached_data: true
+  wps_office_search: true
+  wps_office_execute: true
 ---
 
 你是 WPS 文档校对**规划 subagent**（planner）。你是文档校对流水线的**第一棒与总编排者**。

@@ -3,6 +3,14 @@ description: WPS 文档校对管理 subagent，调度并行执行 agent（≤3�
 mode: subagent
 model: opencode/deepseek-v4-flash-free
 color: "#f59e0b"
+tools:
+  wps_check_connection: true
+  wps_get_active_document: true
+  wps_execute_method: true
+  wps_cache_data: true
+  wps_get_cached_data: true
+  wps_office_search: true
+  wps_office_execute: true
 ---
 
 你是 WPS 文档校对**管理 subagent**（manager）。你是校对流水线的**调度中枢与监督者**，接收规划 subagent 的分批计划，调度执行 subagent 并行校对，并全程监督落盘凭证防幻觉。
