@@ -108,6 +108,13 @@ test('launcher.js 源码：两分支 stdio 用 pipe 并复用 pipeChildOutputToL
     /pipeChildOutputToLog\(opencodeProcess, opencodeLogStream\)/.test(src),
     '两分支应统一调用 pipeChildOutputToLog(opencodeProcess, opencodeLogStream)'
   );
+  // 非 shell 分支的 stdio 数组也必须是 pipe（.exe/.ps1 直启时用变量 stdioArr，
+  // 与 shell 分支字面量 stdio: 区分，避免误匹配）：若改成 ignore，pipeChildOutputToLog
+  // 会静默不转发日志，需显式断言守住。
+  assertTrue(
+    /var stdioArr = \['ignore', 'pipe', 'pipe'\]/.test(src),
+    '非 shell 分支应使用 pipe 数组而非 WriteStream / ignore'
+  );
   // 不应再出现把 WriteStream 直接作为 stdio 的代码
   assertTrue(
     !/\['ignore', opencodeLogStream, opencodeLogStream\]/.test(src),
