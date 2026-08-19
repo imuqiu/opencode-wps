@@ -54,6 +54,30 @@ function closeOpenCodeLogStream() {
   }
 }
 
+// 把子进程的 stdout/stderr 手动 pipe 进日志写流（shell 模式与非 shell 模式共用）。
+// shell（.cmd）模式下 Node 不允许向 stdio 直接传 WriteStream；非 shell（.exe/.ps1）
+// 模式若在 WriteStream 未 open（fd:null）时直连 stdio 会抛 "stdio is invalid"
+// （Issue #161 回归）。两分支统一走 ['ignore','pipe','pipe'] + 本函数手动转发，
+// 彻底消除竞态，且日志落盘行为完全一致。失败不阻断：即便日志流异常，
+// opencode serve 仍能正常启动并运行。
+function pipeChildOutputToLog(proc, logStream) {
+  if (!proc || !logStream) return;
+  if (proc.stdout) {
+    proc.stdout.on('data', function (d) {
+      try {
+        logStream.write(d);
+      } catch (e) {}
+    });
+  }
+  if (proc.stderr) {
+    proc.stderr.on('data', function (d) {
+      try {
+        logStream.write(d);
+      } catch (e) {}
+    });
+  }
+}
+
 // ===== 启动时清理孤儿 MCP 进程 =====
 function cleanupOrphanedMcp() {
   try {
@@ -264,30 +288,19 @@ function startOpenCode(cwd, port) {
       });
       // 手动把子进程 stdout/stderr pipe 进日志写流（shell 模式无法直接作为 stdio）。
       // 失败不阻断：即便日志流异常，opencode serve 仍能正常启动并运行。
-      if (opencodeLogStream) {
-        if (opencodeProcess.stdout) {
-          opencodeProcess.stdout.on('data', function (d) {
-            try {
-              opencodeLogStream.write(d);
-            } catch (e) {}
-          });
-        }
-        if (opencodeProcess.stderr) {
-          opencodeProcess.stderr.on('data', function (d) {
-            try {
-              opencodeLogStream.write(d);
-            } catch (e) {}
-          });
-        }
-      }
+      pipeChildOutputToLog(opencodeProcess, opencodeLogStream);
     } else {
       // 非 shell 分支：.exe 直接 CreateProcess；.ps1 用 powershell.exe -ExecutionPolicy
       // Bypass -File <bin> 启动（spawnCmd.command 已封装，见 buildSpawnCommand）。
       // 切勿直接 spawn .ps1 文件——Node 无法直接执行 .ps1（ENOENT），这正是用户 .ps1
       // 场景启动失败的根因（Issue #134 回归）。
-      var stdioArr = opencodeLogStream
-        ? ['ignore', opencodeLogStream, opencodeLogStream]
-        : ['ignore', 'ignore', 'ignore'];
+      // stdio 处理与 shell 分支保持一致：用 ['ignore','pipe','pipe'] + 手动 pipe 到日志
+      // 写流，而非把 WriteStream 直接作为 stdio（Issue #161 回归）。根因：
+      // fs.createWriteStream() 异步打开文件，若在 'open' 事件触发前就把它传给 spawn 的
+      // stdio，流对象 fd 仍为 null，Node 抛 "The argument 'stdio' is invalid. Received
+      // WriteStream { fd: null, ... }"（与 .cmd 场景同源，但此前仅 shell 分支规避了）。
+      // 统一改为 pipe + 手动转发后彻底消除该竞态，同时日志落盘行为完全一致。
+      var stdioArr = ['ignore', 'pipe', 'pipe'];
       var exeSpawnOptions = {
         cwd: cwd,
         stdio: stdioArr,
@@ -306,6 +319,9 @@ function startOpenCode(cwd, port) {
         console.log('[launcher] bun shim detected, prepending PATH: ' + bunDir);
       }
       opencodeProcess = hiddenSpawn(spawnCmd.command, opencodeArgs, exeSpawnOptions);
+      // 手动把子进程 stdout/stderr pipe 进日志写流（与 shell 分支共用 pipeChildOutputToLog）。
+      // 失败不阻断：即便日志流异常，opencode serve 仍能正常启动并运行。
+      pipeChildOutputToLog(opencodeProcess, opencodeLogStream);
     }
 
     if (logFile) {
@@ -328,7 +344,7 @@ function startOpenCode(cwd, port) {
         (opencodeBin || '<empty>') +
         ', command=' +
         (spawnCmd ? spawnCmd.command : '<empty>') +
-        ')'
+        ')';
       try {
         if (opencodeLogStream && opencodeLogStream.writable) {
           // 用 end(errMsg) 而非 write()+closeOpenCodeLogStream()：end 会在 flush

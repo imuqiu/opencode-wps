@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.5] - 2026-08-19
+
+### Fixed
+
+- **launcher 非 shell 分支（.exe/.ps1）启动 opencode serve 不再抛 "stdio is invalid"（Issue #161 回归，PR #171）** — 修复「启动服务」返回 HTTP 400、opencode 进程起不来：当 opencode 二进制为 `.exe`（或走 `.ps1` 的 powershell 直启）时，非 shell 分支把 `fs.createWriteStream()` 创建的日志 WriteStream **直接作为 spawn 的 stdio**。根因：`createWriteStream()` 异步打开文件，若在 `'open'` 事件触发前就把流传给 `child_process.spawn()`，流的 `fd` 仍为 `null`，Node 抛 `The argument 'stdio' is invalid. Received WriteStream { fd: null, ... }`（与 .cmd 场景同源，但此前仅 shell 分支规避了）。本次修复：
+  - **非 shell 分支改用 `['ignore','pipe','pipe']` + 手动转发**：与 shell 分支（.cmd）完全一致，`stdout`/`stderr` 通过 `data` 事件手动写入日志流，彻底消除 WriteStream 未 open 即作为 stdio 的竞态；日志落盘行为完全不变。
+  - **测试同步**：`tests/launcher.test.js` 新增非 shell 向未 open 的 WriteStream 作为 stdio 必抛 "stdio is invalid" 的根因用例；pipe 转发提取为公共函数 `pipeChildOutputToLog`，两分支统一复用，源码断言从「保留 WriteStream 直连 stdio」反转为「统一用 pipe + `pipeChildOutputToLog` 手动转发」。
+
+### Changed
+
+- **版本号升级至 1.6.5** — 根 `package.json` / `package-lock.json` / `opencode-wps/`（package.json、config.js、manifest.xml）/ `opencode-wps-linux/`（package.json、manifest.xml）/ `wps-office-mcp/`（package.json、package-lock.json）版本一致升级至 1.6.5，`validate-versions` 校验通过。
+
 ## [1.6.4] - 2026-08-19
 
 ### Fixed

@@ -232,6 +232,7 @@ Get-Content "$env:APPDATA\kingsoft\wps\jsaddons\authaddin.json"
 | 插件不显示 | authaddin.json 中 enable 是否为 true | 修改 authaddin.json |
 | 侧边栏空白 | main.js 的 GetUrlPath 是否用绝对路径 | 硬编码插件目录路径 |
 | Start Server 失败（opencode 已安装） | ① launcher 运行期 PATH 找不到二进制（计划任务环境不含 npm/bun 目录）② opencode 是 .ps1 | 已修复：`findOpenCodeBin` 按绝对路径探测（含 .exe/.cmd/.ps1），spawn 失败原因落盘到 opencode-serve.log；升级后重跑 `node install-addons.js` |
+| Start Server 失败（/start 返回 HTTP 400，`opencode-serve.log` 报 `The argument 'stdio' is invalid`） | launcher 非 shell 分支（.exe/.ps1 直启）把 `fs.createWriteStream()` 创建的**未 open（fd:null）** 的 WriteStream 直接作为 spawn 的 stdio，spawn 前抛异常 | 已修复（≥1.6.5）：两分支统一改用 `['ignore','pipe','pipe']` + `pipeChildOutputToLog` 手动转发到日志流，彻底消除 WriteStream 未 open 即作为 stdio 的竞态；升级后重跑 `node install-addons.js` 并重启 launcher |
 | 服务启动了但连不上 | 检查 14096 端口是否正常 | 手动测试 /global/health |
 | 服务运行中但状态栏显示"已停止" | ① 健康检查"一次失败即永久放弃"（历史版本）② `/global/health` 探测在 WPS Chromium 下受 CORS/环境差异影响持续失败 ③ **launcher（14097）未运行**导致 `/status` 交叉验证失效 | 升级到包含健康检查自动恢复 + **多源交叉验证**的版本：健康检查全局常驻，状态判定不再单一依赖 `/global/health`——`/status` 端口监听回退 + **SSE 连接成功联动**，任一可靠信号源确认服务在跑即恢复"运行中"（≤1 周期自动恢复）。当 **launcher 未运行** 时（`probeLauncherRunning` 不可达），前端改用 **SSE（EventSource，不受 XHR CORS 差异影响）作为第三信号源**探测：SSE onopen 成功即证明服务在跑并自动恢复 + 切回 chat（≥1.5.3） |
 | Proxy 连接失败 | opencode-proxy.js 端口 14098 是否启动 | 检查 14098 端口 |

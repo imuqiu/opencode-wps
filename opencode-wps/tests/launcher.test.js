@@ -60,27 +60,65 @@ test('shell:true 向 stdio 传 WriteStream 应抛 "stdio is invalid"（验证根
   assertTrue(threw, 'shell:true 时向 stdio 传 WriteStream 应抛 "stdio is invalid"');
 });
 
-// --- 2. 修复验证：launcher.js shell 分支必须用 pipe 而非 WriteStream ---
-test('launcher.js 源码：shell 模式 stdio 用 pipe 而非 WriteStream（修复验证）', function () {
+// --- 1b. 验证根因（Issue #161 回归）：非 shell（直接 CreateProcess）时向 stdio 传
+// 尚未 open 的 WriteStream 同样会抛 "stdio is invalid"（fd:null）---
+test('非 shell 向 stdio 传未 open 的 WriteStream 应抛 "stdio is invalid"（Issue #161 根因）', function () {
+  var logPath = path.join(os.tmpdir(), 'launcher-stdio-test-' + Date.now() + '.log');
+  var stream = fs.createWriteStream(logPath, { flags: 'a' });
+  var threw = false;
+  try {
+    // 不设 shell，直接 CreateProcess；流刚创建、未等 'open' 事件即传入 stdio → fd:null
+    spawn(process.execPath, ['-e', ''], { stdio: ['ignore', stream, stream] });
+  } catch (e) {
+    threw = true;
+  }
+  try {
+    stream.close();
+  } catch (e) {}
+  try {
+    fs.unlinkSync(logPath);
+  } catch (e) {}
+  assertTrue(threw, '非 shell 向未 open 的 WriteStream 作为 stdio 应抛 "stdio is invalid"');
+});
+
+// --- 2. 修复验证：launcher.js 两个分支必须用 pipe + pipeChildOutputToLog 而非 WriteStream ---
+test('launcher.js 源码：两分支 stdio 用 pipe 并复用 pipeChildOutputToLog（修复验证）', function () {
   var src = fs.readFileSync(LAUNCHER, 'utf-8');
   // shell 分支（needShell=true）必须使用 ['ignore','pipe','pipe']
   assertTrue(
     /stdio: \['ignore', 'pipe', 'pipe'\]/.test(src),
     'shell 模式应使用 pipe 数组而非 WriteStream'
   );
-  // shell 分支必须手动把 stdout/stderr pipe 进日志写流
+  // 公共辅助函数 pipeChildOutputToLog 负责把 stdout/stderr pipe 进日志写流，
+  // 内部应包含对 proc.stdout/stderr 的 data 监听
   assertTrue(
-    /opencodeProcess\.stdout\.on\('data'/.test(src),
-    'shell 模式应手动 pipe stdout 进日志流'
+    /function pipeChildOutputToLog/.test(src),
+    '应提取 pipeChildOutputToLog 公共函数'
   );
   assertTrue(
-    /opencodeProcess\.stderr\.on\('data'/.test(src),
-    'shell 模式应手动 pipe stderr 进日志流'
+    /proc\.stdout\.on\('data'/.test(src),
+    'pipeChildOutputToLog 内应手动 pipe stdout 进日志流'
   );
-  // 非 shell 分支（.exe/.ps1 直启）保留 WriteStream 直接作为 stdio 的优化路径
   assertTrue(
-    /stdioArr = opencodeLogStream \? \['ignore', opencodeLogStream, opencodeLogStream\]/.test(src),
-    '非 shell 模式应保留 WriteStream 直连 stdio'
+    /proc\.stderr\.on\('data'/.test(src),
+    'pipeChildOutputToLog 内应手动 pipe stderr 进日志流'
+  );
+  // 两分支都应统一调用 pipeChildOutputToLog，而非各自内联 WriteStream 直连
+  assertTrue(
+    /pipeChildOutputToLog\(opencodeProcess, opencodeLogStream\)/.test(src),
+    '两分支应统一调用 pipeChildOutputToLog(opencodeProcess, opencodeLogStream)'
+  );
+  // 非 shell 分支的 stdio 数组也必须是 pipe（.exe/.ps1 直启时用变量 stdioArr，
+  // 与 shell 分支字面量 stdio: 区分，避免误匹配）：若改成 ignore，pipeChildOutputToLog
+  // 会静默不转发日志，需显式断言守住。
+  assertTrue(
+    /var stdioArr = \['ignore', 'pipe', 'pipe'\]/.test(src),
+    '非 shell 分支应使用 pipe 数组而非 WriteStream / ignore'
+  );
+  // 不应再出现把 WriteStream 直接作为 stdio 的代码
+  assertTrue(
+    !/\['ignore', opencodeLogStream, opencodeLogStream\]/.test(src),
+    '不应再出现把 WriteStream 直接作为 stdio 的代码'
   );
 });
 
@@ -251,10 +289,7 @@ test('权限自动确认：buildSpawnCommand 不再追加 --permission（Issue #
     assertTrue(cmd.args.indexOf('--port') !== -1, 'buildSpawnCommand 应含 --port');
     assertTrue(cmd.args.indexOf('--hostname') !== -1, 'buildSpawnCommand 应含 --hostname');
     assertTrue(cmd.args.indexOf('--cors') !== -1, 'buildSpawnCommand 应含 --cors');
-    assertTrue(
-      cmd.args.indexOf('file://') !== -1,
-      'buildSpawnCommand 的 --cors 后应为 file://'
-    );
+    assertTrue(cmd.args.indexOf('file://') !== -1, 'buildSpawnCommand 的 --cors 后应为 file://');
   } catch (e) {
     failed++;
     failures.push('权限自动确认 buildSpawnCommand 测试异常: ' + e.message);
