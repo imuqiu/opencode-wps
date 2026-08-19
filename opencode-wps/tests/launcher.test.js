@@ -81,43 +81,37 @@ test('非 shell 向 stdio 传未 open 的 WriteStream 应抛 "stdio is invalid"�
   assertTrue(threw, '非 shell 向未 open 的 WriteStream 作为 stdio 应抛 "stdio is invalid"');
 });
 
-// --- 2. 修复验证：launcher.js shell 分支必须用 pipe 而非 WriteStream ---
-test('launcher.js 源码：shell 模式 stdio 用 pipe 而非 WriteStream（修复验证）', function () {
+// --- 2. 修复验证：launcher.js 两个分支必须用 pipe + pipeChildOutputToLog 而非 WriteStream ---
+test('launcher.js 源码：两分支 stdio 用 pipe 并复用 pipeChildOutputToLog（修复验证）', function () {
   var src = fs.readFileSync(LAUNCHER, 'utf-8');
   // shell 分支（needShell=true）必须使用 ['ignore','pipe','pipe']
   assertTrue(
     /stdio: \['ignore', 'pipe', 'pipe'\]/.test(src),
     'shell 模式应使用 pipe 数组而非 WriteStream'
   );
-  // shell 分支必须手动把 stdout/stderr pipe 进日志写流
+  // 公共辅助函数 pipeChildOutputToLog 负责把 stdout/stderr pipe 进日志写流，
+  // 内部应包含对 proc.stdout/stderr 的 data 监听
   assertTrue(
-    /opencodeProcess\.stdout\.on\('data'/.test(src),
-    'shell 模式应手动 pipe stdout 进日志流'
+    /function pipeChildOutputToLog/.test(src),
+    '应提取 pipeChildOutputToLog 公共函数'
   );
   assertTrue(
-    /opencodeProcess\.stderr\.on\('data'/.test(src),
-    'shell 模式应手动 pipe stderr 进日志流'
+    /proc\.stdout\.on\('data'/.test(src),
+    'pipeChildOutputToLog 内应手动 pipe stdout 进日志流'
   );
-  // 非 shell 分支（.exe/.ps1 直启）也统一用 ['ignore','pipe','pipe'] + 手动转发到日志流
-  // （Issue #161 回归）：fs.createWriteStream 异步打开文件，若在 'open' 事件前就把
-  // WriteStream 传给 spawn 的 stdio，fd 仍为 null，Node 抛 "stdio is invalid"。
-  // 故两个分支都不得把 WriteStream 直接作为 stdio，统一用 pipe + 手动转发。
   assertTrue(
-    /var stdioArr = \['ignore', 'pipe', 'pipe'\]/.test(src),
-    '非 shell 模式应使用 pipe 数组而非 WriteStream 直连 stdio'
+    /proc\.stderr\.on\('data'/.test(src),
+    'pipeChildOutputToLog 内应手动 pipe stderr 进日志流'
   );
+  // 两分支都应统一调用 pipeChildOutputToLog，而非各自内联 WriteStream 直连
+  assertTrue(
+    /pipeChildOutputToLog\(opencodeProcess, opencodeLogStream\)/.test(src),
+    '两分支应统一调用 pipeChildOutputToLog(opencodeProcess, opencodeLogStream)'
+  );
+  // 不应再出现把 WriteStream 直接作为 stdio 的代码
   assertTrue(
     !/\['ignore', opencodeLogStream, opencodeLogStream\]/.test(src),
     '不应再出现把 WriteStream 直接作为 stdio 的代码'
-  );
-  // 非 shell 分支也应手动把 stdout/stderr pipe 进日志流
-  assertTrue(
-    /opencodeProcess\.stdout\.on\('data'/.test(src),
-    '非 shell 模式应手动 pipe stdout 进日志流'
-  );
-  assertTrue(
-    /opencodeProcess\.stderr\.on\('data'/.test(src),
-    '非 shell 模式应手动 pipe stderr 进日志流'
   );
 });
 

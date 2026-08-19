@@ -54,6 +54,30 @@ function closeOpenCodeLogStream() {
   }
 }
 
+// 把子进程的 stdout/stderr 手动 pipe 进日志写流（shell 模式与非 shell 模式共用）。
+// shell（.cmd）模式下 Node 不允许向 stdio 直接传 WriteStream；非 shell（.exe/.ps1）
+// 模式若在 WriteStream 未 open（fd:null）时直连 stdio 会抛 "stdio is invalid"
+// （Issue #161 回归）。两分支统一走 ['ignore','pipe','pipe'] + 本函数手动转发，
+// 彻底消除竞态，且日志落盘行为完全一致。失败不阻断：即便日志流异常，
+// opencode serve 仍能正常启动并运行。
+function pipeChildOutputToLog(proc, logStream) {
+  if (!proc || !logStream) return;
+  if (proc.stdout) {
+    proc.stdout.on('data', function (d) {
+      try {
+        logStream.write(d);
+      } catch (e) {}
+    });
+  }
+  if (proc.stderr) {
+    proc.stderr.on('data', function (d) {
+      try {
+        logStream.write(d);
+      } catch (e) {}
+    });
+  }
+}
+
 // ===== 启动时清理孤儿 MCP 进程 =====
 function cleanupOrphanedMcp() {
   try {
@@ -264,22 +288,7 @@ function startOpenCode(cwd, port) {
       });
       // 手动把子进程 stdout/stderr pipe 进日志写流（shell 模式无法直接作为 stdio）。
       // 失败不阻断：即便日志流异常，opencode serve 仍能正常启动并运行。
-      if (opencodeLogStream) {
-        if (opencodeProcess.stdout) {
-          opencodeProcess.stdout.on('data', function (d) {
-            try {
-              opencodeLogStream.write(d);
-            } catch (e) {}
-          });
-        }
-        if (opencodeProcess.stderr) {
-          opencodeProcess.stderr.on('data', function (d) {
-            try {
-              opencodeLogStream.write(d);
-            } catch (e) {}
-          });
-        }
-      }
+      pipeChildOutputToLog(opencodeProcess, opencodeLogStream);
     } else {
       // 非 shell 分支：.exe 直接 CreateProcess；.ps1 用 powershell.exe -ExecutionPolicy
       // Bypass -File <bin> 启动（spawnCmd.command 已封装，见 buildSpawnCommand）。
@@ -310,24 +319,9 @@ function startOpenCode(cwd, port) {
         console.log('[launcher] bun shim detected, prepending PATH: ' + bunDir);
       }
       opencodeProcess = hiddenSpawn(spawnCmd.command, opencodeArgs, exeSpawnOptions);
-      // 手动把子进程 stdout/stderr pipe 进日志写流（与 shell 分支一致）。
+      // 手动把子进程 stdout/stderr pipe 进日志写流（与 shell 分支共用 pipeChildOutputToLog）。
       // 失败不阻断：即便日志流异常，opencode serve 仍能正常启动并运行。
-      if (opencodeLogStream) {
-        if (opencodeProcess.stdout) {
-          opencodeProcess.stdout.on('data', function (d) {
-            try {
-              opencodeLogStream.write(d);
-            } catch (e) {}
-          });
-        }
-        if (opencodeProcess.stderr) {
-          opencodeProcess.stderr.on('data', function (d) {
-            try {
-              opencodeLogStream.write(d);
-            } catch (e) {}
-          });
-        }
-      }
+      pipeChildOutputToLog(opencodeProcess, opencodeLogStream);
     }
 
     if (logFile) {

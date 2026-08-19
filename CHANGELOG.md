@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **launcher 非 shell 分支（.exe/.ps1）启动 opencode serve 不再抛 "stdio is invalid"（Issue #161 回归，PR #169）** — 修复「启动服务」返回 HTTP 400、opencode 进程起不来：当 opencode 二进制为 `.exe`（或走 `.ps1` 的 powershell 直启）时，非 shell 分支把 `fs.createWriteStream()` 创建的日志 WriteStream **直接作为 spawn 的 stdio**。根因：`createWriteStream()` 异步打开文件，若在 `'open'` 事件触发前就把流传给 `child_process.spawn()`，流的 `fd` 仍为 `null`，Node 抛 `The argument 'stdio' is invalid. Received WriteStream { fd: null, ... }`（与 .cmd 场景同源，但此前仅 shell 分支规避了）。本次修复：
+- **launcher 非 shell 分支（.exe/.ps1）启动 opencode serve 不再抛 "stdio is invalid"（Issue #161 回归，PR #171）** — 修复「启动服务」返回 HTTP 400、opencode 进程起不来：当 opencode 二进制为 `.exe`（或走 `.ps1` 的 powershell 直启）时，非 shell 分支把 `fs.createWriteStream()` 创建的日志 WriteStream **直接作为 spawn 的 stdio**。根因：`createWriteStream()` 异步打开文件，若在 `'open'` 事件触发前就把流传给 `child_process.spawn()`，流的 `fd` 仍为 `null`，Node 抛 `The argument 'stdio' is invalid. Received WriteStream { fd: null, ... }`（与 .cmd 场景同源，但此前仅 shell 分支规避了）。本次修复：
   - **非 shell 分支改用 `['ignore','pipe','pipe']` + 手动转发**：与 shell 分支（.cmd）完全一致，`stdout`/`stderr` 通过 `data` 事件手动写入日志流，彻底消除 WriteStream 未 open 即作为 stdio 的竞态；日志落盘行为完全不变。
   - **测试同步**：`tests/launcher.test.js` 新增非 shell 向未 open 的 WriteStream 作为 stdio 必抛 "stdio is invalid" 的根因用例；源码断言从「保留 WriteStream 直连 stdio」反转为「统一用 pipe + 手动转发」。
 
