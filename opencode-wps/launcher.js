@@ -5,29 +5,10 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
-// 读取共享配置（config.js 与 launcher.js 同目录）。
-// 权限自动确认（Issue #116）：若配置为 auto + autoAllowOnLaunch，
-// 启动 opencode serve 时追加 --permission allow，从服务端源头自动放行工具权限，
-// 根治「侧边栏收不到权限请求导致长任务静默卡住、只能切 web 确认」的问题。
-// 加载失败时降级为安全默认（manual，不追加 --permission，避免误放行）。
-function loadWpsConfig() {
-  try {
-    var cfgPath = path.join(__dirname, 'config.js');
-    if (fs.existsSync(cfgPath)) {
-      var cfg = require(cfgPath);
-      return cfg && cfg.permission ? cfg.permission : null;
-    }
-  } catch (e) {
-    /* 配置损坏时降级为 manual */
-  }
-  return null;
-}
-
-// 判断是否应追加 --permission allow（服务端自动放行工具权限）
-function shouldAutoAllowPermission() {
-  var perm = loadWpsConfig();
-  return !!perm && perm.mode === 'auto' && perm.autoAllowOnLaunch !== false;
-}
+// 统一入口注释：当前 launcher 启动 opencode serve 不再追加 --permission 旗标（Issue #161：
+// 老版本 opencode 的 serve 子命令不认识该旗标，追加后打印 usage 以 code=1 退出导致启动失败）。
+// 权限自动放行完全交由前端 taskpane 的 handlePermissionRequest 在 config.permission.mode==='auto'
+// 时自动 respondPermission('allow')，以及 /tui/control/next 长轮询兜底实现（见 opencode-wps/taskpane.html）。
 
 // 统一的隐藏窗口 execSync：强制 windowsHide:true（CREATE_NO_WINDOW）。
 // Windows 上若未隐藏，execSync 拉起的 cmd.exe / powershell / wmic 子进程会闪现可见控制台窗口
@@ -865,10 +846,9 @@ function buildSpawnCommand(opencodeBin, port) {
     '--cors',
     'file://',
   ];
-  // Issue #116 权限自动确认：配置为 auto 时追加 --permission allow（与 startOpenCode 一致）。
-  if (shouldAutoAllowPermission()) {
-    args.push('--permission', 'allow');
-  }
+  // 权限自动放行由前端处理（Issue #161）：opencode serve 的 serve 子命令不认识
+  // --permission 旗标，追加会导致打印 usage 并以 code=1 退出、服务起不来。
+  // 故启动命令不再追加该旗标，改由 taskpane.html 在 auto 模式下自动 allow + /tui/control/next 兜底。
   var needShell = !isPs1 && !isExe;
   if (isPs1) {
     return {

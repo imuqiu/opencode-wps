@@ -132,10 +132,11 @@ AI 回复**实时流式显示**（SSE，Server-Sent Events），边生成边展�
 
 默认开启**自动确认**（`config.js` 的 `permission.mode: 'auto'`），长任务（如 97 批校对）不再因权限确认卡住：
 
-- **服务端根治**：launcher 启动 `opencode serve` 时按配置追加 `--permission allow`，从源头自动放行工具权限
-- **前端自动响应**：权限请求到来时自动 `allow`，不再弹窗等待人工确认
-- **兜底通道**：新增 `/tui/control/next` 长轮询（serve web 走此通道），SSE 收不到权限请求时也能自动响应
+- **前端自动响应**：权限请求到来时自动 `allow`，不再弹窗等待人工确认（`taskpane.html` 的 `handlePermissionRequest` 在 `mode==='auto'` 时直接 `respondPermission('allow')`）
+- **兜底通道**：`/tui/control/next` 长轮询（serve web 走此通道），SSE 收不到权限请求时也能自动响应
 - **可配置**：如需人工审批，将 `config.js` 的 `permission.mode` 改为 `'manual'` 即可切回弹窗确认
+
+> ℹ️ 早期版本曾尝试在 launcher 启动 `opencode serve` 时追加 `--permission allow` 从服务端源头放行，但老版本 opencode 的 `serve` 子命令**不识别该旗标**，追加后打印 usage 并以 code=1 退出导致「启动失败」（Issue #161 根因）。已移除该旗标及 `autoAllowOnLaunch` 配置，权限自动放行完全交由前端通道实现。
 
 > ⚠️ 自动确认只放行工具权限请求，**governance.js 的 G1-G7 安全规则（路径安全/破坏性确认/密码保护等）仍生效**，不会被绕过。
 

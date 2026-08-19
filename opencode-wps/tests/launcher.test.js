@@ -208,38 +208,54 @@ test('launcher.js 源码：spawn 统一经 hiddenSpawn 强制 windowsHide（修�
   assertTrue(!/opencodeProcess = spawn\(/.test(src), '不允许再裸用 spawn 启动 opencode');
 });
 
-// --- 权限自动确认（Issue #116）：launcher 追加 --permission allow ---
-test('权限自动确认：shouldAutoAllowPermission 存在且 config 有 permission 配置（Issue #116）', function () {
+// --- 权限自动确认（Issue #116/161）：launcher 不再追加 --permission allow ---
+// Issue #161 根因：老版本 opencode 的 serve 子命令不认识 --permission 旗标，追加后
+// 打印 usage 并以 code=1 退出导致启动失败。故 launcher 不再追加该旗标；权限自动放行
+// 完全交由前端 taskpane.html 的 handlePermissionRequest（mode==='auto' 时自动 allow）
+// 与 /tui/control/next 长轮询兜底实现。
+test('权限自动确认：launcher 不再追加 --permission（Issue #161 根因）', function () {
   var src = fs.readFileSync(LAUNCHER, 'utf-8');
   assertTrue(
-    /function shouldAutoAllowPermission\(\)/.test(src),
-    'launcher 应有 shouldAutoAllowPermission 函数'
+    !/function shouldAutoAllowPermission\(\)/.test(src),
+    'launcher 不应再有 shouldAutoAllowPermission 函数（已删）'
   );
-  assertTrue(/--permission'/.test(src), 'launcher 应能追加 --permission 参数');
+  assertTrue(
+    !/function loadWpsConfig\(\)/.test(src),
+    'launcher 不应再有 loadWpsConfig 函数（已删，死代码）'
+  );
+  // 源码中不应再出现向 args 追加 --permission 的逻辑（仅注释提及旗标本身可接受）
+  assertTrue(!/args\.push\('--permission'/.test(src), 'launcher 不应再向启动参数追加 --permission');
   var cfgSrc = fs.readFileSync(path.join(__dirname, '..', 'config.js'), 'utf-8');
   assertTrue(/permission\s*:\s*\{/.test(cfgSrc), 'config.js 应有 permission 配置段');
   assertTrue(/mode: 'auto'/.test(cfgSrc), 'config.js permission.mode 默认应为 auto');
-  assertTrue(/autoAllowOnLaunch/.test(cfgSrc), 'config.js 应有 autoAllowOnLaunch 配置');
+  assertTrue(
+    !/autoAllowOnLaunch/.test(cfgSrc),
+    'config.js 不应再有 autoAllowOnLaunch 配置（已删）'
+  );
 });
 
-// --- 权限自动确认：buildSpawnCommand 在 auto 配置下追加 --permission allow ---
-test('权限自动确认：buildSpawnCommand 在 auto 配置下追加 --permission allow（Issue #116）', function () {
+// --- 权限自动确认：buildSpawnCommand 不再追加 --permission allow（Issue #161）---
+test('权限自动确认：buildSpawnCommand 不再追加 --permission（Issue #161 根因）', function () {
   try {
     var launcher = require(LAUNCHER);
-    // config.js 当前为 auto 模式，buildSpawnCommand 应包含 --permission allow
     var cmd = launcher.buildSpawnCommand('opencode');
     var hasPerm = cmd.args.indexOf('--permission') !== -1;
     assertTrue(
-      hasPerm,
-      'auto 模式下 buildSpawnCommand args 应含 --permission allow（实际: ' +
-        JSON.stringify(cmd.args) +
-        '）'
+      !hasPerm,
+      'buildSpawnCommand args 不应含 --permission（实际: ' + JSON.stringify(cmd.args) + '）'
     );
-    // --permission 之后应为 allow（而非 deny/ask）
-    var permIdx = cmd.args.indexOf('--permission');
-    assertTrue(permIdx >= 0 && cmd.args[permIdx + 1] === 'allow', '--permission 后应为 allow');
+    // 启动命令应保持纯净：serve + 端口 + 主机 + cors
+    assertTrue(cmd.args[0] === 'serve', 'buildSpawnCommand 首个参数应为 serve');
+    // 关键必需参数必须完整保留（移除 --permission 不得破坏其它启动参数）：
+    // --port <端口>、--hostname、--cors file://（WPS Chromium 以 file:// 加载，跨域必需）
+    assertTrue(cmd.args.indexOf('--port') !== -1, 'buildSpawnCommand 应含 --port');
+    assertTrue(cmd.args.indexOf('--hostname') !== -1, 'buildSpawnCommand 应含 --hostname');
+    assertTrue(cmd.args.indexOf('--cors') !== -1, 'buildSpawnCommand 应含 --cors');
+    assertTrue(
+      cmd.args.indexOf('file://') !== -1,
+      'buildSpawnCommand 的 --cors 后应为 file://'
+    );
   } catch (e) {
-    // launcher require 可能因环境（如 findOpenCodeBin 探测 powershell）报错，降级为源码检查
     failed++;
     failures.push('权限自动确认 buildSpawnCommand 测试异常: ' + e.message);
     console.log('  ✗ ' + e.message);

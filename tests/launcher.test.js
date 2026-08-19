@@ -318,11 +318,17 @@ test('buildSpawnCommand: .ps1 → powershell.exe -File（脱离运行期 PATH，
   assertTrue(r.args.indexOf('serve') !== -1, '应含 serve 子命令');
 });
 
-test('buildSpawnCommand: .exe → 直接执行，无需 shell', function () {
+test('buildSpawnCommand: .exe → 直接执行，无需 shell，且不再追加 --permission（Issue #161）', function () {
   var r = buildSpawnCommand('C:\\bin\\opencode.exe');
   assertEqual(r.command, 'C:\\bin\\opencode.exe', '.exe 应直接作为 command');
   assertEqual(r.needShell, false, '.exe 不需要 shell');
   assertTrue(r.args.indexOf('--port') !== -1, '应含 --port');
+  // Issue #161 根因：老版本 opencode 的 serve 不识别 --permission 旗标，必须不再追加。
+  assertTrue(r.args.indexOf('--permission') === -1, '不应含 --permission（Issue #161）');
+  // 移除 --permission 不得破坏其它必需参数：--hostname / --cors file://（WPS Chromium 跨域）
+  assertTrue(r.args.indexOf('--hostname') !== -1, '应含 --hostname');
+  assertTrue(r.args.indexOf('--cors') !== -1, '应含 --cors');
+  assertTrue(r.args.indexOf('file://') !== -1, '--cors 后应为 file://');
 });
 
 test('buildSpawnCommand: 无扩展名（PATH 裸 opencode）→ 依赖 shell 启动 .cmd shim', function () {

@@ -39,7 +39,7 @@ var CONFIG = {
     // 加载项名称
     addonName: 'OpenCode AI',
     // 插件版本
-    version: '1.6.2',
+    version: '1.6.3',
     // 用户主目录（安装时由 install-addons.js 注入，WPS 浏览器上下文有额外 fallback）
     userHome: (function () {
       var v = '__OPCODE_WPS_USER_HOME__';
@@ -100,9 +100,10 @@ var CONFIG = {
     //   'auto'   — 自动允许所有工具权限请求（长任务如 97 批校对不再因权限确认卡住）
     //   'manual' — 手动弹窗确认（保留原交互，需要人工审批工具调用）
     mode: 'auto',
-    // 启动 opencode serve 时是否追加 --permission allow（仅 mode='auto' 时生效）：
-    // 从服务端源头自动放行工具权限，根治「侧边栏收不到权限请求导致任务静默卡住」问题
-    autoAllowOnLaunch: true,
+    // 注意：launcher 启动 opencode serve 时不再追加 --permission allow（Issue #161：
+    // 老版本 opencode 的 serve 子命令不认识该旗标，追加会导致启动失败）。
+    // 权限自动放行完全由前端 taskpane.html 在 mode==='auto' 时自动 respondPermission('allow')
+    // 实现，另有 /tui/control/next 长轮询兜底。
   },
 
   // 网络配置

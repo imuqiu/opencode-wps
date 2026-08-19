@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.3] - 2026-08-18
+
+### Fixed
+
+- **launcher 启动 opencode serve 时不再追加 `--permission allow` 旗标（Issue #161 根因）** — 修复「启动服务」反复提示"启动失败，请检查 OpenCode 是否已安装"：用户 `opencode-serve.log` 铁证表明，老版本 opencode 的 `serve` 子命令**根本不识别 `--permission` 旗标**（其 help 选项列表只有 `--print-logs/--log-level/--pure/--port/--hostname/--mdns/--mdns-domain/--cors`）。此前 Issue #116 在 auto 模式（`autoAllowOnLaunch: true`）下无条件追加 `--permission allow`，导致 opencode 把未知旗标当错误 → 打印 usage/help → 以 **code=1** 退出 → 14096 端口永远不监听 → 侧边栏 30s 轮询超时 → 报「启动失败」。本次修复：
+  - **删除启动路径里的 `--permission` 旗标**：`buildSpawnCommand` 不再向 `serve` 参数追加 `--permission allow`；同时删除 `shouldAutoAllowPermission()` 与不再被调用的 `loadWpsConfig()`（消除死代码）。
+  - **删除 `autoAllowOnLaunch` 配置**：config.js 不再产出服务端旗标，只保留 `permission.mode`（`auto`/`manual`）驱动前端自动响应。
+  - **拒绝「探测旗标支持」的错误方向（推翻 PR #167）**：不新增 `supportsPermissionFlag()`/`getPermissionArgs()`/`buildPermissionProbeCommand()` 等能力探针——探测一个本就不该依赖、且老版本不存在的旗标 = 徒增代码 + 新增故障点。
+  - **权限自动放行完全交由前端通道**：`taskpane.html` 的 `handlePermissionRequest` 在 `config.permission.mode === 'auto'` 时直接 `respondPermission('allow')`（不弹窗），另有 `/tui/control/next` 长轮询兜底；`manual` 模式保留弹窗人工确认。
+  - **测试与文档同步**：`tests/launcher.test.js` 权限用例反转断言——验证 launcher **不再**追加 `--permission`、config **不再**有 `autoAllowOnLaunch`；`docs/USAGE.md` 移除「服务端根治追加 `--permission`」的误导描述，改为说明前端 auto-allow + `/tui/control/next` 兜底机制。
+
+### Changed
+
+- **版本号升级至 1.6.3** — 根 `package.json` / `package-lock.json` / `opencode-wps/`（package.json、config.js、manifest.xml）/ `opencode-wps-linux/`（package.json、manifest.xml）/ `wps-office-mcp/`（package.json、package-lock.json）版本一致升级至 1.6.3，`validate-versions` 校验通过。
+
 ## [1.6.2] - 2026-08-18
 
 ### Fixed
