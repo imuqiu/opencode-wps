@@ -107,9 +107,11 @@ Ribbon 提供三个按钮（`opencode-wps-assistant/ribbon.xml`）：
 检查 `~/Library/Containers/com.kingsoft.wps/Data/Documents/jsaddons/` 下是否存在 `opencode-wps-assistant_/` 目录，重启 WPS。
 
 **Q: MCP 连不上？**
+在**仓库根目录**执行（构建后自动 `cd ..` 回到根目录）：
 ```bash
-cd wps-office-mcp && npm install && npm run build
+cd wps-office-mcp && npm install && npm run build && cd ..
 ```
+> 若还需重新运行安装脚本同步配置，请务必在**仓库根目录**执行 `node install-addons-mac.js`（`install-addons*.js` 位于仓库根目录，不在 `wps-office-mcp/` 内）。
 
 **Q: 打开Web提示 launcher 不可达？**
 确认 `node launcher-mac.js` 已运行（`curl http://127.0.0.1:14097/health`），或重启 Mac 让 LaunchAgent 自动拉起。

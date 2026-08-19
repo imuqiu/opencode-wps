@@ -32,7 +32,7 @@
 
 **第一条消息**：在输入框输入自然语言指令（如「把标题设为黑体三号」），按 Enter 或点击发送，AI 即开始处理。若涉及文档操作，AI 会自动调用 MCP 工具读写 WPS 当前活动文档。
 
-> ⚠️ **使用前提**：MCP 操作（读写文档）要求 **WPS 处于运行状态**，且当前有打开的文档。若连接不上，先按 [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) 排查，或 `cd wps-office-mcp && npm install && npm run build` 后重启 OpenCode。
+> ⚠️ **使用前提**：MCP 操作（读写文档）要求 **WPS 处于运行状态**，且当前有打开的文档。若连接不上，先按 [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) 排查，或在**仓库根目录**运行 `cd wps-office-mcp && npm install && npm run build && cd ..` 后重启 OpenCode。
 
 ---
 

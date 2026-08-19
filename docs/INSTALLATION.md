@@ -192,8 +192,8 @@ node launcher-linux.js
 ## 常见问题
 
 - **插件不显示** → 检查插件目录是否存在、WPS 是否重启、`publish.xml/jsplugins.xml` 是否注册
-- **MCP 连接失败** → `cd wps-office-mcp && npm install && npm run build` 后重启 OpenCode
-- **Skills/Agents 未加载** → 重新运行安装脚本 + 重启 OpenCode 服务
+- **MCP 连接失败** → 在仓库根目录运行 `cd wps-office-mcp && npm install && npm run build && cd ..`，然后重启 OpenCode
+- **Skills/Agents 未加载** → 在**仓库根目录**重新运行安装脚本 `node install-addons.js`（⚠️ `install-addons*.js` 位于仓库根目录，不在 `wps-office-mcp/` 内）+ 重启 OpenCode 服务
 - **Linux 实机验证** → 参考 [LINUX.md](./LINUX.md)「已知限制」「常见问题」章节
 
 > 📖 更多排查见 [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)；安装脚本实现细节见 [INSTALL_SCRIPT.md](./INSTALL_SCRIPT.md)。

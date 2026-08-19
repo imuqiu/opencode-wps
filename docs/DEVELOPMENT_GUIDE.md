@@ -503,7 +503,7 @@ $:
 - 检查 OpenCode 服务是否启动
 - 检查端口 14096 是否被占用
 - 查看 `~/.config/opencode/opencode.json` 配置
-- `cd wps-office-mcp && npm install && npm run build` 后重启 OpenCode
+- 在**仓库根目录**运行 `cd wps-office-mcp && npm install && npm run build && cd ..`，然后重启 OpenCode
 
 ### 服务启动失败
 

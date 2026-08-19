@@ -109,9 +109,11 @@ Windows 版**无独立切换脚本**——COM 桥接模式下，MCP 直接通过
 检查 `%APPDATA%\kingsoft\wps\jsaddons\opencode-wps_` 目录及 `publish.xml`/`jsplugins.xml` 是否注册，重启 WPS。
 
 **Q: MCP 连不上？**
+在**仓库根目录**执行（构建后自动 `cd ..` 回到根目录）：
 ```bash
-cd wps-office-mcp && npm install && npm run build
+cd wps-office-mcp && npm install && npm run build && cd ..
 ```
+> 若还需重新运行安装脚本同步配置，请务必在**仓库根目录**执行 `node install-addons.js`（`install-addons*.js` 位于仓库根目录，不在 `wps-office-mcp/` 内）。
 
 **Q: 打开Web提示 launcher 不可达？**
 确认 `node opencode-wps/launcher.js` 已运行（`curl http://127.0.0.1:14097/health`）。
