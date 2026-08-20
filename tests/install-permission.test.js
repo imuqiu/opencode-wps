@@ -177,7 +177,22 @@ test('allowedWriteRoots 非空：注入 MCP env.OPCODE_ALLOWED_ROOTS（Issue #17
   assertTrue(r.applied === true, '非空 roots 应标记 applied');
   assertEqual(r.roots, 'F:\\2025年度;D:\\docs', '返回 roots 应为原值');
   assertTrue(!!mcp.env, '应创建 env');
-  assertEqual(mcp.env.OPCODE_ALLOWED_ROOTS, 'F:\\2025年度;D:\\docs', 'env 应写入 OPCODE_ALLOWED_ROOTS');
+  // R4-2 修复：env 按平台分隔符规范化写入（本测试环境为 Linux/macOS → 冒号 `:`）
+  var expectedDelim = process.platform === 'win32' ? ';' : ':';
+  assertEqual(
+    mcp.env.OPCODE_ALLOWED_ROOTS,
+    'F:\\2025年度' + expectedDelim + 'D:\\docs',
+    'env 应写入 OPCODE_ALLOWED_ROOTS（平台分隔符规范化）'
+  );
+});
+
+test('allowedWriteRoots 混用分隔符时按平台规范化（R4-2 评审修复）', function () {
+  var mcp = { command: ['node', 'server.js'], type: 'local' };
+  // 用户混用 `;` 和 `:`（Windows 盘符路径含冒号，mac 路径可用分号）
+  var r = applyWriteRoots(mcp, 'C:\\a;D:\\b:E:\\c');
+  var expectedDelim = process.platform === 'win32' ? ';' : ':';
+  var expected = 'C:\\a' + expectedDelim + 'D:\\b' + expectedDelim + 'E:\\c';
+  assertEqual(mcp.env.OPCODE_ALLOWED_ROOTS, expected, 'env 应统一为平台分隔符');
 });
 
 test('allowedWriteRoots 带首尾空白：注入前应 trim', function () {
@@ -191,11 +206,18 @@ test('allowedWriteRoots 为空/未配置：不注入，沿用 MCP 默认（Issue
   var mcp = { command: ['node', 'server.js'], type: 'local' };
   var r = applyWriteRoots(mcp, '');
   assertTrue(r.applied === false, '空 roots 应标记未注入');
-  assertTrue(!mcp.env || mcp.env.OPCODE_ALLOWED_ROOTS === undefined, '不应写入 OPCODE_ALLOWED_ROOTS');
+  assertTrue(
+    !mcp.env || mcp.env.OPCODE_ALLOWED_ROOTS === undefined,
+    '不应写入 OPCODE_ALLOWED_ROOTS'
+  );
 });
 
 test('allowedWriteRoots 未配置时清理残留过期 OPCODE_ALLOWED_ROOTS（Issue #179）', function () {
-  var mcp = { command: ['node', 'server.js'], type: 'local', env: { OPCODE_ALLOWED_ROOTS: 'D:\\old' } };
+  var mcp = {
+    command: ['node', 'server.js'],
+    type: 'local',
+    env: { OPCODE_ALLOWED_ROOTS: 'D:\\old' },
+  };
   var r = applyWriteRoots(mcp, '');
   assertTrue(r.applied === false, '空 roots 应标记未注入');
   assertTrue(mcp.env.OPCODE_ALLOWED_ROOTS === undefined, '应清理残留 OPCODE_ALLOWED_ROOTS');

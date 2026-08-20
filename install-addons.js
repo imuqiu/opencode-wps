@@ -420,10 +420,24 @@ if (fsEx.existsSync(mcpEntryPath)) {
   replacePlaceholders(config);
 
   // 第 4 步：更新 MCP 配置
+  // R4-1 修复（PR #181 评审）：重建 MCP 条目时**保留用户已有的 env 配置**（如手动配置的
+  // OPCODE_ALLOWED_ROOTS 或其它业务环境变量），避免每次 install 静默清空用户自定义 env。
+  // 注：command/type 由安装脚本强制更新（指向当前构建产物），但 env 属用户自定义，必须保留。
   if (!config.mcp) config.mcp = {};
+  const existingMcpEntry =
+    config.mcp[mcpServer.name] && typeof config.mcp[mcpServer.name] === 'object'
+      ? config.mcp[mcpServer.name]
+      : {};
+  const existingMcpEnv =
+    existingMcpEntry.env &&
+    typeof existingMcpEntry.env === 'object' &&
+    !Array.isArray(existingMcpEntry.env)
+      ? existingMcpEntry.env
+      : undefined;
   config.mcp[mcpServer.name] = {
     command: ['node', mcpEntryForward],
     type: 'local',
+    ...(existingMcpEnv ? { env: { ...existingMcpEnv } } : {}),
   };
 
   // 第 4.1 步：按 config.js 的 allowedWriteRoots 注入 MCP 写盘白名单环境变量（Issue #179 路径白名单暴露）
@@ -730,8 +744,12 @@ if (fsEx.existsSync(launcherPath)) {
       );
       const oldPids = portCheck
         .split(/\r?\n/)
-        .map(function (s) { return parseInt(s.trim(), 10); })
-        .filter(function (n) { return !isNaN(n) && n > 0; });
+        .map(function (s) {
+          return parseInt(s.trim(), 10);
+        })
+        .filter(function (n) {
+          return !isNaN(n) && n > 0;
+        });
       for (var i = 0; i < oldPids.length; i++) {
         try {
           execSync('taskkill /F /PID ' + oldPids[i] + ' 2>nul', {

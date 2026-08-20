@@ -103,7 +103,13 @@ function applyWriteRoots(mcpServerCfg, allowedRoots) {
   var roots = typeof allowedRoots === 'string' ? allowedRoots.trim() : '';
   if (roots) {
     if (!mcpServerCfg.env) mcpServerCfg.env = {};
-    mcpServerCfg.env.OPCODE_ALLOWED_ROOTS = roots;
+    // R4-2 修复（PR #181 评审）：按**当前平台**的 path.delimiter 规范化分隔符——
+    // Windows 用 `;`（盘符含 `:`，不能用冒号分隔），macOS/Linux 用 `:`。
+    // 兼容用户混用（如 Windows 用户误用冒号、mac 用户误用分号），统一转成平台分隔符，
+    // 保证 path-safety.ts 的 path.delimiter 分割正确。
+    var delim = process.platform === 'win32' ? ';' : ':';
+    var altDelim = delim === ';' ? ':' : ';';
+    mcpServerCfg.env.OPCODE_ALLOWED_ROOTS = roots.replace(new RegExp('\\' + altDelim, 'g'), delim);
     return { applied: true, roots: roots };
   }
   // 未配置：不注入（MCP 服务端用默认白名单 home+tmp）。
