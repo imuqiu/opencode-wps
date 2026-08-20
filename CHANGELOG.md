@@ -7,17 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed（PR #181 评审第 2/3 轮加固）
-
-- **串行模式单批进度增量上限 200 段（R2-1）**：700→1600 跳号（增量 900）被服务端拒绝，封堵 Issue #179 原始假进度攻击路径（与 `getDocumentParagraphs` 单批上限一致）。
-- **进度超界校验串行/并行共用（R2-2/R3-1）**：`_processed_to_paragraph` > 文档总段数一律拒绝（含并行模式），防谎报超大值瞬间覆盖全文。
-- **批次区间缺口时「全部已修复 ✅」不显示（R2-3）**：与「批次区间未覆盖完整」告警口径统一，防自动批次被篡改出缺口后仍误报。
-- **saveSessionToDisk 批次表深拷贝（R2-7）**：防浅引用污染磁盘缓存/内存会话。
-- **SKILL.md 同步六维评分与进度校验说明（R3-4/R3-5）**：五维→六维、增量上限与超界校验说明补充。
-
 ### Fixed
 
 - **校对防幻觉链路加固（Issue #179 真实校对实例分析落地）** — 针对真实校对会话（session_ffa8）暴露的问题逐项修复：
+  - **单批进度增量上限 200 段（评审 R2-1）**：700→1600 跳号（增量 900）被服务端拒绝，封堵 Issue #179 原始假进度攻击路径（与 `getDocumentParagraphs` 单批上限一致）。
+  - **进度超界校验串行/并行共用（评审 R2-2/R3-1）**：`_processed_to_paragraph` > 文档总段数一律拒绝（含并行模式），防谎报超大值瞬间覆盖全文。
+  - **批次区间缺口时「全部已修复 ✅」不显示（评审 R2-3）**：与「批次区间未覆盖完整」告警口径统一，防自动批次被篡改出缺口后仍误报。
+  - **saveSessionToDisk 批次表深拷贝（评审 R2-7）**：防浅引用污染磁盘缓存/内存会话。
+  - **SKILL.md 同步六维评分与进度校验说明（评审 R3-4/R3-5）**：五维→六维、增量上限与超界校验说明补充。
+  - **install-addons.js 保留用户 MCP env 配置（评审 R4-1）**：重建 MCP 条目不再清空用户自定义环境变量；`applyWriteRoots` 按平台规范化路径分隔符（评审 R4-2）。
   - **`P17` 拦截原生 `write` 伪造校对报告（漏洞封堵）**：此前 `P17` 只对 `wps_office_execute` 网关内 `tool_name=write` 生效，而 OpenCode 原生 `write` 工具在「非网关调用直接 return」闸门就被放行，AI 可用原生 `write` 绕过服务端真实累计数据手动拼造报告。现将原生 `write`/`writeFile`/`writeText`/`edit` 写「校对报告」路径的拦截**提升到前置闸门之前**，除非服务端已成功生成报告（`reportGenerated=true`）否则一律拦截（`governance.js`）。
   - **服务端校验串行进度单调递增（防假进度跳号）**：`proofreadAccumulate` 在**串行模式**（无 `_batch_id`）下校验 `_processed_to_paragraph` 必须严格递增（新值 > 已上报进度），重复上报/进度回退一律拒绝——堵住 AI 谎报进度（如 700→1600 跳过中间批次）假装覆盖全文的漏洞；并行模式（带 `_batch_id`）各执行 agent 区间独立，保持 `Math.max` 不误伤（`proofread-report.ts`）。
   - **区分「空批次表」与「全部完成」（防误报）**：报告「全部已修复 ✅」改为仅在服务端确认真实覆盖全文（`processedToParagraph >= totalParagraphs`）时显示；否则显示「⚠️ 覆盖状态未确认完整」，杜绝「空批次表 + 无进度」兜底放行时误报「全部完成」（`proofread-report.ts`）。

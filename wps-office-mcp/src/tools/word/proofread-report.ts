@@ -55,6 +55,7 @@ import {
   hasParallelRangeConflict,
   getIncompleteBatches,
   generateAutoBatches,
+  PROOFREAD_BATCH_MAX,
 } from './proofread-store';
 import {
   ToolDefinition,
@@ -835,11 +836,11 @@ export const proofreadAccumulateHandler: ToolHandler = async (
         };
       }
       // R2-1 修复（PR #181 评审）：单批进度增量上限——与 getDocumentParagraphs 单次
-      // 上限 200 段一致（AI 单批最多取 200 段校对），单批增量 > 200 即跳号假进度
-      // （如 700→1600 增量 900）。小文档（≤200 段）单次覆盖全文增量 ≤200，不误伤。
-      const BATCH_SIZE_MAX = 200;
+      // 上限一致（AI 单批最多取 PROOFREAD_BATCH_MAX 段校对），单批增量超限即跳号假进度
+      // （如 700→1600 增量 900）。小文档（≤上限段）单次覆盖全文增量 ≤上限，不误伤。
+      // R5-1 评审：常量与 governance/SKILL 的 200 段上限共享（proofread-store.ts）。
       const increment = _processed_to_paragraph - prevProgress;
-      if (increment > BATCH_SIZE_MAX) {
+      if (increment > PROOFREAD_BATCH_MAX) {
         return {
           id: uuidv4(),
           success: false,
@@ -847,12 +848,12 @@ export const proofreadAccumulateHandler: ToolHandler = async (
             {
               type: 'text',
               text:
-                `【进度校验】单批进度增量（${increment} 段）超过单批上限 ${BATCH_SIZE_MAX} 段，疑似跳号假进度。\n` +
-                `每批 getDocumentParagraphs 最多取 ${BATCH_SIZE_MAX} 段，单批校对进度不应超过 ${BATCH_SIZE_MAX} 段。\n` +
-                `请按批次逐批上报真实进度（上一批 ${prevProgress} → 本批 ≤ ${prevProgress + BATCH_SIZE_MAX}）。`,
+                `【进度校验】单批进度增量（${increment} 段）超过单批上限 ${PROOFREAD_BATCH_MAX} 段，疑似跳号假进度。\n` +
+                `每批 getDocumentParagraphs 最多取 ${PROOFREAD_BATCH_MAX} 段，单批校对进度不应超过 ${PROOFREAD_BATCH_MAX} 段。\n` +
+                `请按批次逐批上报真实进度（上一批 ${prevProgress} → 本批 ≤ ${prevProgress + PROOFREAD_BATCH_MAX}）。`,
             },
           ],
-          error: `串行进度增量超限: ${increment} > ${BATCH_SIZE_MAX}（疑似跳号）`,
+          error: `串行进度增量超限: ${increment} > ${PROOFREAD_BATCH_MAX}（疑似跳号）`,
         };
       }
     }
@@ -1201,7 +1202,11 @@ export const proofreadAccumulateHandler: ToolHandler = async (
             ? `\n已校对进度: ${session.progress.processedToParagraph} / ${session.progress.totalParagraphs} 段` +
               (session.progress.allBatchesComplete
                 ? '（已覆盖全文 ✅，可生成报告）'
-                : '（未覆盖全文，生成报告会被完整性门禁拒绝）')
+                : '（未覆盖全文，生成报告会被完整性门禁拒绝）') +
+              // R5-2 评审：展示进度轨迹，增强防幻觉可观测性（可审计每批上报点）
+              (session.progress.history && session.progress.history.length > 0
+                ? `\n进度轨迹: ${session.progress.history.join(' → ')}`
+                : '')
             : '') +
           (skippedInvalidCount > 0
             ? `\n⚠️ 本批 ${skippedInvalidCount} 条因缺 original/suggestion 被跳过（有效条目已累加）；请 AI 补充缺失字段后重新累加这些被跳过的问题`
