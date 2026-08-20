@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **校对防幻觉链路加固（Issue #179 真实校对实例分析落地）** — 针对真实校对会话（session_ffa8）暴露的问题逐项修复：
+  - **单批进度增量上限 200 段（评审 R2-1）**：700→1600 跳号（增量 900）被服务端拒绝，封堵 Issue #179 原始假进度攻击路径（与 `getDocumentParagraphs` 单批上限一致）。
+  - **进度超界校验串行/并行共用（评审 R2-2/R3-1）**：`_processed_to_paragraph` > 文档总段数一律拒绝（含并行模式），防谎报超大值瞬间覆盖全文。
+  - **批次区间缺口时「全部已修复 ✅」不显示（评审 R2-3）**：与「批次区间未覆盖完整」告警口径统一，防自动批次被篡改出缺口后仍误报。
+  - **saveSessionToDisk 批次表深拷贝（评审 R2-7）**：防浅引用污染磁盘缓存/内存会话。
+  - **SKILL.md 同步六维评分与进度校验说明（评审 R3-4/R3-5）**：五维→六维、增量上限与超界校验说明补充。
+  - **install-addons.js 保留用户 MCP env 配置（评审 R4-1）**：重建 MCP 条目不再清空用户自定义环境变量；`applyWriteRoots` 按平台规范化路径分隔符（评审 R4-2）。
+  - **`P17` 拦截原生 `write` 伪造校对报告（漏洞封堵）**：此前 `P17` 只对 `wps_office_execute` 网关内 `tool_name=write` 生效，而 OpenCode 原生 `write` 工具在「非网关调用直接 return」闸门就被放行，AI 可用原生 `write` 绕过服务端真实累计数据手动拼造报告。现将原生 `write`/`writeFile`/`writeText`/`edit` 写「校对报告」路径的拦截**提升到前置闸门之前**，除非服务端已成功生成报告（`reportGenerated=true`）否则一律拦截（`governance.js`）。
+  - **服务端校验串行进度单调递增（防假进度跳号）**：`proofreadAccumulate` 在**串行模式**（无 `_batch_id`）下校验 `_processed_to_paragraph` 必须严格递增（新值 > 已上报进度），重复上报/进度回退一律拒绝——堵住 AI 谎报进度（如 700→1600 跳过中间批次）假装覆盖全文的漏洞；并行模式（带 `_batch_id`）各执行 agent 区间独立，保持 `Math.max` 不误伤（`proofread-report.ts`）。
+  - **区分「空批次表」与「全部完成」（防误报）**：报告「全部已修复 ✅」改为仅在服务端确认真实覆盖全文（`processedToParagraph >= totalParagraphs`）时显示；否则显示「⚠️ 覆盖状态未确认完整」，杜绝「空批次表 + 无进度」兜底放行时误报「全部完成」（`proofread-report.ts`）。
+  - **主 agent 补充校对 skill 路由**：`wps-expert.md` 的 Skill 调用优先级新增 `wps-proofread`（文档校对专项），并补充校对路由与铁律指引——用户请求校对时须调用 `wps-proofread`，报告必须由 `generateProofreadReport` 生成、严禁 `write` 伪造、未覆盖全文不得声称全部已修复。
+  - **路径写盘白名单配置暴露**：新增 `opencode-wps/config.js` 的 `allowedWriteRoots` 配置项，`install-addons.js` 将其写入 `opencode.json` 中 MCP server 的 `env.OPCODE_ALLOWED_ROOTS`，解决用户文档在其他盘符（如 F 盘）时报告写盘报「Path not allowed」的问题（PR #180 只解决权限授权，未解决路径白名单）。逻辑抽取到 `shared/permission-helper.js` 的 `applyWriteRoots`（可测试）。
+  - **测试**：`governance-p17.test.ts` 新增原生 `write` 拦截/放行用例；`proofread-report.test.ts` 新增串行进度防回退、并行乱序兼容、空批次表不误报、覆盖全文正常显示用例；`install-permission.test.js` 新增 `applyWriteRoots` 5 用例（均接入 CI）。
+
+### Added（Issue #179 方案全量补齐）
+
+- **服务端自动分批（取代 planner subagent）**：`proofreadAccumulate` 会话首次初始化（且未携带 `_batch_allocations`）时，服务端按 `docInfo.totalParagraphs` 自动生成连续批次（每批 100 段）落盘（`proofread-store.ts` 新增 `generateAutoBatches`）——批次表从此**永远非空**，根除「空批次表 = 全部完成」的误判；单 agent 顺序校对不要求逐批置 done，按进度覆盖判定（`proofread-report.ts`）。
+- **报告门禁三态区分（防「从未规划/从未跑」误报）**：`generateProofreadReport` 区分「编排模式（AI 手动登记批次，要求全部 done + 凭证完整 + 覆盖全文）/ 串行模式（按进度覆盖判定）/ 空白会话（无 issues、无疑似问题、无修订依据 → 直接拒绝生成）」，历史遗留串行会话（有运行痕迹但无进度）放行但报告标注「⚠️ 覆盖状态未确认完整」不误报「全部已修复 ✅」；`saveSessionToDisk` 合并批次表改为 clone 写入，避免内存 session 被磁盘旧批次表污染导致手动登记被覆盖（`proofread-store.ts`）。
+- **路径白名单方案 B（报告与文档同目录可写）**：`generateProofreadReport` 写盘校验时把 `docInfo.filePath` 所在目录并入允许根目录（`buildReportAllowedRoots`），报告与文档同目录可写、不全局开放盘符；与方案 A（`allowedWriteRoots` → `OPCODE_ALLOWED_ROOTS`）互补（`proofread-report.ts`）。
+- **放弃 4-subagent 编排（文案层）**：`skills/wps-proofread/SKILL.md` 删除 4-subagent 编排章节，改为「单 agent 顺序执行 + 服务端强制分批/进度/门禁」执行模型；`agents/wps-proofread-planner/manager/executor/reporter.md` 头部标注「⚠️ 已停用（Issue #179 阶段4）」仅作历史存档。
+- **格式维度拆分（统计口径）**：`TYPE_METRIC_MAP` 把「异常空格/中英混排/数字空格/中文标点」等纯格式问题从 `consistency`（一致性）拆出独立 `format`（格式）维度（权重最低 0.05），避免大量空格/标点把「一致性」拖成 0 分失真；报告统计摘要新增「其中纯格式问题 N 处」归类展示（`proofread-report.ts`）。
+
 ## [1.7.0] - 2026-08-20
 
 ### Added

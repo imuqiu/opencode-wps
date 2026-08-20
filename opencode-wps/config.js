@@ -116,6 +116,15 @@ var CONFIG = {
     // 另有 /tui/control/next 长轮询兜底。
   },
 
+  // 文件路径写盘白名单（Issue #179 路径白名单暴露）：
+  // MCP 服务端 write 类操作（含 generateProofreadReport 报告落盘）默认只允许写
+  // 用户主目录 + 系统临时目录。若你的文档位于其他盘符/目录（如 F 盘工程目录），
+  // 必须在此把根目录加入白名单，否则写盘会报「Path not allowed」。
+  // 多路径用英文分号 ; 分隔（Windows）或冒号 : 分隔（macOS/Linux）。留空字符串 ''
+  // 表示不注入白名单，沿用 MCP 默认（仅限用户主目录 + 系统临时目录）。
+  // install-addons.js 会把此项写入 opencode.json 中 MCP server 的 env.OPCODE_ALLOWED_ROOTS。
+  allowedWriteRoots: '',
+
   // 网络配置
   network: {
     // 请求超时（毫秒）

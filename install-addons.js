@@ -420,11 +420,57 @@ if (fsEx.existsSync(mcpEntryPath)) {
   replacePlaceholders(config);
 
   // 第 4 步：更新 MCP 配置
+  // R4-1 修复（PR #181 评审）：重建 MCP 条目时**保留用户已有的 env 配置**（如手动配置的
+  // OPCODE_ALLOWED_ROOTS 或其它业务环境变量），避免每次 install 静默清空用户自定义 env。
+  // 注：command/type 由安装脚本强制更新（指向当前构建产物），但 env 属用户自定义，必须保留。
   if (!config.mcp) config.mcp = {};
+  const existingMcpEntry =
+    config.mcp[mcpServer.name] && typeof config.mcp[mcpServer.name] === 'object'
+      ? config.mcp[mcpServer.name]
+      : {};
+  const existingMcpEnv =
+    existingMcpEntry.env &&
+    typeof existingMcpEntry.env === 'object' &&
+    !Array.isArray(existingMcpEntry.env)
+      ? existingMcpEntry.env
+      : undefined;
   config.mcp[mcpServer.name] = {
     command: ['node', mcpEntryForward],
     type: 'local',
+    ...(existingMcpEnv ? { env: { ...existingMcpEnv } } : {}),
   };
+
+  // 第 4.1 步：按 config.js 的 allowedWriteRoots 注入 MCP 写盘白名单环境变量（Issue #179 路径白名单暴露）
+  // MCP 服务端 write 类操作（含 generateProofreadReport 报告落盘）默认只允许写
+  // 用户主目录 + 系统临时目录。用户文档在其他盘符/目录时，须在 config.js 配置
+  // allowedWriteRoots 并把根目录加入白名单，否则写盘报「Path not allowed」
+  // （真实会话 F 盘文档正是因此写盘失败，PR #180 只解决权限授权，未解决路径白名单）。
+  try {
+    var pluginCfgPath = path.join(rootDir, 'opencode-wps', 'config.js');
+    var allowedRoots = '';
+    if (fsEx.existsSync(pluginCfgPath)) {
+      var pluginCfgForRoots = require(pluginCfgPath);
+      if (pluginCfgForRoots && typeof pluginCfgForRoots.allowedWriteRoots === 'string') {
+        allowedRoots = pluginCfgForRoots.allowedWriteRoots.trim();
+      }
+    }
+    var rootsHelper = require(path.join(rootDir, 'shared', 'permission-helper.js'));
+    var rootResult = rootsHelper.applyWriteRoots(config.mcp[mcpServer.name], allowedRoots);
+    if (rootResult.applied) {
+      console.log('  写盘白名单: 已注入 OPCODE_ALLOWED_ROOTS=' + rootResult.roots);
+    } else {
+      console.log(
+        '  写盘白名单: config.js 未配置 allowedWriteRoots（默认仅限用户主目录 + 系统临时目录；' +
+          '若文档在其他盘符请配置该项）'
+      );
+    }
+  } catch (e) {
+    console.log(
+      '  [警告] 无法读取 config.js allowedWriteRoots（' +
+        (e.message || '') +
+        '），不注入写盘白名单，默认仅限用户主目录 + 系统临时目录'
+    );
+  }
 
   // 第 4.5 步：按 config.js 的 permission.mode 注入/移除服务端 permission（Issue #179 方案A）
   // mode==='auto'   → 保留模板中的 permission（服务端直接放行所有工具 + 外部目录，根治长任务卡授权）
@@ -698,8 +744,12 @@ if (fsEx.existsSync(launcherPath)) {
       );
       const oldPids = portCheck
         .split(/\r?\n/)
-        .map(function (s) { return parseInt(s.trim(), 10); })
-        .filter(function (n) { return !isNaN(n) && n > 0; });
+        .map(function (s) {
+          return parseInt(s.trim(), 10);
+        })
+        .filter(function (n) {
+          return !isNaN(n) && n > 0;
+        });
       for (var i = 0; i < oldPids.length; i++) {
         try {
           execSync('taskkill /F /PID ' + oldPids[i] + ' 2>nul', {

@@ -13,6 +13,16 @@ tools:
   wps_office_execute: true
 ---
 
+> ## ⚠️ 已停用（Issue #179 阶段4）
+>
+> **本 subagent 已停用，不再被任何流程引用。**
+>
+> 背景：真实校对会话中 4-subagent 编排从未被触发（opencode 的 subagent 触发依赖 LLM 自觉，不可靠）。
+> Issue #179 已确认**放弃 4-subagent 设想**，校对改为**单 agent 顺序执行标准步骤链**
+> （见 `skills/wps-proofread/SKILL.md`），分批由 MCP 服务端自动完成、进度/门禁由服务端硬把关。
+> 本文件仅作历史存档（原职责：管理 subagent（调度并行执行 agent ≤3、监督凭证落盘、断点续跑）），请勿按此执行。
+
+---
 你是 WPS 文档校对**管理 subagent**（manager）。你是校对流水线的**调度中枢与监督者**，接收规划 subagent 的分批计划，调度执行 subagent 并行校对，并全程监督落盘凭证防幻觉。
 
 ## 职责

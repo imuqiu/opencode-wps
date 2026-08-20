@@ -286,4 +286,124 @@ describe('governance P17 — 禁止 AI 手动 write 伪造校对报告（session
     }
     expect(threwP18).toBe(true);
   });
+
+  it('原生 write 工具（非网关）写校对报告路径被拦截（Issue #179 P17 漏洞修复）', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const before = plugin['tool.execute.before'];
+
+    // 原生 write 工具：outerTool='write'，路径直接放顶层 args，不走 wps_office_execute 网关。
+    // 此前前置闸门 `if (outerTool !== '...execute') return` 会直接放行，P17 拦截不到。
+    const input = {
+      tool: 'write',
+      sessionID: 'p17-native-write',
+      callID: 'call-n1',
+      args: {
+        path: 'C:/Users/test/桌面/合同.校对报告.md',
+        content: '# 手动伪造的校对报告\n问题 42 处，五维评分…',
+      },
+    };
+
+    let threw = false;
+    try {
+      await before(input, {});
+    } catch (e: any) {
+      threw = true;
+      expect(String(e.message)).toContain('P17');
+      expect(String(e.message)).toContain('校对报告');
+      expect(String(e.message)).toContain('禁止 AI 手动 write 伪造报告');
+    }
+    expect(threw).toBe(true);
+  });
+
+  it('原生 writeFile 工具写校对报告路径也被拦截（Issue #179 P17 漏洞修复）', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const before = plugin['tool.execute.before'];
+
+    const input = {
+      tool: 'writeFile',
+      sessionID: 'p17-native-writefile',
+      callID: 'call-n2',
+      args: { filePath: 'F:\\2025年度\\文档.校对报告.md', content: '手拼报告' },
+    };
+    let threw = false;
+    try {
+      await before(input, {});
+    } catch (e: any) {
+      threw = true;
+      expect(String(e.message)).toContain('P17');
+    }
+    expect(threw).toBe(true);
+  });
+
+  it('原生 edit 工具写校对报告路径也被拦截（Issue #179 P17 覆盖 edit）', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const before = plugin['tool.execute.before'];
+
+    // 原生 edit 工具（P17 NATIVE_WRITE_TOOLS 包含 edit）：改文件内容到校对报告路径
+    const input = {
+      tool: 'edit',
+      sessionID: 'p17-native-edit',
+      callID: 'call-ne1',
+      args: { filePath: 'C:/Users/test/桌面/合同.校对报告.md', content: '手拼报告' },
+    };
+    let threw = false;
+    try {
+      await before(input, {});
+    } catch (e: any) {
+      threw = true;
+      expect(String(e.message)).toContain('P17');
+    }
+    expect(threw).toBe(true);
+  });
+
+  it('原生 write 写非校对报告路径正常放行（不抛 P17）', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const before = plugin['tool.execute.before'];
+
+    const input = {
+      tool: 'write',
+      sessionID: 'p17-native-write-ok',
+      callID: 'call-n3',
+      args: { path: 'C:/Users/test/batch_1.txt', content: '正文内容' },
+    };
+    let threwP17 = false;
+    try {
+      await before(input, {});
+    } catch (e: any) {
+      if (String(e.message).indexOf('P17') !== -1) threwP17 = true;
+    }
+    expect(threwP17).toBe(false);
+  });
+
+  it('服务端已成功生成报告后，原生 write 写校对报告路径放行（合法方案 B）', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const before = plugin['tool.execute.before'];
+    const after = plugin['tool.execute.after'];
+
+    // 先模拟 generateProofreadReport 成功 → st.reportGenerated = true
+    const genInput = {
+      tool: 'wps_office_execute',
+      sessionID: 'p17-native-write-ok2',
+      callID: 'call-g1',
+      args: {
+        tool_name: 'generateProofreadReport',
+        arguments: { session_id: 's1', output_file: 'C:/Users/test/文档.校对报告.md' },
+      },
+    };
+    await after(genInput, { content: [{ type: 'text', text: '报告已生成' }], isError: false });
+
+    const writeInput = {
+      tool: 'write',
+      sessionID: 'p17-native-write-ok2',
+      callID: 'call-g2',
+      args: { path: 'C:/Users/test/文档.校对报告.md', content: '服务端返回的报告文本' },
+    };
+    let threwP17 = false;
+    try {
+      await before(writeInput, {});
+    } catch (e: any) {
+      if (String(e.message).indexOf('P17') !== -1) threwP17 = true;
+    }
+    expect(threwP17).toBe(false);
+  });
 });

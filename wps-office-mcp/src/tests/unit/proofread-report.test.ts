@@ -36,6 +36,7 @@ import {
   normalizeIssueSource,
   normalizeIssueLocation,
   AI_ONLY_PATTERN,
+  buildReportAllowedRoots,
 } from '../../tools/word/proofread-report';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -708,9 +709,9 @@ describe('proofreadAccumulateHandler', () => {
     });
 
     // 凭证应落盘到批次 stepsLog
+    const allocations = proofreadStore.loadBatchAllocations(s);
     expect(result.success).toBe(true);
     expect(result.data!.stepsPersisted).toBe(true);
-    const allocations = proofreadStore.loadBatchAllocations(s);
     const batch = allocations.find(b => b.batchId === batchId)!;
     expect(batch.stepsLog.length).toBe(6);
     // 管理 agent 监督：标准 6 步全链条完整，getMissingSteps 应无缺失
@@ -799,6 +800,8 @@ describe('generateProofreadReportHandler', () => {
         totalWords: 100,
       },
       createdAt: new Date().toISOString(),
+      // Issue #179 门禁三态：无问题但已覆盖全文才允许生成空报告，否则「从未规划/从未跑」被拒
+      progress: { processedToParagraph: 10, totalParagraphs: 10, allBatchesComplete: true },
     });
 
     const result = await generateProofreadReportHandler({ session_id: 'empty-session' });
@@ -970,6 +973,7 @@ describe('normalizeToTwoPointScale (indirect)', () => {
       issues: [],
       docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
       createdAt: new Date().toISOString(),
+      progress: { processedToParagraph: 1, totalParagraphs: 1, allBatchesComplete: true },
     });
 
     const result = await generateProofreadReportHandler({ session_id: 'normalize-5' });
@@ -1068,6 +1072,7 @@ describe('TYPE_METRIC_MAP classification', () => {
       accuracy: '准确性',
       consistency: '一致性',
       completeness: '完整度',
+      format: '格式',
     };
     const expectedLabel = metricLabels[expectedMetric];
 
@@ -1117,13 +1122,18 @@ describe('TYPE_METRIC_MAP classification', () => {
     await testTypeClassification('工程术语', 'accuracy');
   });
 
-  // ── consistency ──
-  it('中英混排 → consistency', async () => {
-    await testTypeClassification('中英混排', 'consistency');
-  });
-
+  // ── consistency（仅用语统一）──
   it('用词统一 → consistency', async () => {
     await testTypeClassification('用词统一', 'consistency');
+  });
+
+  // ── format（Issue #179 阶段6：纯格式问题独立维度）──
+  it('中英混排 → format', async () => {
+    await testTypeClassification('中英混排', 'format');
+  });
+
+  it('异常空格 → format', async () => {
+    await testTypeClassification('异常空格', 'format');
   });
 
   // ── completeness ──
@@ -1406,6 +1416,8 @@ describe('releaseSession 时序：文件写入失败时保留会话', () => {
         totalWords: 100,
       },
       createdAt: new Date().toISOString(),
+      // Issue #179 门禁三态：空报告用例补已覆盖全文的进度，避免被「从未规划/从未跑」门禁拒绝
+      progress: { processedToParagraph: 10, totalParagraphs: 10, allBatchesComplete: true },
     });
   };
 
@@ -1531,6 +1543,7 @@ describe('releaseSession 时序：文件写入失败时保留会话', () => {
       session_id: sessId,
       output_file: outFile,
     });
+
     expect(result.success).toBe(true);
     expect(fs.existsSync(outFile)).toBe(true); // 父目录被自动创建并成功落盘
     expect(sessionIssues.has(sessId)).toBe(false); // 写盘成功 → 回收会话
@@ -3583,6 +3596,60 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
     expect(result.content[0].text).toContain('未检测到批次分配表');
   });
 
+  it('空批次表 + 无进度：报告不误报「全部已修复」而显示覆盖未确认（Issue #179 空批次表语义修复）', async () => {
+    const s = sid('empty-batch-noprogress');
+    sessionIssues.set(s, {
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
+      ],
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 100, totalWords: 500 },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 2,
+    });
+    const result = await generateProofreadReportHandler({ session_id: s });
+    expect(result.success).toBe(true);
+    // 报告必须体现「未确认覆盖全文」，不得再出现「全部已修复 ✅」
+    expect(result.content[0].text).toContain('未确认完整');
+    expect(result.content[0].text).not.toContain('| 全部已修复 | ✅ |');
+  });
+
+  it('覆盖全文后报告正常显示「全部已修复 ✅」（Issue #179 空批次表语义修复）', async () => {
+    const s = sid('full-coverage-ok');
+    const acc = await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [
+        {
+          offset: 10,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
+      ],
+      doc_info: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 100,
+        totalWords: 500,
+      },
+      _processed_to_paragraph: 100,
+    });
+    expect(acc.success).toBe(true);
+    const result = await generateProofreadReportHandler({ session_id: s });
+    expect(result.success).toBe(true);
+    expect(result.content[0].text).toContain('| 全部已修复 | ✅ |');
+  });
+
   it('proofreadAccumulate 上报 _processed_to_paragraph 后报告硬门禁联动生效（Issue #151 遗留修复）', async () => {
     const s = sid('accum-progress');
     const acc1 = await proofreadAccumulateHandler({
@@ -3603,6 +3670,440 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
     await proofreadAccumulateHandler({ session_id: s, issues: [], _processed_to_paragraph: 100 });
     const allowed = await generateProofreadReportHandler({ session_id: s });
     expect(allowed.success).toBe(true);
+  });
+
+  it('串行模式：重复上报同一 _processed_to_paragraph 被拒绝（Issue #179 假进度防回退）', async () => {
+    const s = sid('ser-progress-dup');
+    const acc1 = await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      doc_info: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 100,
+        totalWords: 500,
+      },
+      _processed_to_paragraph: 40,
+    });
+    expect(acc1.success).toBe(true);
+
+    // 串行模式再次上报相同进度 40（重复/回退）→ 拒绝
+    const dup = await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      _processed_to_paragraph: 40,
+    });
+    expect(dup.success).toBe(false);
+    expect(dup.error).toContain('进度');
+    expect(dup.error).toContain('≤');
+
+    // 进度回退（新值 30 < 已上报 40）→ 拒绝
+    const regress = await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      _processed_to_paragraph: 30,
+    });
+    expect(regress.success).toBe(false);
+  });
+
+  it('被拒绝的累加调用不得污染会话（R1-2 评审修复：进度校验前置，被拒批次 issues 不残留）', async () => {
+    const s = sid('ser-progress-no-leak');
+    // 首批：进度 40，1 个 issue
+    const acc1 = await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [
+        {
+          offset: 10,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp',
+          context: '...',
+        },
+      ],
+      doc_info: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 100,
+        totalWords: 500,
+      },
+      _processed_to_paragraph: 40,
+    });
+    expect(acc1.success).toBe(true);
+
+    // 被拒调用（重复进度 40）携带 2 个新 issue —— 修复前会泄漏进 session，修复后必须不残留
+    const rejected = await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [
+        {
+          offset: 20,
+          length: 2,
+          original: 'AA',
+          suggestion: 'A',
+          type: '重复字符',
+          source: 'mcp',
+          context: '...',
+        },
+        {
+          offset: 30,
+          length: 2,
+          original: 'BB',
+          suggestion: 'B',
+          type: '重复字符',
+          source: 'mcp',
+          context: '...',
+        },
+      ],
+      _processed_to_paragraph: 40,
+    });
+    expect(rejected.success).toBe(false);
+
+    // 覆盖全文后生成报告：问题数应只有首批的 1 处（被拒批次的 2 处不得泄漏）
+    await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      _processed_to_paragraph: 100,
+    });
+    const result = await generateProofreadReportHandler({ session_id: s });
+    expect(result.success).toBe(true);
+    expect(result.content[0].text).toContain('**发现问题**: 1 处');
+    expect(result.content[0].text).not.toContain('**发现问题**: 3 处');
+  });
+
+  it('串行模式：单批进度增量超过 200 段（跳号假进度）被拒绝（R2-1 评审修复）', async () => {
+    const s = sid('ser-progress-jump');
+    await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      doc_info: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 2518,
+        totalWords: 12000,
+      },
+      _processed_to_paragraph: 700,
+    });
+    // 700→1600 增量 900 > 200：Issue #179 原始跳号场景，必须被拒
+    const jump = await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      _processed_to_paragraph: 1600,
+    });
+    expect(jump.success).toBe(false);
+    expect(jump.error).toContain('增量超限');
+  });
+
+  it('串行模式：_processed_to_paragraph 超出文档总段数被拒绝（R2-2 评审修复）', async () => {
+    const s = sid('ser-progress-over');
+    const acc = await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      doc_info: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 100,
+        totalWords: 500,
+      },
+      _processed_to_paragraph: 5000,
+    });
+    expect(acc.success).toBe(false);
+    expect(acc.error).toContain('超界');
+  });
+
+  it('并行模式（带 _batch_id）：_processed_to_paragraph 超出文档总段数同样被拒绝（R3-1 评审修复）', async () => {
+    const s = sid('par-progress-over');
+    const acc = await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      doc_info: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 100,
+        totalWords: 500,
+      },
+      _batch_id: 'b1',
+      _processed_to_paragraph: 5000,
+    });
+    // R3-1：上界校验提升到串行/并行共用，并行批次进度同样不可能超过总段数
+    expect(acc.success).toBe(false);
+    expect(acc.error).toContain('超界');
+  });
+
+  it('被进度校验拒绝后重试：自动分批补登记且被拒调用不泄漏 issues（R8-1 评审修复）', async () => {
+    const s = sid('r8-auto-batch-retry');
+    // call1：单次上报 250（增量 250 > 200）被拒，携带 1 个 issue —— 不得泄漏、不得触发自动分批
+    const acc1 = await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [
+        {
+          offset: 10,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp',
+          context: '...',
+        },
+      ],
+      doc_info: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 250,
+        totalWords: 1200,
+      },
+      _processed_to_paragraph: 250,
+    });
+    expect(acc1.success).toBe(false);
+    // call2：重试合法进度 200（增量 200 ≤ 上限）→ 应补登记自动分批（批次表为空即触发）
+    const acc2 = await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [
+        {
+          offset: 20,
+          length: 2,
+          original: 'BB',
+          suggestion: 'B',
+          type: '重复字符',
+          source: 'mcp',
+          context: '...',
+        },
+      ],
+      _processed_to_paragraph: 200,
+    });
+    expect(acc2.success).toBe(true);
+    const allocs = proofreadStore.loadBatchAllocations(s);
+    expect(allocs.length).toBe(3);
+    expect(allocs.every((b: { autoGenerated?: boolean }) => b.autoGenerated === true)).toBe(true);
+    // call3：200→250 覆盖全文
+    await proofreadAccumulateHandler({ session_id: s, issues: [], _processed_to_paragraph: 250 });
+    const result = await generateProofreadReportHandler({ session_id: s });
+    expect(result.success).toBe(true);
+    // 被拒的 call1 issue 不得泄漏（仅 call2 的 1 处）
+    expect(result.content[0].text).toContain('**发现问题**: 1 处');
+    // 批次表非空 + 覆盖全文 → 显示全部已修复 + 自动分批说明
+    expect(result.content[0].text).toContain('| 全部已修复 | ✅ |');
+    expect(result.content[0].text).toContain('服务端自动分批');
+  });
+
+  it('自动分批批次区间被篡改出缺口时「全部已修复 ✅」不显示（R2-3 评审修复）', async () => {
+    const s = sid('auto-batch-gap');
+    await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [
+        {
+          offset: 10,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp',
+          context: '...',
+        },
+      ],
+      doc_info: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 250,
+        totalWords: 1200,
+      },
+      _processed_to_paragraph: 200,
+    });
+    await proofreadAccumulateHandler({ session_id: s, issues: [], _processed_to_paragraph: 250 });
+    // 篡改：删除 auto-batch-2（101-200）制造区间缺口
+    const allocs = proofreadStore.loadBatchAllocations(s);
+    proofreadStore.saveBatchAllocations(
+      s,
+      allocs.filter((b: { batchId: string }) => b.batchId !== 'auto-batch-2')
+    );
+    const result = await generateProofreadReportHandler({ session_id: s });
+    // 进度覆盖全文但批次区间有缺口 → 报告不得显示「全部已修复 ✅」
+    expect(result.content[0].text).toContain('批次区间未覆盖完整');
+    expect(result.content[0].text).not.toContain('| 全部已修复 | ✅ |');
+  });
+
+  it('并行模式（带 _batch_id）：进度可乱序到达，不做串行单调约束（Issue #179 兼容并行）', async () => {
+    const s = sid('par-progress-mixed');
+    // 批次 A 先上报大进度 500，批次 B 后上报较小进度 300（区间独立）→ 不应被拒绝
+    const a = await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      doc_info: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 800,
+        totalWords: 4000,
+      },
+      _batch_id: 'batch-a',
+      _processed_to_paragraph: 500,
+    });
+    expect(a.success).toBe(true);
+    const b = await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      _batch_id: 'batch-b',
+      _processed_to_paragraph: 300,
+    });
+    expect(b.success).toBe(true);
+  });
+
+  it('首次调用自动登记服务端分批（批次表永远非空），报告按串行进度判定（Issue #179 阶段1）', async () => {
+    const s = sid('auto-batch-init');
+    // 首次调用（不带 _batch_allocations）→ 服务端按 totalParagraphs 自动生成批次落盘
+    const acc = await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
+      ],
+      doc_info: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 100,
+        totalWords: 500,
+      },
+      _processed_to_paragraph: 100,
+    });
+    expect(acc.success).toBe(true);
+    // 批次表已自动落盘且非空
+    const allocs = proofreadStore.loadBatchAllocations(s);
+    expect(allocs.length).toBeGreaterThan(0);
+    expect(allocs.every((b: { autoGenerated?: boolean }) => b.autoGenerated === true)).toBe(true);
+    expect(allocs[0].range).toEqual({ start: 1, end: 100 });
+    // 自动批次 + 覆盖全文 → 允许生成报告
+    const result = await generateProofreadReportHandler({ session_id: s });
+    expect(result.success).toBe(true);
+    expect(result.content[0].text).toContain('| 全部已修复 | ✅ |');
+  });
+
+  it('自动分批批次不要求逐一 done：单 agent 顺序校对只上报进度即可（Issue #179 阶段1）', async () => {
+    const s = sid('auto-batch-serial');
+    await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [
+        {
+          offset: 10,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp',
+          context: '...',
+        },
+      ],
+      doc_info: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 250,
+        totalWords: 1200,
+      },
+      _processed_to_paragraph: 200,
+    });
+    // 第二批：200→250（增量 50，≤200 单批上限，合法）
+    await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      _processed_to_paragraph: 250,
+    });
+    // 自动批次仍全部 pending（单 agent 顺序校对不会逐批置 done），但进度已覆盖全文 → 放行
+    const allocs = proofreadStore.loadBatchAllocations(s);
+    expect(allocs.length).toBe(3);
+    expect(allocs.every((b: { status: string }) => b.status === 'pending')).toBe(true);
+    const result = await generateProofreadReportHandler({ session_id: s });
+    expect(result.success).toBe(true);
+    // R1-3 回归：自动分批（autoGenerated）覆盖全文后，报告不得再出现「批次完整性」告警
+    // 与「全部已修复 ✅」自相矛盾（修复前 pending 自动批次被误判为未完成）
+    expect(result.content[0].text).not.toContain('批次完整性');
+    expect(result.content[0].text).toContain('| 全部已修复 | ✅ |');
+  });
+
+  it('手动编排批次全部 done + 覆盖全文（无进度上报）时报告显示全部已修复（R1-4 评审修复）', async () => {
+    const s = sid('manual-cov-complete');
+    await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [
+        {
+          offset: 10,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp',
+          context: '...',
+        },
+      ],
+      doc_info: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 100,
+        totalWords: 500,
+      },
+      _batch_allocations: [
+        {
+          batchId: 'b1',
+          range: { start: 1, end: 100 },
+          status: 'done',
+          stepsLog: [
+            { step: 'getDocumentParagraphs', timestamp: 1 },
+            { step: 'getDocumentTextByRange', timestamp: 2 },
+            { step: 'proofreadBasic', timestamp: 3 },
+            { step: 'confirmBatchAiProofread', timestamp: 4 },
+            { step: 'replaceInParagraph', timestamp: 5 },
+            { step: 'proofreadAccumulate', timestamp: 6 },
+          ],
+        },
+      ],
+      // 故意不传 _processed_to_paragraph：批次表本身已证明覆盖全文
+    });
+    const result = await generateProofreadReportHandler({ session_id: s });
+    expect(result.success).toBe(true);
+    // 修复前：手动批次全 done + 全覆盖但无进度上报 → 误标「覆盖状态 未确认完整」
+    // 修复后：批次表证明覆盖完整 → 显示「全部已修复 ✅」
+    expect(result.content[0].text).toContain('| 全部已修复 | ✅ |');
+    expect(result.content[0].text).not.toContain('覆盖状态');
+  });
+
+  it('空会话（从未规划/从未跑）：无 issues/无进度/无修订依据 → 拒绝生成报告（Issue #179 门禁三态）', async () => {
+    const s = sid('never-run');
+    sessionIssues.set(s, {
+      issues: [],
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 100, totalWords: 500 },
+      createdAt: new Date().toISOString(),
+    });
+    const result = await generateProofreadReportHandler({ session_id: s });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('禁止生成报告');
+  });
+
+  it('历史遗留串行会话（有 issues 但无进度）：放行且报告标注未确认完整（Issue #179 门禁三态兼容）', async () => {
+    const s = sid('legacy-no-progress');
+    sessionIssues.set(s, {
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
+      ],
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 100, totalWords: 500 },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 2,
+    });
+    const result = await generateProofreadReportHandler({ session_id: s });
+    expect(result.success).toBe(true);
+    expect(result.content[0].text).toContain('未确认完整');
+    expect(result.content[0].text).not.toContain('| 全部已修复 | ✅ |');
   });
 
   it('编排模式：批次全部完成+凭证完整但区间未覆盖全文时禁止生成报告（Issue #151 遗留修复）', async () => {
@@ -3645,5 +4146,106 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
     expect(result.success).toBe(false);
     expect(result.content[0].text).toContain('完整性门禁');
     expect(result.content[0].text).toContain('101-249');
+  });
+
+  it('方案 B：报告与文档同目录可写（F 盘文档目录，不在默认白名单 home+tmp）（Issue #179 阶段5）', async () => {
+    // 模拟用户文档在 F 盘工程目录（不在 ALLOWED_WRITE_ROOTS 默认 home+tmp 内）
+    const fDriveDocDir = path.join(os.tmpdir(), 'F-drive-mock', '2025年度');
+    fs.mkdirSync(fDriveDocDir, { recursive: true });
+    const s = sid('path-b-same-dir');
+    sessionIssues.set(s, {
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
+      ],
+      docInfo: {
+        fileName: '政务文档.docx',
+        filePath: path.join(fDriveDocDir, '政务文档.docx'),
+        totalParagraphs: 10,
+        totalWords: 100,
+      },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 2,
+      progress: { processedToParagraph: 10, totalParagraphs: 10, allBatchesComplete: true },
+    });
+    const outFile = path.join(fDriveDocDir, '政务文档.校对报告.md');
+    // 校验：方案 B 把 docInfo.filePath 所在目录并入白名单 → 与文档同目录写盘成功
+    const result = await generateProofreadReportHandler({ session_id: s, output_file: outFile });
+    expect(result.success).toBe(true);
+    expect(fs.existsSync(outFile)).toBe(true);
+    expect(sessionIssues.has(s)).toBe(false);
+  });
+
+  it('方案 B：buildReportAllowedRoots 把文档所在目录并入白名单（Issue #179 阶段5）', async () => {
+    // 直接验证白名单合并逻辑：方案 B 的核心是「报告与文档同目录可写」——
+    // docInfo.filePath 所在目录必须被并入写盘白名单（不全局开放盘符）。
+    const docDir = path.join(os.tmpdir(), 'path-b-doc');
+    const merged = buildReportAllowedRoots(path.join(docDir, 'd.docx'));
+    expect(Array.isArray(merged)).toBe(true);
+    // 文档目录在白名单中（同目录可写）
+    expect(merged.some((r: string) => path.resolve(r) === path.resolve(docDir))).toBe(true);
+    // 与文档不同目录不在白名单（收敛范围：不全局开放盘符）
+    const otherDir = path.join(os.tmpdir(), 'path-b-other');
+    expect(merged.some((r: string) => path.resolve(r) === path.resolve(otherDir))).toBe(false);
+  });
+
+  it('格式维度拆分：异常空格归 format，不再污染一致性评分（Issue #179 阶段6）', async () => {
+    const s = sid('format-metric');
+    sessionIssues.set(s, {
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: 'a b',
+          suggestion: 'ab',
+          type: '异常空格',
+          source: 'mcp' as const,
+          context: '...',
+        },
+        {
+          offset: 3,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
+        {
+          offset: 6,
+          length: 2,
+          original: 'a b',
+          suggestion: 'ab',
+          type: '数字空格',
+          source: 'mcp' as const,
+          context: '...',
+        },
+      ],
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 10, totalWords: 100 },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 3,
+      progress: { processedToParagraph: 10, totalParagraphs: 10, allBatchesComplete: true },
+    });
+    const result = await generateProofreadReportHandler({ session_id: s });
+    expect(result.success).toBe(true);
+    const text = result.content[0].text!;
+    // 格式问题单独成行：格式 (format) 行应有 2 处
+    const formatRow = text.split('\n').find(l => l.includes('格式 (format)'));
+    expect(formatRow).toBeTruthy();
+    expect(formatRow).toContain('| 2 |');
+    // 一致性 (consistency) 行不应包含格式问题（应为 0 处）
+    const consistencyRow = text.split('\n').find(l => l.includes('一致性 (consistency)'));
+    expect(consistencyRow).toBeTruthy();
+    expect(consistencyRow).toContain('| 0 |');
+    // 统计摘要标注纯格式问题归类
+    expect(text).toContain('其中纯格式问题');
+    // 五维评分标题改为六维展示（含格式行）——兼容旧标题，仅校验格式行存在
   });
 });

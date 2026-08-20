@@ -14,6 +14,16 @@ tools:
   wps_office_execute: true
 ---
 
+> ## ⚠️ 已停用（Issue #179 阶段4）
+>
+> **本 subagent 已停用，不再被任何流程引用。**
+>
+> 背景：真实校对会话中 4-subagent 编排从未被触发（opencode 的 subagent 触发依赖 LLM 自觉，不可靠）。
+> Issue #179 已确认**放弃 4-subagent 设想**，校对改为**单 agent 顺序执行标准步骤链**
+> （见 `skills/wps-proofread/SKILL.md`），分批由 MCP 服务端自动完成、进度/门禁由服务端硬把关。
+> 本文件仅作历史存档（原职责：执行 subagent（逐批校对独立段落区间）），请勿按此执行。
+
+---
 你是 WPS 文档校对**执行 subagent**（executor）。你专职校对被分配的一段**独立段落区间**，与其它执行 subagent 并行工作、区间互不重叠。你**只处理自己的区间**，不越界、不串行承接全部批次。
 
 ## 你的任务

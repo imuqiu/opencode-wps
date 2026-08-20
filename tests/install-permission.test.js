@@ -36,6 +36,7 @@ function assertEqual(actual, expected, msg) {
 // 加载被测模块
 var helper = require(path.join(__dirname, '..', 'shared', 'permission-helper.js'));
 var applyServicePermission = helper.applyServicePermission;
+var applyWriteRoots = helper.applyWriteRoots;
 var DEFAULT_PERMISSION = helper.DEFAULT_PERMISSION;
 
 // ==================== 测试用例 ====================
@@ -166,6 +167,69 @@ test('DEFAULT_PERMISSION 与模板保持一致', function () {
     JSON.stringify(DEFAULT_PERMISSION),
     '模板 permission 应与 DEFAULT_PERMISSION 一致'
   );
+});
+
+// ==================== applyWriteRoots（路径白名单）测试 ====================
+
+test('allowedWriteRoots 非空：注入 MCP env.OPCODE_ALLOWED_ROOTS（Issue #179 路径白名单暴露）', function () {
+  var mcp = { command: ['node', 'server.js'], type: 'local' };
+  var r = applyWriteRoots(mcp, 'F:\\2025年度;D:\\docs');
+  assertTrue(r.applied === true, '非空 roots 应标记 applied');
+  assertTrue(!!mcp.env, '应创建 env');
+  // R4-2/R9-2 修复：env 按平台分隔符规范化写入，返回值与 env 实际值一致
+  // （本测试环境为 Linux/macOS → 冒号 `:`）
+  var expectedDelim = process.platform === 'win32' ? ';' : ':';
+  var expected = 'F:\\2025年度' + expectedDelim + 'D:\\docs';
+  assertEqual(
+    mcp.env.OPCODE_ALLOWED_ROOTS,
+    expected,
+    'env 应写入 OPCODE_ALLOWED_ROOTS（平台分隔符规范化）'
+  );
+  assertEqual(r.roots, expected, '返回值应为规范化后的值（与 env 一致）');
+});
+
+test('allowedWriteRoots 混用分隔符时按平台规范化（R4-2 评审修复）', function () {
+  var mcp = { command: ['node', 'server.js'], type: 'local' };
+  // 用户混用 `;` 和 `:`（Windows 盘符路径含冒号，mac 路径可用分号）
+  var r = applyWriteRoots(mcp, 'C:\\a;D:\\b:E:\\c');
+  var expectedDelim = process.platform === 'win32' ? ';' : ':';
+  var expected = 'C:\\a' + expectedDelim + 'D:\\b' + expectedDelim + 'E:\\c';
+  assertEqual(mcp.env.OPCODE_ALLOWED_ROOTS, expected, 'env 应统一为平台分隔符');
+});
+
+test('allowedWriteRoots 带首尾空白：注入前应 trim', function () {
+  var mcp = { command: ['node', 'server.js'], type: 'local' };
+  var r = applyWriteRoots(mcp, '  F:\\docs  ');
+  assertEqual(r.roots, 'F:\\docs', 'roots 应去除首尾空白');
+  assertEqual(mcp.env.OPCODE_ALLOWED_ROOTS, 'F:\\docs', 'env 应为 trim 后的值');
+});
+
+test('allowedWriteRoots 为空/未配置：不注入，沿用 MCP 默认（Issue #179）', function () {
+  var mcp = { command: ['node', 'server.js'], type: 'local' };
+  var r = applyWriteRoots(mcp, '');
+  assertTrue(r.applied === false, '空 roots 应标记未注入');
+  assertTrue(
+    !mcp.env || mcp.env.OPCODE_ALLOWED_ROOTS === undefined,
+    '不应写入 OPCODE_ALLOWED_ROOTS'
+  );
+});
+
+test('allowedWriteRoots 未配置时清理残留过期 OPCODE_ALLOWED_ROOTS（Issue #179）', function () {
+  var mcp = {
+    command: ['node', 'server.js'],
+    type: 'local',
+    env: { OPCODE_ALLOWED_ROOTS: 'D:\\old' },
+  };
+  var r = applyWriteRoots(mcp, '');
+  assertTrue(r.applied === false, '空 roots 应标记未注入');
+  assertTrue(mcp.env.OPCODE_ALLOWED_ROOTS === undefined, '应清理残留 OPCODE_ALLOWED_ROOTS');
+});
+
+test('allowedWriteRoots 非字符串（undefined）按未配置处理', function () {
+  var mcp = { command: ['node', 'server.js'], type: 'local' };
+  var r = applyWriteRoots(mcp, undefined);
+  assertTrue(r.applied === false, 'undefined 应视为未配置');
+  assertTrue(!mcp.env || mcp.env.OPCODE_ALLOWED_ROOTS === undefined, '不应写入 env');
 });
 
 // ==================== 测试结果汇总 ====================
