@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **校对防幻觉链路加固（Issue #179 真实校对实例分析落地）** — 针对真实校对会话（session_ffa8）暴露的问题逐项修复：
+  - **`P17` 拦截原生 `write` 伪造校对报告（漏洞封堵）**：此前 `P17` 只对 `wps_office_execute` 网关内 `tool_name=write` 生效，而 OpenCode 原生 `write` 工具在「非网关调用直接 return」闸门就被放行，AI 可用原生 `write` 绕过服务端真实累计数据手动拼造报告。现将原生 `write`/`writeFile`/`writeText`/`edit` 写「校对报告」路径的拦截**提升到前置闸门之前**，除非服务端已成功生成报告（`reportGenerated=true`）否则一律拦截（`governance.js`）。
+  - **服务端校验串行进度单调递增（防假进度跳号）**：`proofreadAccumulate` 在**串行模式**（无 `_batch_id`）下校验 `_processed_to_paragraph` 必须严格递增（新值 > 已上报进度），重复上报/进度回退一律拒绝——堵住 AI 谎报进度（如 700→1600 跳过中间批次）假装覆盖全文的漏洞；并行模式（带 `_batch_id`）各执行 agent 区间独立，保持 `Math.max` 不误伤（`proofread-report.ts`）。
+  - **区分「空批次表」与「全部完成」（防误报）**：报告「全部已修复 ✅」改为仅在服务端确认真实覆盖全文（`processedToParagraph >= totalParagraphs`）时显示；否则显示「⚠️ 覆盖状态未确认完整」，杜绝「空批次表 + 无进度」兜底放行时误报「全部完成」（`proofread-report.ts`）。
+  - **主 agent 补充校对 skill 路由**：`wps-expert.md` 的 Skill 调用优先级新增 `wps-proofread`（文档校对专项），并补充校对路由与铁律指引——用户请求校对时须调用 `wps-proofread`，报告必须由 `generateProofreadReport` 生成、严禁 `write` 伪造、未覆盖全文不得声称全部已修复。
+  - **路径写盘白名单配置暴露**：新增 `opencode-wps/config.js` 的 `allowedWriteRoots` 配置项，`install-addons.js` 将其写入 `opencode.json` 中 MCP server 的 `env.OPCODE_ALLOWED_ROOTS`，解决用户文档在其他盘符（如 F 盘）时报告写盘报「Path not allowed」的问题（PR #180 只解决权限授权，未解决路径白名单）。逻辑抽取到 `shared/permission-helper.js` 的 `applyWriteRoots`（可测试）。
+  - **测试**：`governance-p17.test.ts` 新增原生 `write` 拦截/放行用例；`proofread-report.test.ts` 新增串行进度防回退、并行乱序兼容、空批次表不误报、覆盖全文正常显示用例；`install-permission.test.js` 新增 `applyWriteRoots` 5 用例（均接入 CI）。
+
 ## [1.7.0] - 2026-08-20
 
 ### Added

@@ -103,6 +103,14 @@ PluginStorage 500ms 轮询采用 `{ cmd, ts }` JSON 格式：
 
 > ⚠️ 该服务端放行只作用于 OpenCode 工具调用权限，**governance.js 的 G1-G7 安全规则（路径安全/破坏性确认/密码保护等）对 MCP 工具调用仍生效**。但需注意：`"*": "allow"` 放行的 **opencode 原生内置工具（如 `bash`/`edit`/`write` 等）不受 governance.js 拦截**——governance 仅拦截 MCP 工具调用。因此若环境不可信或文档含敏感内容，请务必收紧 `external_directory` 或改用 `manual` 模式人工确认，避免原生工具越权读写。
 
+### 文件路径写盘白名单（Issue #179 路径白名单暴露）
+
+MCP 服务端 write 类操作（含校对报告落盘）默认只允许写入**用户主目录 + 系统临时目录**。通过 `opencode-wps/config.js` 的 `allowedWriteRoots` 配置可放开更多写盘根目录（`install-addons.js` 写入 `opencode.json` 中 MCP server 的 `env.OPCODE_ALLOWED_ROOTS`）：
+
+- **仅放开必要的根目录**：建议把 `allowedWriteRoots` 精确到你的文档根目录（如 `F:\2025年度`），不要用空串或不加节制的宽路径，避免扩大可写范围。
+- **路径穿越仍被拦截**：即使白名单放开，`validateFilePath` 仍会拒绝路径穿越（`..`）、DOS 设备路径、NTFS 备用数据流等，不会因白名单放宽而失效。
+- **留空 `''`**：不注入白名单，沿用 MCP 默认（仅限用户主目录 + 系统临时目录），是最保守的选项。
+
 ### 报告安全漏洞
 
 如发现安全漏洞，请通过 GitHub Issue 报告。

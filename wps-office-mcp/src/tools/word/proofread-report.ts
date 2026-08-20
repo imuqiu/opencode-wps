@@ -1028,7 +1028,27 @@ export const proofreadAccumulateHandler: ToolHandler = async (
     const totalPara =
       typeof session.docInfo?.totalParagraphs === 'number' ? session.docInfo.totalParagraphs : 0;
     const prev = session.progress?.processedToParagraph ?? 0;
-    // 取各批上报的最大值（并行多执行 agent 各自上报自己的区间终点）
+    const isParallelBatch = typeof _batch_id === 'string' && _batch_id.length > 0;
+    // 串行模式（无 _batch_id，单 agent 顺序校对）：进度必须严格递增且不重复/回退。
+    // Issue #179 实证：AI 曾上报 700→1600 跳过 600/1400/1500，中间缺批永远无法被识别。
+    // 串行模式下每批应对应唯一递增的段落终点，新值 <= prev 说明重复上报或进度回退——拒绝。
+    if (!isParallelBatch && _processed_to_paragraph <= prev) {
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [
+          {
+            type: 'text',
+            text:
+              `【进度校验】串行模式下 _processed_to_paragraph 必须严格递增（本批新值 ${_processed_to_paragraph} ≤ 已上报进度 ${prev}）。\n` +
+              `可能原因：重复上报同一批次，或进度回退。请每批校对完成后上报其真实最末段落索引（> 上一批 ${prev}）。`,
+          },
+        ],
+        error: `串行进度回退/重复: 新进度 ${_processed_to_paragraph} ≤ 已上报 ${prev}`,  
+      };
+    }
+    // 并行模式（有 _batch_id，各执行 agent 处理独立区间）：取各批上报的最大值
+    // （多 executor 各自上报自己的区间终点，区间可能乱序到达，不能用单调递增约束）。
     session.progress = {
       processedToParagraph: Math.max(prev, _processed_to_paragraph),
       totalParagraphs: totalPara,
@@ -1703,7 +1723,21 @@ export const generateProofreadReportHandler: ToolHandler = async (
     report += `| ⚠️ 未标注来源 | ${unknownSourceCount} 处 |\n`;
   }
   report += `| **合计** | **${issues.length} 处** |\n`;
-  report += `| 全部已修复 | ✅ |\n`;
+  // 覆盖状态判定（Issue #179 空批次表语义修复）：
+  // 只有服务端确认真实覆盖全文（processedToParagraph >= totalParagraphs）才显示「全部已修复 ✅」；
+  // 否则（无进度依据 / 从未规划 / 未覆盖全文）不得误报「全部完成」，改为告警——
+  // 避免「空批次表 + 无进度」的兜底放行场景被当作「全部已修复」交付。
+  const _totalParaNum = typeof docInfo?.totalParagraphs === 'number' ? docInfo.totalParagraphs : 0;
+  const _processedToNum = session.progress?.processedToParagraph;
+  const _coverageComplete =
+    _totalParaNum > 0 && typeof _processedToNum === 'number' && _processedToNum >= _totalParaNum;
+  if (_coverageComplete) {
+    report += `| 全部已修复 | ✅ |\n`;
+  } else {
+    report +=
+      `| ⚠️ 覆盖状态 | 未确认完整（已上报 ${typeof _processedToNum === 'number' ? _processedToNum : '无进度'}/${_totalParaNum || '未知'} 段） |\n`;
+    report += `> ⚠️ **本次校对未确认覆盖全文**，「全部已修复」状态不可信。请核对是否遗漏段落或进度上报缺失。\n`;
+  }
   if (session.suspectedIssues && session.suspectedIssues.length > 0) {
     report += `| 待确认问题 | ${session.suspectedIssues.length} 处（见「待确认问题」节） |\n`;
   }

@@ -705,6 +705,33 @@ export const WpsGovernancePlugin = async () => {
         }
       }
 
+      // ── 规则 P17（原生 write 分支）：禁止 AI 手动 write 伪造校对报告（session_ffa8 问题一，P0）──
+      // 背景：真实会话中 AI 在 generateProofreadReport 失败后，直接用 OpenCode 原生 write 工具
+      // 手动构造 Markdown 报告写入目标路径，绕过服务端真实累计的数据。此前 P17 只对
+      // wps_office_execute 网关内 tool_name=write 生效，而原生 write（outerTool='write'）
+      // 在上方「非网关调用直接 return」闸门就被放行，P17 根本执行不到。此处把原生 write 的
+      // 拦截提升到闸门之前：写「校对报告」路径时，除非服务端已成功生成报告
+      // （st.reportGenerated=true，即合法方案 B 落盘服务端返回文本），否则一律拦截。
+      const isReportPath = pathStr =>
+        typeof pathStr === 'string' && pathStr.indexOf('校对报告') !== -1;
+      const NATIVE_WRITE_TOOLS = ['write', 'writeText', 'writeFile', 'edit'];
+      if (NATIVE_WRITE_TOOLS.indexOf(outerTool) !== -1) {
+        const nativeArgs = input.args || {};
+        const nativePath =
+          nativeArgs.path || nativeArgs.filePath || nativeArgs.file_path || nativeArgs.file;
+        if (isReportPath(nativePath)) {
+          const st = getSessionState(input);
+          if (!st.reportGenerated) {
+            throw new Error(
+              `【执行治理】【P17】检测到直接写入“校对报告”路径（${nativePath}），但服务端尚未成功生成报告。\n` +
+                `校对报告必须由服务端真实累计的数据生成，禁止 AI 手动 write 伪造报告。\n` +
+                `请先调用 generateProofreadReport（走 wps_office_execute 网关，传 session_id + output_file）\n` +
+                `由服务端生成并落盘；若需自行落盘，请用其返回的 content 文本（不得手动构造报告体）。`
+            );
+          }
+        }
+      }
+
       // 以下规则仅针对 wps_office_execute 网关调用
       if (outerTool !== 'wps-office_wps_office_execute' && outerTool !== 'wps_office_execute')
         return;
@@ -756,8 +783,6 @@ export const WpsGovernancePlugin = async () => {
       // 处理：写「校对报告」路径时，除非服务端已成功生成报告（reportGenerated=true，
       // 即合法方案 B 落盘服务端返回文本），否则一律拦截——强制走 generateProofreadReport
       // 网关（返回 success=true 才算报告完成），而非手动 write 拼报告。
-      const isReportPath = pathStr =>
-        typeof pathStr === 'string' && pathStr.indexOf('校对报告') !== -1;
       const reportPathArg = innerArgs.filePath || innerArgs.path || innerArgs.file_path;
       if (toolName === 'writeFile' || toolName === 'write' || toolName === 'writeText') {
         if (isReportPath(reportPathArg)) {

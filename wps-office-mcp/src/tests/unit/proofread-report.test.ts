@@ -3583,6 +3583,55 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
     expect(result.content[0].text).toContain('未检测到批次分配表');
   });
 
+  it('空批次表 + 无进度：报告不误报「全部已修复」而显示覆盖未确认（Issue #179 空批次表语义修复）', async () => {
+    const s = sid('empty-batch-noprogress');
+    sessionIssues.set(s, {
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
+      ],
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 100, totalWords: 500 },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 2,
+    });
+    const result = await generateProofreadReportHandler({ session_id: s });
+    expect(result.success).toBe(true);
+    // 报告必须体现「未确认覆盖全文」，不得再出现「全部已修复 ✅」
+    expect(result.content[0].text).toContain('未确认完整');
+    expect(result.content[0].text).not.toContain('| 全部已修复 | ✅ |');
+  });
+
+  it('覆盖全文后报告正常显示「全部已修复 ✅」（Issue #179 空批次表语义修复）', async () => {
+    const s = sid('full-coverage-ok');
+    const acc = await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [
+        {
+          offset: 10,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
+      ],
+      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 100, totalWords: 500 },
+      _processed_to_paragraph: 100,
+    });
+    expect(acc.success).toBe(true);
+    const result = await generateProofreadReportHandler({ session_id: s });
+    expect(result.success).toBe(true);
+    expect(result.content[0].text).toContain('| 全部已修复 | ✅ |');
+  });
+
   it('proofreadAccumulate 上报 _processed_to_paragraph 后报告硬门禁联动生效（Issue #151 遗留修复）', async () => {
     const s = sid('accum-progress');
     const acc1 = await proofreadAccumulateHandler({
@@ -3603,6 +3652,65 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
     await proofreadAccumulateHandler({ session_id: s, issues: [], _processed_to_paragraph: 100 });
     const allowed = await generateProofreadReportHandler({ session_id: s });
     expect(allowed.success).toBe(true);
+  });
+
+  it('串行模式：重复上报同一 _processed_to_paragraph 被拒绝（Issue #179 假进度防回退）', async () => {
+    const s = sid('ser-progress-dup');
+    const acc1 = await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      doc_info: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 100,
+        totalWords: 500,
+      },
+      _processed_to_paragraph: 40,
+    });
+    expect(acc1.success).toBe(true);
+
+    // 串行模式再次上报相同进度 40（重复/回退）→ 拒绝
+    const dup = await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      _processed_to_paragraph: 40,
+    });
+    expect(dup.success).toBe(false);
+    expect(dup.error).toContain('进度');
+    expect(dup.error).toContain('≤');
+
+    // 进度回退（新值 30 < 已上报 40）→ 拒绝
+    const regress = await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      _processed_to_paragraph: 30,
+    });
+    expect(regress.success).toBe(false);
+  });
+
+  it('并行模式（带 _batch_id）：进度可乱序到达，不做串行单调约束（Issue #179 兼容并行）', async () => {
+    const s = sid('par-progress-mixed');
+    // 批次 A 先上报大进度 500，批次 B 后上报较小进度 300（区间独立）→ 不应被拒绝
+    const a = await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      doc_info: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 800,
+        totalWords: 4000,
+      },
+      _batch_id: 'batch-a',
+      _processed_to_paragraph: 500,
+    });
+    expect(a.success).toBe(true);
+    const b = await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      _batch_id: 'batch-b',
+      _processed_to_paragraph: 300,
+    });
+    expect(b.success).toBe(true);
   });
 
   it('编排模式：批次全部完成+凭证完整但区间未覆盖全文时禁止生成报告（Issue #151 遗留修复）', async () => {

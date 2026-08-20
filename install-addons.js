@@ -426,6 +426,38 @@ if (fsEx.existsSync(mcpEntryPath)) {
     type: 'local',
   };
 
+  // 第 4.1 步：按 config.js 的 allowedWriteRoots 注入 MCP 写盘白名单环境变量（Issue #179 路径白名单暴露）
+  // MCP 服务端 write 类操作（含 generateProofreadReport 报告落盘）默认只允许写
+  // 用户主目录 + 系统临时目录。用户文档在其他盘符/目录时，须在 config.js 配置
+  // allowedWriteRoots 并把根目录加入白名单，否则写盘报「Path not allowed」
+  // （真实会话 F 盘文档正是因此写盘失败，PR #180 只解决权限授权，未解决路径白名单）。
+  try {
+    var pluginCfgPath = path.join(rootDir, 'opencode-wps', 'config.js');
+    var allowedRoots = '';
+    if (fsEx.existsSync(pluginCfgPath)) {
+      var pluginCfgForRoots = require(pluginCfgPath);
+      if (pluginCfgForRoots && typeof pluginCfgForRoots.allowedWriteRoots === 'string') {
+        allowedRoots = pluginCfgForRoots.allowedWriteRoots.trim();
+      }
+    }
+    var rootsHelper = require(path.join(rootDir, 'shared', 'permission-helper.js'));
+    var rootResult = rootsHelper.applyWriteRoots(config.mcp[mcpServer.name], allowedRoots);
+    if (rootResult.applied) {
+      console.log('  写盘白名单: 已注入 OPCODE_ALLOWED_ROOTS=' + rootResult.roots);
+    } else {
+      console.log(
+        '  写盘白名单: config.js 未配置 allowedWriteRoots（默认仅限用户主目录 + 系统临时目录；' +
+          '若文档在其他盘符请配置该项）'
+      );
+    }
+  } catch (e) {
+    console.log(
+      '  [警告] 无法读取 config.js allowedWriteRoots（' +
+        (e.message || '') +
+        '），不注入写盘白名单，默认仅限用户主目录 + 系统临时目录'
+    );
+  }
+
   // 第 4.5 步：按 config.js 的 permission.mode 注入/移除服务端 permission（Issue #179 方案A）
   // mode==='auto'   → 保留模板中的 permission（服务端直接放行所有工具 + 外部目录，根治长任务卡授权）
   // mode==='manual' → 仅移除与默认全放行一致的 permission，保留用户自定义精细 permission

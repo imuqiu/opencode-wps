@@ -144,6 +144,19 @@ AI 回复**实时流式显示**（SSE，Server-Sent Events），边生成边展�
 
 > ⚠️ 自动确认只放行工具权限请求，**governance.js 的 G1-G7 安全规则（路径安全/破坏性确认/密码保护等）仍生效**，不会被绕过。方案A 的 `external_directory` 放行范围可按需收紧到特定盘符。
 
+##### 文件路径写盘白名单（Issue #179 路径白名单暴露）
+
+MCP 服务端 **write 类操作**（含校对报告 `generateProofreadReport` 落盘）默认只允许写入**用户主目录 + 系统临时目录**。若你的文档位于其他盘符/目录（如 F 盘工程目录），写盘会报 `Path not allowed`——这是与方案A 的**权限授权（external_directory）不同的一层限制**，需单独放开：
+
+1. 打开 `opencode-wps/config.js`，在 `allowedWriteRoots` 填入文档所在根目录（多路径用英文分号 `;` 分隔）：
+   ```js
+   allowedWriteRoots: 'F:\\2025年度;D:\\docs',
+   ```
+2. 重跑 `node install-addons.js` 重新生成 `opencode.json`（会把该项写入 MCP server 的 `env.OPCODE_ALLOWED_ROOTS`）；
+3. 重启 launcher/serve，再实际跑一次写盘/校对报告确认不再报 `Path not allowed`。
+
+> ⚠️ 留空字符串 `''` 表示不注入白名单，沿用 MCP 默认（仅限用户主目录 + 系统临时目录）。配置项说明见 `opencode-wps/config.js` 注释。
+
 #### 上下文用量条（Issue #116）
 
 侧边栏底部新增**上下文用量进度条**（3px），随 SSE 事件实时更新，hover 显示详细 token 数：

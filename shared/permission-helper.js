@@ -85,7 +85,37 @@ function isSamePermission(a, b) {
   return true;
 }
 
+/**
+ * 依据 config.js 的 allowedWriteRoots 对 MCP server 配置注入/移除写盘白名单环境变量。
+ *
+ * 背景（Issue #179 路径白名单暴露）：MCP 服务端 write 类操作（含 generateProofreadReport
+ * 报告落盘）默认只允许写用户主目录 + 系统临时目录；若用户文档在其他盘符/目录（如 F 盘），
+ * 写盘会报「Path not allowed」。通过把根目录写入 opencode.json 中 MCP server 的
+ * env.OPCODE_ALLOWED_ROOTS，让 MCP 服务端放行这些写盘根目录。
+ *
+ * @param {object} mcpServerCfg  opencode.json 中目标 MCP server 的配置对象（会被原地修改）
+ * @param {string} allowedRoots  config.js allowedWriteRoots 值（trim 后）。
+ *   非空 → 注入 env.OPCODE_ALLOWED_ROOTS；空/undefined → 不注入（沿用 MCP 默认 home+tmp）。
+ * @returns {{applied: boolean, roots: string}}
+ *   applied=true 表示已注入白名单；applied=false 表示未注入（留默认）。
+ */
+function applyWriteRoots(mcpServerCfg, allowedRoots) {
+  var roots = typeof allowedRoots === 'string' ? allowedRoots.trim() : '';
+  if (roots) {
+    if (!mcpServerCfg.env) mcpServerCfg.env = {};
+    mcpServerCfg.env.OPCODE_ALLOWED_ROOTS = roots;
+    return { applied: true, roots: roots };
+  }
+  // 未配置：不注入（MCP 服务端用默认白名单 home+tmp）。
+  // 若之前注入过，清理掉，避免残留过期配置扩大写盘范围。
+  if (mcpServerCfg.env && mcpServerCfg.env.OPCODE_ALLOWED_ROOTS !== undefined) {
+    delete mcpServerCfg.env.OPCODE_ALLOWED_ROOTS;
+  }
+  return { applied: false, roots: '' };
+}
+
 module.exports = {
   DEFAULT_PERMISSION: DEFAULT_PERMISSION,
   applyServicePermission: applyServicePermission,
+  applyWriteRoots: applyWriteRoots,
 };
