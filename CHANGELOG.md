@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-08-20
+
 ### Added
 
 - **服务端权限自动放行（Issue #179 方案A，根治长任务外部目录读写卡授权）** — 在生成 `opencode.json` 时写入服务端 `permission`（`"*": "allow"` + `external_directory: { "**": "allow" }`），服务端直接放行所有工具及工作目录外的文件读写，权限请求不再下发，彻底根治长任务（如 F 盘文档校对）因 `external_directory` 授权卡住（曾出现 7.86 小时中断）的问题：
