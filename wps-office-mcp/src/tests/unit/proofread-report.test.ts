@@ -3771,6 +3771,82 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
     expect(result.content[0].text).not.toContain('**发现问题**: 3 处');
   });
 
+  it('串行模式：单批进度增量超过 200 段（跳号假进度）被拒绝（R2-1 评审修复）', async () => {
+    const s = sid('ser-progress-jump');
+    await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      doc_info: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 2518,
+        totalWords: 12000,
+      },
+      _processed_to_paragraph: 700,
+    });
+    // 700→1600 增量 900 > 200：Issue #179 原始跳号场景，必须被拒
+    const jump = await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      _processed_to_paragraph: 1600,
+    });
+    expect(jump.success).toBe(false);
+    expect(jump.error).toContain('增量超限');
+  });
+
+  it('串行模式：_processed_to_paragraph 超出文档总段数被拒绝（R2-2 评审修复）', async () => {
+    const s = sid('ser-progress-over');
+    const acc = await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      doc_info: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 100,
+        totalWords: 500,
+      },
+      _processed_to_paragraph: 5000,
+    });
+    expect(acc.success).toBe(false);
+    expect(acc.error).toContain('超界');
+  });
+
+  it('自动分批批次区间被篡改出缺口时「全部已修复 ✅」不显示（R2-3 评审修复）', async () => {
+    const s = sid('auto-batch-gap');
+    await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [
+        {
+          offset: 10,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp',
+          context: '...',
+        },
+      ],
+      doc_info: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 250,
+        totalWords: 1200,
+      },
+      _processed_to_paragraph: 200,
+    });
+    await proofreadAccumulateHandler({ session_id: s, issues: [], _processed_to_paragraph: 250 });
+    // 篡改：删除 auto-batch-2（101-200）制造区间缺口
+    const allocs = proofreadStore.loadBatchAllocations(s);
+    proofreadStore.saveBatchAllocations(
+      s,
+      allocs.filter((b: { batchId: string }) => b.batchId !== 'auto-batch-2')
+    );
+    const result = await generateProofreadReportHandler({ session_id: s });
+    // 进度覆盖全文但批次区间有缺口 → 报告不得显示「全部已修复 ✅」
+    expect(result.content[0].text).toContain('批次区间未覆盖完整');
+    expect(result.content[0].text).not.toContain('| 全部已修复 | ✅ |');
+  });
+
   it('并行模式（带 _batch_id）：进度可乱序到达，不做串行单调约束（Issue #179 兼容并行）', async () => {
     const s = sid('par-progress-mixed');
     // 批次 A 先上报大进度 500，批次 B 后上报较小进度 300（区间独立）→ 不应被拒绝
@@ -3853,6 +3929,12 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
         totalParagraphs: 250,
         totalWords: 1200,
       },
+      _processed_to_paragraph: 200,
+    });
+    // 第二批：200→250（增量 50，≤200 单批上限，合法）
+    await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
       _processed_to_paragraph: 250,
     });
     // 自动批次仍全部 pending（单 agent 顺序校对不会逐批置 done），但进度已覆盖全文 → 放行

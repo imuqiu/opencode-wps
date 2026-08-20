@@ -114,6 +114,12 @@ interface SessionData {
     totalParagraphs: number;
     /** 是否已覆盖全文（processedToParagraph >= totalParagraphs） */
     allBatchesComplete?: boolean;
+    /**
+     * 串行模式下每次上报的进度轨迹（R2-1 修复，PR #181 评审）：
+     * 记录每次 `_processed_to_paragraph` 的上报值（去重后升序），供报告门禁校验
+     * 「区间无缺口覆盖全文」——仅查最终值 >= total 无法发现 700→1600 跳号假进度。
+     */
+    history?: number[];
   };
 }
 
@@ -779,6 +785,9 @@ export const proofreadAccumulateHandler: ToolHandler = async (
   // 此前该校验位于 issues 累加之后——被拒绝的调用（重复/回退进度）已先把本批 issues
   // push 进 session，导致被拒批次数据泄漏、报告统计虚高。前置后：进度非法时直接返回，
   // 不产生任何副作用，杜绝“被拒调用污染会话”。
+  // R2-1/R2-2 修复（PR #181 评审）：追加**上界校验**（_processed_to_paragraph > totalParagraphs
+  // 即谎报超界，直接拒绝，防一次到位假覆盖）与**单批增量上限校验**（与 getDocumentParagraphs
+  // 单次 200 段上限一致——单批增量 > 200 即 700→1600 式跳号假进度）。
   if (
     typeof _processed_to_paragraph === 'number' &&
     Number.isFinite(_processed_to_paragraph) &&
@@ -786,24 +795,64 @@ export const proofreadAccumulateHandler: ToolHandler = async (
     typeof session.docInfo?.totalParagraphs === 'number'
   ) {
     const prevProgress = session.progress?.processedToParagraph ?? 0;
+    const totalPara = session.docInfo.totalParagraphs;
     const isParallelBatch = typeof _batch_id === 'string' && _batch_id.length > 0;
-    // 串行模式（无 _batch_id，单 agent 顺序校对）：进度必须严格递增且不重复/回退。
-    // Issue #179 实证：AI 曾上报 700→1600 跳过 600/1400/1500，中间缺批永远无法被识别。
-    // 串行模式下每批应对应唯一递增的段落终点，新值 <= prev 说明重复上报或进度回退——拒绝。
-    if (!isParallelBatch && _processed_to_paragraph <= prevProgress) {
-      return {
-        id: uuidv4(),
-        success: false,
-        content: [
-          {
-            type: 'text',
-            text:
-              `【进度校验】串行模式下 _processed_to_paragraph 必须严格递增（本批新值 ${_processed_to_paragraph} ≤ 已上报进度 ${prevProgress}）。\n` +
-              `可能原因：重复上报同一批次，或进度回退。请每批校对完成后上报其真实最末段落索引（> 上一批 ${prevProgress}）。`,
-          },
-        ],
-        error: `串行进度回退/重复: 新进度 ${_processed_to_paragraph} ≤ 已上报 ${prevProgress}`,
-      };
+    if (!isParallelBatch) {
+      // R2-2：进度超界（> totalParagraphs）拒绝——谎报超大值即可瞬间“覆盖全文”，必须拦截
+      if (_processed_to_paragraph > totalPara) {
+        return {
+          id: uuidv4(),
+          success: false,
+          content: [
+            {
+              type: 'text',
+              text:
+                `【进度校验】_processed_to_paragraph（${_processed_to_paragraph}）超出文档总段数 ${totalPara}。\n` +
+                `请上报真实已校对到的最末段落索引（≤ ${totalPara}）。`,
+            },
+          ],
+          error: `串行进度超界: 新进度 ${_processed_to_paragraph} > 总段数 ${totalPara}`,
+        };
+      }
+      // 串行模式（无 _batch_id，单 agent 顺序校对）：进度必须严格递增且不重复/回退。
+      // Issue #179 实证：AI 曾上报 700→1600 跳过 600/1400/1500，中间缺批永远无法被识别。
+      // 串行模式下每批应对应唯一递增的段落终点，新值 <= prev 说明重复上报或进度回退——拒绝。
+      if (_processed_to_paragraph <= prevProgress) {
+        return {
+          id: uuidv4(),
+          success: false,
+          content: [
+            {
+              type: 'text',
+              text:
+                `【进度校验】串行模式下 _processed_to_paragraph 必须严格递增（本批新值 ${_processed_to_paragraph} ≤ 已上报进度 ${prevProgress}）。\n` +
+                `可能原因：重复上报同一批次，或进度回退。请每批校对完成后上报其真实最末段落索引（> 上一批 ${prevProgress}）。`,
+            },
+          ],
+          error: `串行进度回退/重复: 新进度 ${_processed_to_paragraph} ≤ 已上报 ${prevProgress}`,
+        };
+      }
+      // R2-1 修复（PR #181 评审）：单批进度增量上限——与 getDocumentParagraphs 单次
+      // 上限 200 段一致（AI 单批最多取 200 段校对），单批增量 > 200 即跳号假进度
+      // （如 700→1600 增量 900）。小文档（≤200 段）单次覆盖全文增量 ≤200，不误伤。
+      const BATCH_SIZE_MAX = 200;
+      const increment = _processed_to_paragraph - prevProgress;
+      if (increment > BATCH_SIZE_MAX) {
+        return {
+          id: uuidv4(),
+          success: false,
+          content: [
+            {
+              type: 'text',
+              text:
+                `【进度校验】单批进度增量（${increment} 段）超过单批上限 ${BATCH_SIZE_MAX} 段，疑似跳号假进度。\n` +
+                `每批 getDocumentParagraphs 最多取 ${BATCH_SIZE_MAX} 段，单批校对进度不应超过 ${BATCH_SIZE_MAX} 段。\n` +
+                `请按批次逐批上报真实进度（上一批 ${prevProgress} → 本批 ≤ ${prevProgress + BATCH_SIZE_MAX}）。`,
+            },
+          ],
+          error: `串行进度增量超限: ${increment} > ${BATCH_SIZE_MAX}（疑似跳号）`,
+        };
+      }
     }
   }
 
@@ -1098,13 +1147,24 @@ export const proofreadAccumulateHandler: ToolHandler = async (
     const totalPara =
       typeof session.docInfo?.totalParagraphs === 'number' ? session.docInfo.totalParagraphs : 0;
     const prev = session.progress?.processedToParagraph ?? 0;
+    const prevHistory = session.progress?.history ?? [];
+    // R2-1 修复：记录进度轨迹（串行模式每次上报值追加进 history，去重升序）。
     // 并行模式（有 _batch_id，各执行 agent 处理独立区间）：取各批上报的最大值
-    // （多 executor 各自上报自己的区间终点，区间可能乱序到达，不能用单调递增约束）。
+    // （多 executor 各自上报自己的区间终点，区间可能乱序到达，不能用单调递增约束），
+    // 并行区间各自独立、由 P19 区间隔离保证覆盖，不参与 history 无缺口校验。
+    const isParallelBatch = typeof _batch_id === 'string' && _batch_id.length > 0;
+    let history = prevHistory;
+    if (!isParallelBatch) {
+      history = prevHistory.filter(h => h !== _processed_to_paragraph);
+      history.push(_processed_to_paragraph);
+      history.sort((a, b) => a - b);
+    }
     session.progress = {
       processedToParagraph: Math.max(prev, _processed_to_paragraph),
       totalParagraphs: totalPara,
       allBatchesComplete:
         totalPara > 0 ? Math.max(prev, _processed_to_paragraph) >= totalPara : undefined,
+      history,
     };
   }
 
@@ -1879,10 +1939,14 @@ export const generateProofreadReportHandler: ToolHandler = async (
     _manualAllocs.every(b => b.status === 'done') &&
     getIncompleteBatches(session_id).filter(b => b.autoGenerated !== true).length === 0;
   const _coverageComplete =
-    (_totalParaNum > 0 &&
+    ((_totalParaNum > 0 &&
       typeof _processedToNum === 'number' &&
       _processedToNum >= _totalParaNum) ||
-    _manualAllComplete;
+      _manualAllComplete) &&
+    // R2-3 修复（PR #181 评审）：即使进度覆盖全文，若批次分配表存在**区间缺口**
+    // （被篡改/异常），「全部已修复 ✅」仍不得显示——缺口本身证明覆盖不完整，
+    // 与上方的「批次区间未覆盖完整」告警保持一致口径。
+    !hasCoverageGap;
   if (_coverageComplete) {
     report += `| 全部已修复 | ✅ |\n`;
   } else {

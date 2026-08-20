@@ -88,7 +88,9 @@ export function saveSessionToDisk(sessionId: string, data: unknown): boolean {
     }
     const dataObj = { ...(data ?? {}) } as Record<string, unknown>;
     if (existingBatchAllocations !== undefined && dataObj.batchAllocations === undefined) {
-      dataObj.batchAllocations = existingBatchAllocations;
+      // R2-7 修复（PR #181 评审）：深拷贝磁盘旧批次表，避免直接引用磁盘读出的数组
+      // 在后续 mutate 时污染磁盘缓存/内存 session（浅引用会同时改到 loadSessionFromDisk 的对象）。
+      dataObj.batchAllocations = JSON.parse(JSON.stringify(existingBatchAllocations));
     }
     fs.writeFileSync(filePath, JSON.stringify(dataObj, null, 2), 'utf-8');
     return true;
