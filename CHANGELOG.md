@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed（PR #181 评审第 2/3 轮加固）
+
+- **串行模式单批进度增量上限 200 段（R2-1）**：700→1600 跳号（增量 900）被服务端拒绝，封堵 Issue #179 原始假进度攻击路径（与 `getDocumentParagraphs` 单批上限一致）。
+- **进度超界校验串行/并行共用（R2-2/R3-1）**：`_processed_to_paragraph` > 文档总段数一律拒绝（含并行模式），防谎报超大值瞬间覆盖全文。
+- **批次区间缺口时「全部已修复 ✅」不显示（R2-3）**：与「批次区间未覆盖完整」告警口径统一，防自动批次被篡改出缺口后仍误报。
+- **saveSessionToDisk 批次表深拷贝（R2-7）**：防浅引用污染磁盘缓存/内存会话。
+- **SKILL.md 同步六维评分与进度校验说明（R3-4/R3-5）**：五维→六维、增量上限与超界校验说明补充。
+
 ### Fixed
 
 - **校对防幻觉链路加固（Issue #179 真实校对实例分析落地）** — 针对真实校对会话（session_ffa8）暴露的问题逐项修复：

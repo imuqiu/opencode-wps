@@ -3811,6 +3811,25 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
     expect(acc.error).toContain('超界');
   });
 
+  it('并行模式（带 _batch_id）：_processed_to_paragraph 超出文档总段数同样被拒绝（R3-1 评审修复）', async () => {
+    const s = sid('par-progress-over');
+    const acc = await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      doc_info: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 100,
+        totalWords: 500,
+      },
+      _batch_id: 'b1',
+      _processed_to_paragraph: 5000,
+    });
+    // R3-1：上界校验提升到串行/并行共用，并行批次进度同样不可能超过总段数
+    expect(acc.success).toBe(false);
+    expect(acc.error).toContain('超界');
+  });
+
   it('自动分批批次区间被篡改出缺口时「全部已修复 ✅」不显示（R2-3 评审修复）', async () => {
     const s = sid('auto-batch-gap');
     await proofreadAccumulateHandler({

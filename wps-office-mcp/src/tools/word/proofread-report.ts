@@ -797,23 +797,25 @@ export const proofreadAccumulateHandler: ToolHandler = async (
     const prevProgress = session.progress?.processedToParagraph ?? 0;
     const totalPara = session.docInfo.totalParagraphs;
     const isParallelBatch = typeof _batch_id === 'string' && _batch_id.length > 0;
+    // R3-1 修复（PR #181 评审）：上界校验提升到**串行/并行共用**——无论是否带 _batch_id，
+    // 进度都不可能超过文档总段数；并行批次区间也必然 ≤ totalParagraphs（P19 隔离），
+    // 谎报超大进度（如 5000 > 100）即视为伪造，直接拒绝，防瞬间覆盖全文。
+    if (_processed_to_paragraph > totalPara) {
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [
+          {
+            type: 'text',
+            text:
+              `【进度校验】_processed_to_paragraph（${_processed_to_paragraph}）超出文档总段数 ${totalPara}。\n` +
+              `请上报真实已校对到的最末段落索引（≤ ${totalPara}）。`,
+          },
+        ],
+        error: `进度超界: 新进度 ${_processed_to_paragraph} > 总段数 ${totalPara}`,
+      };
+    }
     if (!isParallelBatch) {
-      // R2-2：进度超界（> totalParagraphs）拒绝——谎报超大值即可瞬间“覆盖全文”，必须拦截
-      if (_processed_to_paragraph > totalPara) {
-        return {
-          id: uuidv4(),
-          success: false,
-          content: [
-            {
-              type: 'text',
-              text:
-                `【进度校验】_processed_to_paragraph（${_processed_to_paragraph}）超出文档总段数 ${totalPara}。\n` +
-                `请上报真实已校对到的最末段落索引（≤ ${totalPara}）。`,
-            },
-          ],
-          error: `串行进度超界: 新进度 ${_processed_to_paragraph} > 总段数 ${totalPara}`,
-        };
-      }
       // 串行模式（无 _batch_id，单 agent 顺序校对）：进度必须严格递增且不重复/回退。
       // Issue #179 实证：AI 曾上报 700→1600 跳过 600/1400/1500，中间缺批永远无法被识别。
       // 串行模式下每批应对应唯一递增的段落终点，新值 <= prev 说明重复上报或进度回退——拒绝。

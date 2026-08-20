@@ -9,20 +9,21 @@ description: "WPS 文档校对专家，专注于文档的错别字检测、语�
 
 ## 校对专用工具（7 个，可直接用，无需 search）
 
-| # | 工具 | 调用方式 | 功能 |
-|---|------|---------|------|
-| 1 | `enableTrackChanges` | `wps_office_execute({ tool_name: "enableTrackChanges", arguments: { enable: true } })` | 开启/关闭修订模式 |
-| 2 | `getTrackChangesStatus` | `wps_office_execute({ tool_name: "getTrackChangesStatus", arguments: {} })` | 查看修订状态 |
-| 3 | `proofreadBasic` | `wps_office_execute({ tool_name: "proofreadBasic", arguments: { text, startOffset } })` | 零 token 基础校对。text 过长或含 `\f` 时可用 `file_path` 代替 |
-| 4 | `confirmBatchAiProofread` | `wps_office_execute({ tool_name: "confirmBatchAiProofread", arguments: {} })` | **强制调用**：确认本批 AI 智能校对已完成 |
-| 5 | `replaceInParagraph` | `wps_office_execute({ tool_name: "replaceInParagraph", arguments: { paragraphIndex, findText, replaceText, replaceAll? } })` | **唯一允许的修复工具**，按段落+文本匹配替换 |
-| 6 | `proofreadAccumulate` | `wps_office_execute({ tool_name: "proofreadAccumulate", arguments: {...} })` | 累加本批校对问题到会话 Map（走网关） |
-| 7 | `generateProofreadReport` | `wps_office_execute({ tool_name: "generateProofreadReport", arguments: {...} })` | 生成五维评分校对报告（走网关）。传 `output_file` 时写盘；写盘失败返回 `success=false`，必须重试 |
+| #   | 工具                      | 调用方式                                                                                                                     | 功能                                                                                            |
+| --- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| 1   | `enableTrackChanges`      | `wps_office_execute({ tool_name: "enableTrackChanges", arguments: { enable: true } })`                                       | 开启/关闭修订模式                                                                               |
+| 2   | `getTrackChangesStatus`   | `wps_office_execute({ tool_name: "getTrackChangesStatus", arguments: {} })`                                                  | 查看修订状态                                                                                    |
+| 3   | `proofreadBasic`          | `wps_office_execute({ tool_name: "proofreadBasic", arguments: { text, startOffset } })`                                      | 零 token 基础校对。text 过长或含 `\f` 时可用 `file_path` 代替                                   |
+| 4   | `confirmBatchAiProofread` | `wps_office_execute({ tool_name: "confirmBatchAiProofread", arguments: {} })`                                                | **强制调用**：确认本批 AI 智能校对已完成                                                        |
+| 5   | `replaceInParagraph`      | `wps_office_execute({ tool_name: "replaceInParagraph", arguments: { paragraphIndex, findText, replaceText, replaceAll? } })` | **唯一允许的修复工具**，按段落+文本匹配替换                                                     |
+| 6   | `proofreadAccumulate`     | `wps_office_execute({ tool_name: "proofreadAccumulate", arguments: {...} })`                                                 | 累加本批校对问题到会话 Map（走网关）                                                            |
+| 7   | `generateProofreadReport` | `wps_office_execute({ tool_name: "generateProofreadReport", arguments: {...} })`                                             | 生成六维评分校对报告（走网关）。传 `output_file` 时写盘；写盘失败返回 `success=false`，必须重试 |
 
 > **⚠️ 调用格式统一（session_ffa8 问题八/九）**：以下 7 个工具**必须**通过 `wps_office_execute({ tool_name: "...", arguments: {...} })` 调用，`arguments` 必须是**对象**（禁止传字符串）。
 > 这些工具**已在上表列出，无需再用 `wps_office_search` 搜索**（session_ffa8 问题九：AI 用 search 搜已列工具浪费一次调用）。
 
 > **⚠️ 校对流程中强制走网关**：以下 7 个工具在 `batchStarted=true` 后**禁止直接调用 MCP 原接口**，必须通过 `wps_office_execute({ tool_name: "...", ... })` 调用：
+>
 > - `getActiveDocument` / `insertText` / `getActiveWorkbook` / `getCellValue` / `setCellValue` / `getActivePresentation`
 > - `proofreadAccumulate` / `generateProofreadReport`（这两个只存在于网关索引，MCP 侧未直连注册，唯一入口就是 `wps_office_execute`）
 >
@@ -30,11 +31,11 @@ description: "WPS 文档校对专家，专注于文档的错别字检测、语�
 
 ### 辅助工具（通过 search 获取）
 
-| 工具 | search 关键词 | 用途 |
-|------|-------------|------|
-| `getDocumentParagraphs` | `段落` | 按段落范围获取文本内容，解析 [start-end] |
-| `getDocumentTextByRange` | `文本 偏移` | 按字符偏移读取原始文本（替代手动拼接） |
-| `getDocumentStats` | `统计` | 获取文档字数/页数统计 |
+| 工具                     | search 关键词 | 用途                                     |
+| ------------------------ | ------------- | ---------------------------------------- |
+| `getDocumentParagraphs`  | `段落`        | 按段落范围获取文本内容，解析 [start-end] |
+| `getDocumentTextByRange` | `文本 偏移`   | 按字符偏移读取原始文本（替代手动拼接）   |
+| `getDocumentStats`       | `统计`        | 获取文档字数/页数统计                    |
 
 ---
 
@@ -108,34 +109,40 @@ description: "WPS 文档校对专家，专注于文档的错别字检测、语�
 
 ```javascript
 // 合并各层结果（⚠️ proofreadBasic 返回 = 文本展示 + 末尾 JSON 行，提取末行 JSON.parse 取 .issues）
-const responseProofreadBasic = JSON.parse(toolResultProofreadBasic.split('\n').filter(Boolean).pop())
-const allIssues = [
-  ...(responseProofreadBasic.issues || []),
-  ...aiProofreadIssues
-]
+const responseProofreadBasic = JSON.parse(
+  toolResultProofreadBasic.split('\n').filter(Boolean).pop()
+);
+const allIssues = [...(responseProofreadBasic.issues || []), ...aiProofreadIssues];
 // 按 offset + original 去重（同一位置同一原文只修一次）
 // ⚠️ 只对携带绝对 offset 的条目去重，缺失时保守保留全部（退化 `undefined|原文` 键会误判重复）
 // ⚠️ 同键时 AI 条目无条件优先（含 reason/更准确），用 AI 覆盖 MCP；但 AI type 为「未分类」
 //    而 MCP（Layer 1 正则命中）有具体 type 时，保留 MCP 的 type（与累加器口径一致，见 2d）
-const seen = new Map()
-const deduped = []
+const seen = new Map();
+const deduped = [];
 for (const issue of allIssues) {
-  if (issue.offset === undefined) { deduped.push(issue); continue }
-  const key = `${issue.offset}|${issue.original}`
-  const idx = seen.get(key)
+  if (issue.offset === undefined) {
+    deduped.push(issue);
+    continue;
+  }
+  const key = `${issue.offset}|${issue.original}`;
+  const idx = seen.get(key);
   if (idx === undefined) {
-    seen.set(key, deduped.length)
-    deduped.push(issue)
+    seen.set(key, deduped.length);
+    deduped.push(issue);
   } else if (issue.source === 'ai' && deduped[idx].source !== 'ai') {
-    const existing = deduped[idx]
+    const existing = deduped[idx];
     if (existing.type && existing.type !== '未分类' && (!issue.type || issue.type === '未分类')) {
-      issue.type = existing.type // 保留 Layer 1 的 type，避免报告五维评分失真
+      issue.type = existing.type; // 保留 Layer 1 的 type，避免报告六维评分失真
     }
-    deduped[idx] = issue // AI 覆盖 MCP
+    deduped[idx] = issue; // AI 覆盖 MCP
   }
 }
 // 按 offset 排序（offset 缺失时按 paragraphIndex 次级排序，避免 NaN 比较导致排序不稳定）
-deduped.sort((a, b) => (a.offset ?? Infinity) - (b.offset ?? Infinity) || (a.paragraphIndex ?? 0) - (b.paragraphIndex ?? 0))
+deduped.sort(
+  (a, b) =>
+    (a.offset ?? Infinity) - (b.offset ?? Infinity) ||
+    (a.paragraphIndex ?? 0) - (b.paragraphIndex ?? 0)
+);
 // 将合并结果通过 wps_word_proofread_accumulate 累加；若部分 issue 未携带绝对 offset，
 // 返回文本会提示「其中 N 条未携带绝对 offset，未参与去重」（报告侧位置列显示「位置未知」）
 ```
@@ -159,8 +166,9 @@ deduped.sort((a, b) => (a.offset ?? Infinity) - (b.offset ?? Infinity) || (a.par
 **每段都必须经过 `proofreadBasic` 检查。** 仅用 `getDocumentParagraphs` 看一遍不算做校对。
 
 禁止跳过任何段落，包括但不限于：
+
 - ❌ "这是目录区，不需要校对"
-- ❌ "这是标准模板，不需要校对"  
+- ❌ "这是标准模板，不需要校对"
 - ❌ "这页只有图片占位符，不需要校对"
 
 **唯一例外**：有些段落只有一张图片（如 `/`、`//` 等占位符标记），调用 `proofreadBasic` 传入会返回无问题，可以继续，但**仍需调用**。
@@ -170,16 +178,19 @@ deduped.sort((a, b) => (a.offset ?? Infinity) - (b.offset ?? Infinity) || (a.par
 对于每批段落，**必须在获取后调用 `proofreadBasic`**。仅获取段落文本肉眼检查 ≠ 完成校对。
 
 **⚠️ P12/P14 插件强制拦截：**
+
 - 若 AI 不调 `proofreadBasic` 就直接调 `confirmBatchAiProofread` → P14 拦截
 - 若 AI 不调 `proofreadBasic` 就获取下一批 → P12 拦截
 - 两种情况下插件都会直接报错，AI 无法绕过
 
 **🚫 禁止行为（来自真实用户反馈）：**
+
 - ❌ "This batch looks fine. Let me continue with the next batch." — 视觉判断不算校对！
 - ❌ `getDocumentParagraphs` → 看几眼 → `confirmBatchAiProofread` → 跳过 — proofreadBasic 从未被调用
 - ❌ 认为"这是模板段落，不需要校对"
 
 **✅ 正确流程：**
+
 ```
 获取段落 → proofreadBasic → confirmBatchAiProofread → replaceInParagraph 修复 → 更新进度
 ```
@@ -195,6 +206,7 @@ deduped.sort((a, b) => (a.offset ?? Infinity) - (b.offset ?? Infinity) || (a.par
 3. **自我确认陷阱** — 你既是"发现问题的 AI"又是"确认完成的 AI"（`confirmBatchAiProofread`），这个单点必须由 `proofreadBasic` 的外部工具结果来制衡。
 
 **P15/P16 插件强制隔离：**
+
 - P15：`proofreadBasic` 说本批没问题 → 你最多只能修 1 处，再修就要 `_force_ai_fix`
 - P16：`proofreadBasic` 说有问题 → 你的修复必须与它找到的问题匹配，新编的问题会被拦截
 
@@ -209,7 +221,7 @@ deduped.sort((a, b) => (a.offset ?? Infinity) - (b.offset ?? Infinity) || (a.par
 **校对报告必须由服务端 `generateProofreadReport` 基于真实累计的校对数据生成，禁止 AI 手动 write 拼造报告。**
 
 - ❌ **禁止**：`generateProofreadReport` 失败后，用 `writeFile`/`write` 手动构造 Markdown 报告写入「校对报告」路径。
-- ❌ **禁止**：手动编造五维评分、雷达图 JSON、问题列表——这些必须来自服务端真实累计的 issues 数据。
+- ❌ **禁止**：手动编造六维评分、雷达图 JSON、问题列表——这些必须来自服务端真实累计的 issues 数据。
 - ✅ **正确**：报告只能通过 `generateProofreadReport`（方案 A：传 `output_file` 落盘；方案 B：取其返回的 `content` 文本后再 `writeFile` 落盘）。
 
 **为什么**：真实会话中 AI 在 `generateProofreadReport` 因 session 未初始化失败后，直接 `write` 手动拼了 3 份互相矛盾的「手写报告」（发现问题数 16/23/12 各不同），完全绕过了服务端真实数据——报告可信度归零，无法审计。
@@ -230,16 +242,19 @@ deduped.sort((a, b) => (a.offset ?? Infinity) - (b.offset ?? Infinity) || (a.par
    `docInfo.totalParagraphs` 自动生成连续批次（每批 100 段）并落盘（`generateAutoBatches`）——
    你**不需要**手动登记 `_batch_allocations`，批次表永远非空。
 3. **进度由服务端强制追踪**：每批 `proofreadAccumulate` 必须携带 `_processed_to_paragraph`
-   （本批已校对到的最末段落），串行模式下服务端校验**严格递增**（重复/回退拒绝）。
+   （本批已校对到的最末段落），串行模式下服务端校验**严格递增**（重复/回退拒绝）、
+   **单批增量 ≤ 200 段**（与 `getDocumentParagraphs` 单批上限一致，防跳号假进度）、
+   **不得超界**（≤ 文档总段数）。
 4. **报告由服务端硬门禁把关**：`generateProofreadReport` 在以下任一情况**拒绝生成**：
    - 已上报进度 < 文档总段数（未覆盖全文）；
    - 无任何进度依据且无校对痕迹（从未规划/从未跑）。
-   报告「全部已修复 ✅」仅在服务端确认真实覆盖全文时显示，否则标注「⚠️ 覆盖状态未确认完整」。
+     报告「全部已修复 ✅」仅在服务端确认真实覆盖全文时显示，否则标注「⚠️ 覆盖状态未确认完整」。
 
 > 相关停用文件（历史存档）：`agents/wps-proofread-planner.md` / `manager` / `executor` / `reporter`。
 > 服务端自动分批逻辑：`proofread-store.ts` 的 `generateAutoBatches` + `proofread-report.ts` 的会话初始化自动登记。
 
 ---
+
 ## ⚠️ 批次大小限制（硬性规则）
 
 **`getDocumentParagraphs` 的 end_paragraph - start_paragraph + 1 不得超过 200。**
@@ -298,7 +313,7 @@ deduped.sort((a, b) => (a.offset ?? Infinity) - (b.offset ?? Infinity) || (a.par
 │ └────────────────────────────────────────────┘           │
 ├──────────────────────────────────────────────────────────┤
 │ 第3步：全部完成 → generateProofreadReport（走网关）      │
-│ 输入 session_id，自动生成五维评分报告                     │
+│ 输入 session_id，自动生成六维评分报告                     │
 ├──────────────────────────────────────────────────────────┤
 │ 第4步：提示用户 Ctrl+S 保存 + 查看修订记录               │
 └──────────────────────────────────────────────────────────┘
@@ -307,7 +322,7 @@ deduped.sort((a, b) => (a.offset ?? Infinity) - (b.offset ?? Infinity) || (a.par
 ### Step 0: 输出分批计划表
 
 ```javascript
-wps_get_active_document()
+wps_get_active_document();
 // 根据 paragraphCount 计算并输出计划表
 // 确认后再进入 Step 0.5
 ```
@@ -315,17 +330,17 @@ wps_get_active_document()
 ### Step 0.5: 初始化校对会话
 
 在开始分批校对前，**必须生成一个 `session_id`（UUID v4）**，整个校对流程保持不变。
-此 session_id 用于在 MCP Server 侧累加各批校对问题，最终生成五维评分报告。
+此 session_id 用于在 MCP Server 侧累加各批校对问题，最终生成六维评分报告。
 
 ```javascript
 // AI 生成 UUID v4 作为 session_id
-const sessionId = crypto.randomUUID()  // 或手动生成：xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+const sessionId = crypto.randomUUID(); // 或手动生成：xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
 
 // 获取文档信息用于首次累加
 const docInfo = await wps_office_execute({
-  tool_name: "getActiveDocument",
-  arguments: {}
-})
+  tool_name: 'getActiveDocument',
+  arguments: {},
+});
 
 // 注意：首次累加在第一批校对完成后执行（见 Step 2h）
 ```
@@ -334,6 +349,7 @@ const docInfo = await wps_office_execute({
 > 两个工具**统一走网关**：通过 `wps_office_execute({ tool_name: "proofreadAccumulate" / "generateProofreadReport", ... })` 调用，网关会自动路由到对应的 MCP handler（见下方 Step 2h / Step 3 示例）。
 
 > **⚠️🔴 全流程必须使用同一个 session_id（Issue #116 session_ff63 问题四/五）**：
+>
 > - 所有批次、所有步骤（单 agent 顺序执行；若用子任务/子代理则所有子任务也必须）共用校对开始时生成的**同一个 `session_id`**，**严禁**各自新生成或传不同 session_id。
 > - 状态不共享时各自累加会产生多份互相矛盾的报告（本会话曾出现同一文档 3 份报告数据完全不同的严重不一致）。
 > - 凡调用 `proofreadAccumulate` / `generateProofreadReport`，必须显式携带这个统一的 `session_id`，遗漏即被服务端拒绝并报错。
@@ -342,8 +358,8 @@ const docInfo = await wps_office_execute({
 ### Step 1: 开启修订模式
 
 ```javascript
-wps_office_execute({ tool_name: "enableTrackChanges", arguments: { enable: true } })
-wps_office_execute({ tool_name: "getTrackChangesStatus", arguments: {} })
+wps_office_execute({ tool_name: 'enableTrackChanges', arguments: { enable: true } });
+wps_office_execute({ tool_name: 'getTrackChangesStatus', arguments: {} });
 ```
 
 ### Step 2: 分批校对循环
@@ -354,14 +370,14 @@ wps_office_execute({ tool_name: "getTrackChangesStatus", arguments: {} })
 
 ```javascript
 // 推荐每批 100 段（最多 200 段）。若文档特殊需超 100 段，请在分批计划中注明理由。
-var BATCH_SIZE = 100
+var BATCH_SIZE = 100;
 wps_office_execute({
-  tool_name: "getDocumentParagraphs",
+  tool_name: 'getDocumentParagraphs',
   arguments: {
-    start_paragraph: (batch - 1) * BATCH_SIZE + 1,  // 第1批: start=1
-    end_paragraph: Math.min(batch * BATCH_SIZE, totalParagraphs)
-  }
-})
+    start_paragraph: (batch - 1) * BATCH_SIZE + 1, // 第1批: start=1
+    end_paragraph: Math.min(batch * BATCH_SIZE, totalParagraphs),
+  },
+});
 ```
 
 **2b. 获取精确文本（禁止手动拼接）**
@@ -373,19 +389,21 @@ wps_office_execute({
 // rangeLength = 5168 - 0 = 5168
 
 wps_office_execute({
-  tool_name: "getDocumentTextByRange",
-  arguments: { startOffset: batchStartOffset, length: rangeLength }
-})
+  tool_name: 'getDocumentTextByRange',
+  arguments: { startOffset: batchStartOffset, length: rangeLength },
+});
 // 返回精确的文档原始文本（包含空段落标记）
 ```
 
 > **⚠️ 关键：必须用 `file_path` 传文本给 proofreadBasic**  
 > 本批文本通过 2b 获得后，**必须写为临时文件**再传 `file_path`，**不得**直接通过 `text` 参数传递。原因：
+>
 > - `\f`（分页符）、`\u201c`/`\u201d` 等字符会导致 JSON 序列化失败（"JSON Parse error: Unterminated string"）
 > - 实际测试中 ≥ 2000 字符的文本就可能在 MCP JSON-RPC 层解析失败
 > - `file_path` 完全避免此问题，且不影响 `startOffset` 偏移定位
 >
 > **正确做法：**
+>
 > ```javascript
 > // 1. 写文件
 > $text | Out-File -FilePath $tempFile -Encoding utf8
@@ -414,20 +432,21 @@ const batchStartOffset = ...  // 本批第一段 [start]
 // 两层校对都完成后，必须调用 confirmBatchAiProofread 确认
 // 插件规则 10 强制拦截：未确认前禁止任何 replaceInParagraph 调用
 wps_office_execute({
-  tool_name: "confirmBatchAiProofread",
-  arguments: {}
-})
+  tool_name: 'confirmBatchAiProofread',
+  arguments: {},
+});
 // 返回：AI 智能校对已确认完成。
 ```
 
 **违反后果：插件直接拒绝 replaceInParagraph，报错提示必须先完成 AI 校对。**
 
 **Layer 1 — 基础校对（正则）：**
+
 ```javascript
 wps_office_execute({
-  tool_name: "proofreadBasic",
-  arguments: { text: batchText, startOffset: batchStartOffset }
-})
+  tool_name: 'proofreadBasic',
+  arguments: { text: batchText, startOffset: batchStartOffset },
+});
 // 返回 issues: [{ type, offset, length, original, suggestion, reason }]
 ```
 
@@ -436,43 +455,47 @@ wps_office_execute({
 ```markdown
 用你的 LLM 能力分析以下文本的语义/逻辑/语病问题。
 
-## 通顺度检测（五维评分卡）
+## 通顺度检测（六维评分卡）
 
 对每句逐维打分（0–2 分），总分 0–10。
 
-| 维度 | 0分（硬伤） | 1分（可优化） | 2分（规范） |
-|------|-----------|-------------|-----------|
-| ① 成分完整 | 缺主语/缺宾语/双主语（如"通过…，使得…"） | 介词短语前置但成分全 | 主谓宾清晰 |
-| ② 搭配得当 | 动宾不当（如"履行作用"应为"发挥作用"） | 搭配生僻但可接受 | 搭配自然 |
-| ③ 语序自然 | 否定词错位（如"我把作业没有做完"）、状语错位 | 稍欧化但可接受 | 语序流畅 |
-| ④ 句式干净 | 句式杂糅（如"根据调查显示"）、滥用被动 | 含框架废话但可容忍 | 句式精炼 |
-| ⑤ 衔接连贯 | 关联词失配/指代不明 | 无关联词但可推断 | 衔接自然 |
+| 维度       | 0分（硬伤）                                  | 1分（可优化）        | 2分（规范） |
+| ---------- | -------------------------------------------- | -------------------- | ----------- |
+| ① 成分完整 | 缺主语/缺宾语/双主语（如"通过…，使得…"）     | 介词短语前置但成分全 | 主谓宾清晰  |
+| ② 搭配得当 | 动宾不当（如"履行作用"应为"发挥作用"）       | 搭配生僻但可接受     | 搭配自然    |
+| ③ 语序自然 | 否定词错位（如"我把作业没有做完"）、状语错位 | 稍欧化但可接受       | 语序流畅    |
+| ④ 句式干净 | 句式杂糅（如"根据调查显示"）、滥用被动       | 含框架废话但可容忍   | 句式精炼    |
+| ⑤ 衔接连贯 | 关联词失配/指代不明                          | 无关联词但可推断     | 衔接自然    |
 
 ## 简洁度检测（最小化测试）
 
 对候选冗余成分逐项做最小化测试：删除 → LLM 自检"语义是否完全不变"？
+
 - 语义不变 → 判定冗余 ✅（可删）
 - 语义变化 → 保留 ❌（不删）
 
 冗余占比 = 可删除字数 / 总字数
 
 冗余成分四类（由易到难）：
-| 类型 | 示例 |
-|------|------|
-| ① 同义反复 | 大约…左右、目的是为了、首次开创、亲眼目睹 |
+
+| 类型         | 示例                                                       |
+| ------------ | ---------------------------------------------------------- |
+| ① 同义反复   | 大约…左右、目的是为了、首次开创、亲眼目睹                  |
 | ② 空洞填充词 | 进行研究→研究、作出决定→决定、予以解决→解决、加以完善→完善 |
-| ③ 框架废话 | "我们需要注意的是"、"众所周知"、"可以说"、"毫无疑问" |
-| ④ 可压缩从句 | "在当今…的时代背景下"、"从某种意义上来说"、"就目前而言" |
+| ③ 框架废话   | "我们需要注意的是"、"众所周知"、"可以说"、"毫无疑问"       |
+| ④ 可压缩从句 | "在当今…的时代背景下"、"从某种意义上来说"、"就目前而言"    |
 
 ## ⚠️ 铁律：通顺 > 简洁
 
 任何简洁修复必须：
+
 1. 通过"删除后语义不变"自检
 2. 修复后不得触发新的通顺 issue（若可能导致通顺度下降，只报告不修）
 3. 修复建议至少提供 2 个选项（保守/激进），用户可择其一
 4. 简洁修复尝试最多 1 轮（1 次修复 + 1 次通顺自检），若不通过则放弃修复，降级为「优化建议」
 
 ## 特别注意检查
+
 - 占位/测试文本（如 "check test sample placeholder xxx" 等）
 - 明显口语化表达（正式文档中不应出现的随意用语）
 - 语病/逻辑矛盾
@@ -483,17 +506,18 @@ wps_office_execute({
 以下 5 类"不合理搭配"是 Layer 1 正则**无法命中**的语义问题（验收语料 F11–F15），
 必须由 AI 层（Layer 2）逐句检出并输出**检出结论**——要么 `fix`（修复），要么 `report_only`（进优化建议），**不允许沉默漏检**：
 
-| ID | 模式 | 检出凭据（看到即检出） | 期望修复方向 | 建议 type |
-|----|------|----------------------|-------------|-----------|
-| F11 | `存在着` + 名词/数量 | "存在着"是"存在"的冗余叠加（`有`字句赘余） | 这个方案有很多不足之处 | 搭配冗余 |
-| F12 | `加强重视` | 动宾不当："加强"不能带"重视"（应直接"重视"） | 我们需要重视安全问题 | 动宾不当 |
-| F13 | `进步提高` | 语义重复："进步"与"提高"同义叠加 | 他取得了显著的进步 | 语义重复 |
-| F14 | `丰富的内容` 前接数量（"很多丰富"） | 修饰不当："很多"与"丰富"语义重复 | 会议讨论了很多内容 | 修饰不当 |
-| F15 | `具有着` | 搭配冗余："具有"不可加"着"（存现动词无进行体） | 这一发现具有深远的意义 | 搭配冗余 |
+| ID  | 模式                                | 检出凭据（看到即检出）                         | 期望修复方向           | 建议 type |
+| --- | ----------------------------------- | ---------------------------------------------- | ---------------------- | --------- |
+| F11 | `存在着` + 名词/数量                | "存在着"是"存在"的冗余叠加（`有`字句赘余）     | 这个方案有很多不足之处 | 搭配冗余  |
+| F12 | `加强重视`                          | 动宾不当："加强"不能带"重视"（应直接"重视"）   | 我们需要重视安全问题   | 动宾不当  |
+| F13 | `进步提高`                          | 语义重复："进步"与"提高"同义叠加               | 他取得了显著的进步     | 语义重复  |
+| F14 | `丰富的内容` 前接数量（"很多丰富"） | 修饰不当："很多"与"丰富"语义重复               | 会议讨论了很多内容     | 修饰不当  |
+| F15 | `具有着`                            | 搭配冗余："具有"不可加"着"（存现动词无进行体） | 这一发现具有深远的意义 | 搭配冗余  |
 
 **逐句输出要求**：对每个 F11–F15 模式命中，AI 层必须输出一条带 `type` 的 issue（`fix_action: "fix"`）；
 若该句同时存在其他问题导致不宜直接修复，则输出 `fix_action: "report_only"` 并写明原因，进报告"优化建议"。
-- `type` 用上表建议值（或语义等价类型），**必须携带**（报告五维评分依赖）
+
+- `type` 用上表建议值（或语义等价类型），**必须携带**（报告六维评分依赖）
 - `metric` 一律 `"fluency"`（这类问题影响通顺/搭配）
 
 > **🔥 F11–F15 必须逐句输出命中/未命中结论（session_ffa8 问题六）**：本批每句都要对 F11–F15 逐一给出结论——
@@ -504,34 +528,36 @@ wps_office_execute({
 
 输出严格 JSON 数组（如无问题则输出空数组 []）：
 [
-  {
-    "paragraphIndex": 1,
-    "offset": 0,
-    "original": "有问题文本",
-    "suggestion": "修正文本",
-    "type": "句式杂糅",
-    "reason": "语病说明",
-    "metric": "fluency",
-    "type": "动宾不当",
-    "score": {
-      "fluency": { "components": 0, "collocation": 2, "order": 2, "clean": 0, "coherence": 2, "total": 6 },
-      "conciseness_ratio": null
-    },
-    "fix_action": "fix"
-  }
+{
+"paragraphIndex": 1,
+"offset": 0,
+"original": "有问题文本",
+"suggestion": "修正文本",
+"type": "句式杂糅",
+"reason": "语病说明",
+"metric": "fluency",
+"type": "动宾不当",
+"score": {
+"fluency": { "components": 0, "collocation": 2, "order": 2, "clean": 0, "coherence": 2, "total": 6 },
+"conciseness_ratio": null
+},
+"fix_action": "fix"
+}
 ]
 
 字段说明：
+
 - type（必填）：具体问题类型，与 Layer 1 正则规则类型对齐（如 句式杂糅/冗余词/的得混淆/重复字符/口语化/占位文本 等）。
-  **禁止省略或写成 'ai'**——报告五维评分按 type 查 TYPE_METRIC_MAP 分类，缺 type 会落入"未分类"不计分；
+  **禁止省略或写成 'ai'**——报告六维评分按 type 查 TYPE_METRIC_MAP 分类，缺 type 会落入"未分类"不计分；
   若确实无法归类，请根据 original/suggestion 内容推断（proofreadAccumulate 也会兜底推断，但尽量由 AI 层输出准确 type）。
 - metric（必填）："fluency" | "conciseness"（枚举约束，禁止编造其他值）
-- type（**必填**）：真实问题类型（如 动宾不当/语义重复/修饰不当/搭配冗余/句式杂糅/冗余词），**禁止写 "ai" 或留空**——报告五维评分按 type 分组，缺 type 会全部落入"未分类"导致评分失真
-- score.fluency：通顺问题时含五维评分（每个维度 0-2 分 + total）
+- type（**必填**）：真实问题类型（如 动宾不当/语义重复/修饰不当/搭配冗余/句式杂糅/冗余词），**禁止写 "ai" 或留空**——报告六维评分按 type 分组，缺 type 会全部落入"未分类"导致评分失真
+- score.fluency：通顺问题时含六维评分（每个维度 0-2 分 + total）
 - score.conciseness_ratio：简洁问题时含冗余占比（如 0.25 = 25%）
 - fix_action（必填）："fix"（触发修复） | "report_only"（只进优化建议）
 
 修复触发条件（写死，不许编造）：
+
 - fluency fix: 单维 0 分 或 总分 < 6
 - fluency report_only: 6 ≤ 总分 < 8（且无 0 分）
 - conciseness fix: 冗余占比 ≥ 25%
@@ -539,17 +565,22 @@ wps_office_execute({
 
 文本内容：
 ```
+
 （将 batchText 逐段传入）
+
 ```
+
 ```
 
 将 AI 校对输出的段落内偏移换算为文档绝对偏移：
+
 ```
 documentOffset = paragraphStartOffset + offsetInParagraph
 // paragraphStartOffset 从 getDocumentParagraphs 输出中获取
 ```
 
 **插件强制校验（违反即拒绝）：**
+
 - startOffset 必须等于本批第一段的 `[start]`
 - 文本不能为空且不能明显过短（≥20 字符）
 - 每批只准调 1 次 proofreadBasic（禁止拆子块）
@@ -557,70 +588,77 @@ documentOffset = paragraphStartOffset + offsetInParagraph
 **注意**：插件不再要求 `text.length` 精确等于 `[end]-[start]`。因为 WPS COM 的 `Range.Text` 在含 `\f`(分页符)、`\a`(表格分隔符)等控制字符的文档中，返回长度可能与段落偏移计算值不一致。proofreadBasic 内部会自动剥离控制字符并校正偏移量。
 
 **如果文本含控制字符导致 JSON 序列化失败**（错误：`JSON Parse error: Unterminated string`），请先用 `writeFile` 写入临时文件再传 `file_path`：
+
 ```javascript
 // 写法 1：直接传 text（文本不含 \f 等控制字符时）
 wps_office_execute({
-  tool_name: "proofreadBasic",
-  arguments: { text: batchText, startOffset: batchStartOffset }
-})
+  tool_name: 'proofreadBasic',
+  arguments: { text: batchText, startOffset: batchStartOffset },
+});
 
 // 写法 2：通过文件传 text（文本含 \f 等控制字符时）
 // 先用 writeFile 写入文件，再传 file_path
 wps_office_execute({
-  tool_name: "writeFile",
-  arguments: { filePath: "C:\\Users\\...\\batch.txt", content: batchText }
-})
+  tool_name: 'writeFile',
+  arguments: { filePath: 'C:\\Users\\...\\batch.txt', content: batchText },
+});
 wps_office_execute({
-  tool_name: "proofreadBasic",
-  arguments: { file_path: "C:\\Users\\...\\batch.txt", startOffset: batchStartOffset }
-})
+  tool_name: 'proofreadBasic',
+  arguments: { file_path: 'C:\\Users\\...\\batch.txt', startOffset: batchStartOffset },
+});
 ```
 
 **2d. 结果合并去重 + metric 分类**
 
 ```javascript
 // ⚠️ proofreadBasic 返回 = 文本展示 + 末尾 JSON 行，提取末行 JSON.parse 取 .issues（#55 T1 结构化输出）
-const responseProofreadBasic = JSON.parse(toolResultProofreadBasic.split('\n').filter(Boolean).pop())
+const responseProofreadBasic = JSON.parse(
+  toolResultProofreadBasic.split('\n').filter(Boolean).pop()
+);
 // 合并两层结果
-const layer1 = responseProofreadBasic.issues || []      // { original, offset, length, suggestion, type, metric?, context }
-const layer2 = aiProofreadIssues || []                  // { original, offset, suggestion, reason, metric, type, score?, fix_action }
+const layer1 = responseProofreadBasic.issues || []; // { original, offset, length, suggestion, type, metric?, context }
+const layer2 = aiProofreadIssues || []; // { original, offset, suggestion, reason, metric, type, score?, fix_action }
 
 const allIssues = [
   // Layer 1: 基础校对（metric 来自 proofread.ts Rule 定义）
   ...layer1.map(i => ({ ...i, source: 'mcp', fix_action: 'fix' })),
   // Layer 2: AI 校对（type 必填！禁止覆盖为 'ai'，必须输出真实类型如 动宾不当/语义重复/搭配冗余）
   ...layer2.map(i => ({ ...i, source: 'ai' })),
-]
+];
 
 // 按 offset + original 去重（同一位置同一原文只修一次）
 // ⚠️ offset 缺失时退化的 `undefined|原文` 键会把不同位置 issue 误判重复，
 // 只对携带绝对 offset 的条目去重，缺失时保守保留全部
 // ⚠️ 同键时 AI 条目无条件优先（与累加器/结果合并口径一致），但必须保留 Layer 1 的 type
-const seen = new Map()
-const noOffset = []  // offset 缺失的条目：不做键去重，全部保留
+const seen = new Map();
+const noOffset = []; // offset 缺失的条目：不做键去重，全部保留
 for (const issue of allIssues) {
   if (issue.offset === undefined) {
-    noOffset.push(issue)
-    continue
+    noOffset.push(issue);
+    continue;
   }
-  const key = `${issue.offset}|${issue.original}`
-  const idx = seen.get(key)
+  const key = `${issue.offset}|${issue.original}`;
+  const idx = seen.get(key);
   if (idx === undefined) {
-    seen.set(key, issue)
+    seen.set(key, issue);
   } else if (issue.source === 'ai' && seen.get(key).source !== 'ai') {
     // Layer 2 命中同一问题 → 保留 Layer 2 的（含 score 等元数据），但必须保留 Layer 1 的 type（如 句式杂糅）
-    const existing = seen.get(key)
+    const existing = seen.get(key);
     if (existing.type && existing.type !== '未分类' && (!issue.type || issue.type === '未分类')) {
-      issue.type = existing.type // 保留 Layer 1 已推断的 type，避免丢失
+      issue.type = existing.type; // 保留 Layer 1 已推断的 type，避免丢失
     }
-    seen.set(key, issue)
+    seen.set(key, issue);
   }
 }
-const deduped = [...noOffset, ...seen.values()].sort((a, b) => (a.offset ?? Infinity) - (b.offset ?? Infinity) || (a.paragraphIndex ?? 0) - (b.paragraphIndex ?? 0))
+const deduped = [...noOffset, ...seen.values()].sort(
+  (a, b) =>
+    (a.offset ?? Infinity) - (b.offset ?? Infinity) ||
+    (a.paragraphIndex ?? 0) - (b.paragraphIndex ?? 0)
+);
 
 // 按 fix_action 分流：需修复 vs 仅报告
-const toFix = deduped.filter(i => i.fix_action !== 'report_only')
-const toReport = deduped.filter(i => i.fix_action === 'report_only')
+const toFix = deduped.filter(i => i.fix_action !== 'report_only');
+const toReport = deduped.filter(i => i.fix_action === 'report_only');
 // Layer 1（正则）的 issue 默认 fix_action = 'fix'（P16 天然放行）
 // Layer 2（AI）的 issue 按评分卡/最小化测试结果决定 fix_action
 ```
@@ -633,15 +671,18 @@ const toReport = deduped.filter(i => i.fix_action === 'report_only')
 需要将 issue.offset 映射为段落索引 + 查找文本。
 
 **修复分类**：
+
 - `toFix`：需要修复的问题（Layer 1 正则发现 + Layer 2 命中修复阈值），走 `replaceInParagraph`
 - `toReport`：仅报告的问题（Layer 2 评分 6–8 通顺 / 10–25% 简洁），不进修复循环，直接进报告"优化建议"
 
 > **🔥 必须遍历修复所有 `toFix` issue（session_ffa8 问题五）**：本批 `proofreadBasic` / Layer 2 发现的每条 `toFix` 问题**都必须逐一尝试 `replaceInParagraph` 修复**，禁止只修几条就宣称"全部已修复"。
+>
 > - 若某条因故未能修复（如匹配失败、语义冲突），**必须在最终报告中明确标注"未修复"及原因**，绝不允许报告写"全部已修复 ✅"而实际还有问题未修。
 > - 真实会话中 AI 发现 8 处异常空格/重复标点却只修 2 处，报告却写"全部已修复"，导致用户误以为校对完成。
 > - 修复后报告"全部已修复"的判定应基于服务端真实修订记录（`getTrackChangesStatus` 修订数增量），而非 AI 主观判断。
 
 **映射方法 1：从 getDocumentParagraphs 返回的 [start-end] 中查找 offset 所在的段落。**
+
 ```javascript
 // 从 getDocumentParagraphs 输出中解析段落范围
 // [1] (正文) [0-43]     → 第1段：0-43
@@ -650,52 +691,58 @@ const toReport = deduped.filter(i => i.fix_action === 'report_only')
 
 // 对每个 toFix issue，找到 offset 落在哪个段落的 [start-end] 范围内
 function findParagraph(ranges, offset) {
-  return ranges.find(r => offset >= r.start && offset < r.end)
+  return ranges.find(r => offset >= r.start && offset < r.end);
 }
 
 for (const issue of toFix) {
-  const para = findParagraph(ranges, issue.offset)
+  const para = findParagraph(ranges, issue.offset);
   if (para) {
     const replaceArgs = {
       paragraphIndex: para.index,
       findText: issue.original,
-      replaceText: issue.suggestion
-    }
+      replaceText: issue.suggestion,
+    };
     // Layer 2 语义性问题（source='ai' 且不在 Layer 1 issue 列表中）需走 _force_ai_fix 通道
-    const isSemanticFix = issue.source === 'ai' && issue.metric &&
-      !layer1.some(l1 => l1.original === issue.original ||
-        l1.original?.includes(issue.original) ||
-        issue.original?.includes(l1.original))
+    const isSemanticFix =
+      issue.source === 'ai' &&
+      issue.metric &&
+      !layer1.some(
+        l1 =>
+          l1.original === issue.original ||
+          l1.original?.includes(issue.original) ||
+          issue.original?.includes(l1.original)
+      );
     if (isSemanticFix) {
-      replaceArgs._force_ai_fix = true
-      replaceArgs._ai_evidence = issue.reason  // 必须附评分卡/最小化测试证据
+      replaceArgs._force_ai_fix = true;
+      replaceArgs._ai_evidence = issue.reason; // 必须附评分卡/最小化测试证据
     }
     // 通顺 > 简洁铁律：简洁修复前检查是否会导致通顺度下降
     if (issue.metric === 'conciseness' && isSemanticFix) {
       // 标记此修复需人工复核：简洁修复可能影响通顺
-      replaceArgs._needs_fluency_check = true
+      replaceArgs._needs_fluency_check = true;
     }
     wps_office_execute({
-      tool_name: "replaceInParagraph",
-      arguments: replaceArgs
-    })
+      tool_name: 'replaceInParagraph',
+      arguments: replaceArgs,
+    });
     // 每修一条建议调用 getTrackChangesStatus 确认修订数增加
     wps_office_execute({
-      tool_name: "getTrackChangesStatus",
-      arguments: {}
-    })
+      tool_name: 'getTrackChangesStatus',
+      arguments: {},
+    });
     // 确认修订数相比之前增加了
   }
 }
 ```
 
 **映射方法 2：用 findInDocument 查找偏移量对应的段落索引。**
+
 ```javascript
 // 用 findInDocument 确定 offset 对应的段落索引
 wps_office_execute({
-  tool_name: "findInDocument",
-  arguments: { text: issue.original }
-})
+  tool_name: 'findInDocument',
+  arguments: { text: issue.original },
+});
 // 从返回结果的 paragraphIndex 确定段落号
 ```
 
@@ -706,11 +753,12 @@ wps_office_execute({
 **2g. 修订数验证（批次间强制检查）：**
 
 每批修复完成后调用 getTrackChangesStatus 确认修订总数：
+
 ```javascript
 wps_office_execute({
-  tool_name: "getTrackChangesStatus",
-  arguments: {}
-})
+  tool_name: 'getTrackChangesStatus',
+  arguments: {},
+});
 // 输出应显示：修订模式: 已开启\n当前修订数量: XX
 // 确认 XX 相比本批开始时增加，且与本批修复条数一致
 ```
@@ -729,35 +777,37 @@ wps_office_execute({
 // 首次调用需要 doc_info，后续只需 session_id + issues
 // 首次（batch=1）:
 await wps_office_execute({
-  tool_name: "proofreadAccumulate",
+  tool_name: 'proofreadAccumulate',
   arguments: {
     session_id: sessionId,
-    issues: allIssues,  // 2d 中合并去重后的结果
+    issues: allIssues, // 2d 中合并去重后的结果
     doc_info: {
-      fileName: "文档.docx",
-      filePath: "C:\\Users\\...\\文档.docx",
+      fileName: '文档.docx',
+      filePath: 'C:\\Users\\...\\文档.docx',
       totalParagraphs: totalParagraphs,
-      totalWords: totalWords
+      totalWords: totalWords,
     },
     total_revisions: currentRevisionCount,
-    _processed_to_paragraph: batchEndPara  // 本批已校对到的最末段落索引（P22 必填，防"中途结束就假装完成"）
-  }
-})
+    _processed_to_paragraph: batchEndPara, // 本批已校对到的最末段落索引（P22 必填，防"中途结束就假装完成"）
+  },
+});
 
 // 后续批次（batch≥2）:
 await wps_office_execute({
-  tool_name: "proofreadAccumulate",
+  tool_name: 'proofreadAccumulate',
   arguments: {
     session_id: sessionId,
-    issues: allIssues,  // 本批合并去重后的 issues（不含前几批）
+    issues: allIssues, // 本批合并去重后的 issues（不含前几批）
     total_revisions: currentRevisionCount,
-    _processed_to_paragraph: batchEndPara  // 必填：本批处理到的末段索引，服务端据此追踪覆盖进度
-  }
-})
+    _processed_to_paragraph: batchEndPara, // 必填：本批处理到的末段索引，服务端据此追踪覆盖进度
+  },
+});
 ```
 
 > **🔥 `_processed_to_paragraph` 必填（P22）**：每次 `proofreadAccumulate` 都必须携带本批已校对到的最末段落索引（≥1）。
 > 服务端据此追踪文档真实覆盖进度；缺此字段会被治理 P22 拦截，且 `generateProofreadReport` 将因完整性门禁拒绝生成报告（防"中途结束就假装完成"）。
+>
+> **⚠️ 单批进度增量上限（PR #181 评审 R2-1/R3-1）**：串行模式下，单批进度增量不得超过 **200 段**（与 `getDocumentParagraphs` 单次上限一致，`getDocumentParagraphs` 每批最多取 200 段校对）——增量 > 200 会被服务端判为"跳号假进度"拒绝（如 700→1600 增量 900）。请按批次逐批上报：上一批进度 `N` → 本批 ≤ `N+200`。同时 `_processed_to_paragraph` 不得超过文档总段数（超界直接拒绝）。
 >
 > **🔴 报告硬性完整性门禁（Issue #151 遗留修复）**：`generateProofreadReport` 现在是**硬门禁**而非仅告警——
 > ① 若登记了批次分配表（编排模式）：全部批次必须 `done` 且步骤凭证完整、区间覆盖全文，否则**拒绝生成报告**；
@@ -771,16 +821,17 @@ await wps_office_execute({
 > 但人工标注的 type/source 更准确，建议每项都显式携带。
 >
 > **🔥 每项 issue 的 `original` 和 `suggestion` 是必填字段，漏任何一个都会导致该条不被累加（session_ffa8 问题二）！**
+>
 > - Layer 2 AI 校对输出时，**必须同时携带 `original`（原文）和 `suggestion`（建议修改）**，缺一不可。
 > - 真实会话中 AI 反复只写 `{ paragraphIndex, original, type }` 而漏 `suggestion`，导致整批累加失败、session 未建立、后续批次级联报错。
 > - 服务端已改为**部分成功机制**：某批中缺字段的条目会被跳过并警告，有效条目仍会累加、session 照常建立——但**漏字段的校对结果仍会丢失**，请务必每项都带齐 `original` + `suggestion`。
 > - **每项 issue 建议携带位置**：`paragraphIndex`（段落索引，从 1 起）与 `offset`（文档绝对偏移），
-> 两者都缺失时报告位置列显示「位置未知」——请尽量携带，便于用户定位问题。
-> 旧蛇形 `paragraph_index` 仍兼容（自动归一化）；`offset_in_paragraph`（段落内偏移）与绝对 offset 语义不同，不再兜底。
+>   两者都缺失时报告位置列显示「位置未知」——请尽量携带，便于用户定位问题。
+>   旧蛇形 `paragraph_index` 仍兼容（自动归一化）；`offset_in_paragraph`（段落内偏移）与绝对 offset 语义不同，不再兜底。
 
-### Step 3: 生成五维校对报告
+### Step 3: 生成六维校对报告
 
-所有批次完成后，调用 `generateProofreadReport` 生成五维评分报告。
+所有批次完成后，调用 `generateProofreadReport` 生成六维评分报告。
 **统一走 `wps_office_execute` 网关**（网关自动路由到 `generateProofreadReport` handler）：
 
 ```javascript
@@ -788,55 +839,56 @@ await wps_office_execute({
 // ⚠️ 若写入失败（路径非法/无权限/磁盘满等），返回 success=false 并携带失败原因，
 //    会话保留供重试——落盘失败不视为报告已生成，必须修复后重试
 const report = await wps_office_execute({
-  tool_name: "generateProofreadReport",
+  tool_name: 'generateProofreadReport',
   arguments: {
     session_id: sessionId,
-    output_file: "C:\\Users\\...\\文档.校对报告.md"
-  }
-})
+    output_file: 'C:\\Users\\...\\文档.校对报告.md',
+  },
+});
 if (report.success !== true) {
   // 落盘失败：本次校对未完成，修正路径后重新调用，禁止进入 Step 4 收尾
-  throw new Error("报告落盘失败：" + (report.error || JSON.stringify(report)))
+  throw new Error('报告落盘失败：' + (report.error || JSON.stringify(report)));
 }
-const reportText = report.content[0].text
+const reportText = report.content[0].text;
 ```
 
 ```javascript
 // 方案 B：先获取报告文本，再用 writeFile 写盘
 const report = await wps_office_execute({
-  tool_name: "generateProofreadReport",
-  arguments: { session_id: sessionId }
-})
-// report.content[0].text 包含完整的 Markdown 格式五维报告
+  tool_name: 'generateProofreadReport',
+  arguments: { session_id: sessionId },
+});
+// report.content[0].text 包含完整的 Markdown 格式六维报告
 
 // 获取文档路径：getActiveDocument 返回文本，从中解析出路径（如 "C:\\Users\\...\\文档.docx"）
 const docInfo = await wps_office_execute({
-  tool_name: "getActiveDocument",
-  arguments: {}
-})
+  tool_name: 'getActiveDocument',
+  arguments: {},
+});
 // 解析 docInfo.content[0].text 中的 "路径: ..." 行得到文档路径
-const docText = docInfo.content[0].text
-const docPath = /路径:\s*(.+)/.exec(docText)?.[1]
-if (!docPath) throw new Error("未能从 getActiveDocument 返回中解析出文档路径")
+const docText = docInfo.content[0].text;
+const docPath = /路径:\s*(.+)/.exec(docText)?.[1];
+if (!docPath) throw new Error('未能从 getActiveDocument 返回中解析出文档路径');
 // 通用去扩展名（评审修正）：不再只替换 .docx，.doc/.wps/.rtf 或无扩展名均正确拼接，
 // 避免生成 "文档.doc.校对报告.md" 或在无扩展名时覆盖原路径
-const reportPath = docPath.replace(/\.[^./\\]+$/, '') + '.校对报告.md'
+const reportPath = docPath.replace(/\.[^./\\]+$/, '') + '.校对报告.md';
 
 // 写入报告文件，并确认 writeFile 返回 success=true
 const writeRes = await wps_office_execute({
-  tool_name: "writeFile",
+  tool_name: 'writeFile',
   arguments: {
     filePath: reportPath,
-    content: report.content[0].text
-  }
-})
+    content: report.content[0].text,
+  },
+});
 if (writeRes.success !== true) {
-  throw new Error("报告落盘失败：" + (writeRes.error || JSON.stringify(writeRes)))
+  throw new Error('报告落盘失败：' + (writeRes.error || JSON.stringify(writeRes)));
 }
 ```
 
 **报告包含的内容**（由 MCP Server 自动生成）：
-- **五维评分摘要**：fluency（流畅度）、conciseness（简洁度）、accuracy（准确性）、consistency（一致性）、completeness（完整度）
+
+- **六维评分摘要**：fluency（流畅度）、conciseness（简洁度）、accuracy（准确性）、consistency（一致性）、completeness（完整度）、format（格式）
 - **每维度评分**：问题数、原始分（1-5）、归一化分（0-2）、展示分（X.X/10）
 - **雷达图数据**：JSON 格式，方便前端渲染
 - **按维度分类的问题详情**：位置、原文、建议修改、类型、来源
@@ -887,6 +939,7 @@ COM 超时已从 30s 增加到 60s（#116 问题八，MCP v1.1.1 起），200 �
 ```
 
 插件状态（`lastBatchParaIndex`、`batchStarted` 等）在子 agent 的新会话中**不会继承**。子 agent 必须：
+
 1. 从当前已完成的 `lastBatchParaIndex + 1` 继续
 2. 在 prompt 中写明当前 `getTrackChangesStatus` 修订数
 3. 每次 `getDocumentParagraphs` 后的修订数增量验证仍须做
@@ -899,44 +952,44 @@ COM 超时已从 30s 增加到 60s（#116 问题八，MCP v1.1.1 起），200 �
 
 ### 校对专用规则（P1-P13）
 
-| # | 规则 | 拦截点 | 拦截条件 |
-|---|------|--------|---------|
-| P1 | 批次大小 ≤200 | `getDocumentParagraphs` | 请求 >200 段 |
-| P2 | 批次连续性 + 首次从第1段开始 | `getDocumentParagraphs` | 首次调用 start≠1，或跳跃（不从上一批+1开始） |
-| P3 | 必须先出分批计划 | `proofreadBasic` | 未先调 `getActiveDocument` + `getDocumentParagraphs` |
-| P4a | ~~replaceRange 完全禁用~~ | ~~`replaceRange`~~ | **已彻底移除**（不再存在于网关/COM/MCP 注册，无需拦截） |
-| P4b | findReplace 禁用 | `findReplace` | 分批校对流程中调 findReplace |
-| P5 | startOffset 与段落 [start] 一致 | `proofreadBasic` | startOffset ≠ 本批第一段 [start] |
-| P6 | 文本不能为空或过短 | `proofreadBasic` | text.length < 20 字符 |
-| P6b | 文本不能过大（防批量校对） | `proofreadBasic` | text.length > 本批预期范围 × 2 |
-| P7 | 每批只准调 1 次 proofreadBasic | `proofreadBasic` | 同一批第 2 次调 proofreadBasic |
-| P8 | 先校对再修复 | `replaceInParagraph` | 同一批未先调 `proofreadBasic` |
-| P9 | replaceInParagraph 须在校对批次内 | `replaceInParagraph` | paragraphIndex 超出本批段落范围 |
-| **P10** | **必须先确认 AI 校对** | `replaceInParagraph` | **未先调 `confirmBatchAiProofread`** |
-| **P11** | **必须先开修订模式** | `replaceInParagraph` / `findReplace` | 未先调 `enableTrackChanges(true)` |
-| **P12** | **当前批校对周期完成后才能获取下一批** | `getDocumentParagraphs` | (1) 本批未调 `proofreadBasic`; (2) 已调但未调 `confirmBatchAiProofread`; (3) 有校对问题但未调 `replaceInParagraph` |
-| **P13** | **getDocumentTextByRange 限本批范围** | `getDocumentTextByRange` | `length` > 本批预期范围 × 2 |
-| **P14** | **confirmBatchAiProofread 前必须 proofreadBasic** | `confirmBatchAiProofread` | 本批未先调 `proofreadBasic` |
-| **P15** | **基础校对无问题禁止 AI 自行大量修复** | `replaceInParagraph` | `proofreadHadIssues=false` 且 AI 修复次数超限（≤1 次） |
-| **P16** | **替换内容与已知 issue 交叉校验** | `replaceInParagraph` | `findText` 不匹配任何 issue 的 `original` 原文 |
-| **P17** | **禁止手动 write 伪造校对报告** | `writeFile`/`write` | 写「校对报告」路径且服务端未成功生成报告 |
-| **P18** | **禁止重复获取已处理段落** | `getDocumentParagraphs` | 已处理到 N 段后又从段落 1 回卷获取 |
-| **P19** | **批次归属校验（并行隔离）** | `getDocumentParagraphs` / `replaceInParagraph` | 执行 agent 请求/替换区间越出分配批次区间 |
-| **P20** | **逐步凭证落盘（防幻觉）** | `proofreadAccumulate` | 携带 `_batch_id` 却缺非空 `_steps_log`，或步骤名非法 |
-| **P21** | **并行区间重叠检测** | `getDocumentParagraphs` | 同一会话不同批次请求区间相交 |
-| **P22** | **必须上报校对进度** | `proofreadAccumulate` | 未携带 `_processed_to_paragraph`（规划初始化登记豁免） |
+| #       | 规则                                              | 拦截点                                         | 拦截条件                                                                                                           |
+| ------- | ------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| P1      | 批次大小 ≤200                                     | `getDocumentParagraphs`                        | 请求 >200 段                                                                                                       |
+| P2      | 批次连续性 + 首次从第1段开始                      | `getDocumentParagraphs`                        | 首次调用 start≠1，或跳跃（不从上一批+1开始）                                                                       |
+| P3      | 必须先出分批计划                                  | `proofreadBasic`                               | 未先调 `getActiveDocument` + `getDocumentParagraphs`                                                               |
+| P4a     | ~~replaceRange 完全禁用~~                         | ~~`replaceRange`~~                             | **已彻底移除**（不再存在于网关/COM/MCP 注册，无需拦截）                                                            |
+| P4b     | findReplace 禁用                                  | `findReplace`                                  | 分批校对流程中调 findReplace                                                                                       |
+| P5      | startOffset 与段落 [start] 一致                   | `proofreadBasic`                               | startOffset ≠ 本批第一段 [start]                                                                                   |
+| P6      | 文本不能为空或过短                                | `proofreadBasic`                               | text.length < 20 字符                                                                                              |
+| P6b     | 文本不能过大（防批量校对）                        | `proofreadBasic`                               | text.length > 本批预期范围 × 2                                                                                     |
+| P7      | 每批只准调 1 次 proofreadBasic                    | `proofreadBasic`                               | 同一批第 2 次调 proofreadBasic                                                                                     |
+| P8      | 先校对再修复                                      | `replaceInParagraph`                           | 同一批未先调 `proofreadBasic`                                                                                      |
+| P9      | replaceInParagraph 须在校对批次内                 | `replaceInParagraph`                           | paragraphIndex 超出本批段落范围                                                                                    |
+| **P10** | **必须先确认 AI 校对**                            | `replaceInParagraph`                           | **未先调 `confirmBatchAiProofread`**                                                                               |
+| **P11** | **必须先开修订模式**                              | `replaceInParagraph` / `findReplace`           | 未先调 `enableTrackChanges(true)`                                                                                  |
+| **P12** | **当前批校对周期完成后才能获取下一批**            | `getDocumentParagraphs`                        | (1) 本批未调 `proofreadBasic`; (2) 已调但未调 `confirmBatchAiProofread`; (3) 有校对问题但未调 `replaceInParagraph` |
+| **P13** | **getDocumentTextByRange 限本批范围**             | `getDocumentTextByRange`                       | `length` > 本批预期范围 × 2                                                                                        |
+| **P14** | **confirmBatchAiProofread 前必须 proofreadBasic** | `confirmBatchAiProofread`                      | 本批未先调 `proofreadBasic`                                                                                        |
+| **P15** | **基础校对无问题禁止 AI 自行大量修复**            | `replaceInParagraph`                           | `proofreadHadIssues=false` 且 AI 修复次数超限（≤1 次）                                                             |
+| **P16** | **替换内容与已知 issue 交叉校验**                 | `replaceInParagraph`                           | `findText` 不匹配任何 issue 的 `original` 原文                                                                     |
+| **P17** | **禁止手动 write 伪造校对报告**                   | `writeFile`/`write`                            | 写「校对报告」路径且服务端未成功生成报告                                                                           |
+| **P18** | **禁止重复获取已处理段落**                        | `getDocumentParagraphs`                        | 已处理到 N 段后又从段落 1 回卷获取                                                                                 |
+| **P19** | **批次归属校验（并行隔离）**                      | `getDocumentParagraphs` / `replaceInParagraph` | 执行 agent 请求/替换区间越出分配批次区间                                                                           |
+| **P20** | **逐步凭证落盘（防幻觉）**                        | `proofreadAccumulate`                          | 携带 `_batch_id` 却缺非空 `_steps_log`，或步骤名非法                                                               |
+| **P21** | **并行区间重叠检测**                              | `getDocumentParagraphs`                        | 同一会话不同批次请求区间相交                                                                                       |
+| **P22** | **必须上报校对进度**                              | `proofreadAccumulate`                          | 未携带 `_processed_to_paragraph`（规划初始化登记豁免）                                                             |
 
 ### 通用执行规则（G1-G7，始终生效）
 
-| # | 规则 | 拦截点 | 拦截条件 |
-|---|------|--------|---------|
-| **G1** | **所有双路径工具强制走网关** | `wps_get_active_document` 等 6 个 | 直接调 MCP 原接口 |
-| **G2** | **wps_execute_method 白名单** | `wps_execute_method` | method 不在白名单中 |
-| **G3** | **写操作前必须先读** | `setCellValue` / `setFormula` / `insertText` 等 | 未先调对应读工具 |
-| **G4** | **破坏性操作需确认** | `deleteSheet` / `deleteSlide` / `clearRange` 等 | 未传 `confirm: true` |
-| **G5** | **文件路径安全** | 含 `filePath` 参数的工具 | 路径含 `..` 穿越符号 |
-| **G6** | **密码参数保护** | `protectSheet` / `unprotectSheet` / `protectWorkbook` | 密码已脱敏记录 |
-| **G7** | **参数范围校验** | 行号/列号/索引从 1 开始 | 传入 `≤0` 的值 |
+| #      | 规则                          | 拦截点                                                | 拦截条件             |
+| ------ | ----------------------------- | ----------------------------------------------------- | -------------------- |
+| **G1** | **所有双路径工具强制走网关**  | `wps_get_active_document` 等 6 个                     | 直接调 MCP 原接口    |
+| **G2** | **wps_execute_method 白名单** | `wps_execute_method`                                  | method 不在白名单中  |
+| **G3** | **写操作前必须先读**          | `setCellValue` / `setFormula` / `insertText` 等       | 未先调对应读工具     |
+| **G4** | **破坏性操作需确认**          | `deleteSheet` / `deleteSlide` / `clearRange` 等       | 未传 `confirm: true` |
+| **G5** | **文件路径安全**              | 含 `filePath` 参数的工具                              | 路径含 `..` 穿越符号 |
+| **G6** | **密码参数保护**              | `protectSheet` / `unprotectSheet` / `protectWorkbook` | 密码已脱敏记录       |
+| **G7** | **参数范围校验**              | 行号/列号/索引从 1 开始                               | 传入 `≤0` 的值       |
 
 **规则 10 说明**：proofreadBasic（基础校对）和 AI 智能校对（LLM 语义分析）两层都完成后，必须调用 `confirmBatchAiProofread` 确认，插件才会放行 `replaceInParagraph`。这确保不会出现"只做了基础校对就修"的漏检情况。
 
@@ -955,6 +1008,7 @@ COM 超时已从 30s 增加到 60s（#116 问题八，MCP v1.1.1 起），200 �
 **规则 2a 说明**：首次 `getDocumentParagraphs` 必须从第 1 段开始。若 `lastBatchParaIndex === 0` 时 `start_paragraph !== 1`，插件直接拒绝。这是为了防止从文档中间开始校对导致遗漏。
 
 这意味着 SKILL.md 中的分批规章现在有代码层强制执行，AI 无法绕过。
+
 - 规则 P2a 通过 `tool.execute.before` 校验 `lastBatchParaIndex` 实现
 - 规则 P5 通过 `tool.execute.after` 从 `getDocumentParagraphs` 输出中解析段落 `[start-end]` 实现
 - 规则 P6 为宽松阈值（≥20 字符），不要求精确匹配长度
@@ -975,6 +1029,7 @@ COM 超时已从 30s 增加到 60s（#116 问题八，MCP v1.1.1 起），200 �
 ## 本 skill 不处理的内容
 
 以下操作请交给 wps-word skill：
+
 - 字体/字号设置
 - 表格插入
 - 模板填写（smartFillField）
@@ -986,4 +1041,4 @@ COM 超时已从 30s 增加到 60s（#116 问题八，MCP v1.1.1 起），200 �
 
 ---
 
-*Skill by lc2panda - WPS MCP Project*
+_Skill by lc2panda - WPS MCP Project_
