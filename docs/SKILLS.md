@@ -11,6 +11,7 @@ OpenCode Skills 定义 AI 在特定领域的操作能力和工作流程。
 ## 什么是 Skills
 
 Skills 是 AI 的"技能包"，告诉 AI：
+
 1. **能做什么** - 可用的工具列表
 2. **怎么做** - 操作流程和最佳实践
 3. **什么场景** - 何时使用这些技能
@@ -19,13 +20,13 @@ Skills 是 AI 的"技能包"，告诉 AI：
 
 ## 本项目的 Skills
 
-| Skill | 目录 | 说明 |
-|-------|------|------|
-| **wps-excel** | `skills/wps-excel/` | Excel 操作技能 |
-| **wps-word** | `skills/wps-word/` | Word 操作技能 |
-| **wps-ppt** | `skills/wps-ppt/` | PPT 操作技能 |
-| **wps-proofread** | `skills/wps-proofread/` | 文档校对技能 |
-| **wps-office** | `skills/wps-office/` | 通用 WPS 操作技能 |
+| Skill             | 目录                    | 说明              |
+| ----------------- | ----------------------- | ----------------- |
+| **wps-excel**     | `skills/wps-excel/`     | Excel 操作技能    |
+| **wps-word**      | `skills/wps-word/`      | Word 操作技能     |
+| **wps-ppt**       | `skills/wps-ppt/`       | PPT 操作技能      |
+| **wps-proofread** | `skills/wps-proofread/` | 文档校对技能      |
+| **wps-office**    | `skills/wps-office/`    | 通用 WPS 操作技能 |
 
 ---
 
@@ -49,27 +50,32 @@ wps-excel/
 # WPS Excel Skill
 
 ## 概述
+
 WPS 表格智能助手，通过自然语言操控 Excel。
 
 ## 能力
+
 - 公式编写
 - 数据清洗
 - 图表创建
 - 数据分析
 
 ## 工具
+
 - wps_excel_get_cell_value
 - wps_excel_set_cell_value
 - wps_excel_set_formula
 - ...
 
 ## 工作流程
+
 1. 获取当前工作簿信息
 2. 确定操作目标（单元格/区域/图表）
 3. 执行操作
 4. 返回结果
 
 ## 限制
+
 - 不支持宏
 - 不支持 VBA
 ```
@@ -96,6 +102,7 @@ node install-addons.js
 用户输入："帮我算一下 A 列的总和"
 
 AI 识别：使用 wps-excel skill
+
 1. 调用 `wps_excel_read_range` 获取 A 列数据
 2. 调用 `wps_excel_set_formula` 设置 =SUM(A:A) 公式
 3. 返回结果
@@ -105,6 +112,7 @@ AI 识别：使用 wps-excel skill
 用户输入："把这段文字设为标题1"
 
 AI 识别：使用 wps-word skill
+
 1. 获取当前选区
 2. 调用 `wps_word_apply_style` 应用"标题 1"样式
 3. 返回成功
@@ -114,6 +122,7 @@ AI 识别：使用 wps-word skill
 用户输入："帮我校对这篇文档"
 
 AI 识别：使用 `wps-proofread` skill（独立校对技能）
+
 1. 输出分批校对计划表（总段数 / 每批 200 段 / 总批次数）
 2. 调用 `enableTrackChanges` 开启修订模式
 3. 分批读取段落（每批 ~200 段），调用 `proofreadBasic` 检测问题
@@ -125,6 +134,7 @@ AI 识别：使用 `wps-proofread` skill（独立校对技能）
 用户输入："美化这页PPT"
 
 AI 识别：使用 wps-ppt skill
+
 1. 获取当前幻灯片内容
 2. 调用 `wps_ppt_beautify` 执行美化
 3. 返回结果
@@ -135,12 +145,12 @@ AI 识别：使用 wps-ppt skill
 
 当用户使用 Agent 时（如 @wps-expert），AI 优先使用对应的 Skill：
 
-| Agent | 优先 Skill |
-|-------|-----------|
+| Agent      | 优先 Skill      |
+| ---------- | --------------- |
 | wps-expert | 所有 WPS Skills |
-| wps-word | wps-word |
-| wps-excel | wps-excel |
-| wps-ppt | wps-ppt |
+| wps-word   | wps-word        |
+| wps-excel  | wps-excel       |
+| wps-ppt    | wps-ppt         |
 
 ---
 
@@ -148,22 +158,23 @@ AI 识别：使用 wps-ppt skill
 
 所有 WPS Skill 遵循相同的**两级网关调用规范**，内置 12 个工具（启动即注册，可直接调用）：
 
-| # | 工具名称 | 功能描述 |
-|---|---------|---------|
-| 1 | `wps_check_connection` | 检查 WPS Office 连接状态 |
-| 2 | `wps_get_active_workbook` | 获取当前工作簿信息（名称、路径、工作表列表） |
-| 3 | `wps_get_cell_value` | 读取指定单元格的值 |
-| 4 | `wps_set_cell_value` | 写入值到指定单元格 |
-| 5 | `wps_insert_text` | 在当前文档插入文本（兜底用） |
-| 6 | `wps_get_active_document` | 获取当前活动文档信息（名称、路径、段落数、字数） |
-| 7 | `wps_get_active_presentation` | 获取当前演示文稿信息 |
-| 8 | `wps_execute_method` | 执行 WPS API 方法（网关兜底） |
-| 9 | `wps_cache_data` | 缓存数据到 MCP Server |
-| 10 | `wps_get_cached_data` | 从 MCP Server 获取缓存数据 |
-| 11 | `wps_office_search` | 搜索 COM Actions 索引（**必须先搜索**） |
-| 12 | `wps_office_execute` | 执行搜索到的工具（**搜索后用此执行**） |
+| #   | 工具名称                      | 功能描述                                         |
+| --- | ----------------------------- | ------------------------------------------------ |
+| 1   | `wps_check_connection`        | 检查 WPS Office 连接状态                         |
+| 2   | `wps_get_active_workbook`     | 获取当前工作簿信息（名称、路径、工作表列表）     |
+| 3   | `wps_get_cell_value`          | 读取指定单元格的值                               |
+| 4   | `wps_set_cell_value`          | 写入值到指定单元格                               |
+| 5   | `wps_insert_text`             | 在当前文档插入文本（兜底用）                     |
+| 6   | `wps_get_active_document`     | 获取当前活动文档信息（名称、路径、段落数、字数） |
+| 7   | `wps_get_active_presentation` | 获取当前演示文稿信息                             |
+| 8   | `wps_execute_method`          | 执行 WPS API 方法（网关兜底）                    |
+| 9   | `wps_cache_data`              | 缓存数据到 MCP Server                            |
+| 10  | `wps_get_cached_data`         | 从 MCP Server 获取缓存数据                       |
+| 11  | `wps_office_search`           | 搜索 COM Actions 索引（**必须先搜索**）          |
+| 12  | `wps_office_execute`          | 执行搜索到的工具（**搜索后用此执行**）           |
 
 > 💡 **缓存管理工具补充**：除上述 12 个内置工具外，MCP Server 启动时还直接注册了 2 个缓存管理工具（见 `wps-office-mcp/src/server/mcp-server.ts`）：
+>
 > - `wps_list_cache` —— 列出 MCP Server 当前缓存中的所有键值
 > - `wps_clear_cache` —— 清空 MCP Server 的缓存数据
 >
@@ -190,6 +201,7 @@ AI 识别：使用 wps-ppt skill
 **能力**：公式编写、数据清洗、图表创建、透视表、条件格式、数据分析。
 
 **典型场景**：
+
 - 「帮我算一下 A 列的总和」（`wps_excel_read_range` + `wps_excel_set_formula` =SUM(A:A)）
 - 「删掉 A 列的空行」（数据清洗）
 - 「根据 1-6 月销量生成柱状图」（图表创建）
@@ -201,6 +213,7 @@ AI 识别：使用 wps-ppt skill
 **能力**：文档排版、格式设置、目录生成、表格插入、样式管理、模板填写、修订校对。
 
 **典型场景**：
+
 - 「把这段文字设为标题1」（`wps_word_apply_style`）
 - 「按模板批量填值」（`smartFillField` 五模式 + 修订追踪）
 - 「帮我校对文档」（`proofreadBasic` + `replaceInParagraph`，P1-P22 严格逐批）
@@ -212,6 +225,7 @@ AI 识别：使用 wps-ppt skill
 **能力**：幻灯片美化、内容生成、动画设置、母版编辑、批量处理。
 
 **典型场景**：
+
 - 「新增一页标题为『季度汇报』的幻灯片」（`wps_ppt_add_slide`）
 - 「美化这页PPT」（`wps_ppt_beautify`）
 - 「把第三页文本框对齐居中」（排版）
@@ -223,6 +237,7 @@ AI 识别：使用 wps-ppt skill
 **能力**：跨应用操作（Excel↔Word↔PPT）、格式转换、批量处理、文档管理。
 
 **典型场景**：
+
 - 「把 Excel 数据做成 PPT 图表」
 - 「统一多个文档格式风格」
 - 「Excel 数据导入 Word 表格」
@@ -234,6 +249,7 @@ AI 识别：使用 wps-ppt skill
 **能力**：错别字检测、语病检查、格式一致性校对（独立校对技能，P1-P22 铁律 3.0）。
 
 **典型流程**（严格逐批闭环）：
+
 ```text
 1. 输出分批校对计划表（总段数 / 每批 200 段 / 总批次数）
 2. 调用 enableTrackChanges 开启修订模式
@@ -244,7 +260,7 @@ AI 识别：使用 wps-ppt skill
 
 > ⚠️ 校对**必须**按 铁律 3.0 严格执行（proofread → confirm → fix），禁止跳批/编造。详见 [FEATURES.md](./FEATURES.md)。
 
-> 🧩 **大文档 Subagent 组协同（Issue #151 重构）**：针对长文档，校对流程可交由 `agents/` 下 4 个**校对 subagent**（`wps-proofread-planner/manager/executor/reporter`）协同完成——规划 agent 一次性分批并登记分配表，管理 agent 调度执行 agent **并行（≤3）** 校对独立段落区间并监督逐步凭证落盘（防幻觉），报告 agent 从磁盘归并生成五维报告。单 agent 串行流程不再作为兜底；架构详见 [PROOFREAD_SUBAGENTS.md](./PROOFREAD_SUBAGENTS.md)。
+> ⚠️ ~~🧩 大文档 Subagent 组协同（Issue #151 重构，**已弃用**）~~：~~4 个校对 subagent（planner/manager/executor/reporter）协同~~ 经 Issue #179 真实会话实证在 opencode 上**触发不可靠**，已改为**单 agent 顺序执行 + 服务端强制**（分批/进度/门禁全部下沉 MCP 服务端，见 `skills/wps-proofread/SKILL.md`「校对执行模型」）。
 
 ---
 
@@ -262,13 +278,16 @@ AI 识别：使用 wps-ppt skill
 # My Custom Skill
 
 ## 概述
+
 自定义技能描述
 
 ## 能力
+
 - 能力1
 - 能力2
 
 ## 工具
+
 - tool_name_1
 - tool_name_2
 ```
@@ -322,6 +341,7 @@ node install-addons.js
 ```
 
 **SKILL.md frontmatter 要求**：
+
 - `name`：技能名（唯一）
 - `description`：描述技能能力 + 触发关键词（AI 据此识别何时使用此技能）
 
@@ -344,11 +364,11 @@ diff -r skills/ ~/.opencode/skills/
 
 ## 相关文件
 
-| 文件 | 说明 |
-|------|------|
-| `skills/wps-excel/SKILL.md` | Excel Skill 定义 |
-| `skills/wps-word/SKILL.md` | Word Skill 定义 |
-| `skills/wps-ppt/SKILL.md` | PPT Skill 定义 |
-| `skills/wps-office/SKILL.md` | 通用 WPS Skill 定义 |
+| 文件                            | 说明                |
+| ------------------------------- | ------------------- |
+| `skills/wps-excel/SKILL.md`     | Excel Skill 定义    |
+| `skills/wps-word/SKILL.md`      | Word Skill 定义     |
+| `skills/wps-ppt/SKILL.md`       | PPT Skill 定义      |
+| `skills/wps-office/SKILL.md`    | 通用 WPS Skill 定义 |
 | `skills/wps-proofread/SKILL.md` | 文档校对 Skill 定义 |
-| `AGENTS.md` | Agent 与 Skill 关系 |
+| `AGENTS.md`                     | Agent 与 Skill 关系 |

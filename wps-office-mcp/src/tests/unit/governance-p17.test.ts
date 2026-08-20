@@ -335,6 +335,27 @@ describe('governance P17 — 禁止 AI 手动 write 伪造校对报告（session
     expect(threw).toBe(true);
   });
 
+  it('原生 edit 工具写校对报告路径也被拦截（Issue #179 P17 覆盖 edit）', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const before = plugin['tool.execute.before'];
+
+    // 原生 edit 工具（P17 NATIVE_WRITE_TOOLS 包含 edit）：改文件内容到校对报告路径
+    const input = {
+      tool: 'edit',
+      sessionID: 'p17-native-edit',
+      callID: 'call-ne1',
+      args: { filePath: 'C:/Users/test/桌面/合同.校对报告.md', content: '手拼报告' },
+    };
+    let threw = false;
+    try {
+      await before(input, {});
+    } catch (e: any) {
+      threw = true;
+      expect(String(e.message)).toContain('P17');
+    }
+    expect(threw).toBe(true);
+  });
+
   it('原生 write 写非校对报告路径正常放行（不抛 P17）', async () => {
     const plugin = await loadGovernancePlugin()();
     const before = plugin['tool.execute.before'];
