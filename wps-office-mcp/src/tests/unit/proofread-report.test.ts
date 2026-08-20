@@ -36,6 +36,7 @@ import {
   normalizeIssueSource,
   normalizeIssueLocation,
   AI_ONLY_PATTERN,
+  buildReportAllowedRoots,
 } from '../../tools/word/proofread-report';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -678,9 +679,15 @@ describe('proofreadAccumulateHandler', () => {
         totalWords: 5000,
       },
     });
-    proofreadStore.saveBatchAllocations(s, [
+    const overwriteOk = proofreadStore.saveBatchAllocations(s, [
       { batchId, range: { start: 1, end: 100 }, status: 'running', stepsLog: [] },
     ]);
+    console.log(
+      'DBG overwriteOk=',
+      overwriteOk,
+      'after save, allocs=',
+      JSON.stringify(proofreadStore.loadBatchAllocations(s))
+    );
 
     // 执行 agent 提交本批逐步凭证
     const result = await proofreadAccumulateHandler({
@@ -708,9 +715,16 @@ describe('proofreadAccumulateHandler', () => {
     });
 
     // 凭证应落盘到批次 stepsLog
+    console.log(
+      'DBG stepsPersisted=',
+      result.data && result.data.stepsPersisted,
+      'result=',
+      JSON.stringify(result.data)
+    );
+    const allocations = proofreadStore.loadBatchAllocations(s);
+    console.log('DBG allocations=', JSON.stringify(allocations));
     expect(result.success).toBe(true);
     expect(result.data!.stepsPersisted).toBe(true);
-    const allocations = proofreadStore.loadBatchAllocations(s);
     const batch = allocations.find(b => b.batchId === batchId)!;
     expect(batch.stepsLog.length).toBe(6);
     // 管理 agent 监督：标准 6 步全链条完整，getMissingSteps 应无缺失
@@ -799,6 +813,8 @@ describe('generateProofreadReportHandler', () => {
         totalWords: 100,
       },
       createdAt: new Date().toISOString(),
+      // Issue #179 门禁三态：无问题但已覆盖全文才允许生成空报告，否则「从未规划/从未跑」被拒
+      progress: { processedToParagraph: 10, totalParagraphs: 10, allBatchesComplete: true },
     });
 
     const result = await generateProofreadReportHandler({ session_id: 'empty-session' });
@@ -970,6 +986,7 @@ describe('normalizeToTwoPointScale (indirect)', () => {
       issues: [],
       docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 1, totalWords: 10 },
       createdAt: new Date().toISOString(),
+      progress: { processedToParagraph: 1, totalParagraphs: 1, allBatchesComplete: true },
     });
 
     const result = await generateProofreadReportHandler({ session_id: 'normalize-5' });
@@ -1068,6 +1085,7 @@ describe('TYPE_METRIC_MAP classification', () => {
       accuracy: '准确性',
       consistency: '一致性',
       completeness: '完整度',
+      format: '格式',
     };
     const expectedLabel = metricLabels[expectedMetric];
 
@@ -1117,13 +1135,18 @@ describe('TYPE_METRIC_MAP classification', () => {
     await testTypeClassification('工程术语', 'accuracy');
   });
 
-  // ── consistency ──
-  it('中英混排 → consistency', async () => {
-    await testTypeClassification('中英混排', 'consistency');
-  });
-
+  // ── consistency（仅用语统一）──
   it('用词统一 → consistency', async () => {
     await testTypeClassification('用词统一', 'consistency');
+  });
+
+  // ── format（Issue #179 阶段6：纯格式问题独立维度）──
+  it('中英混排 → format', async () => {
+    await testTypeClassification('中英混排', 'format');
+  });
+
+  it('异常空格 → format', async () => {
+    await testTypeClassification('异常空格', 'format');
   });
 
   // ── completeness ──
@@ -1406,6 +1429,8 @@ describe('releaseSession 时序：文件写入失败时保留会话', () => {
         totalWords: 100,
       },
       createdAt: new Date().toISOString(),
+      // Issue #179 门禁三态：空报告用例补已覆盖全文的进度，避免被「从未规划/从未跑」门禁拒绝
+      progress: { processedToParagraph: 10, totalParagraphs: 10, allBatchesComplete: true },
     });
   };
 
@@ -1531,6 +1556,7 @@ describe('releaseSession 时序：文件写入失败时保留会话', () => {
       session_id: sessId,
       output_file: outFile,
     });
+
     expect(result.success).toBe(true);
     expect(fs.existsSync(outFile)).toBe(true); // 父目录被自动创建并成功落盘
     expect(sessionIssues.has(sessId)).toBe(false); // 写盘成功 → 回收会话
@@ -3623,7 +3649,12 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
           context: '...',
         },
       ],
-      doc_info: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 100, totalWords: 500 },
+      doc_info: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 100,
+        totalWords: 500,
+      },
       _processed_to_paragraph: 100,
     });
     expect(acc.success).toBe(true);
@@ -3713,6 +3744,99 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
     expect(b.success).toBe(true);
   });
 
+  it('首次调用自动登记服务端分批（批次表永远非空），报告按串行进度判定（Issue #179 阶段1）', async () => {
+    const s = sid('auto-batch-init');
+    // 首次调用（不带 _batch_allocations）→ 服务端按 totalParagraphs 自动生成批次落盘
+    const acc = await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
+      ],
+      doc_info: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 100,
+        totalWords: 500,
+      },
+      _processed_to_paragraph: 100,
+    });
+    expect(acc.success).toBe(true);
+    // 批次表已自动落盘且非空
+    const allocs = proofreadStore.loadBatchAllocations(s);
+    expect(allocs.length).toBeGreaterThan(0);
+    expect(allocs.every((b: { autoGenerated?: boolean }) => b.autoGenerated === true)).toBe(true);
+    expect(allocs[0].range).toEqual({ start: 1, end: 100 });
+    // 自动批次 + 覆盖全文 → 允许生成报告
+    const result = await generateProofreadReportHandler({ session_id: s });
+    expect(result.success).toBe(true);
+    expect(result.content[0].text).toContain('| 全部已修复 | ✅ |');
+  });
+
+  it('自动分批批次不要求逐一 done：单 agent 顺序校对只上报进度即可（Issue #179 阶段1）', async () => {
+    const s = sid('auto-batch-serial');
+    await proofreadAccumulateHandler({
+      session_id: s,
+      issues: [],
+      doc_info: {
+        fileName: 'd.docx',
+        filePath: '/p/d.docx',
+        totalParagraphs: 250,
+        totalWords: 1200,
+      },
+      _processed_to_paragraph: 250,
+    });
+    // 自动批次仍全部 pending（单 agent 顺序校对不会逐批置 done），但进度已覆盖全文 → 放行
+    const allocs = proofreadStore.loadBatchAllocations(s);
+    expect(allocs.length).toBe(3);
+    expect(allocs.every((b: { status: string }) => b.status === 'pending')).toBe(true);
+    const result = await generateProofreadReportHandler({ session_id: s });
+    expect(result.success).toBe(true);
+  });
+
+  it('空会话（从未规划/从未跑）：无 issues/无进度/无修订依据 → 拒绝生成报告（Issue #179 门禁三态）', async () => {
+    const s = sid('never-run');
+    sessionIssues.set(s, {
+      issues: [],
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 100, totalWords: 500 },
+      createdAt: new Date().toISOString(),
+    });
+    const result = await generateProofreadReportHandler({ session_id: s });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('禁止生成报告');
+  });
+
+  it('历史遗留串行会话（有 issues 但无进度）：放行且报告标注未确认完整（Issue #179 门禁三态兼容）', async () => {
+    const s = sid('legacy-no-progress');
+    sessionIssues.set(s, {
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
+      ],
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 100, totalWords: 500 },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 2,
+    });
+    const result = await generateProofreadReportHandler({ session_id: s });
+    expect(result.success).toBe(true);
+    expect(result.content[0].text).toContain('未确认完整');
+    expect(result.content[0].text).not.toContain('| 全部已修复 | ✅ |');
+  });
+
   it('编排模式：批次全部完成+凭证完整但区间未覆盖全文时禁止生成报告（Issue #151 遗留修复）', async () => {
     const s = sid('gap-complete-cred');
     sessionIssues.set(s, {
@@ -3753,5 +3877,106 @@ describe('Issue #151 报告统计校验（批次完整性 + 交叉校验）', ()
     expect(result.success).toBe(false);
     expect(result.content[0].text).toContain('完整性门禁');
     expect(result.content[0].text).toContain('101-249');
+  });
+
+  it('方案 B：报告与文档同目录可写（F 盘文档目录，不在默认白名单 home+tmp）（Issue #179 阶段5）', async () => {
+    // 模拟用户文档在 F 盘工程目录（不在 ALLOWED_WRITE_ROOTS 默认 home+tmp 内）
+    const fDriveDocDir = path.join(os.tmpdir(), 'F-drive-mock', '2025年度');
+    fs.mkdirSync(fDriveDocDir, { recursive: true });
+    const s = sid('path-b-same-dir');
+    sessionIssues.set(s, {
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
+      ],
+      docInfo: {
+        fileName: '政务文档.docx',
+        filePath: path.join(fDriveDocDir, '政务文档.docx'),
+        totalParagraphs: 10,
+        totalWords: 100,
+      },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 2,
+      progress: { processedToParagraph: 10, totalParagraphs: 10, allBatchesComplete: true },
+    });
+    const outFile = path.join(fDriveDocDir, '政务文档.校对报告.md');
+    // 校验：方案 B 把 docInfo.filePath 所在目录并入白名单 → 与文档同目录写盘成功
+    const result = await generateProofreadReportHandler({ session_id: s, output_file: outFile });
+    expect(result.success).toBe(true);
+    expect(fs.existsSync(outFile)).toBe(true);
+    expect(sessionIssues.has(s)).toBe(false);
+  });
+
+  it('方案 B：buildReportAllowedRoots 把文档所在目录并入白名单（Issue #179 阶段5）', async () => {
+    // 直接验证白名单合并逻辑：方案 B 的核心是「报告与文档同目录可写」——
+    // docInfo.filePath 所在目录必须被并入写盘白名单（不全局开放盘符）。
+    const docDir = path.join(os.tmpdir(), 'path-b-doc');
+    const merged = buildReportAllowedRoots(path.join(docDir, 'd.docx'));
+    expect(Array.isArray(merged)).toBe(true);
+    // 文档目录在白名单中（同目录可写）
+    expect(merged.some((r: string) => path.resolve(r) === path.resolve(docDir))).toBe(true);
+    // 与文档不同目录不在白名单（收敛范围：不全局开放盘符）
+    const otherDir = path.join(os.tmpdir(), 'path-b-other');
+    expect(merged.some((r: string) => path.resolve(r) === path.resolve(otherDir))).toBe(false);
+  });
+
+  it('格式维度拆分：异常空格归 format，不再污染一致性评分（Issue #179 阶段6）', async () => {
+    const s = sid('format-metric');
+    sessionIssues.set(s, {
+      issues: [
+        {
+          offset: 0,
+          length: 2,
+          original: 'a b',
+          suggestion: 'ab',
+          type: '异常空格',
+          source: 'mcp' as const,
+          context: '...',
+        },
+        {
+          offset: 3,
+          length: 2,
+          original: '的的',
+          suggestion: '的',
+          type: '重复字符',
+          source: 'mcp' as const,
+          context: '...',
+        },
+        {
+          offset: 6,
+          length: 2,
+          original: 'a b',
+          suggestion: 'ab',
+          type: '数字空格',
+          source: 'mcp' as const,
+          context: '...',
+        },
+      ],
+      docInfo: { fileName: 'd.docx', filePath: '/p/d.docx', totalParagraphs: 10, totalWords: 100 },
+      createdAt: new Date().toISOString(),
+      totalRevisions: 3,
+      progress: { processedToParagraph: 10, totalParagraphs: 10, allBatchesComplete: true },
+    });
+    const result = await generateProofreadReportHandler({ session_id: s });
+    expect(result.success).toBe(true);
+    const text = result.content[0].text!;
+    // 格式问题单独成行：格式 (format) 行应有 2 处
+    const formatRow = text.split('\n').find(l => l.includes('格式 (format)'));
+    expect(formatRow).toBeTruthy();
+    expect(formatRow).toContain('| 2 |');
+    // 一致性 (consistency) 行不应包含格式问题（应为 0 处）
+    const consistencyRow = text.split('\n').find(l => l.includes('一致性 (consistency)'));
+    expect(consistencyRow).toBeTruthy();
+    expect(consistencyRow).toContain('| 0 |');
+    // 统计摘要标注纯格式问题归类
+    expect(text).toContain('其中纯格式问题');
+    // 五维评分标题改为六维展示（含格式行）——兼容旧标题，仅校验格式行存在
   });
 });

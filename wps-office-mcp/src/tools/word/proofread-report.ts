@@ -22,12 +22,14 @@
  * 结构性防护见 ToolRegistry.GATEWAY_ONLY_TOOLS 黑名单；请勿误删本模块的
  * proofreadReportTools 导出，否则网关路由会失效。
  *
- * 五维评分维度：
+ * 评分量表：Layer 1 原始 [1, 5] → normalizeToTwoPointScale → [0, 2]
+ * 六维评分维度（Issue #179 阶段6：从五维拆出独立「格式」维度）：
  * - fluency（流畅度）: 成分完整、语句通顺
  * - conciseness（简洁度）: 无冗余、不啰嗦
  * - accuracy（准确性）: 事实/术语/数据准确
- * - consistency（一致性）: 格式规范、用语一致（含 standardization）
+ * - consistency（一致性）: 用语统一（去掉纯格式问题，避免被大量空格/标点拖成 0 分失真）
  * - completeness（完整度）: 无占位文本、内容完整
+ * - format（格式）: 异常空格/中英混排/标点等纯格式问题（Issue #179 阶段6 独立维度，权重最低）
  *
  * 评分量表：Layer 1 原始 [1, 5] → normalizeToTwoPointScale → [0, 2]
  * T2（#55）：
@@ -52,6 +54,7 @@ import {
   saveBatchAllocations,
   hasParallelRangeConflict,
   getIncompleteBatches,
+  generateAutoBatches,
 } from './proofread-store';
 import {
   ToolDefinition,
@@ -65,7 +68,8 @@ import { validateFilePath, ALLOWED_WRITE_ROOTS } from '../../utils/path-safety';
 // ==================== 类型定义 ====================
 
 /** 五维评分维度 */
-type ProofreadMetric = 'fluency' | 'conciseness' | 'accuracy' | 'consistency' | 'completeness';
+type ProofreadMetric =
+  'fluency' | 'conciseness' | 'accuracy' | 'consistency' | 'completeness' | 'format';
 
 /** 文档信息 */
 interface DocInfo {
@@ -242,11 +246,20 @@ const TYPE_METRIC_MAP: Record<string, ProofreadMetric> = {
   工程术语: 'accuracy',
 
   // ── 一致性 (consistency，含原 standardization) ──
-  中英混排: 'consistency',
-  数字空格: 'consistency',
-  中文标点: 'consistency',
   用词统一: 'consistency',
-  异常空格: 'consistency',
+
+  // ── 格式 (format，Issue #179 阶段6 拆出独立维度) ──
+  // 背景：真实校对会话中「异常空格」等纯格式问题占 256/298=86%，归入 consistency 会让
+  // 「一致性」得分 0.0/10 失真（大量低权重格式问题掩盖真实用语一致性问题）。
+  // 现拆为独立「格式」维度：格式类问题单独计分，不再污染一致性/用语统一评分。
+  中英混排: 'format',
+  数字空格: 'format',
+  中文标点: 'format',
+  异常空格: 'format',
+  多余空格: 'format',
+  全角空格: 'format',
+  标点符号: 'format',
+  格式规范: 'format',
 
   // ── 完整度 (completeness) ──
   占位文本: 'completeness',
@@ -345,8 +358,9 @@ export function inferIssueType(issue: {
  * - fluency: 5 - count×0.2，下限 0（count≥25 时得 0 分，触发修复）
  * - conciseness: 5 - count×0.3
  * - accuracy: 5 - count×1.0（术语错误权重最高，5 个即 0 分）
- * - consistency: 5 - count×0.1（格式问题权重最低）
+ * - consistency: 5 - count×0.1（仅用语统一，去格式后口径更准）
  * - completeness: 有占位文本 → 直接得 0（blocker 级，触发修复）
+ * - format（Issue #179 阶段6）: 5 - count×0.05（纯格式问题权重最低，不污染一致性）
  *
  * 返回值: [1, 5] 范围内的原始分（completeness 可能为 0）
  */
@@ -359,6 +373,8 @@ const METRIC_WEIGHT_FORMULA: Record<
   accuracy: c => Math.max(0, 5 - c * 1.0),
   consistency: c => Math.max(0, 5 - c * 0.1),
   completeness: (_c, hasPlaceholder) => (hasPlaceholder ? 0 : 5),
+  // Issue #179 阶段6：格式维度权重最低（0.05），大量空格/标点不再把其它维度拖成 0 分
+  format: c => Math.max(0, 5 - c * 0.05),
 };
 
 // ==================== 归一化函数 ====================
@@ -730,6 +746,10 @@ export const proofreadAccumulateHandler: ToolHandler = async (
 
   // 获取或创建会话（优先内存，磁盘兑底——服务重启后可从磁盘恢复，Issue #116 问题七/九/十二）
   let session = getSessionOrLoad(session_id);
+  // Issue #179 阶段1（服务端自动分批）：标记本次调用是否首次创建会话。
+  // 仅在首次创建（且 AI 未携带 _batch_allocations）时由服务端自动登记批次表，
+  // 避免后续批次重复自动登记覆盖已有批次表。
+  let sessionCreatedThisCall = false;
   if (!session) {
     if (!doc_info) {
       return {
@@ -749,6 +769,7 @@ export const proofreadAccumulateHandler: ToolHandler = async (
       docInfo: doc_info,
       createdAt: new Date().toISOString(),
     };
+    sessionCreatedThisCall = true;
     sessionIssues.set(session_id, session);
   }
   // 刷新最后访问时间并执行上限淘汰
@@ -976,10 +997,26 @@ export const proofreadAccumulateHandler: ToolHandler = async (
   // 规划 agent 一次性产出分批计划后，通过 _batch_allocations 落盘批次分配表，
   // 供管理 agent 调度（并行≤3）/ 断点续跑（非 done 批次重新入队）使用。
   // 落盘失败不阻塞主流程（返回警告而非失败），但需向 AI 暴露信号。
+  // Issue #179 阶段1（服务端自动分批）：若 AI 未登记批次（planner 未触发/旧串行流程），
+  // 服务端在会话首次创建时按 docInfo.totalParagraphs 自动生成连续批次落盘，批次表从此
+  // **永远非空**，根除「空批次表 = 全部完成」的误判（取代 planner subagent 的分批职责）。
   let batchAllocationsPersisted = false;
   if (Array.isArray(_batch_allocations) && _batch_allocations.length > 0) {
     try {
       batchAllocationsPersisted = saveBatchAllocations(session_id, _batch_allocations as never);
+    } catch {
+      batchAllocationsPersisted = false;
+    }
+  } else if (
+    sessionCreatedThisCall &&
+    typeof session.docInfo?.totalParagraphs === 'number' &&
+    session.docInfo.totalParagraphs >= 1
+  ) {
+    try {
+      const autoAllocs = generateAutoBatches(session.docInfo.totalParagraphs);
+      if (autoAllocs.length > 0) {
+        batchAllocationsPersisted = saveBatchAllocations(session_id, autoAllocs as never);
+      }
     } catch {
       batchAllocationsPersisted = false;
     }
@@ -1044,7 +1081,7 @@ export const proofreadAccumulateHandler: ToolHandler = async (
               `可能原因：重复上报同一批次，或进度回退。请每批校对完成后上报其真实最末段落索引（> 上一批 ${prev}）。`,
           },
         ],
-        error: `串行进度回退/重复: 新进度 ${_processed_to_paragraph} ≤ 已上报 ${prev}`,  
+        error: `串行进度回退/重复: 新进度 ${_processed_to_paragraph} ≤ 已上报 ${prev}`,
       };
     }
     // 并行模式（有 _batch_id，各执行 agent 处理独立区间）：取各批上报的最大值
@@ -1154,6 +1191,35 @@ function formatIssueLocation(issue: ProofreadIssueEntry): string {
 
 // ==================== 报告生成工具 ====================
 
+/**
+ * Issue #179 阶段5（路径白名单方案 B）：生成报告写盘校验时的允许根目录。
+ *
+ * 背景：MCP 服务端 write 类操作（含 generateProofreadReport 落盘）默认只允许写
+ * 用户主目录 + 系统临时目录；用户文档在其他盘符/目录（如 F 盘工程目录）时写盘报
+ * 「Path not allowed」（PR #180 只解决 permission 授权，未解决路径白名单）。
+ *
+ * 方案 B（更安全，推荐）：把**当前活动文档 docInfo.filePath 所在目录**并入白名单——
+ * 报告与文档同目录可写，不全局开放盘符。与方案 A（config.js allowedWriteRoots 注入
+ * OPCODE_ALLOWED_ROOTS 全局放开）互补：方案 B 兜底同目录写盘，方案 A 覆盖其他指定根目录。
+ *
+ * @param docFilePath 当前会话 docInfo.filePath（可为空）
+ * @returns 合并后的允许根目录数组
+ */
+export function buildReportAllowedRoots(docFilePath?: string): string[] {
+  const roots = [...ALLOWED_WRITE_ROOTS];
+  if (typeof docFilePath === 'string' && docFilePath) {
+    try {
+      const docDir = path.dirname(docFilePath);
+      if (docDir && docDir !== '.' && roots.indexOf(docDir) === -1) {
+        roots.push(docDir);
+      }
+    } catch {
+      // 路径解析失败时忽略，沿用既有白名单
+    }
+  }
+  return roots;
+}
+
 export const generateProofreadReportDefinition: ToolDefinition = {
   name: 'wps_word_generate_proofread_report',
   description: `生成五维校对报告。
@@ -1253,8 +1319,15 @@ export const generateProofreadReportHandler: ToolHandler = async (
   const totalPara = typeof docInfo?.totalParagraphs === 'number' ? docInfo.totalParagraphs : 0;
   const processedTo = session.progress?.processedToParagraph;
 
-  // ① 编排模式（批次分配表已登记）：硬性要求全部批次完整 + 区间覆盖全文
-  if (batchAllocs.length > 0) {
+  // Issue #179 阶段1/3（门禁三态语义）：区分三种状态，杜绝「空批次表 + 无进度 = 全部完成」误判——
+  //  - 批次表含 AI 手动登记（autoGenerated !== true）：编排模式，全部批次 done + 凭证完整 + 区间覆盖全文；
+  //  - 批次表为空或全为服务端自动生成（autoGenerated === true）：串行流程，按进度覆盖判定
+  //    （processedTo >= totalParagraphs），不要求逐批置 done（单 agent 顺序校对不会逐批登记状态）；
+  //  - 连进度都没有：见下方③，按「从未规划/从未跑」拒绝或按历史遗留放行（报告标注未确认完整）。
+  const hasManualBatches = batchAllocs.some(b => b.autoGenerated !== true);
+
+  // ① 编排模式（存在 AI 手动登记的批次分配表）：硬性要求全部批次完整 + 区间覆盖全文
+  if (hasManualBatches) {
     const errors: string[] = [];
     if (incomplete.length > 0) {
       const list = incomplete
@@ -1305,7 +1378,8 @@ export const generateProofreadReportHandler: ToolHandler = async (
       };
     }
   } else if (typeof processedTo === 'number' && totalPara > 0 && processedTo < totalPara) {
-    // ② 串行模式：有明确进度且未覆盖全文 → 拒绝生成报告（防"中途结束就假装完成"）
+    // ② 串行模式 / 服务端自动分批 / 空批次表（有进度依据）：
+    //    有明确进度且未覆盖全文 → 拒绝生成报告（防"中途结束就假装完成"）
     return {
       id: uuidv4(),
       success: false,
@@ -1321,6 +1395,33 @@ export const generateProofreadReportHandler: ToolHandler = async (
       ],
       error: `校对未覆盖全文，禁止生成报告: 已到第 ${processedTo}/${totalPara} 段`,
     };
+  } else if (totalPara > 0 && typeof processedTo !== 'number') {
+    // ③ Issue #179 阶段3（门禁三态）：无任何进度依据（_processed_to_paragraph 从未上报）时——
+    //    - 会话完全空白（无 issues / 无疑似问题 / 无修订依据）= **从未规划/从未跑** → 直接拒绝生成报告，
+    //      不再走旧③兜底放行（此前把「从未规划/从未跑」当作「全部完成」交付，是空批次表误报的根源）；
+    //    - 有 issues 等运行痕迹（P22 之前的历史遗留串行会话，无进度上报）→ 放行，但报告已通过
+    //      PR #181 的「覆盖状态未确认完整」标注告警，不会误报「全部已修复 ✅」。
+    const hasRunTrace =
+      issues.length > 0 ||
+      (suspectedIssues !== undefined && suspectedIssues.length > 0) ||
+      (typeof totalRevisions === 'number' && totalRevisions > 0);
+    if (!hasRunTrace) {
+      return {
+        id: uuidv4(),
+        success: false,
+        content: [
+          {
+            type: 'text',
+            text:
+              `【完整性门禁】本次校对无任何进度依据（_processed_to_paragraph 从未上报）且无校对痕迹，**禁止生成报告**：\n` +
+              `文档共 ${totalPara} 段，但服务端未追踪到任何已校对进度，无法证明覆盖全文。\n` +
+              `请从第 1 段起逐批走完整步骤链（每批 proofreadAccumulate 携带 _processed_to_paragraph），` +
+              `覆盖全文后再重新调用 generateProofreadReport。`,
+          },
+        ],
+        error: `校对无进度依据，禁止生成报告（防"从未规划/从未跑"被当作"全部完成"）`,
+      };
+    }
   }
 
   if (issues.length === 0) {
@@ -1336,7 +1437,8 @@ export const generateProofreadReportHandler: ToolHandler = async (
     let writeError: string | undefined;
     if (output_file) {
       try {
-        const safePath = validateFilePath(output_file, ALLOWED_WRITE_ROOTS);
+        // Issue #179 阶段5（方案 B）：报告与文档同目录可写（docInfo.filePath 目录并入白名单）
+        const safePath = validateFilePath(output_file, buildReportAllowedRoots(docInfo?.filePath));
         // 评审建议（#70 第 4 轮）：空报告分支补上与主分支一致的 mkdirSync 自动建父目录——
         // 同一 output_file 因问题数不同（0 vs >0）不应行为不一致：主分支会建目录，
         // 空报告分支此前直接 writeFileSync，目标父目录不存在时会失败（与其他分支口径不同）。
@@ -1394,6 +1496,7 @@ export const generateProofreadReportHandler: ToolHandler = async (
     accuracy: 0,
     consistency: 0,
     completeness: 0,
+    format: 0,
   };
 
   const metricIssues: Record<ProofreadMetric, ProofreadIssueEntry[]> = {
@@ -1402,6 +1505,7 @@ export const generateProofreadReportHandler: ToolHandler = async (
     accuracy: [],
     consistency: [],
     completeness: [],
+    format: [],
   };
 
   const unknownTypeIssues: ProofreadIssueEntry[] = [];
@@ -1459,6 +1563,7 @@ export const generateProofreadReportHandler: ToolHandler = async (
     accuracy: '准确性',
     consistency: '一致性',
     completeness: '完整度',
+    format: '格式',
   };
 
   const metricOrder: ProofreadMetric[] = [
@@ -1467,6 +1572,7 @@ export const generateProofreadReportHandler: ToolHandler = async (
     'accuracy',
     'consistency',
     'completeness',
+    'format',
   ];
 
   let report = '';
@@ -1723,6 +1829,22 @@ export const generateProofreadReportHandler: ToolHandler = async (
     report += `| ⚠️ 未标注来源 | ${unknownSourceCount} 处 |\n`;
   }
   report += `| **合计** | **${issues.length} 处** |\n`;
+  // Issue #179 阶段6：格式类问题单独归类展示（异常空格等纯格式问题占真实会话 86%，
+  // 单独列出避免用户把大量格式问题误当成用语/语义问题）
+  const formatTypes = [
+    '异常空格',
+    '多余空格',
+    '全角空格',
+    '中英混排',
+    '数字空格',
+    '中文标点',
+    '标点符号',
+    '格式规范',
+  ];
+  const formatCount = issues.filter(i => formatTypes.indexOf(i.type) !== -1).length;
+  if (formatCount > 0) {
+    report += `| 其中纯格式问题 | ${formatCount} 处（已拆入独立「格式」维度计分，见五维评分「格式」行） |\n`;
+  }
   // 覆盖状态判定（Issue #179 空批次表语义修复）：
   // 只有服务端确认真实覆盖全文（processedToParagraph >= totalParagraphs）才显示「全部已修复 ✅」；
   // 否则（无进度依据 / 从未规划 / 未覆盖全文）不得误报「全部完成」，改为告警——
@@ -1734,8 +1856,7 @@ export const generateProofreadReportHandler: ToolHandler = async (
   if (_coverageComplete) {
     report += `| 全部已修复 | ✅ |\n`;
   } else {
-    report +=
-      `| ⚠️ 覆盖状态 | 未确认完整（已上报 ${typeof _processedToNum === 'number' ? _processedToNum : '无进度'}/${_totalParaNum || '未知'} 段） |\n`;
+    report += `| ⚠️ 覆盖状态 | 未确认完整（已上报 ${typeof _processedToNum === 'number' ? _processedToNum : '无进度'}/${_totalParaNum || '未知'} 段） |\n`;
     report += `> ⚠️ **本次校对未确认覆盖全文**，「全部已修复」状态不可信。请核对是否遗漏段落或进度上报缺失。\n`;
   }
   if (session.suspectedIssues && session.suspectedIssues.length > 0) {
@@ -1757,7 +1878,8 @@ export const generateProofreadReportHandler: ToolHandler = async (
   let writeError: string | undefined;
   if (output_file) {
     try {
-      const safePath = validateFilePath(output_file, ALLOWED_WRITE_ROOTS);
+      // Issue #179 阶段5（方案 B）：报告与文档同目录可写（docInfo.filePath 目录并入白名单）
+      const safePath = validateFilePath(output_file, buildReportAllowedRoots(docInfo?.filePath));
       const dir = path.dirname(safePath);
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
@@ -1856,6 +1978,7 @@ function buildEmptyReport(docInfo: DocInfo, _createdAt: string, hasSuspected = f
     `| 准确性 (accuracy) | 0 | 5.0 | 2.00 | 10.0/10 |`,
     `| 一致性 (consistency) | 0 | 5.0 | 2.00 | 10.0/10 |`,
     `| 完整度 (completeness) | 0 | 5.0 | 2.00 | 10.0/10 |`,
+    `| 格式 (format) | 0 | 5.0 | 2.00 | 10.0/10 |`,
     ``,
     summaryLine,
   ].join('\n');

@@ -17,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **路径写盘白名单配置暴露**：新增 `opencode-wps/config.js` 的 `allowedWriteRoots` 配置项，`install-addons.js` 将其写入 `opencode.json` 中 MCP server 的 `env.OPCODE_ALLOWED_ROOTS`，解决用户文档在其他盘符（如 F 盘）时报告写盘报「Path not allowed」的问题（PR #180 只解决权限授权，未解决路径白名单）。逻辑抽取到 `shared/permission-helper.js` 的 `applyWriteRoots`（可测试）。
   - **测试**：`governance-p17.test.ts` 新增原生 `write` 拦截/放行用例；`proofread-report.test.ts` 新增串行进度防回退、并行乱序兼容、空批次表不误报、覆盖全文正常显示用例；`install-permission.test.js` 新增 `applyWriteRoots` 5 用例（均接入 CI）。
 
+### Added（Issue #179 方案全量补齐）
+
+- **服务端自动分批（取代 planner subagent）**：`proofreadAccumulate` 会话首次初始化（且未携带 `_batch_allocations`）时，服务端按 `docInfo.totalParagraphs` 自动生成连续批次（每批 100 段）落盘（`proofread-store.ts` 新增 `generateAutoBatches`）——批次表从此**永远非空**，根除「空批次表 = 全部完成」的误判；单 agent 顺序校对不要求逐批置 done，按进度覆盖判定（`proofread-report.ts`）。
+- **报告门禁三态区分（防「从未规划/从未跑」误报）**：`generateProofreadReport` 区分「编排模式（AI 手动登记批次，要求全部 done + 凭证完整 + 覆盖全文）/ 串行模式（按进度覆盖判定）/ 空白会话（无 issues、无疑似问题、无修订依据 → 直接拒绝生成）」，历史遗留串行会话（有运行痕迹但无进度）放行但报告标注「⚠️ 覆盖状态未确认完整」不误报「全部已修复 ✅」；`saveSessionToDisk` 合并批次表改为 clone 写入，避免内存 session 被磁盘旧批次表污染导致手动登记被覆盖（`proofread-store.ts`）。
+- **路径白名单方案 B（报告与文档同目录可写）**：`generateProofreadReport` 写盘校验时把 `docInfo.filePath` 所在目录并入允许根目录（`buildReportAllowedRoots`），报告与文档同目录可写、不全局开放盘符；与方案 A（`allowedWriteRoots` → `OPCODE_ALLOWED_ROOTS`）互补（`proofread-report.ts`）。
+- **放弃 4-subagent 编排（文案层）**：`skills/wps-proofread/SKILL.md` 删除 4-subagent 编排章节，改为「单 agent 顺序执行 + 服务端强制分批/进度/门禁」执行模型；`agents/wps-proofread-planner/manager/executor/reporter.md` 头部标注「⚠️ 已停用（Issue #179 阶段4）」仅作历史存档。
+- **格式维度拆分（统计口径）**：`TYPE_METRIC_MAP` 把「异常空格/中英混排/数字空格/中文标点」等纯格式问题从 `consistency`（一致性）拆出独立 `format`（格式）维度（权重最低 0.05），避免大量空格/标点把「一致性」拖成 0 分失真；报告统计摘要新增「其中纯格式问题 N 处」归类展示（`proofread-report.ts`）。
+
 ## [1.7.0] - 2026-08-20
 
 ### Added

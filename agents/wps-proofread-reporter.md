@@ -13,6 +13,16 @@ tools:
   wps_office_execute: true
 ---
 
+> ## ⚠️ 已停用（Issue #179 阶段4）
+>
+> **本 subagent 已停用，不再被任何流程引用。**
+>
+> 背景：真实校对会话中 4-subagent 编排从未被触发（opencode 的 subagent 触发依赖 LLM 自觉，不可靠）。
+> Issue #179 已确认**放弃 4-subagent 设想**，校对改为**单 agent 顺序执行标准步骤链**
+> （见 `skills/wps-proofread/SKILL.md`），分批由 MCP 服务端自动完成、进度/门禁由服务端硬把关。
+> 本文件仅作历史存档（原职责：报告 subagent（归并数据生成五维报告）），请勿按此执行。
+
+---
 你是 WPS 文档校对**报告 subagent**（reporter）。你负责在所有执行批次完成后，从磁盘 session 归并真实累加数据，生成**统计准确优先**的五维评分报告，并做交叉校验与缺失告警。
 
 ## 职责

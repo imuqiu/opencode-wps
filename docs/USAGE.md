@@ -253,14 +253,22 @@ MCP 服务端 **write 类操作**（含校对报告 `generateProofreadReport` �
 
 ### 4.3 校对 Subagent 组（文档校对，内部编排）
 
-> 针对大文档校对，`agents/` 内置 4 个**校对 subagent**，由**规划 subagent 自动编排调度**（非用户直接 `@` 调用），将单 agent 串行校对重构为「规划→管理→执行(并行≤3)→报告」协同，解决分批不稳、中途中断、上下文超限、统计不准、假装校对、耗时过长六大问题。架构详见 [PROOFREAD_SUBAGENTS.md](./PROOFREAD_SUBAGENTS.md)。
+> **⚠️ 已弃用（Issue #179 阶段4）**：4-subagent 编排（规划→管理→执行→报告）经真实会话实证
+> **在 opencode 上触发不可靠**（subagent 触发依赖 LLM 自觉，真实会话中从未被触发，批次表从未登记、
+> 防幻觉门禁全部失效）。**已确认放弃 4-subagent 设想**，改为：
+>
+> - **单 agent 顺序执行**：主 agent 直接按 `skills/wps-proofread/SKILL.md` 的标准步骤链逐批校对，不调用任何 subagent；
+> - **服务端强制分批/进度/门禁**：`proofreadAccumulate` 首次初始化自动分批落盘（批次表永远非空）、
+>   串行进度严格递增校验、报告完整性硬门禁——AI 无论怎么跑都逃不出服务端把关。
+>
+> 原 4 个 subagent 定义文件（`agents/wps-proofread-planner/manager/executor/reporter.md`）已标注「⚠️ 已停用」，仅作历史存档。
 
-| subagent | 职责 |
+| ~~subagent~~ | ~~职责~~（已停用） |
 |----------|------|
-| **wps-proofread-planner** | 规划：一次性分批计划 + 唯一 session_id + 登记批次分配表 + 编排调度 |
-| **wps-proofread-manager** | 管理：调度执行 subagent（≤3 并行）+ 监督逐步凭证落盘防幻觉 + 断点续跑 |
-| **wps-proofread-executor** | 执行：专职逐批校对独立段落区间，走完整步骤链并落盘凭证（可并行） |
-| **wps-proofread-reporter** | 报告：从磁盘 session 归并真实数据，五维报告 + 交叉校验 + 缺失告警 |
+| ~~wps-proofread-planner~~ | ~~规划：一次性分批计划 + 唯一 session_id + 登记批次分配表 + 编排调度~~（已由服务端 `generateAutoBatches` 取代） |
+| ~~wps-proofread-manager~~ | ~~管理：调度执行 subagent（≤3 并行）+ 监督逐步凭证落盘防幻觉 + 断点续跑~~ |
+| ~~wps-proofread-executor~~ | ~~执行：专职逐批校对独立段落区间，走完整步骤链并落盘凭证（可并行）~~ |
+| ~~wps-proofread-reporter~~ | ~~报告：从磁盘 session 归并真实数据，五维报告 + 交叉校验 + 缺失告警~~（已由服务端 `generateProofreadReport` 硬门禁取代） |
 
 ### 4.4 Agent 与 Skill 的对应关系
 

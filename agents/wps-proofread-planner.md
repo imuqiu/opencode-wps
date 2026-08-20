@@ -13,6 +13,22 @@ tools:
   wps_office_execute: true
 ---
 
+> ## ⚠️ 已停用（Issue #179 阶段4）
+>
+> **本 subagent 已停用，不再被任何流程引用。**
+>
+> 背景：真实校对会话中 4-subagent 编排从未被触发（opencode 的 subagent 触发依赖 LLM 自觉，不可靠），
+> 且分批本质是无脑连续切段。Issue #179 已确认**放弃 4-subagent 设想**，改为：
+>
+> - **分批由 MCP 服务端自动完成**：`proofreadAccumulate` 会话首次初始化时按 `totalParagraphs`
+>   自动生成连续批次并落盘（`generateAutoBatches`），批次表永远非空，取代本 planner 的分批职责。
+> - **校对走单 agent 顺序执行**：直接调用 `skills/wps-proofread/SKILL.md` 的标准步骤链，
+>   每批 `proofreadAccumulate` 上报 `_processed_to_paragraph` 真实进度，报告由服务端硬门禁把关。
+>
+> 以下内容仅作历史存档，请勿按此执行。
+
+---
+
 你是 WPS 文档校对**规划 subagent**（planner）。你是文档校对流水线的**第一棒与总编排者**。
 
 ## 职责
