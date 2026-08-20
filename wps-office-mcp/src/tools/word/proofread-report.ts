@@ -753,10 +753,6 @@ export const proofreadAccumulateHandler: ToolHandler = async (
 
   // 获取或创建会话（优先内存，磁盘兑底——服务重启后可从磁盘恢复，Issue #116 问题七/九/十二）
   let session = getSessionOrLoad(session_id);
-  // Issue #179 阶段1（服务端自动分批）：标记本次调用是否首次创建会话。
-  // 仅在首次创建（且 AI 未携带 _batch_allocations）时由服务端自动登记批次表，
-  // 避免后续批次重复自动登记覆盖已有批次表。
-  let sessionCreatedThisCall = false;
   if (!session) {
     if (!doc_info) {
       return {
@@ -776,7 +772,6 @@ export const proofreadAccumulateHandler: ToolHandler = async (
       docInfo: doc_info,
       createdAt: new Date().toISOString(),
     };
-    sessionCreatedThisCall = true;
     sessionIssues.set(session_id, session);
   }
   // 刷新最后访问时间并执行上限淘汰
@@ -1082,8 +1077,11 @@ export const proofreadAccumulateHandler: ToolHandler = async (
   // 供管理 agent 调度（并行≤3）/ 断点续跑（非 done 批次重新入队）使用。
   // 落盘失败不阻塞主流程（返回警告而非失败），但需向 AI 暴露信号。
   // Issue #179 阶段1（服务端自动分批）：若 AI 未登记批次（planner 未触发/旧串行流程），
-  // 服务端在会话首次创建时按 docInfo.totalParagraphs 自动生成连续批次落盘，批次表从此
-  // **永远非空**，根除「空批次表 = 全部完成」的误判（取代 planner subagent 的分批职责）。
+  // 服务端按 docInfo.totalParagraphs 自动生成连续批次落盘，批次表从此**永远非空**。
+  // R8-1 修复（PR #181 评审）：触发条件为**「批次表为空」**——
+  // 被进度校验拒绝的调用会残留已创建但批次表为空的 session（内存 Map），若重试合法进度时
+  // 不再触发自动分批，批次表永远为空，违背「批次表永远非空」不变量。改为幂等判断：
+  // 只要批次表为空且 totalParagraphs 有效，就补登记自动批次（不重复覆盖已有批次表）。
   let batchAllocationsPersisted = false;
   if (Array.isArray(_batch_allocations) && _batch_allocations.length > 0) {
     try {
@@ -1092,7 +1090,7 @@ export const proofreadAccumulateHandler: ToolHandler = async (
       batchAllocationsPersisted = false;
     }
   } else if (
-    sessionCreatedThisCall &&
+    loadBatchAllocations(session_id).length === 0 &&
     typeof session.docInfo?.totalParagraphs === 'number' &&
     session.docInfo.totalParagraphs >= 1
   ) {
