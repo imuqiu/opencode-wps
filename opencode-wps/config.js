@@ -94,16 +94,26 @@ var CONFIG = {
     maxMessageLength: 10000,
   },
 
-  // 工具权限确认配置（Issue #116 权限自动确认需求）
+  // 工具权限确认配置（Issue #116 权限自动确认需求 + Issue #179 方案A 服务端放行）
   permission: {
     // 权限确认模式：
-    //   'auto'   — 自动允许所有工具权限请求（长任务如 97 批校对不再因权限确认卡住）
-    //   'manual' — 手动弹窗确认（保留原交互，需要人工审批工具调用）
+    //   'auto'   — 自动允许所有工具权限请求（长任务如 97 批校对不再因权限确认卡住）。
+    //              install-addons.js 会据此在 opencode.json 写入服务端 permission（外部目录
+    //              external_directory 直接放行），服务端不再下发权限请求，根治授权卡住；
+    //              前端 taskpane.html 仍保留 auto-allow 作为兜底。
+    //   'manual' — 手动弹窗确认（保留原交互，需要人工审批工具调用）。install-addons.js
+    //              会移除服务端默认全放行 permission（若用户在 opencode.json 手动配置了
+    //              精细 permission 会保留），走 opencode 默认/前端弹窗。
     mode: 'auto',
+    // 服务端放行范围（mode==='auto' 时由 install-addons.js 依据 .opencode/opencode.jsonc
+    // 模板中的 permission 字段注入 opencode.json；此处注释仅供阅读，实际值以模板为准）：
+    //   { '*': 'allow', 'external_directory': { '**': 'allow' } }
+    // 若想收紧到特定盘符，修改 .opencode/opencode.jsonc 的 external_directory 值为
+    // 如 { 'F:\\**': 'allow' } 即可（install-addons.js 会原样透传）。
     // 注意：launcher 启动 opencode serve 时不再追加 --permission allow（Issue #161：
     // 老版本 opencode 的 serve 子命令不认识该旗标，追加会导致启动失败）。
-    // 权限自动放行完全由前端 taskpane.html 在 mode==='auto' 时自动 respondPermission('allow')
-    // 实现，另有 /tui/control/next 长轮询兜底。
+    // 前端 taskpane.html 在 mode==='auto' 时自动 respondPermission('allow') 兜底，
+    // 另有 /tui/control/next 长轮询兜底。
   },
 
   // 网络配置

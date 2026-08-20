@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **服务端权限自动放行（Issue #179 方案A，根治长任务外部目录读写卡授权）** — 在生成 `opencode.json` 时写入服务端 `permission`（`"*": "allow"` + `external_directory: { "**": "allow" }`），服务端直接放行所有工具及工作目录外的文件读写，权限请求不再下发，彻底根治长任务（如 F 盘文档校对）因 `external_directory` 授权卡住（曾出现 7.86 小时中断）的问题：
+  - **`opencode-wps/config.js`**：`permission.mode` 新增服务端放行语义——`'auto'` 时 `install-addons.js` 注入服务端 `permission`；`'manual'` 时移除（走前端弹窗人工确认）。
+  - **`install-addons.js`**：生成 opencode.json 时读取 `config.js` 的 `permission.mode`，按模式注入/移除服务端 `permission`；逻辑抽取到 `shared/permission-helper.js`（纯函数，可测试）。
+  - **`.opencode/opencode.jsonc`**：模板新增默认 `permission`，`external_directory` 可按需收紧到具体盘符（如 `F:\\**`）。
+  - **文档**：`docs/USAGE.md`、`docs/SECURITY.md` 更新服务端放行机制、关闭与收紧方法及安全权衡说明。
+  - **测试**：新增 `tests/install-permission.test.js`（6 用例：auto 注入/保留、manual 删除/无副作用、未知 mode 回退 auto、模板与默认值一致），并接入 `.cnb.yml` 与 `.github/workflows/ci.yml`。
+  - **评审修复（PR #180 第 1 轮）**：
+    - 未知 `permission.mode` 不再静默回退到 `auto`（全放行），改为按 `manual` 保守处理并在 install 日志中明确警告（避免拼写错误时静默扩大权限面）。
+    - `manual` 模式仅移除「由模板注入的默认全放行配置」，保留用户在 `opencode.json` 中自定义的精细 `permission`（不再误删自定义配置）。
+    - `SECURITY.md` 补充说明：opencode 原生 `"*": "allow"` 放行的内置工具（bash/edit/write 等）不受 governance.js 拦截，提醒收紧范围。
+    - 测试从 6 用例扩至 9 用例，覆盖未知 mode 保守回退、manual 保留自定义权限、auto 变体不静默全放行。
+    - **评审修复（PR #180 第 2 轮）**：`SECURITY.md`、`USAGE.md` 补充「收紧 external_directory 需同时清理已有 `opencode.json` 旧 `**` 规则」的指引——因 `install-addons.js` 的深层合并会让旧 `**` 与新的收紧规则共存，收紧不彻底。
+    - **评审修复（PR #180 第 3 轮）**：`install-addons.js` 第 4.5 步 `catch` 分支改为保守处理——`config.js` 无法读取时**移除模板注入的全放行 permission**（安全降级方向为“收紧”而非“放宽”，与未知 mode 保守 manual 原则一致）并明确警告；manual 模式日志改为“不写入”以更准确。
+    - **评审修复（PR #180 第 4 轮）**：
+      - `install-addons.js` 修复 falsy mode（空串/0/false）被静默当 auto 全放行的问题——改为读取 falsy mode 值并交由 `applyServicePermission` 保守按 manual 处理（与未知 mode 保守原则一致）。
+      - `.opencode/opencode.jsonc`、`config.js` 注释同步更新，反映 manual 模式仅移除默认全放行、保留用户自定义精细 permission 的实际行为。
+      - 测试增至 10 用例，新增 falsy mode 保守处理覆盖。
+    - **评审修复（PR #180 第 5 轮）**：`applyServicePermission` 返回值新增 `removedDefault` 字段区分 manual 下「移除默认全放行」与「保留自定义」；install 日志据此更精确；测试用例改用 JSON 深比较提升健壮性（不再依赖引用保留）。
+    - **评审修复（PR #180 第 6 轮）**：`isSamePermission` 改为基于键的递归深比较（对属性顺序不敏感），修复 JSON.stringify 顺序敏感误判；新增「属性顺序不同的默认全放行也应被移除」测试，测试增至 11 用例。
+    - **评审修复（PR #180 第 7 轮）**：`install-addons.js` 第 4.5 步顶部注释同步更新，反映 manual 仅移除默认全放行、保留自定义的实际行为（与模板/config.js 注释一致）。
+    - **评审修复（PR #180 第 8 轮）**：CHANGELOG 版本段归属调整——将本 PR 未发布功能从已发布的 `[1.6.6]` 段移入新增的 `[Unreleased]` 段，符合 Keep a Changelog 规范，避免已发布版本混入未发布内容。
+
 ## [1.6.6] - 2026-08-19
 
 ### Fixed

@@ -89,6 +89,20 @@ PluginStorage 500ms 轮询采用 `{ cmd, ts }` JSON 格式：
 - 仅当进程名为 `node.exe` 或 `opencode.exe` 时才执行 kill
 - 防止误杀其他进程
 
+### 服务端权限放行（Issue #179 方案A）
+
+为根治长任务（如 F 盘文档校对）因外部目录授权卡住的问题，默认开启**服务端权限自动放行**：
+
+- **机制**：`install-addons.js` 在生成 `opencode.json` 时读取 `opencode-wps/config.js` 的 `permission.mode`，为 `'auto'` 时写入服务端 `permission`：`{ "*": "allow", "external_directory": { "**": "allow" } }`。服务端直接放行所有工具及工作目录外的文件读写，权限请求不再下发。
+- **关闭**：将 `config.js` 的 `permission.mode` 改为 `'manual'` 并重跑 `node install-addons.js`，服务端 `permission` 会被移除，回到前端弹窗人工确认。
+- **保留自定义权限**：若用户在 `opencode.json` 中手动配置了精细 `permission`（与默认全放行不同），切到 `manual` 时该自定义配置会被**保留**，仅移除由模板注入的默认全放行配置。
+- **收紧范围**：修改 `.opencode/opencode.jsonc` 的 `permission.external_directory`，如 `{ "F:\\**": "allow" }` 仅放开 F 盘，`install-addons.js` 原样透传。
+  > ⚠️ **收紧注意**：若此前已安装过（已有 `opencode.json` 含旧的 `**` 全放行），修改模板收紧时需**同时清理已有 `opencode.json` 中的旧 `external_directory` 规则**（或删除 `~/.config/opencode/opencode.json` 后重跑 `node install-addons.js` 让模板全量生效）。否则 `install-addons.js` 第 2 步的深层合并会让旧的 `**` 与新的 `F:\**` **共存**，`**` 全放行仍生效，收紧无效。
+
+**安全权衡**：`"*": "allow"` 表示对所有工具放行，`external_directory: { "**": "allow" }` 表示对工作目录外的任意路径读写放行。仅建议在**本地可信环境**使用。若文档分布在固定盘符/目录，强烈建议将 `external_directory` 收紧到具体盘符（如 `F:\**`），而不是用 `**` 全放。
+
+> ⚠️ 该服务端放行只作用于 OpenCode 工具调用权限，**governance.js 的 G1-G7 安全规则（路径安全/破坏性确认/密码保护等）对 MCP 工具调用仍生效**。但需注意：`"*": "allow"` 放行的 **opencode 原生内置工具（如 `bash`/`edit`/`write` 等）不受 governance.js 拦截**——governance 仅拦截 MCP 工具调用。因此若环境不可信或文档含敏感内容，请务必收紧 `external_directory` 或改用 `manual` 模式人工确认，避免原生工具越权读写。
+
 ### 报告安全漏洞
 
 如发现安全漏洞，请通过 GitHub Issue 报告。

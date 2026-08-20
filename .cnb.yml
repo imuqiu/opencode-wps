@@ -33,6 +33,8 @@ main:
             # Windows 侧安全/Launcher 回归测试（PR #87 评审迭代新增）
             node tests/security.test.js
             node tests/launcher.test.js
+            # Issue #179 方案A：服务端权限放行回归测试
+            node tests/install-permission.test.js
             # Windows 侧 JS 语法门禁（PR #87 评审迭代新增）
             node --check opencode-wps/launcher.js
             node --check opencode-wps/serve.js

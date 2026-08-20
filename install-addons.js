@@ -426,6 +426,52 @@ if (fsEx.existsSync(mcpEntryPath)) {
     type: 'local',
   };
 
+  // 第 4.5 步：按 config.js 的 permission.mode 注入/移除服务端 permission（Issue #179 方案A）
+  // mode==='auto'   → 保留模板中的 permission（服务端直接放行所有工具 + 外部目录，根治长任务卡授权）
+  // mode==='manual' → 仅移除与默认全放行一致的 permission，保留用户自定义精细 permission
+  //                   （走 opencode 默认 / 前端弹窗人工确认）
+  // 其他（含空串/0/false 等 falsy 值）→ 交由 applyServicePermission 保守按 manual 处理，
+  // 避免 falsy mode 被静默当成 auto 全放行（Issue #179 评审修复 #4）
+  try {
+    var permissionHelper = require(path.join(rootDir, 'shared', 'permission-helper.js'));
+    var pluginConfigJs = path.join(rootDir, 'opencode-wps', 'config.js');
+    var permMode = 'auto'; // 默认 auto，与 config.js 默认一致（config.js 不存在时）
+    if (fsEx.existsSync(pluginConfigJs)) {
+      var pluginCfg = require(pluginConfigJs);
+      // 只要 permission 对象存在就读取 mode（包括 falsy 值），交由 applyServicePermission 统一判断；
+      // 避免此处 truthy 判断把 '' / 0 / false 跳过而沿用默认 auto（全放行）
+      if (pluginCfg && pluginCfg.permission) {
+        permMode = pluginCfg.permission.mode; // 可能为 'auto'/'manual'/''/0/false/undefined 等
+      }
+    }
+    var permResult = permissionHelper.applyServicePermission(config, permMode);
+    if (permResult.invalid) {
+      console.log(
+        '  [警告] 未知 permission.mode（' +
+          permMode +
+          '），按 manual 保守处理（不注入服务端 permission）；' +
+          '请检查 opencode-wps/config.js，应为 auto 或 manual'
+      );
+    } else if (permResult.applied) {
+      console.log('  权限模式=auto：已写入服务端 permission（工具 + 外部目录直接放行）');
+    } else if (permResult.removedDefault) {
+      console.log('  权限模式=manual：已移除服务端默认全放行 permission（走前端人工确认）');
+    } else {
+      console.log('  权限模式=manual：未写入服务端 permission（保留用户自定义/走前端人工确认）');
+    }
+  } catch (e) {
+    // config.js 无法读取（文件损坏/语法错误等）时，无法确认用户 mode 意图。
+    // 安全原则：保守处理——移除模板注入的全放行 permission（避免静默全放行，与第 1 轮
+    // “未知 mode 保守 manual”原则一致），并明确警告，让用户修复 config.js 后重跑。
+    // （Issue #179 评审修复 #3：安全降级方向应为“收紧”而非“放宽”）
+    if (config.permission !== undefined) delete config.permission;
+    console.log(
+      '  [警告] 无法读取 config.js permission.mode（' +
+        (e.message || '') +
+        '）；已按 manual 保守处理（不写入服务端 permission）。请检查 opencode-wps/config.js，修复后重跑 install-addons.js'
+    );
+  }
+
   // 第 5 步：写回配置
   fs.writeFileSync(opencodeConfigPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
   console.log('  已配置 MCP 服务器: ' + mcpServer.name);

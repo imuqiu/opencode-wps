@@ -128,17 +128,21 @@ AI 回复**实时流式显示**（SSE，Server-Sent Events），边生成边展�
 
 > 💡 **背景**：此功能解决此前「生成报告卡住」问题——权限请求在侧边栏静默、进程一直等待，只能切到 web 会话确认。现在侧边栏直接弹出确认框并高亮提示等待状态。
 
-##### 权限自动确认模式（Issue #116 补充）
+##### 权限自动确认模式（Issue #116 补充 + Issue #179 方案A 服务端放行）
 
-默认开启**自动确认**（`config.js` 的 `permission.mode: 'auto'`），长任务（如 97 批校对）不再因权限确认卡住：
+默认开启**自动确认**（`config.js` 的 `permission.mode: 'auto'`），长任务（如 97 批校对）不再因权限确认卡住。方案A 在服务端直接放行，双保险：
 
-- **前端自动响应**：权限请求到来时自动 `allow`，不再弹窗等待人工确认（`taskpane.html` 的 `handlePermissionRequest` 在 `mode==='auto'` 时直接 `respondPermission('allow')`）
+- **服务端放行（方案A，根治）**：`install-addons.js` 在生成 `opencode.json` 时读取 `config.js` 的 `permission.mode`；为 `'auto'` 时写入服务端 `permission`（`"*": "allow"` + `external_directory: { "**": "allow" }`），使**服务端直接放行所有工具及工作目录外的文件读写**，权限请求根本不下发——彻底根治长任务（如 F 盘文档校对）因外部目录授权卡住的问题。
+- **前端自动响应（兜底）**：权限请求若仍到来，`taskpane.html` 的 `handlePermissionRequest` 在 `mode==='auto'` 时自动 `allow`，不再弹窗等待人工确认
 - **兜底通道**：`/tui/control/next` 长轮询（serve web 走此通道），SSE 收不到权限请求时也能自动响应
-- **可配置**：如需人工审批，将 `config.js` 的 `permission.mode` 改为 `'manual'` 即可切回弹窗确认
+- **可配置**：
+  - 如需人工审批：将 `config.js` 的 `permission.mode` 改为 `'manual'`，重跑 `node install-addons.js`——此时服务端 `permission` 被移除，走前端弹窗人工确认
+  - 如需收紧放行范围：修改 `.opencode/opencode.jsonc` 的 `permission.external_directory` 值（如改为 `{ "F:\\**": "allow" }` 仅放开 F 盘），`install-addons.js` 会原样透传。
+    > ⚠️ **收紧注意**：若此前已 install 过（已有 `opencode.json` 含旧的 `**` 全放行），修改模板收紧时需**同时清理已有 `opencode.json` 中的旧 `external_directory` 规则**（或删除 `~/.config/opencode/opencode.json` 后重跑 `node install-addons.js`），否则旧的 `**` 会与新的收紧规则**共存**，收紧不彻底。
 
-> ℹ️ 早期版本曾尝试在 launcher 启动 `opencode serve` 时追加 `--permission allow` 从服务端源头放行，但老版本 opencode 的 `serve` 子命令**不识别该旗标**，追加后打印 usage 并以 code=1 退出导致「启动失败」（Issue #161 根因）。已移除该旗标及 `autoAllowOnLaunch` 配置，权限自动放行完全交由前端通道实现。
+> ℹ️ 早期版本曾尝试在 launcher 启动 `opencode serve` 时追加 `--permission allow` 从服务端源头放行，但老版本 opencode 的 `serve` 子命令**不识别该旗标**，追加后打印 usage 并以 code=1 退出导致「启动失败」（Issue #161 根因）。已移除该旗标及 `autoAllowOnLaunch` 配置，权限放行改由 opencode.json 服务端 `permission` 配置（方案A）+ 前端通道兜底实现。
 
-> ⚠️ 自动确认只放行工具权限请求，**governance.js 的 G1-G7 安全规则（路径安全/破坏性确认/密码保护等）仍生效**，不会被绕过。
+> ⚠️ 自动确认只放行工具权限请求，**governance.js 的 G1-G7 安全规则（路径安全/破坏性确认/密码保护等）仍生效**，不会被绕过。方案A 的 `external_directory` 放行范围可按需收紧到特定盘符。
 
 #### 上下文用量条（Issue #116）
 
