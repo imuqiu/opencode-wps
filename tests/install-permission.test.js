@@ -175,15 +175,17 @@ test('allowedWriteRoots 非空：注入 MCP env.OPCODE_ALLOWED_ROOTS（Issue #17
   var mcp = { command: ['node', 'server.js'], type: 'local' };
   var r = applyWriteRoots(mcp, 'F:\\2025年度;D:\\docs');
   assertTrue(r.applied === true, '非空 roots 应标记 applied');
-  assertEqual(r.roots, 'F:\\2025年度;D:\\docs', '返回 roots 应为原值');
   assertTrue(!!mcp.env, '应创建 env');
-  // R4-2 修复：env 按平台分隔符规范化写入（本测试环境为 Linux/macOS → 冒号 `:`）
+  // R4-2/R9-2 修复：env 按平台分隔符规范化写入，返回值与 env 实际值一致
+  // （本测试环境为 Linux/macOS → 冒号 `:`）
   var expectedDelim = process.platform === 'win32' ? ';' : ':';
+  var expected = 'F:\\2025年度' + expectedDelim + 'D:\\docs';
   assertEqual(
     mcp.env.OPCODE_ALLOWED_ROOTS,
-    'F:\\2025年度' + expectedDelim + 'D:\\docs',
+    expected,
     'env 应写入 OPCODE_ALLOWED_ROOTS（平台分隔符规范化）'
   );
+  assertEqual(r.roots, expected, '返回值应为规范化后的值（与 env 一致）');
 });
 
 test('allowedWriteRoots 混用分隔符时按平台规范化（R4-2 评审修复）', function () {

@@ -1515,7 +1515,7 @@ export const generateProofreadReportHandler: ToolHandler = async (
     // 避免「✅ 未发现问题」与「⚠️ 待确认问题」语义并置引起困惑
     const hasSuspected = !!(suspectedIssues && suspectedIssues.length > 0);
     const emptyReport =
-      buildEmptyReport(docInfo, createdAt, hasSuspected) +
+      buildEmptyReport(docInfo, createdAt, hasSuspected, totalRevisions) +
       (hasSuspected ? buildSuspectedSection(suspectedIssues!) : '');
     let wroteFile = false;
     let writeError: string | undefined;
@@ -2064,11 +2064,21 @@ function buildSuspectedSection(suspectedIssues: ProofreadIssueEntry[]): string {
  * @param hasSuspected 是否存在待确认疑似问题（评审第 8 轮 W8：有则用中性提示，
  *   避免「✅ 未发现问题」与「⚠️ 待确认问题」语义并置）
  */
-function buildEmptyReport(docInfo: DocInfo, _createdAt: string, hasSuspected = false): string {
+function buildEmptyReport(
+  docInfo: DocInfo,
+  _createdAt: string,
+  hasSuspected = false,
+  totalRevisions?: number
+): string {
   const reportDate = new Date().toISOString().replace('T', ' ').substring(0, 19);
+  // R9-1 评审：有修订记录但 0 问题时，空报告应展示修订总数并提示核对，
+  // 避免「✅ 未发现任何问题」与「实际存在修订」矛盾误导用户。
+  const hasRevisions = typeof totalRevisions === 'number' && totalRevisions > 0;
   const summaryLine = hasSuspected
     ? `正式问题 0 处；另有待确认疑似问题，见下方「待确认问题」节，请人工核对。`
-    : `✅ 文档质量优秀，未发现任何问题。`;
+    : hasRevisions
+      ? `✅ 文档质量优秀，未发现任何问题（注意：存在 ${totalRevisions} 条修订记录，若为本轮校对修改请核对是否已累加；若为既有修订请忽略）。`
+      : `✅ 文档质量优秀，未发现任何问题。`;
   return [
     `# 校对报告`,
     ``,
@@ -2077,6 +2087,7 @@ function buildEmptyReport(docInfo: DocInfo, _createdAt: string, hasSuspected = f
     `- **校对时间**: ${reportDate}`,
     `- **总段数**: ${docInfo.totalParagraphs ?? 0}`,
     `- **总字数**: ${docInfo.totalWords ?? 0}`,
+    ...(hasRevisions ? [`- **修订总数**: ${totalRevisions}`] : []),
     `- **发现问题**: 0 处`,
     ``,
     `## 六维评分`,

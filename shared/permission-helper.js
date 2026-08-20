@@ -109,8 +109,11 @@ function applyWriteRoots(mcpServerCfg, allowedRoots) {
     // 保证 path-safety.ts 的 path.delimiter 分割正确。
     var delim = process.platform === 'win32' ? ';' : ':';
     var altDelim = delim === ';' ? ':' : ';';
-    mcpServerCfg.env.OPCODE_ALLOWED_ROOTS = roots.replace(new RegExp('\\' + altDelim, 'g'), delim);
-    return { applied: true, roots: roots };
+    // R9-2 评审：返回规范化后的实际写入值（而非原始用户输入），保证日志/调用方
+    // 看到的 roots 与 env 实际值一致（R4-2 规范化后二者可能不同）。
+    const normalizedRoots = roots.replace(new RegExp('\\' + altDelim, 'g'), delim);
+    mcpServerCfg.env.OPCODE_ALLOWED_ROOTS = normalizedRoots;
+    return { applied: true, roots: normalizedRoots };
   }
   // 未配置：不注入（MCP 服务端用默认白名单 home+tmp）。
   // 若之前注入过，清理掉，避免残留过期配置扩大写盘范围。
