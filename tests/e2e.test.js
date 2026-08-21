@@ -293,6 +293,11 @@ runTests().then(function () {
   console.log('通过: ' + passCount + ' 个');
   console.log('失败: ' + (testCount - passCount) + ' 个');
 
+  // 防「0 个测试假装通过」：没有任何测试注册时不得 exit 0（用户第 6 条：不要假装测试）
+  if (testCount === 0) {
+    console.log('\n✗ 未执行任何测试（0 个测试）！\n');
+    process.exit(1);
+  }
   if (passCount === testCount) {
     console.log('\n✓ 所有 E2E 测试通过!\n');
     process.exit(0);
