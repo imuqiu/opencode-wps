@@ -360,7 +360,11 @@ test('resolvePowerShellExe: 返回以 powershell.exe 结尾的非空字符串（
 });
 
 test('quoteIfNeeded: 含空格加引号、无空格原样（R7-3）', function () {
-  assertEqual(launcher.quoteIfNeeded('C:\\Users\\A B\\opencode.ps1'), '"C:\\Users\\A B\\opencode.ps1"', '含空格应加引号');
+  assertEqual(
+    launcher.quoteIfNeeded('C:\\Users\\A B\\opencode.ps1'),
+    '"C:\\Users\\A B\\opencode.ps1"',
+    '含空格应加引号'
+  );
   assertEqual(launcher.quoteIfNeeded('opencode'), 'opencode', '无空格应原样');
   assertEqual(launcher.quoteIfNeeded('serve'), 'serve', '命令子项应原样');
 });

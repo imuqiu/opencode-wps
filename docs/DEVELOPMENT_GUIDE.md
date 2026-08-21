@@ -285,6 +285,8 @@ git checkout -b feat/your-feature
 ### 4. 本地验证
 
 ```bash
+# 统一预检门禁（validate 系列 + format:check + lint + test + test:e2e，提交 PR 前必跑）
+npm run preflight
 # 工具数量校验（12/240/257）
 npm run validate:toolcounts
 # NPC_TEAM 双源一致性
@@ -293,8 +295,16 @@ npm run validate:npc-team
 npm run validate:versions
 # settings 校验
 npm run validate:settings
-# 运行全部单测
-node tests/*.test.js
+# 运行全部根单测
+npm run test
+# 运行 e2e 集成测试
+npm run test:e2e
+# 全仓 JS 语法门禁
+npm run lint
+# 格式化代码（Prettier）
+npm run format
+# 仅检查格式（Prettier）
+npm run format:check
 cd wps-office-mcp && npm test
 ```
 
@@ -389,16 +399,18 @@ git commit -m "feat(mcp): 添加 Excel 图表创建工具"
 ## 七、测试
 
 ```bash
-# 运行全部根测试
-node tests/security.test.js
-node tests/utils.test.js
-node tests/launcher.test.js
-node tests/e2e.test.js
-node tests/mac-bridge.test.js
-node tests/setcellformat-mac.test.js
-node tests/wps-bridge-shared.test.js
-node tests/taskpane-dock.test.js
-node tests/validate-npc-team-prompt.test.js
+# 统一预检门禁（提交 PR 前必须运行，确保所有自动化检查通过）
+npm run preflight
+# 运行全部根单测（tests/*.test.js，排除 e2e）
+npm run test
+# 运行 e2e 集成测试（真实 HTTP mock 链路）
+npm run test:e2e
+# 全仓 JS 语法检查
+npm run lint
+# 格式化代码（Prettier）
+npm run format
+# 检查格式（Prettier）
+npm run format:check
 
 # 路径安全测试
 cd wps-office-mcp && npx jest src/tests/unit/path-safety.test.ts
