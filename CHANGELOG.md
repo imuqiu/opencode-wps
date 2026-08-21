@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] - 2026-08-21
+
+### Added
+
+- **NPC 十四条质量红线固化（Issue #147 防垒屎山）** — 把"NPC 垒屎山"倾向的 14 条工程纪律固化到 NPC_TEAM skill 与工程脚本，三个原子化 PR 落地：
+  - **工程脚本补齐（PR #182）**：根目录新增 `npm run test`（聚合根 JS 单测）/ `test:e2e`（e2e 单独跑）/ `lint`（全仓 JS 语法门禁 `node --check`）/ `preflight`（一键聚合 validate 系列 + format:check + lint + test + test:e2e）四个脚本，`.cnb.yml` CI 接入 `npm run preflight`，`docs/DEVELOPMENT_GUIDE.md` 同步命令说明。
+  - **e2e 假测试修复（PR #183）**：`tests/e2e.test.js` 3 个 `assertTrue(true, '跳过实际 HTTP 请求')` 假断言改为真实本地 mock HTTP server 校验（校验真实请求/响应/状态码），移除空断言，e2e 接入 CI；`runTests` 校验 testCount=0 时 exit 1，防假装测试。
+  - **NPC_TEAM 铁律 16-18 固化（PR #184）**：`docs/NPC_TEAM.md` + `.codebuddy/skills/npc-team/SKILL.md` 双源新增铁律 16（思维纪律：充分分析根因/方案求证/评审实事求是/逻辑清晰无矛盾兜底）、铁律 17（改动纪律：最小必要改动/原子化 PR/无关问题单独拆 issue/用户可见变更更新 /docs）、铁律 18（测试纪律：充分测试逐条真测/执行单测+集成测试/运行 preflight/lint/format）；`scripts/validate-npc-team-prompt.js` 新增门禁锚点；`tests/validate-npc-team-prompt.test.js` 新增 14 个负向回归用例（124→138）。
+
+### Changed
+
+- **版本号升级至 1.8.1** — 根 `package.json` / `package-lock.json` / `opencode-wps/`（package.json、config.js、manifest.xml）/ `opencode-wps-linux/`（package.json、manifest.xml）/ `wps-office-mcp/`（package.json、package-lock.json）版本一致升级至 1.8.1，`validate-versions` 校验通过。
+
+### Fixed
+
+- **"暂未建立的测试"已单独拆 issue 完善**：MCP `lint`（eslint src/**/*.ts）僵尸脚本（#185）、MCP `test:integration` 未接入 CI（#186）分别单独开 issue 跟踪完善，符合"无关问题单独拆"纪律。
+
 ## [1.8.0] - 2026-08-21
 
 ### Changed
