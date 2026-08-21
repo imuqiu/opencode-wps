@@ -307,6 +307,45 @@ if (!m) {
       '缺少「N 轮评审-修复验收标准」门禁（铁律 8：有效下限 = max(10, 用户指定 N)，可核实验收）'
     );
 
+  // ---- 9.8 十四条质量红线纪律门禁（Issue #147：防「垒屎山」铁律 16~18）----
+  // 思维纪律（铁律 16）：充分分析根因 / 方案切实可行须求证 / 评审整改实事求是 / 逻辑清晰无矛盾兜底
+  if (!/充分分析需求或定位问题.{0,30}真正原因/.test(prompt))
+    errors.push(
+      '缺少「思维纪律-充分分析」门禁（铁律 16：充分分析需求或定位问题真正原因，不能假装分析）'
+    );
+  if (!/方案应切实可行，不能想当然.{0,40}充分求证/.test(prompt))
+    errors.push(
+      '缺少「思维纪律-方案求证」门禁（铁律 16：方案应切实可行，动手前须充分求证）'
+    );
+  if (!/每一轮都要.{0,20}充分发现问题/.test(prompt))
+    errors.push(
+      '缺少「思维纪律-评审实事求是」门禁（铁律 16：每一轮都要充分发现问题，不能假装凑数）'
+    );
+  if (!/自相矛盾的兜底/.test(prompt))
+    errors.push('缺少「思维纪律-逻辑清晰」门禁（铁律 16：不做自相矛盾的兜底）');
+  // 改动纪律（铁律 17）：最小必要改动 / 小型原子化 PR / 无关问题单独拆 issue / 用户可见变更更新 docs
+  if (!/最小必要改动.{0,20}不盲目扩大/.test(prompt))
+    errors.push('缺少「改动纪律-最小必要改动」门禁（铁律 17：做最小必要改动，不盲目扩大）');
+  if (!/小型的、原子化的 PR/.test(prompt))
+    errors.push('缺少「改动纪律-原子化 PR」门禁（铁律 17：采取小型原子化 PR，必要时一个 issue 拆为多个 PR）');
+  if (!/单独拆 issue 及 PR/.test(prompt))
+    errors.push('缺少「改动纪律-无关问题单独拆」门禁（铁律 17：无关问题单独拆 issue 及 PR）');
+  if (!/更新.{0,10}\/docs 目录中的相关文档/.test(prompt))
+    errors.push('缺少「改动纪律-更新 docs」门禁（铁律 17：用户可见变更须更新 /docs 文档）');
+  // 测试纪律（铁律 18）：充分测试逐条真测 / 单测+集成测试 / preflight / format / lint
+  if (!/逐条.{0,10}真测/.test(prompt))
+    errors.push('缺少「测试纪律-逐条真测」门禁（铁律 18：逐条真测，禁止假装测试/空断言）');
+  if (!/单元测试.{0,30}集成测试/.test(prompt))
+    errors.push('缺少「测试纪律-单测+集成测试」门禁（铁律 18：必须执行单元测试与集成测试）');
+  if (!/npm run preflight/.test(prompt))
+    errors.push('缺少「测试纪律-preflight」门禁（铁律 18：提交 PR 前必须运行 npm run preflight）');
+  if (!/npm run format/.test(prompt))
+    errors.push('缺少「测试纪律-format」门禁（铁律 18：用 npm run format 格式化代码）');
+  if (!/npm run lint/.test(prompt))
+    errors.push('缺少「测试纪律-lint」门禁（铁律 18：用 npm run lint 检查代码）');
+  if (!/暂未建立的测试.{0,20}单独开 issue/.test(prompt))
+    errors.push('缺少「测试纪律-补建测试」门禁（铁律 18：暂未建立的测试单独开 issue 及 PR 完善）');
+
   // ---- 通用段化工具：截取 startFrag 到 endFrag（或文件尾）之间的文本 ----
   // 第 7 轮评审 W1：区间不可达（endFrag ≤ startFrag / 锚点缺失）时显式报错并返回 null，
   // 禁止静默返回空串跳过段化校验（防锚点被删后段化校验静默失效）。

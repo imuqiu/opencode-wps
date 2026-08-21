@@ -1803,6 +1803,122 @@ test('负向：删铁律 8「有效下限 = max(10, 用户指定 N)」应拦截�
   assertTrue(/N 轮评审-修复验收标准/.test(output), '应命中改造点 6 门禁，实际输出：' + output);
 });
 
+// ---- 9.8 十四条质量红线纪律（铁律 16~18）负向回归 ----
+// 思维纪律（铁律 16）
+test('负向：删铁律 16「充分分析需求或定位问题真正原因」应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace('充分分析需求或定位问题**真正原因**', '充分分析需求或定位问题大致原因')
+  );
+  assertEqual(code, 1, '删充分分析真正原因应拦截（exit 1）');
+  assertTrue(/思维纪律-充分分析/.test(output), '应命中思维纪律门禁，实际输出：' + output);
+});
+
+test('负向：删铁律 16「方案须充分求证」应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace('动手前须充分求证（读代码/跑测试/查文档确认可行性），确定切实可行才动手；', '直接按直觉动手；')
+  );
+  assertEqual(code, 1, '删方案求证应拦截（exit 1）');
+  assertTrue(/思维纪律-方案求证/.test(output), '应命中思维纪律门禁，实际输出：' + output);
+});
+
+test('负向：删铁律 16「每一轮充分发现问题」应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace('每一轮都要**充分发现问题**', '每一轮都快速通过')
+  );
+  assertEqual(code, 1, '删充分发现问题应拦截（exit 1）');
+  assertTrue(/思维纪律-评审实事求是/.test(output), '应命中思维纪律门禁，实际输出：' + output);
+});
+
+test('负向：删铁律 16「自相矛盾的兜底」应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace('不做自相矛盾的兜底。', '做冗余兜底。')
+  );
+  assertEqual(code, 1, '删逻辑清晰兜底纪律应拦截（exit 1）');
+  assertTrue(/思维纪律-逻辑清晰/.test(output), '应命中思维纪律门禁，实际输出：' + output);
+});
+
+// 改动纪律（铁律 17）
+test('负向：删铁律 17「最小必要改动」应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace('做**最小必要改动**，不盲目扩大改动范围', '做尽可能大的改动，覆盖更多文件')
+  );
+  assertEqual(code, 1, '删最小必要改动应拦截（exit 1）');
+  assertTrue(/改动纪律-最小必要改动/.test(output), '应命中改动纪律门禁，实际输出：' + output);
+});
+
+test('负向：删铁律 17「原子化 PR」应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace('小型的、原子化的 PR', '大型的综合 PR')
+  );
+  assertEqual(code, 1, '删原子化 PR 应拦截（exit 1）');
+  assertTrue(/改动纪律-原子化 PR/.test(output), '应命中改动纪律门禁，实际输出：' + output);
+});
+
+test('负向：删铁律 17「无关问题单独拆」应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace('应**单独拆 issue 及 PR**单独解决，不混入当前 PR；', '并入当前 PR 一并解决；')
+  );
+  assertEqual(code, 1, '删无关问题单独拆应拦截（exit 1）');
+  assertTrue(/改动纪律-无关问题单独拆/.test(output), '应命中改动纪律门禁，实际输出：' + output);
+});
+
+test('负向：删铁律 17「更新 /docs」应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace('必须**更新 /docs 目录中的相关文档**', '无需更新文档')
+  );
+  assertEqual(code, 1, '删更新 docs 应拦截（exit 1）');
+  assertTrue(/改动纪律-更新 docs/.test(output), '应命中改动纪律门禁，实际输出：' + output);
+});
+
+// 测试纪律（铁律 18）
+test('负向：删铁律 18「逐条真测」应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace('要逐条**真测**，不能假装测试', '要快速测一下，能过就行')
+  );
+  assertEqual(code, 1, '删逐条真测应拦截（exit 1）');
+  assertTrue(/测试纪律-逐条真测/.test(output), '应命中测试纪律门禁，实际输出：' + output);
+});
+
+test('负向：删铁律 18「单测+集成测试」应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace('必须执行**单元测试（npm run test）**和**集成测试（npm run test:e2e）**', '只需手动点测')
+  );
+  assertEqual(code, 1, '删单测+集成测试应拦截（exit 1）');
+  assertTrue(/测试纪律-单测\+集成测试/.test(output), '应命中测试纪律门禁，实际输出：' + output);
+});
+
+test('负向：删铁律 18「npm run preflight」应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace('必须运行 **`npm run preflight`**', '直接提交即可')
+  );
+  assertEqual(code, 1, '删 preflight 应拦截（exit 1）');
+  assertTrue(/测试纪律-preflight/.test(output), '应命中测试纪律门禁，实际输出：' + output);
+});
+
+test('负向：删铁律 18「npm run format」应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace('用 **`npm run format`**（Prettier）格式化代码；', '不格式化代码；')
+  );
+  assertEqual(code, 1, '删 format 应拦截（exit 1）');
+  assertTrue(/测试纪律-format/.test(output), '应命中测试纪律门禁，实际输出：' + output);
+});
+
+test('负向：删铁律 18「npm run lint」应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace('用 **`npm run lint`** 检查代码', '不检查代码')
+  );
+  assertEqual(code, 1, '删 lint 应拦截（exit 1）');
+  assertTrue(/测试纪律-lint/.test(output), '应命中测试纪律门禁，实际输出：' + output);
+});
+
+test('负向：删铁律 18「暂未建立的测试单独开 issue」应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace('应单独开 issue 及 PR 予以完善。', '可暂不处理。')
+  );
+  assertEqual(code, 1, '删补建测试声明应拦截（exit 1）');
+  assertTrue(/测试纪律-补建测试/.test(output), '应命中测试纪律门禁，实际输出：' + output);
+});
+
 // ---- 汇总 ----
 console.log('\n========== 测试结果 ==========');
 console.log('总计: ' + testCount + ' 个测试');
