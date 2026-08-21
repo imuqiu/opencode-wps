@@ -7,7 +7,7 @@
 #    - docs/ 存在大量历史格式遗留（非本任务引入），统一作为独立 issue 处理，避免大 diff；
 #    - docs/NPC_TEAM.md 与 .codebuddy/skills/npc-team/SKILL.md 依赖精确文本锚点被
 #      validate-npc-team-prompt.js 门禁校验，prettier 重排会破坏锚点与双源一致性。
-#    markdown 文档格式问题单独跟踪（Issue #186）。
+#    markdown 文档格式问题单独跟踪。
 # 2. *.html 由 WPS Chromium 内嵌渲染，历史格式非本任务范围。
 # 3. YAML/JSONC 配置文件（.cnb.yml / opencode.jsonc 等）由对应工具自身管理格式，
 #    prettier 的 trailingComma/es5 等规则可能与其解析器不兼容，不纳入门禁。
