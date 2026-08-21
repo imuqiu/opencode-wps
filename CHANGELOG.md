@@ -5,7 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.8.0] - 2026-08-21
+
+### Changed
+
+- **版本号升级至 1.8.0** — 根 `package.json` / `package-lock.json` / `opencode-wps/`（package.json、config.js、manifest.xml）/ `opencode-wps-linux/`（package.json、manifest.xml）/ `wps-office-mcp/`（package.json、package-lock.json）版本一致升级至 1.8.0，`validate-versions` 校验通过。
 
 ### Fixed
 
