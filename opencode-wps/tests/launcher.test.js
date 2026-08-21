@@ -91,10 +91,7 @@ test('launcher.js 源码：两分支 stdio 用 pipe 并复用 pipeChildOutputToL
   );
   // 公共辅助函数 pipeChildOutputToLog 负责把 stdout/stderr pipe 进日志写流，
   // 内部应包含对 proc.stdout/stderr 的 data 监听
-  assertTrue(
-    /function pipeChildOutputToLog/.test(src),
-    '应提取 pipeChildOutputToLog 公共函数'
-  );
+  assertTrue(/function pipeChildOutputToLog/.test(src), '应提取 pipeChildOutputToLog 公共函数');
   assertTrue(
     /proc\.stdout\.on\('data'/.test(src),
     'pipeChildOutputToLog 内应手动 pipe stdout 进日志流'

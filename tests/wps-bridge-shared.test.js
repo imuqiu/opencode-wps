@@ -192,7 +192,12 @@ console.log('\n--- 关键 handler 行为级覆盖 ---');
 function runWithFs(platform, handlerName, params, fsMock) {
   global.Application = mockApp;
   global.require = function (name) {
-    if (name === 'path') return { dirname: function (p) { return '/nonexistent-dir'; } };
+    if (name === 'path')
+      return {
+        dirname: function (p) {
+          return '/nonexistent-dir';
+        },
+      };
     if (name === 'fs') return { existsSync: fsMock };
     return {};
   };
@@ -201,13 +206,17 @@ function runWithFs(platform, handlerName, params, fsMock) {
 }
 
 test('saveAs: mac 输出目录不存在时返回错误（ensureOutputDir 生效）', function () {
-  var res = runWithFs('mac', 'saveAs', { path: '/nonexistent-dir/a.docx' }, function () { return false; });
+  var res = runWithFs('mac', 'saveAs', { path: '/nonexistent-dir/a.docx' }, function () {
+    return false;
+  });
   assertEqual(res.success, false, 'mac 目录不存在应失败');
   assertTrue(/输出目录不存在/.test(res.error), 'mac 应提示目录不存在');
 });
 
 test('saveAs: linux 不启用 ensureOutputDir（目录不存在也尝试保存）', function () {
-  var res = runWithFs('linux', 'saveAs', { path: '/nonexistent-dir/a.docx' }, function () { return false; });
+  var res = runWithFs('linux', 'saveAs', { path: '/nonexistent-dir/a.docx' }, function () {
+    return false;
+  });
   assertEqual(res.success, true, 'linux 应跳过目录校验直接保存');
   assertEqual(res.data.path, '/nonexistent-dir/a.docx', 'linux 应返回保存路径');
 });
