@@ -1919,6 +1919,30 @@ test('负向：删铁律 18「暂未建立的测试单独开 issue」应拦截�
   assertTrue(/测试纪律-补建测试/.test(output), '应命中测试纪律门禁，实际输出：' + output);
 });
 
+test('负向：删「需求覆盖度检查」应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace(/需求覆盖度检查/g, '常规检查')
+  );
+  assertEqual(code, 1, '删需求覆盖度检查应拦截（exit 1）');
+  assertTrue(/需求覆盖度检查/.test(output), '应命中需求覆盖度检查门禁，实际输出：' + output);
+});
+
+test('负向：删「⏸CP2.5 需求覆盖确认」暂停点应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace(/⏸CP2\.5 需求覆盖确认/g, '⏸ 需求覆盖确认')
+  );
+  assertEqual(code, 1, '删⏸CP2.5需求覆盖确认应拦截（exit 1）');
+  assertTrue(/需求覆盖确认/.test(output), '应命中需求覆盖度暂停点门禁，实际输出：' + output);
+});
+
+test('负向：删「开发落点/测试覆盖矩阵」应拦截（exit 1）', function () {
+  const { code, output } = runValidateCaptureFull(p =>
+    p.replace(/开发落点/g, '实现落点')
+  );
+  assertEqual(code, 1, '删需求覆盖度矩阵应拦截（exit 1）');
+  assertTrue(/需求覆盖度矩阵/.test(output), '应命中需求覆盖度矩阵门禁，实际输出：' + output);
+});
+
 // ---- 汇总 ----
 console.log('\n========== 测试结果 ==========');
 console.log('总计: ' + testCount + ' 个测试');
