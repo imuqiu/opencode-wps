@@ -36,8 +36,11 @@ let failed = 0;
 for (const file of files) {
   const testPath = path.join(testsDir, file);
   const r = spawnSync(process.execPath, [testPath], { stdio: 'inherit' });
-  if (r.status !== 0) {
-    console.error(`✗ ${file} 失败（退出码 ${r.status}）`);
+  const ok = r.status === 0;
+  if (!ok) {
+    // status 为 null 且存在 signal 说明子进程被信号终止（非正常退出码）
+    const reason = r.signal ? `被信号 ${r.signal} 终止` : `退出码 ${r.status}`;
+    console.error(`✗ ${file} 失败（${reason}）`);
     failed++;
   }
 }

@@ -21,13 +21,14 @@ const IGNORED_DIRS = new Set(['node_modules', '.git', 'dist']);
 // 待检查的顶层入口（若放根目录），其余按遍历收集
 const JS_EXT = '.js';
 
-/** 递归收集 .js 文件（跳过忽略目录） */
+/** 递归收集 .js 文件（跳过忽略目录；对非忽略目录的读失败打印警告而非静默跳过） */
 function collectJs(dir) {
   const result = [];
   let entries;
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });
   } catch (e) {
+    console.warn(`⚠️ 无法读取目录 ${dir}（${e.message}），跳过该目录`);
     return result;
   }
   for (const entry of entries) {
