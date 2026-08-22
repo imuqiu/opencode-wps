@@ -237,7 +237,7 @@ deduped.sort(
 > 批次表从未登记、防幻觉门禁全部失效。**已确认放弃 4-subagent 设想**，改为：
 
 1. **单 agent 顺序执行**：你（主 agent）直接按本文档「校对工作流程」逐批走标准步骤链，
-   不需要调用任何 subagent（`wps-proofread-planner/manager/executor/reporter` 均已停用）。
+   不需要调用任何 subagent（`wps-proofread-planner/manager/executor/reporter` 定义文件已删除，历史存档见 git 历史）。
 2. **分批由服务端自动完成**：`proofreadAccumulate` 会话首次初始化时，服务端按
    `docInfo.totalParagraphs` 自动生成连续批次（每批 100 段）并落盘（`generateAutoBatches`）——
    你**不需要**手动登记 `_batch_allocations`，批次表永远非空。

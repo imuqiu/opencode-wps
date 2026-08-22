@@ -269,7 +269,7 @@ MCP 服务端 **write 类操作**（含校对报告 `generateProofreadReport` �
 > - **服务端强制分批/进度/门禁**：`proofreadAccumulate` 首次初始化自动分批落盘（批次表永远非空）、
 >   串行进度严格递增校验、报告完整性硬门禁——AI 无论怎么跑都逃不出服务端把关。
 >
-> 原 4 个 subagent 定义文件（`agents/wps-proofread-planner/manager/executor/reporter.md`）已标注「⚠️ 已停用」，仅作历史存档。
+> 原 4 个 subagent 定义文件（`agents/wps-proofread-planner/manager/executor/reporter.md`）已删除（历史存档见 git 历史，Issue #189 清理）。
 
 | ~~subagent~~               | ~~职责~~（已停用）                                                                                                       |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
