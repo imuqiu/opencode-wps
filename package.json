@@ -18,7 +18,7 @@
     "test": "node scripts/run-root-tests.js",
     "test:e2e": "node tests/e2e.test.js",
     "lint": "node scripts/lint-js.js",
-    "preflight": "npm run validate:settings && npm run validate:versions && npm run validate:toolcounts && npm run validate:npc-team && npm run format:check && npm run lint && cd wps-office-mcp && npm run lint && cd .. && npm run test && npm run test:e2e"
+    "preflight": "npm run validate:settings && npm run validate:versions && npm run validate:toolcounts && npm run validate:npc-team && npm run format:check && npm run lint && (cd wps-office-mcp && npm run lint) && npm run test && npm run test:e2e"
   },
   "keywords": [
     "opencode",
