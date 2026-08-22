@@ -127,9 +127,11 @@ before 钩子拦截违规 → 工具执行 → after 钩子更新状态 → befo
 
 > ℹ️ P1-P16 共 16 条规则，表格中 P2-P3/P4-P7/P8-P10 为编号合并展示，实际每条规则均独立在 `governance.js` 实现。本次重构（Issue #151）在单 agent 逐批校对基础上，新增 **P19/P20/P21/P22** 以支持「规划/管理/执行/报告」4-subagent 并行协同（详见下文「校对 Subagent 组协同」）。
 
-### 校对 Subagent 组协同（Issue #151 重构）
+### 校对 Subagent 组协同（Issue #151 重构，已弃用）
 
-> 针对大文档校对耗时过长、单 agent 上下文易压缩中断、统计易失真等问题，校对流程重构为**「规划 → 管理 → 执行(并行≤3) → 报告」4 个 subagent 协同**架构（定义见 `agents/`），由**规划 subagent 自动编排调度**，无插件 UI 分流。架构细节见 [PROOFREAD_SUBAGENTS.md](./PROOFREAD_SUBAGENTS.md)。
+> ⚠️ **已弃用（Issue #179 阶段4）**：本 4-subagent 并行架构已被放弃（真实会话实证 subagent 触发依赖 LLM 自觉不可靠），现行方案为**单 agent 顺序执行标准步骤链 + 服务端强制**（分批由 `proofreadAccumulate` 自动完成、进度严格递增校验、报告完整性硬门禁），详见 `skills/wps-proofread/SKILL.md`「校对执行模型」节。
+>
+> 以下为历史存档（subagent 定义文件已删除，git 历史仍可追溯）。
 
 | subagent | 职责 | 接触正文 |
 |----------|------|---------|

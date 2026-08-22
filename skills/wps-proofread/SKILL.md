@@ -250,7 +250,7 @@ deduped.sort(
    - 无任何进度依据且无校对痕迹（从未规划/从未跑）。
      报告「全部已修复 ✅」仅在服务端确认真实覆盖全文时显示，否则标注「⚠️ 覆盖状态未确认完整」。
 
-> 相关停用文件（历史存档）：`agents/wps-proofread-planner.md` / `manager` / `executor` / `reporter`。
+> 相关停用 subagent 定义文件已删除（历史存档见 git 历史：`agents/wps-proofread-planner/manager/executor/reporter.md`）。
 > 服务端自动分批逻辑：`proofread-store.ts` 的 `generateAutoBatches` + `proofread-report.ts` 的会话初始化自动登记。
 
 ---
