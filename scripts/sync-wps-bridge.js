@@ -127,27 +127,32 @@ function runReport() {
     }
     const macSet = lineFingerprintSet(macAbs);
     const linuxSet = lineFingerprintSet(linuxAbs);
-    const macOnlyInLinux = [...macSet].filter(l => linuxSet.has(l)).length;
+    const macInLinux = [...macSet].filter(l => linuxSet.has(l)).length;
     const linuxInMac = [...linuxSet].filter(l => macSet.has(l)).length;
-    const macPct = macSet.size ? Math.round((macOnlyInLinux / macSet.size) * 1000) / 10 : 0;
+    const macPct = macSet.size ? Math.round((macInLinux / macSet.size) * 1000) / 10 : 0;
     const linuxPct = linuxSet.size ? Math.round((linuxInMac / linuxSet.size) * 1000) / 10 : 0;
     rows.push({ handler, mac: macSet.size, linux: linuxSet.size, macPct, linuxPct });
     totalMac += macSet.size;
     totalLinux += linuxSet.size;
   }
 
-  console.log('| handler | mac 实质行 | linux 实质行 | mac 行在 linux 出现率 | linux 行在 mac 出现率 |');
+  console.log(
+    '| handler | mac 实质行 | linux 实质行 | mac 行在 linux 出现率 | linux 行在 mac 出现率 |'
+  );
   console.log('|---------|-----------|-------------|---------------------|---------------------|');
   for (const r of rows) {
-    console.log(
-      `| ${r.handler} | ${r.mac} | ${r.linux} | ${r.macPct}% | ${r.linuxPct}% |`
-    );
+    console.log(`| ${r.handler} | ${r.mac} | ${r.linux} | ${r.macPct}% | ${r.linuxPct}% |`);
   }
   console.log(`\n合计实质行：mac ${totalMac} / linux ${totalLinux}`);
   console.log('说明：比例越接近 100% 说明两平台重复越严重，单源化收益越大。\n');
 }
 
 function main() {
+  if (isReport && isCheck) {
+    warn(
+      '--report 与 --check 同时指定，优先执行 --report（本次不进行漂移校验）；如要校验请仅用 --check'
+    );
+  }
   if (isReport) {
     runReport();
     return;
