@@ -286,6 +286,8 @@ git checkout -b feat/your-feature
 
 ```bash
 # 统一预检门禁（validate 系列 + format:check + lint + test + test:e2e，提交 PR 前必跑）
+# 前置条件：需先安装 MCP 依赖（preflight 内含 cd wps-office-mcp && npm run lint）：
+#   cd wps-office-mcp && npm install   （或 npm run mcp:install）
 npm run preflight
 # 工具数量校验（12/240/257）
 npm run validate:toolcounts
@@ -400,6 +402,8 @@ git commit -m "feat(mcp): 添加 Excel 图表创建工具"
 
 ```bash
 # 统一预检门禁（提交 PR 前必须运行，确保所有自动化检查通过）
+# 前置条件：先安装 MCP 依赖（preflight 含 cd wps-office-mcp && npm run lint）
+#   cd wps-office-mcp && npm install   （或 npm run mcp:install）
 npm run preflight
 # 运行全部根单测（tests/*.test.js，排除 e2e）
 npm run test
