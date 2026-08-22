@@ -1276,7 +1276,7 @@ test('负向：删【流水线】段 0/12 与 1/12 节点字面量应拦截（ex
   // CR 第 11 轮（追加 9 轮循环 R1）新增：原 includes 子串校验命中 10/12 的 0/12、11/12 的 1/12
   // 子串，删 0/12/1/12 节点仍 exit 0；改【流水线】段内全序校验后必须拦截。
   const { code, output } = runValidateCapture(p => {
-    const secStart = p.indexOf('【流水线（12 阶段 + 3 暂停点');
+    const secStart = p.indexOf('【流水线（12 阶段 + 4 暂停点');
     const secEnd = p.indexOf('【任务书', secStart);
     const head = p.slice(0, secStart);
     const section = p
@@ -1295,7 +1295,7 @@ test('负向：删【流水线】段 0/12 与 1/12 节点字面量应拦截（ex
 test('负向：改【流水线】段 5/12 字面量为 5 应拦截（exit 1）', function () {
   // CR 第 11 轮（追加 9 轮循环 R1）新增：改 5/12 → 5 字面量（保留 10/12/11/12）后仍应拦截。
   const { code, output } = runValidateCapture(p => {
-    const secStart = p.indexOf('【流水线（12 阶段 + 3 暂停点');
+    const secStart = p.indexOf('【流水线（12 阶段 + 4 暂停点');
     const secEnd = p.indexOf('【任务书', secStart);
     const head = p.slice(0, secStart);
     const section = p.slice(secStart, secEnd).replace('5/12 评审(', '5 评审(');
@@ -1427,7 +1427,7 @@ test('负向：冒烟测试方法 E 删全程模式边界约束应拦截（exit 
   // CR 第 13 轮（追加 9 轮循环 R3）新增：方法 E 声明全程模式暂停确认仍生效，删约束须拦截。
   const { code, output } = runValidateCaptureFull(p =>
     p.replace(
-      '**方法 E（全程模式回退验证）**：明确说「一次跑完全部步骤」→ 预期：单次会话跑完，但 ⏸CP1/⏸CP2/⏸CP3 暂停确认与留痕门禁仍生效。',
+      '**方法 E（全程模式回退验证）**：明确说「一次跑完全部步骤」→ 预期：单次会话跑完，但 ⏸CP1/⏸CP2/⏸CP2.5/⏸CP3 暂停确认与留痕门禁仍生效。',
       '**方法 E（全程模式回退验证）**：明确说「一次跑完全部步骤」→ 预期：单次会话跑完，暂停确认失效。'
     )
   );
@@ -1545,7 +1545,7 @@ test('负向：删运行模式判断全程模式分支应拦截（exit 1）', fu
   // CR 第 17 轮（追加 9 轮循环 R7）新增：判断逻辑缺全程模式触发分支须拦截（防全程模式不可达）。
   const code = runValidate(p =>
     p.replace(
-      '判断：① 若用户**明确要求**「一次跑完全部步骤/一次跑完」→ 全程模式（保留 ⏸CP1/⏸CP2/⏸CP3 暂停确认）；② 若消息带上一棒【接力卡】/任务书 → 接力模式续棒；③ 若为新需求 → 默认接力模式。',
+      '判断：① 若用户**明确要求**「一次跑完全部步骤/一次跑完」→ 全程模式（保留 ⏸CP1/⏸CP2/⏸CP2.5/⏸CP3 暂停确认）；② 若消息带上一棒【接力卡】/任务书 → 接力模式续棒；③ 若为新需求 → 默认接力模式。',
       '判断：若消息带上一棒【接力卡】/任务书 → 接力模式续棒；若为新需求 → 默认接力模式。'
     )
   );
@@ -1671,7 +1671,7 @@ test('负向：runValidateCaptureFull 不污染 SKILL.md（工作区还原回归
 test('负向：删铁律 6「任何模式不得静默跳过」应拦截（exit 1）', function () {
   const { code, output } = runValidateCapture(p =>
     p.replace(
-      '**无论接力/全程/自动连续模式，到 ⏸CP1/⏸CP2/⏸CP3 必须输出对应暂停卡停下等用户命令，任何模式不得静默跳过**',
+      '**无论接力/全程/自动连续模式，到 ⏸CP1/⏸CP2/⏸CP2.5/⏸CP3 必须输出对应暂停卡停下等用户命令，任何模式不得静默跳过**',
       ''
     )
   );
@@ -1683,7 +1683,7 @@ test('负向：删铁律 6「任何模式不得静默跳过」应拦截（exit 1
 test('负向：删运行模式「未设暂停点自动触发下一步」应拦截（exit 1）', function () {
   const { code, output } = runValidateCapture(p =>
     p.replace(
-      '**未设 ⏸CP1/⏸CP2/⏸CP3 暂停点的步骤，执行完输出接力卡后由系统按接力卡自动触发下一步，无需用户逐棒手动复制召唤话术；用户可在任意暂停点确认/纠正/停止。**',
+      '**未设 ⏸CP1/⏸CP2/⏸CP2.5/⏸CP3 暂停点的步骤，执行完输出接力卡后由系统按接力卡自动触发下一步，无需用户逐棒手动复制召唤话术；用户可在任意暂停点确认/纠正/停止。**',
       ''
     )
   );
@@ -1815,7 +1815,10 @@ test('负向：删铁律 16「充分分析需求或定位问题真正原因」�
 
 test('负向：删铁律 16「方案须充分求证」应拦截（exit 1）', function () {
   const { code, output } = runValidateCapture(p =>
-    p.replace('动手前须充分求证（读代码/跑测试/查文档确认可行性），确定切实可行才动手；', '直接按直觉动手；')
+    p.replace(
+      '动手前须充分求证（读代码/跑测试/查文档确认可行性），确定切实可行才动手；',
+      '直接按直觉动手；'
+    )
   );
   assertEqual(code, 1, '删方案求证应拦截（exit 1）');
   assertTrue(/思维纪律-方案求证/.test(output), '应命中思维纪律门禁，实际输出：' + output);
@@ -1881,7 +1884,10 @@ test('负向：删铁律 18「逐条真测」应拦截（exit 1）', function ()
 
 test('负向：删铁律 18「单测+集成测试」应拦截（exit 1）', function () {
   const { code, output } = runValidateCapture(p =>
-    p.replace('必须执行**单元测试（npm run test）**和**集成测试（npm run test:e2e）**', '只需手动点测')
+    p.replace(
+      '必须执行**单元测试（npm run test）**和**集成测试（npm run test:e2e）**',
+      '只需手动点测'
+    )
   );
   assertEqual(code, 1, '删单测+集成测试应拦截（exit 1）');
   assertTrue(/测试纪律-单测\+集成测试/.test(output), '应命中测试纪律门禁，实际输出：' + output);
@@ -1920,9 +1926,7 @@ test('负向：删铁律 18「暂未建立的测试单独开 issue」应拦截�
 });
 
 test('负向：删「需求覆盖度检查」应拦截（exit 1）', function () {
-  const { code, output } = runValidateCapture(p =>
-    p.replace(/需求覆盖度检查/g, '常规检查')
-  );
+  const { code, output } = runValidateCapture(p => p.replace(/需求覆盖度检查/g, '常规检查'));
   assertEqual(code, 1, '删需求覆盖度检查应拦截（exit 1）');
   assertTrue(/需求覆盖度检查/.test(output), '应命中需求覆盖度检查门禁，实际输出：' + output);
 });
@@ -1936,17 +1940,13 @@ test('负向：删「⏸CP2.5 需求覆盖确认」暂停点应拦截（exit 1�
 });
 
 test('负向：删「开发落点/测试覆盖矩阵」应拦截（exit 1）', function () {
-  const { code, output } = runValidateCaptureFull(p =>
-    p.replace(/开发落点/g, '实现落点')
-  );
+  const { code, output } = runValidateCaptureFull(p => p.replace(/开发落点/g, '实现落点'));
   assertEqual(code, 1, '删需求覆盖度矩阵应拦截（exit 1）');
   assertTrue(/需求覆盖度矩阵/.test(output), '应命中需求覆盖度矩阵门禁，实际输出：' + output);
 });
 
 test('负向：删「需求全覆盖确认」语义应拦截（exit 1）', function () {
-  const { code, output } = runValidateCapture(p =>
-    p.replace(/需求全覆盖/g, '需求全部实现')
-  );
+  const { code, output } = runValidateCapture(p => p.replace(/需求全覆盖/g, '需求全部实现'));
   assertEqual(code, 1, '删需求全覆盖确认语义应拦截（exit 1）');
   assertTrue(/需求全覆盖确认/.test(output), '应命中需求全覆盖确认语义门禁，实际输出：' + output);
 });
