@@ -808,6 +808,10 @@ if (!m) {
   const pauseSection = sliceContentSection('### 暂停确认机制', '### 真实执行与循环门禁');
   if (pauseSection !== null && !pauseSection.includes('⏸ CP3 合并确认'))
     errors.push('暂停确认表缺少「⏸ CP3 合并确认」行（4 暂停点体系不完整）');
+  // R4-1 修复：暂停确认表 CP2.5 行（文档级）——新增 ⏸CP2.5 后须与 CP3 行对称校验，
+  // 防文档暂停确认表被删 CP2.5 行而 CI 不拦截（实测删除后 exit 0）。
+  if (pauseSection !== null && !pauseSection.includes('⏸ CP2.5 需求覆盖确认'))
+    errors.push('暂停确认表缺少「⏸ CP2.5 需求覆盖确认」行（4 暂停点体系不完整）');
   // CR 第 6 轮修复：CP3 行前置状态可核实性强校验（评审清零/测试通过/CI success 关键词）
   // CR 第 7 轮修复：正则放宽空白（防文本重排误拦），改为宽松的关键词组合校验
   if (

@@ -1959,6 +1959,18 @@ test('负向：删「暂停卡模板·CP2.5」应拦截（exit 1）', function (
   assertTrue(/暂停·CP2\.5 需求覆盖确认/.test(output), '应命中暂停卡模板门禁，实际输出：' + output);
 });
 
+test('负向：删暂停确认表 CP2.5 行应拦截（exit 1）', function () {
+  // R4-1 修复：文档级暂停确认表 CP2.5 行（防文档与实际流水线脱节，删行 CI 不拦截）。
+  const { code, output } = runValidateCaptureFull(p =>
+    p.replace(/^\| \*\*⏸ CP2\.5 需求覆盖确认\*\*.*$/m, '')
+  );
+  assertEqual(code, 1, '删暂停确认表 CP2.5 行应拦截（exit 1）');
+  assertTrue(
+    /暂停确认表缺少「⏸ CP2\.5 需求覆盖确认」/.test(output),
+    '应命中暂停确认表 CP2.5 行校验，实际输出：' + output
+  );
+});
+
 // ---- 汇总 ----
 console.log('\n========== 测试结果 ==========');
 console.log('总计: ' + testCount + ' 个测试');
