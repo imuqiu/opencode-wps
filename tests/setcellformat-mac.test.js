@@ -138,6 +138,14 @@ var handlerPath = path.join(
   'excel-handler.js'
 );
 var src = fs.readFileSync(handlerPath, 'utf-8');
+// 先加载 handler-utils.js（Issue #189 PR-C：toExcelColor 等纯函数已单源化到该文件）
+vm.runInThisContext(
+  fs.readFileSync(
+    path.join(__dirname, '..', 'opencode-wps-assistant', 'handlers', 'handler-utils.js'),
+    'utf-8'
+  ),
+  { filename: 'handler-utils.js' }
+);
 vm.runInThisContext(src, { filename: 'excel-handler.js' });
 
 var setCellFormat = __handlers.setCellFormat;

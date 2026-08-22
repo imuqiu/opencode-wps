@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **屎山清理（Issue #189，多 PR 推进）** — 系统清理项目历史债：
+  - **PR-C handler-utils 单源化**：把 excel/ppt/word 三平台 handler 中**两平台逐字节相同**的 14 个纯工具函数（`getExcelSheet`/`colToLetter`/`resolveColumnLetter`/`colToNumber`/`resolveRowCol`/`resolveAlignment`/`toExcelColor`/`findNotesShape`/`findShape`/`getPPT`/`resolveSlideIndex`/`toRgb`/`getSelectionRange`/`toBgr`）抽到 `shared/wps-bridge/handler-utils.js` 单一来源，`sync-wps-bridge.js` 同步到平台目录，改一处四处生效。实测行为零变化（仅抽两平台逐字节相同的纯函数，不触碰行为差异部分）。
+
 ## [1.8.2] - 2026-08-22
 
 ### Added
