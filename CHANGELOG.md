@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.9.0] - 2026-08-22
 
 ### Added
 
@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **屎山清理（Issue #189，多 PR 推进）**：
   - **PR-D CI 收敛**：`.cnb.yml` 手工罗列的几十行堆命令收敛为 `npm run preflight`（已聚合 validate 系列 + format:check + lint + test + test:e2e）+ 4 项必需额外检查（sync-npc-team-skill/sync-wps-bridge 漂移检测、bash -n 两个 wps-auto.sh、MCP lint + test:unit + test:integration）。lint-js.js 递归覆盖全部 .js、run-root-tests.js 聚合全部根测试，门禁无损。
   - **PR-E 双轨兜底清理**：移除 excel `setBorder` 的 `rangeAddress` 旧兼容参数（经全仓库 grep 核实**无任何上游调用方**，删除后仅认 `range` 参数）。其余"双轨兜底"（setCellFormat 顶层 numberFormat 等）经核实为 **MCP 公开 API 契约**（`format.ts` schema 显式声明 + gateway 测试保障），**不能删**，如实保留。
+
+- **版本号升级至 1.9.0** — 根 `package.json` / `package-lock.json` / `opencode-wps/`（package.json、config.js、manifest.xml）/ `opencode-wps-linux/`（package.json、manifest.xml）/ `wps-office-mcp/`（package.json、package-lock.json）版本一致升级至 1.9.0，`validate-versions` 校验通过。
 ## [1.8.4] - 2026-08-22
 
 ### Added
