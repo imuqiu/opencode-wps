@@ -69,7 +69,7 @@ opencode-wps/             # 仓库根目录
 ├── opencode-wps/          # Windows JS 插件（Chat UI + Launcher）
 ├── opencode-wps-assistant/# macOS JS 插件（反向轮询桥）
 ├── opencode-wps-linux/    # Linux JS 插件（反向轮询桥）
-├── shared/wps-bridge/     # 跨平台共享层（单一来源）：response/registry/common-core
+├── shared/wps-bridge/     # 跨平台共享层（单一来源）：response/registry/common-core/handler-utils
 │   └── （由 scripts/sync-wps-bridge.js 同步到 Mac/Linux 平台目录）
 ├── wps-office-mcp/        # MCP 服务器（TypeScript，三层工具）
 ├── skills/                # 5 个 WPS Skills
