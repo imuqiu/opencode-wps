@@ -57,7 +57,7 @@ main:
             node --check shared/wps-bridge/registry.js
             node --check shared/wps-bridge/common-core.js
             node scripts/sync-wps-bridge.js --check
-            cd wps-office-mcp && npm ci && npm run test:unit
+            cd wps-office-mcp && npm ci && npm run lint && npm run test:unit
         - name: Docker build
           script: |
             docker build -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:latest .
