@@ -22,41 +22,20 @@ main:
           script: |
             npm ci
             # 统一门禁入口：validate 系列 + format:check + lint + test + test:e2e（Issue #147 十四条质量红线）
+            # preflight 已聚合：
+            #   - validate:settings/versions/toolcounts/npc-team（版本/工具数/提示词门禁）
+            #   - format:check（Prettier）
+            #   - lint（全仓 .js 语法门禁 node --check，覆盖各平台 handler/main/launcher/脚本）
+            #   - test（run-root-tests.js 聚合全部根单元测试：security/launcher/install-permission/mac-bridge/setcellformat/wps-bridge-shared 等）
+            #   - test:e2e
             npm run preflight
+            # 漂移检测（未纳入 preflight）：NPC_TEAM 双源一致 & WPS bridge 单源一致
             node scripts/sync-npc-team-skill.js --check
-            # Windows 侧安全/Launcher 回归测试（PR #87 评审迭代新增）
-            node tests/security.test.js
-            node tests/launcher.test.js
-            # Issue #179 方案A：服务端权限放行回归测试
-            node tests/install-permission.test.js
-            # Windows 侧 JS 语法门禁（PR #87 评审迭代新增）
-            node --check opencode-wps/launcher.js
-            node --check opencode-wps/serve.js
-            node --check opencode-wps/opencode-proxy.js
-            node --check install-addons.js
-            # Mac 侧回归测试（Issue #84/86 评审新增）
-            node tests/mac-bridge.test.js
-            node tests/setcellformat-mac.test.js
-            # Linux 支持：新增脚本语法门禁（循环全量扫描，避免漏检 handler）
-            node --check launcher-linux.js
-            node --check install-addons-linux.js
-            node --check opencode-wps-linux/main.js
-            node --check opencode-wps-linux/utils/response.js
-            for f in opencode-wps-linux/handlers/*.js; do node --check "$f" || exit 1; done
-            bash -n opencode-wps-linux/wps-auto.sh
-            # Mac 彻底评审：补充 Mac 脚本语法门禁（与 Linux 对齐）
-            node --check launcher-mac.js
-            node --check install-addons-mac.js
-            node --check opencode-wps-assistant/main.js
-            node --check opencode-wps-assistant/utils/response.js
-            for f in opencode-wps-assistant/handlers/*.js; do node --check "$f" || exit 1; done
-            bash -n opencode-wps-assistant/wps-auto.sh
-            # WPS 桥接共享层（消除三平台 handler 重复重构）
-            node tests/wps-bridge-shared.test.js
-            node --check shared/wps-bridge/response.js
-            node --check shared/wps-bridge/registry.js
-            node --check shared/wps-bridge/common-core.js
             node scripts/sync-wps-bridge.js --check
+            # Shell 脚本语法门禁（lint-js.js 只查 .js，bash 需单独查）
+            bash -n opencode-wps-linux/wps-auto.sh
+            bash -n opencode-wps-assistant/wps-auto.sh
+            # MCP 侧单元测试（preflight 只跑根测试，MCP 单测单独执行）
             cd wps-office-mcp && npm ci && npm run test:unit
         - name: Docker build
           script: |

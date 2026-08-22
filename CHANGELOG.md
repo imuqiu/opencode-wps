@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **屎山清理（Issue #189，多 PR 推进）**：
+  - **PR-D CI 收敛**：`.cnb.yml` 手工罗列的几十行堆命令收敛为 `npm run preflight`（已聚合 validate 系列 + format:check + lint + test + test:e2e）+ 4 项必需额外检查（sync-npc-team-skill/sync-wps-bridge 漂移检测、bash -n 两个 wps-auto.sh、MCP test:unit）。lint-js.js 递归覆盖全部 57 个 .js、run-root-tests.js 聚合全部 11 个根测试，门禁无损。
+
 ## [1.8.2] - 2026-08-22
 
 ### Added
