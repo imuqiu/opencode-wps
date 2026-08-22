@@ -286,6 +286,8 @@ git checkout -b feat/your-feature
 
 ```bash
 # 统一预检门禁（validate 系列 + format:check + lint + test + test:e2e，提交 PR 前必跑）
+# 前置条件：需先安装 MCP 依赖（preflight 内含 cd wps-office-mcp && npm run lint）：
+#   cd wps-office-mcp && npm install   （或 npm run mcp:install）
 npm run preflight
 # 工具数量校验（12/240/257）
 npm run validate:toolcounts
@@ -400,6 +402,8 @@ git commit -m "feat(mcp): 添加 Excel 图表创建工具"
 
 ```bash
 # 统一预检门禁（提交 PR 前必须运行，确保所有自动化检查通过）
+# 前置条件：先安装 MCP 依赖（preflight 含 cd wps-office-mcp && npm run lint）
+#   cd wps-office-mcp && npm install   （或 npm run mcp:install）
 npm run preflight
 # 运行全部根单测（tests/*.test.js，排除 e2e）
 npm run test
@@ -407,6 +411,8 @@ npm run test
 npm run test:e2e
 # 全仓 JS 语法检查
 npm run lint
+# MCP ESLint 静态规则检查（TypeScript，Issue #185 补建；preflight 已含，此处为单独执行）
+cd wps-office-mcp && npm run lint
 # 格式化代码（Prettier）
 npm run format
 # 检查格式（Prettier）
@@ -443,7 +449,7 @@ cd wps-office-mcp && npm run dev
 | 单测 | `node tests/*.test.js` | 安全/Launcher/Mac/Linux/桥接共享层回归 |
 | 桥接共享层漂移 | `node tests/wps-bridge-shared.test.js` + `node scripts/sync-wps-bridge.js --check` | 单一来源一致性 + 平台产物无漂移（消除三平台 handler 重复重构） |
 | JS 语法 | `node --check <file>` | 三平台脚本 + 共享层语法门禁 |
-| MCP | `cd wps-office-mcp && npm ci && npm run test:unit` | MCP 单测 |
+| MCP | `cd wps-office-mcp && npm ci && npm run test:unit && npm run test:integration` | MCP 单测 + 集成测试 |
 
 提交 PR 前建议本地跑一遍门禁，避免 CI 失败。
 
