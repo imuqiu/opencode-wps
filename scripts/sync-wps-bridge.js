@@ -79,6 +79,8 @@ function syncFile(platformDir, sharedRelPath, platformRelPath, content) {
 /**
  * 归一化一行代码：去除首尾空白、空行、纯注释/空块行，并剥离平台注入标记
  * （BRIDGE_PLATFORM 声明、生成产物头部注释等），用于跨平台重复率对比。
+ * 注：当前 report 范围（excel/ppt/word）尚不含 BRIDGE_PLATFORM，此处归一化为后续
+ * 扩展报告范围至 common-handler 时预留，避免平台差异干扰重复率统计。
  */
 function normalizeLine(line) {
   const t = line.trim();
@@ -141,7 +143,7 @@ function runReport() {
   );
   console.log('|---------|-----------|-------------|---------------------|---------------------|');
   for (const r of rows) {
-    console.log(`| ${r.handler} | ${r.mac} | ${r.linux} | ${r.macPct}% | ${r.linuxPct}% |`);
+    console.log(`| ${r.handler} | ${r.mac} | ${r.linux} | ${r.macPct.toFixed(1)}% | ${r.linuxPct.toFixed(1)}% |`);
   }
   console.log(`\n合计实质行：mac ${totalMac} / linux ${totalLinux}`);
   console.log('说明：比例越接近 100% 说明两平台重复越严重，单源化收益越大。\n');
