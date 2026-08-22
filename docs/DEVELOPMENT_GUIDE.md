@@ -225,15 +225,16 @@ skills/wps-word/
 shared/wps-bridge/                 # 单一来源（git 跟踪，改这里）
 ├── response.js                    # 响应工具（ok/fail/invalidParam）
 ├── registry.js                    # handler 注册表
-└── common-core.js                 # 通用 handler 核心（平台差异经 BRIDGE_PLATFORM 隔离）
+├── common-core.js                 # 通用 handler 核心（平台差异经 BRIDGE_PLATFORM 隔离）
+└── handler-utils.js               # 平台无关纯工具函数（excel/ppt/word 共用）
         │  由 scripts/sync-wps-bridge.js 同步生成
         ▼
 opencode-wps-assistant/            # macOS 平台产物（生成，勿手编）
     ├── utils/response.js
-    └── handlers/{registry.js, common-handler.js}
+    └── handlers/{registry.js, common-handler.js, handler-utils.js}
 opencode-wps-linux/                # Linux 平台产物（生成，勿手编）
     ├── utils/response.js
-    └── handlers/{registry.js, common-handler.js}
+    └── handlers/{registry.js, common-handler.js, handler-utils.js}
 ```
 
 **核心规则**：
