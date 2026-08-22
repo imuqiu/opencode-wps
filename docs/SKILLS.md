@@ -260,7 +260,7 @@ AI 识别：使用 wps-ppt skill
 
 > ⚠️ 校对**必须**按 铁律 3.0 严格执行（proofread → confirm → fix），禁止跳批/编造。详见 [FEATURES.md](./FEATURES.md)。
 
-> ⚠️ ~~🧩 大文档 Subagent 组协同（Issue #151 重构，**已弃用**）~~：~~4 个校对 subagent（planner/manager/executor/reporter）协同~~ 经 Issue #179 真实会话实证在 opencode 上**触发不可靠**，已改为**单 agent 顺序执行 + 服务端强制**（分批/进度/门禁全部下沉 MCP 服务端，见 `skills/wps-proofread/SKILL.md`「校对执行模型」）。
+> ⚠️ ~~🧩 大文档 Subagent 组协同（Issue #151 重构，**已弃用**）~~：~~4 个校对 subagent（planner/manager/executor/reporter）协同~~ 经 Issue #179 真实会话实证在 opencode 上**触发不可靠**，已改为**单 agent 顺序执行 + 服务端强制**（分批/进度/门禁全部下沉 MCP 服务端，见 `skills/wps-proofread/SKILL.md`「校对执行模型」）。subagent 定义文件已删除（历史存档见 git 历史，Issue #189 清理）。
 
 ---
 
