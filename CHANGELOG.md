@@ -10,7 +10,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **屎山清理（Issue #189，多 PR 推进）**：
-  - **PR-D CI 收敛**：`.cnb.yml` 手工罗列的几十行堆命令收敛为 `npm run preflight`（已聚合 validate 系列 + format:check + lint + test + test:e2e）+ 4 项必需额外检查（sync-npc-team-skill/sync-wps-bridge 漂移检测、bash -n 两个 wps-auto.sh、MCP test:unit）。lint-js.js 递归覆盖全部 57 个 .js、run-root-tests.js 聚合全部 11 个根测试，门禁无损。
+  - **PR-D CI 收敛**：`.cnb.yml` 手工罗列的几十行堆命令收敛为 `npm run preflight`（已聚合 validate 系列 + format:check + lint + test + test:e2e）+ 4 项必需额外检查（sync-npc-team-skill/sync-wps-bridge 漂移检测、bash -n 两个 wps-auto.sh、MCP lint + test:unit + test:integration）。lint-js.js 递归覆盖全部 .js、run-root-tests.js 聚合全部根测试，门禁无损。
+
+## [1.8.4] - 2026-08-22
+
+### Added
+
+- **将 MCP `test:integration` 集成测试接入 CI Validate 阶段（PR #199，Issue #186）** — 落地 Issue #147 十四条质量红线「充分测试，测试覆盖要全面」，补齐 `wps-office-mcp` 集成测试从未在 CI 中执行的缺口：
+  - `.cnb.yml` Validate 阶段 MCP 行：`cd wps-office-mcp && npm run lint && npm run test:unit && npm run test:integration`（与单测并列，保留 Issue #185 的 lint 接入，去除重复 npm ci）；
+  - `docs/DEVELOPMENT_GUIDE.md` CI 门禁表 MCP 行同步为「单测 + 集成测试」；
+  - 集成测试对 WPS COM / MCP SDK / logger 均 mock，**无需 WPS 运行，headless CI 可真实跑通**（3 suites / 46 tests 通过）。
+
+### Changed
+
+- **版本号升级至 1.8.4** — 根 `package.json` / `package-lock.json` / `opencode-wps/`（package.json、config.js、manifest.xml）/ `opencode-wps-linux/`（package.json、manifest.xml）/ `wps-office-mcp/`（package.json、package-lock.json）版本一致升级至 1.8.4，`validate-versions` 校验通过。
+
+## [1.8.3] - 2026-08-22
+
+### Added
+
+- **NPC_TEAM 需求覆盖度检查 + ⏸CP2.5 暂停点（PR #188，Issue #147 补充）** — 在 NPC_TEAM skill 流水线 6/12 测试通过后新增「需求覆盖度检查」子步骤（逐条核对需求 ↔ 开发落点 ↔ 测试覆盖矩阵，任一需求无落点或无测试覆盖即不通过），完成后经 ⏸CP2.5 需求覆盖确认暂停待用户确认；未覆盖全部需求不得进入文档：
+  - `docs/NPC_TEAM.md` + `.codebuddy/skills/npc-team/SKILL.md`（双源）：流水线主链 + 工作流程新增需求覆盖度检查 + ⏸CP2.5 暂停点，暂停确认表/门禁表/冒烟方法 F/验证点表/QA 角色卡片同步补齐；
+  - `scripts/validate-npc-team-prompt.js`：新增 5 道 prompt 级门禁（需求覆盖度检查/覆盖度矩阵/⏸CP2.5 暂停点/需求全覆盖语义/暂停卡模板）+ 文档级校验（暂停确认表/工作流程/门禁表/冒烟方法/验证点表）；
+  - `tests/validate-npc-team-prompt.test.js`：新增多个负向回归用例（删需求覆盖度检查/删 ⏸CP2.5/删开发落点矩阵/删 QA 职责等均拦截），用例 140→149 通过；
+  - `README.md`：接力模式说明补齐需求覆盖度检查 + ⏸CP2.5 暂停点。
+
+- **补建 MCP ESLint 静态规则检查（PR #200，Issue #185）** — 消灭 `wps-office-mcp` 的「僵尸 lint 脚本」（`npm run lint` 声明但从未安装/运行），落地 Issue #147 质量红线「npm run lint 检查代码」：
+  - `wps-office-mcp` devDependencies 新增 `eslint@^8.57.0`、`@typescript-eslint/parser@^8`、`@typescript-eslint/eslint-plugin@^8`；
+  - 新增 `wps-office-mcp/.eslintrc.cjs`（ESLint 8 + `@typescript-eslint/recommended` 规则，适配项目 CJS 风格与 jest 测试文件）；
+  - 根 `preflight` 与 `.cnb.yml` CI 增加 `cd wps-office-mcp && npm run lint`；
+  - `npm run lint` 在 wps-office-mcp 内真实可运行（0 error，77 个 any warning 不阻塞退出码）。
+
+### Changed
+
+- **版本号升级至 1.8.3** — 根 `package.json` / `package-lock.json` / `opencode-wps/`（package.json、config.js、manifest.xml）/ `opencode-wps-linux/`（package.json、manifest.xml）/ `wps-office-mcp/`（package.json、package-lock.json）版本一致升级至 1.8.3，`validate-versions` 校验通过。
 
 ## [1.8.2] - 2026-08-22
 
