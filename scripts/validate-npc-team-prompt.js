@@ -619,7 +619,7 @@ if (!m) {
   if (
     relayCardSection !== null &&
     (!relayCardSection.includes('仅接力模式需输出') ||
-      !/全程模式（用户明确要求一次跑完）不输出接力卡，改为 ⏸CP1\/⏸CP2 暂停卡 \+ ⏸CP3【合并确认卡】/.test(
+      !/全程模式（用户明确要求一次跑完）不输出接力卡，改为 ⏸CP1\/⏸CP2\/⏸CP2\.5 暂停卡 \+ ⏸CP3【合并确认卡】/.test(
         relayCardSection
       ))
   )
