@@ -138,6 +138,11 @@ function runReport() {
     totalLinux += linuxSet.size;
   }
 
+  if (rows.length === 0) {
+    warn('未找到任何可统计的 handler（请确认平台目录 handler 文件存在），跳过基线输出');
+    return;
+  }
+
   console.log(
     '| handler | mac 实质行 | linux 实质行 | mac 行在 linux 出现率 | linux 行在 mac 出现率 |'
   );
