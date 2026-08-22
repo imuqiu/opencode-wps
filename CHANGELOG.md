@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.4] - 2026-08-22
+
+### Added
+
+- **将 MCP `test:integration` 集成测试接入 CI Validate 阶段（PR #199，Issue #186）** — 落地 Issue #147 十四条质量红线「充分测试，测试覆盖要全面」，补齐 `wps-office-mcp` 集成测试从未在 CI 中执行的缺口：
+  - `.cnb.yml` Validate 阶段 MCP 行：`cd wps-office-mcp && npm run lint && npm run test:unit && npm run test:integration`（与单测并列，保留 Issue #185 的 lint 接入，去除重复 npm ci）；
+  - `docs/DEVELOPMENT_GUIDE.md` CI 门禁表 MCP 行同步为「单测 + 集成测试」；
+  - 集成测试对 WPS COM / MCP SDK / logger 均 mock，**无需 WPS 运行，headless CI 可真实跑通**（3 suites / 46 tests 通过）。
+
+### Changed
+
+- **版本号升级至 1.8.4** — 根 `package.json` / `package-lock.json` / `opencode-wps/`（package.json、config.js、manifest.xml）/ `opencode-wps-linux/`（package.json、manifest.xml）/ `wps-office-mcp/`（package.json、package-lock.json）版本一致升级至 1.8.4，`validate-versions` 校验通过。
+
 ## [1.8.3] - 2026-08-22
 
 ### Added
