@@ -4,14 +4,6 @@
  */
 
 // 获取选中区域 Range；无选中时返回 null（供依赖 Selection 的 handler 做明确错误提示）
-function getSelectionRange() {
-  try {
-    if (!Application.Selection) return null;
-    return Application.Selection.Range;
-  } catch (e) {
-    return null;
-  }
-}
 
 registerHandler('getActiveDocument', function (params) {
   try {
@@ -407,9 +399,6 @@ registerHandler('setParagraph', function (params) {
   }
 });
 
-function toBgr(rgb) {
-  return ((rgb & 0xff) << 16) | (rgb & 0xff00) | ((rgb >> 16) & 0xff);
-}
 
 var COLOR_NAMES = {
   red: toBgr(0xff0000),

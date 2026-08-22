@@ -23,6 +23,7 @@
     <scripts>
         <script src="utils/response.js"/>
         <script src="handlers/registry.js"/>
+        <script src="handlers/handler-utils.js"/>
         <script src="handlers/common-handler.js"/>
         <script src="handlers/word-handler.js"/>
         <script src="handlers/excel-handler.js"/>

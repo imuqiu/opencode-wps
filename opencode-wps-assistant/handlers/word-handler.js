@@ -4,14 +4,6 @@
  */
 
 // 获取选中区域 Range；无选中时返回 null（供依赖 Selection 的 handler 做明确错误提示）
-function getSelectionRange() {
-  try {
-    if (!Application.Selection) return null;
-    return Application.Selection.Range;
-  } catch (e) {
-    return null;
-  }
-}
 
 registerHandler('getActiveDocument', function (params) {
   try {
@@ -512,9 +504,6 @@ registerHandler('setParagraph', function (params) {
   }
 });
 
-function toBgr(rgb) {
-  return ((rgb & 0xff) << 16) | (rgb & 0xff00) | ((rgb >> 16) & 0xff);
-}
 
 // 将颜色参数统一解析为 BGR 整型：支持颜色名/#RRGGBB/RRGGBB；数字直接返回；非法返回 null
 // （setFont 与 setTextColor 共用，避免两处实现漂移）

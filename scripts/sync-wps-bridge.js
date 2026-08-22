@@ -173,6 +173,7 @@ function main() {
   const copyFiles = [
     { shared: 'response.js', platform: 'utils/response.js' },
     { shared: 'registry.js', platform: 'handlers/registry.js' },
+    { shared: 'handler-utils.js', platform: 'handlers/handler-utils.js' },
   ];
 
   // 2. 生成的 common-handler.js（按平台注入 BRIDGE_PLATFORM）

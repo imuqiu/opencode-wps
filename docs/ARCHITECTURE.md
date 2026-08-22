@@ -35,7 +35,7 @@ opencode-wps/              # 第 1 层（Win）：WPS JS 插件（前台 Chat �
 │   ├── manifest.xml           # 插件清单
 │   ├── package.json           # 插件元数据
 │   └── wps-auto.sh            # Linux 应用切换脚本（wps/et/wpp + xdg-open）
-├── shared/wps-bridge/       # 跨平台共享层（单一来源）：response/registry/common-core
+├── shared/wps-bridge/       # 跨平台共享层（单一来源）：response/registry/common-core/handler-utils
 │   └── （由 scripts/sync-wps-bridge.js 同步到 Mac/Linux 平台目录）
 ├── agents/                  # 第 2 层：Agents（跨平台通用，wps-expert/word/excel/ppt）
 ├── skills/                  # 第 3 层：Skills（跨平台通用，5 个技能）
@@ -75,9 +75,9 @@ opencode-wps/              # 第 1 层（Win）：WPS JS 插件（前台 Chat �
 | **install-addons-linux.js** | Linux 安装脚本（jsaddons + publish.xml + XDG autostart） | Linux |
 | **launcher-mac.js** | macOS Launcher 进程（lsof/kill/ps/open） | macOS |
 | **launcher-linux.js** | Linux Launcher 进程（/proc 扫描/kill/ps + xdg-open，无 lsof 依赖） | Linux |
-| **shared/wps-bridge** | 跨平台共享层（单一来源）：response.js / registry.js / common-core.js，由 `scripts/sync-wps-bridge.js` 同步到 Mac/Linux | 跨平台 |
+| **shared/wps-bridge** | 跨平台共享层（单一来源）：response.js / registry.js / common-core.js / handler-utils.js，由 `scripts/sync-wps-bridge.js` 同步到 Mac/Linux | 跨平台 |
 
-> 💡 **共享层说明**：Mac 与 Linux 反向轮询桥存在大量同构 handler 代码（历史上改 bug 需在两平台各改一遍）。`shared/wps-bridge/` 作为**单一来源**，平台目录文件（`common-handler.js`/`response.js`/`registry.js`）为**生成产物**。改动共享逻辑请改 `shared/` 后运行 `node scripts/sync-wps-bridge.js` 同步；CI 用 `node scripts/sync-wps-bridge.js --check` 校验漂移。
+> 💡 **共享层说明**：Mac 与 Linux 反向轮询桥存在大量同构 handler 代码（历史上改 bug 需在两平台各改一遍）。`shared/wps-bridge/` 作为**单一来源**，平台目录文件（`common-handler.js`/`handler-utils.js`/`response.js`/`registry.js`）为**生成产物**。改动共享逻辑请改 `shared/` 后运行 `node scripts/sync-wps-bridge.js` 同步；CI 用 `node scripts/sync-wps-bridge.js --check` 校验漂移。
 
 ### MCP 工具体系（三层）
 
