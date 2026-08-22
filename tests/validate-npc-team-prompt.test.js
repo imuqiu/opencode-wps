@@ -1943,6 +1943,22 @@ test('负向：删「开发落点/测试覆盖矩阵」应拦截（exit 1）', f
   assertTrue(/需求覆盖度矩阵/.test(output), '应命中需求覆盖度矩阵门禁，实际输出：' + output);
 });
 
+test('负向：删「需求全覆盖确认」语义应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace(/需求全覆盖/g, '需求全部实现')
+  );
+  assertEqual(code, 1, '删需求全覆盖确认语义应拦截（exit 1）');
+  assertTrue(/需求全覆盖确认/.test(output), '应命中需求全覆盖确认语义门禁，实际输出：' + output);
+});
+
+test('负向：删「暂停卡模板·CP2.5」应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace(/【暂停·CP2\.5 需求覆盖确认】/g, '【暂停·CP2.5 需求确认】')
+  );
+  assertEqual(code, 1, '删暂停卡模板·CP2.5应拦截（exit 1）');
+  assertTrue(/暂停·CP2\.5 需求覆盖确认/.test(output), '应命中暂停卡模板门禁，实际输出：' + output);
+});
+
 // ---- 汇总 ----
 console.log('\n========== 测试结果 ==========');
 console.log('总计: ' + testCount + ' 个测试');
