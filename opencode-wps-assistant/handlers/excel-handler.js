@@ -551,8 +551,8 @@ registerHandler('setBorder', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
-    // range/rangeAddress 双参兼容但都缺时 Range(undefined) 抛费解错误
-    var rangeParam = params.range || params.rangeAddress;
+    // range 参数（rangeAddress 旧兼容参数已清理，无上游调用方）
+    var rangeParam = params.range;
     if (!rangeParam) return invalidParam('缺少 range');
     var range = sheet.Range(rangeParam);
     var borders = range.Borders;
