@@ -2013,6 +2013,18 @@ test('负向：删门禁表需求覆盖度检查行应拦截（exit 1）', funct
   );
 });
 
+test('负向：删冒烟测试方法 F 需求覆盖度语义应拦截（exit 1）', function () {
+  // R8-1 修复：冒烟测试方法 F（需求覆盖度检查验证）语义（防端到端验收缺失需求覆盖门禁）。
+  const { code, output } = runValidateCaptureFull(p =>
+    p.replace('**用户确认需求全覆盖后才进入 7/12 文档**', '**进入 7/12 文档**')
+  );
+  assertEqual(code, 1, '删方法 F 需求覆盖度语义应拦截（exit 1）');
+  assertTrue(
+    /冒烟测试方法 F 缺少需求覆盖度检查语义/.test(output),
+    '应命中方法 F 需求覆盖度语义校验，实际输出：' + output
+  );
+});
+
 // ---- 汇总 ----
 console.log('\n========== 测试结果 ==========');
 console.log('总计: ' + testCount + ' 个测试');
