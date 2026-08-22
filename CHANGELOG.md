@@ -7,9 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **屎山清理（Issue #189，多 PR 推进）** — 系统清理项目历史债：
+  - **PR-C handler-utils 单源化**：把 excel/ppt/word 三平台 handler 中**两平台逐字节相同**的 14 个纯工具函数（`getExcelSheet`/`colToLetter`/`resolveColumnLetter`/`colToNumber`/`resolveRowCol`/`resolveAlignment`/`toExcelColor`/`findNotesShape`/`findShape`/`getPPT`/`resolveSlideIndex`/`toRgb`/`getSelectionRange`/`toBgr`）抽到 `shared/wps-bridge/handler-utils.js` 单一来源，`sync-wps-bridge.js` 同步到平台目录，改一处四处生效。实测行为零变化（仅抽两平台逐字节相同的纯函数，不触碰行为差异部分）。
+
 ### Changed
 
 - **屎山清理（Issue #189，多 PR 推进）**：
+  - **PR-D CI 收敛**：`.cnb.yml` 手工罗列的几十行堆命令收敛为 `npm run preflight`（已聚合 validate 系列 + format:check + lint + test + test:e2e）+ 4 项必需额外检查（sync-npc-team-skill/sync-wps-bridge 漂移检测、bash -n 两个 wps-auto.sh、MCP lint + test:unit + test:integration）。lint-js.js 递归覆盖全部 .js、run-root-tests.js 聚合全部根测试，门禁无损。
   - **PR-E 双轨兜底清理**：移除 excel `setBorder` 的 `rangeAddress` 旧兼容参数（经全仓库 grep 核实**无任何上游调用方**，删除后仅认 `range` 参数）。其余"双轨兜底"（setCellFormat 顶层 numberFormat 等）经核实为 **MCP 公开 API 契约**（`format.ts` schema 显式声明 + gateway 测试保障），**不能删**，如实保留。
 ## [1.8.4] - 2026-08-22
 

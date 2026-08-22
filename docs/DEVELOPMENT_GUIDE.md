@@ -69,7 +69,7 @@ opencode-wps/             # 仓库根目录
 ├── opencode-wps/          # Windows JS 插件（Chat UI + Launcher）
 ├── opencode-wps-assistant/# macOS JS 插件（反向轮询桥）
 ├── opencode-wps-linux/    # Linux JS 插件（反向轮询桥）
-├── shared/wps-bridge/     # 跨平台共享层（单一来源）：response/registry/common-core
+├── shared/wps-bridge/     # 跨平台共享层（单一来源）：response/registry/common-core/handler-utils
 │   └── （由 scripts/sync-wps-bridge.js 同步到 Mac/Linux 平台目录）
 ├── wps-office-mcp/        # MCP 服务器（TypeScript，三层工具）
 ├── skills/                # 5 个 WPS Skills
@@ -225,15 +225,16 @@ skills/wps-word/
 shared/wps-bridge/                 # 单一来源（git 跟踪，改这里）
 ├── response.js                    # 响应工具（ok/fail/invalidParam）
 ├── registry.js                    # handler 注册表
-└── common-core.js                 # 通用 handler 核心（平台差异经 BRIDGE_PLATFORM 隔离）
+├── common-core.js                 # 通用 handler 核心（平台差异经 BRIDGE_PLATFORM 隔离）
+└── handler-utils.js               # 平台无关纯工具函数（excel/ppt/word 共用）
         │  由 scripts/sync-wps-bridge.js 同步生成
         ▼
 opencode-wps-assistant/            # macOS 平台产物（生成，勿手编）
     ├── utils/response.js
-    └── handlers/{registry.js, common-handler.js}
+    └── handlers/{registry.js, common-handler.js, handler-utils.js}
 opencode-wps-linux/                # Linux 平台产物（生成，勿手编）
     ├── utils/response.js
-    └── handlers/{registry.js, common-handler.js}
+    └── handlers/{registry.js, common-handler.js, handler-utils.js}
 ```
 
 **核心规则**：
@@ -241,6 +242,7 @@ opencode-wps-linux/                # Linux 平台产物（生成，勿手编）
 - **同步**：改完源后运行 `node scripts/sync-wps-bridge.js` 重新生成平台产物。
 - **平台差异**：通过全局 `BRIDGE_PLATFORM`（`'mac' | 'linux'`）隔离，由同步脚本按平台注入。例如 `ensureOutputDir`（saveAs/convertToPDF 前置校验输出目录）仅在 `BRIDGE_PLATFORM==='mac'` 启用。
 - **CI 漂移门禁**：`.cnb.yml` 用 `node scripts/sync-wps-bridge.js --check` 校验平台产物与共享层无漂移；本地用 `node scripts/sync-wps-bridge.js --check` 自查。
+- **重复率基线**：`node scripts/sync-wps-bridge.js --report` 输出未单源化 handler（excel/ppt/word）在 mac/linux 间的归一化重复率基线，用于量化清理收益（Issue #189）。**只读模式**：不写回平台文件、不触发漂移校验。
 - **测试**：`node tests/wps-bridge-shared.test.js`（单源一致性/生成正确性/平台差异隔离/漂移检测）。
 
 > 💡 详细架构说明见 [ARCHITECTURE.md](./ARCHITECTURE.md)「共享层说明」。

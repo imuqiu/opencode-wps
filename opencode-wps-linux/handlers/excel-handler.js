@@ -3,88 +3,25 @@
  * 工作簿、单元格、范围、图表、数据操作等
  */
 
-function getExcelSheet(wb, sheet) {
-  if (!sheet) return wb.ActiveSheet;
-  return wb.Sheets.Item(sheet);
-}
 
 // 将列号（1-based）转换为 Excel 列字母：1->A, 26->Z, 27->AA, 52->AZ, 703->AAA ...
-function colToLetter(n) {
-  n = parseInt(n, 10);
-  if (isNaN(n) || n < 1) return null;
-  var letters = '';
-  while (n > 0) {
-    var rem = (n - 1) % 26;
-    letters = String.fromCharCode(65 + rem) + letters;
-    n = Math.floor((n - 1) / 26);
-  }
-  return letters;
-}
 
 // 将列参数（数字列号或字母串）统一解析为列字母：1->A, 27->AA, 'AB'->AB；非法返回 null
-function resolveColumnLetter(col) {
-  if (typeof col === 'number') return colToLetter(col);
-  if (typeof col === 'string') {
-    var t = col.trim().toUpperCase();
-    if (/^[A-Z]{1,3}$/.test(t)) return t;
-  }
-  return null;
-}
 
 // 将列字母转回列号：A->1, Z->26, AA->27, AB->28；数字列号原样返回；非法返回 null
 // （与 colToLetter 对称，供 insertColumns/deleteColumns/groupColumns 计算结束列用）
-function colToNumber(col) {
-  if (typeof col === 'number') return col >= 1 ? col : null;
-  if (typeof col === 'string') {
-    var t = col.trim().toUpperCase();
-    if (!/^[A-Z]{1,3}$/.test(t)) return null;
-    var n = 0;
-    for (var i = 0; i < t.length; i++) {
-      n = n * 26 + (t.charCodeAt(i) - 64);
-    }
-    return n;
-  }
-  return null;
-}
 
 // 对齐常量（与 Windows wps-com.ps1 的 H_ALIGN_MAP / V_ALIGN_MAP 保持一致）
 var H_ALIGN_MAP = { left: -4131, center: -4108, right: -4152 };
 var V_ALIGN_MAP = { top: -4160, center: -4108, bottom: -4107 };
 
 // 将对齐参数解析为 Excel 常量：数字直接使用，字符串走映射，非法值返回 null
-function resolveAlignment(value, map) {
-  if (typeof value === 'number') return value;
-  if (typeof value === 'string' && map[value.toLowerCase()] !== undefined) {
-    return map[value.toLowerCase()];
-  }
-  return null;
-}
 
 // 将颜色参数解析为 Excel BGR 整数值：支持 #RRGGBB、RRGGBB、RGB 简写；数字直接返回
-function toExcelColor(color) {
-  if (typeof color === 'number') return color;
-  if (typeof color !== 'string') return null;
-  var hex = color.trim();
-  if (hex.charAt(0) === '#') hex = hex.substring(1);
-  if (hex.length === 3) {
-    hex =
-      hex.charAt(0) + hex.charAt(0) + hex.charAt(1) + hex.charAt(1) + hex.charAt(2) + hex.charAt(2);
-  }
-  if (!/^[0-9a-fA-F]{6}$/.test(hex)) return null;
-  var rgb = parseInt(hex, 16);
-  return ((rgb & 0xff) << 16) | (rgb & 0xff00) | ((rgb >> 16) & 0xff);
-}
 
 // 单元格行/列参数校验：必须为正整数（1-based），非法返回 null
 // 供 getCellValue/setCellValue/setFormula/getFormula/addCellComment/deleteCellComment/setHyperlink 等
 // 单元格级 handler 统一使用（与 insertRows/insertColumns 的行列校验语义对齐）
-function resolveRowCol(row, col) {
-  var r = parseInt(row, 10);
-  if (isNaN(r) || r < 1) return null;
-  var c = parseInt(col, 10);
-  if (isNaN(c) || c < 1) return null;
-  return { row: r, col: c };
-}
 
 registerHandler('getActiveWorkbook', function (params) {
   try {

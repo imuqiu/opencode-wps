@@ -237,7 +237,7 @@ deduped.sort(
 > 批次表从未登记、防幻觉门禁全部失效。**已确认放弃 4-subagent 设想**，改为：
 
 1. **单 agent 顺序执行**：你（主 agent）直接按本文档「校对工作流程」逐批走标准步骤链，
-   不需要调用任何 subagent（`wps-proofread-planner/manager/executor/reporter` 均已停用）。
+   不需要调用任何 subagent（`wps-proofread-planner/manager/executor/reporter` 定义文件已删除，历史存档见 git 历史）。
 2. **分批由服务端自动完成**：`proofreadAccumulate` 会话首次初始化时，服务端按
    `docInfo.totalParagraphs` 自动生成连续批次（每批 100 段）并落盘（`generateAutoBatches`）——
    你**不需要**手动登记 `_batch_allocations`，批次表永远非空。
@@ -250,7 +250,7 @@ deduped.sort(
    - 无任何进度依据且无校对痕迹（从未规划/从未跑）。
      报告「全部已修复 ✅」仅在服务端确认真实覆盖全文时显示，否则标注「⚠️ 覆盖状态未确认完整」。
 
-> 相关停用文件（历史存档）：`agents/wps-proofread-planner.md` / `manager` / `executor` / `reporter`。
+> 相关停用 subagent 定义文件已删除（历史存档见 git 历史：`agents/wps-proofread-planner/manager/executor/reporter.md`）。
 > 服务端自动分批逻辑：`proofread-store.ts` 的 `generateAutoBatches` + `proofread-report.ts` 的会话初始化自动登记。
 
 ---

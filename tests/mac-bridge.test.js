@@ -72,6 +72,14 @@ var excelSrc = fs.readFileSync(
   path.join(__dirname, '..', 'opencode-wps-assistant', 'handlers', 'excel-handler.js'),
   'utf-8'
 );
+// 先加载 handler-utils.js（Issue #189 PR-C：纯函数已单源化到该文件）
+vm.runInThisContext(
+  fs.readFileSync(
+    path.join(__dirname, '..', 'opencode-wps-assistant', 'handlers', 'handler-utils.js'),
+    'utf-8'
+  ),
+  { filename: 'handler-utils.js' }
+);
 vm.runInThisContext(excelSrc, { filename: 'excel-handler.js' });
 
 var colToLetter = global.colToLetter;
@@ -136,6 +144,7 @@ var pptSrc = fs.readFileSync(
   path.join(__dirname, '..', 'opencode-wps-assistant', 'handlers', 'ppt-handler.js'),
   'utf-8'
 );
+// handler-utils.js 已在前面 excel 段加载（全局共享），此处无需重复
 vm.runInThisContext(pptSrc, { filename: 'ppt-handler.js' });
 
 var toRgb = global.toRgb;
@@ -178,6 +187,7 @@ var wordSrc = fs.readFileSync(
   path.join(__dirname, '..', 'opencode-wps-assistant', 'handlers', 'word-handler.js'),
   'utf-8'
 );
+// handler-utils.js 已在前面 excel 段加载（全局共享），此处无需重复
 vm.runInThisContext(wordSrc, { filename: 'word-handler.js' });
 
 var parseColor = global.parseColor;
