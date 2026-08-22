@@ -45,8 +45,6 @@ const addons = [
       '.debugTemp',
       'wps-addon-build',
       'DESIGN.md',
-      'browsertest.html',
-      '_sse_test.js',
       'opencode-proxy.js',
       'start-proxy.bat',
       'wpsjs.config.js',

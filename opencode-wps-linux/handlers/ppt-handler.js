@@ -10,33 +10,12 @@ var COLOR_SCHEMES = {
   minimal: { title: 0x000000, body: 0x666666, accent: 0x999999 },
 };
 
-function getPPT() {
-  return Application.ActivePresentation;
-}
 
 // 校验并归一化 slideIndex（必须为正整数且不越界）；非法返回 null
 // 大量 handler 直接 pres.Slides.Item(idx) 对越界抛错返回泛化 fail，统一前置校验给出明确错误
-function resolveSlideIndex(pres, idx) {
-  var n = parseInt(idx, 10);
-  if (isNaN(n) || n < 1) return null;
-  if (n > pres.Slides.Count) return null;
-  return n;
-}
 
 // 将颜色参数解析为整型 RGB：支持 #RRGGBB、RRGGBB、RGB 简写；数字直接返回；非法返回 null
 // （与 excel-handler 的 toExcelColor 语义对称，供 PPT COM 的 ForeColor.RGB 赋值使用）
-function toRgb(color) {
-  if (typeof color === 'number') return color;
-  if (typeof color !== 'string') return null;
-  var hex = color.trim();
-  if (hex.charAt(0) === '#') hex = hex.substring(1);
-  if (hex.length === 3) {
-    hex =
-      hex.charAt(0) + hex.charAt(0) + hex.charAt(1) + hex.charAt(1) + hex.charAt(2) + hex.charAt(2);
-  }
-  if (!/^[0-9a-fA-F]{6}$/.test(hex)) return null;
-  return parseInt(hex, 16);
-}
 
 registerHandler('getActivePresentation', function (params) {
   try {
@@ -1450,25 +1429,6 @@ registerHandler('replacePptText', function (params) {
 });
 
 // 在备注页中定位备注占位符形状：优先 ppPlaceholderBody(2)/ppPlaceholderObject(7)，其次找第一个有文本的文本框
-function findNotesShape(notesPage) {
-  try {
-    for (var j = 1; j <= notesPage.Shapes.Count; j++) {
-      var s = notesPage.Shapes.Item(j);
-      try {
-        var pf = s.PlaceholderFormat;
-        if (pf && (pf.Type === 2 || pf.Type === 7)) return s;
-      } catch (e) {}
-    }
-    // 兜底：第一个 HasTextFrame 且 HasText 的形状
-    for (var j = 1; j <= notesPage.Shapes.Count; j++) {
-      var s = notesPage.Shapes.Item(j);
-      try {
-        if (s.HasTextFrame && s.TextFrame.HasText) return s;
-      } catch (e) {}
-    }
-  } catch (e) {}
-  return null;
-}
 
 registerHandler('getSlideNotes', function (params) {
   try {
@@ -1651,20 +1611,6 @@ registerHandler('setImageStyle', function (params) {
   }
 });
 
-function findShape(slide, nameOrIndex) {
-  if (typeof nameOrIndex === 'number') {
-    try {
-      return slide.Shapes.Item(nameOrIndex);
-    } catch (e) {
-      return null;
-    }
-  }
-  if (nameOrIndex == null) return slide.Shapes.Count > 0 ? slide.Shapes.Item(1) : null;
-  for (var j = 1; j <= slide.Shapes.Count; j++) {
-    if (slide.Shapes.Item(j).Name === nameOrIndex) return slide.Shapes.Item(j);
-  }
-  return null;
-}
 
 registerHandler('setBackgroundColor', function (params) {
   try {

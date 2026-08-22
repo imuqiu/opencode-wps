@@ -249,6 +249,105 @@ test('openFile: 缺 path 返回参数错误', function () {
   assertTrue(/缺少 path/.test(mac.error), '应提示缺少 path');
 });
 
+// ==================== 3c. handler-utils 单源化 ====================
+console.log('\n--- handler-utils 单源化（Issue #189 PR-C）---');
+
+// 在共享全局沙箱中加载 response+registry+handler-utils+各 handler，返回注册的动作集
+function loadFullHandlers(platform) {
+  var __handlers = {};
+  var reg = fs.readFileSync(path.join(ROOT, 'shared', 'wps-bridge', 'registry.js'), 'utf-8');
+  vm.runInThisContext(reg, { filename: 'registry.js' });
+  global.HANDLERS = global.HANDLERS || {};
+  __handlers = global.HANDLERS;
+  var dir =
+    platform === 'mac' ? 'opencode-wps-assistant' : 'opencode-wps-linux';
+  // 依次加载：response → registry → handler-utils → 各 handler
+  vm.runInThisContext(
+    fs.readFileSync(path.join(ROOT, 'shared', 'wps-bridge', 'response.js'), 'utf-8'),
+    { filename: 'response.js' }
+  );
+  vm.runInThisContext(
+    fs.readFileSync(path.join(ROOT, dir, 'handlers', 'handler-utils.js'), 'utf-8'),
+    { filename: dir + '/handlers/handler-utils.js' }
+  );
+  vm.runInThisContext(
+    fs.readFileSync(path.join(ROOT, dir, 'handlers', 'word-handler.js'), 'utf-8'),
+    { filename: dir + '/handlers/word-handler.js' }
+  );
+  vm.runInThisContext(
+    fs.readFileSync(path.join(ROOT, dir, 'handlers', 'excel-handler.js'), 'utf-8'),
+    { filename: dir + '/handlers/excel-handler.js' }
+  );
+  vm.runInThisContext(
+    fs.readFileSync(path.join(ROOT, dir, 'handlers', 'ppt-handler.js'), 'utf-8'),
+    { filename: dir + '/handlers/ppt-handler.js' }
+  );
+  return __handlers;
+}
+
+test('handler-utils.js: mac/linux 均与 shared 逐字节一致', function () {
+  var shared = fs.readFileSync(path.join(ROOT, 'shared', 'wps-bridge', 'handler-utils.js'), 'utf-8');
+  var mac = fs.readFileSync(
+    path.join(ROOT, 'opencode-wps-assistant', 'handlers', 'handler-utils.js'),
+    'utf-8'
+  );
+  var linux = fs.readFileSync(
+    path.join(ROOT, 'opencode-wps-linux', 'handlers', 'handler-utils.js'),
+    'utf-8'
+  );
+  assertEqual(mac, shared, 'mac handler-utils 应与 shared 一致');
+  assertEqual(linux, shared, 'linux handler-utils 应与 shared 一致');
+});
+
+test('handler-utils: 14 个纯函数在沙箱全局可用（两平台）', function () {
+  var expected = [
+    'getExcelSheet', 'colToLetter', 'resolveColumnLetter', 'colToNumber', 'resolveRowCol',
+    'resolveAlignment', 'toExcelColor', 'findNotesShape', 'findShape', 'getPPT',
+    'resolveSlideIndex', 'toRgb', 'getSelectionRange', 'toBgr',
+  ];
+  ['mac', 'linux'].forEach(function (p) {
+    loadFullHandlers(p);
+    expected.forEach(function (fn) {
+      assertTrue(typeof global[fn] === 'function', p + ': ' + fn + ' 应全局可用');
+    });
+  });
+});
+
+test('handler-utils: 纯函数已从各 handler 移除（不再重复定义）', function () {
+  var srcs = [
+    path.join(ROOT, 'opencode-wps-assistant', 'handlers', 'excel-handler.js'),
+    path.join(ROOT, 'opencode-wps-linux', 'handlers', 'excel-handler.js'),
+    path.join(ROOT, 'opencode-wps-assistant', 'handlers', 'ppt-handler.js'),
+    path.join(ROOT, 'opencode-wps-linux', 'handlers', 'ppt-handler.js'),
+    path.join(ROOT, 'opencode-wps-assistant', 'handlers', 'word-handler.js'),
+    path.join(ROOT, 'opencode-wps-linux', 'handlers', 'word-handler.js'),
+  ];
+  // 这些函数不应再在 handler 内重复定义（只应在 shared handler-utils.js 出现一次）
+  var duplicated = ['getExcelSheet', 'getPPT', 'toBgr'];
+  srcs.forEach(function (f) {
+    var src = fs.readFileSync(f, 'utf-8');
+    duplicated.forEach(function (fn) {
+      assertTrue(
+        !new RegExp('^function ' + fn + '\\(').test(src),
+        f + ' 不应再重复定义 ' + fn
+      );
+    });
+  });
+});
+
+test('handler-utils: 单源化后各平台 handler 注册动作集完整', function () {
+  ['mac', 'linux'].forEach(function (p) {
+    var handlers = loadFullHandlers(p);
+    var count = Object.keys(handlers).length;
+    assertTrue(count > 150, p + ': 注册 handler 数应 > 150，实际 ' + count);
+    ['getActiveWorkbook', 'getSheetList', 'getOpenDocuments', 'getActiveDocument'].forEach(
+      function (a) {
+        assertTrue(handlers[a] !== undefined, p + ': ' + a + ' 应已注册');
+      }
+    );
+  });
+});
+
 // ==================== 4. sync --check 漂移检测 ====================
 console.log('\n--- sync 漂移检测 ---');
 
@@ -262,6 +361,23 @@ test('sync-wps-bridge --check：无漂移时通过', function () {
     0,
     '无漂移应退出码 0，实际 ' + out.status + ': ' + out.stdout + out.stderr
   );
+});
+
+test('sync-wps-bridge --report：输出 excel/ppt/word 重复率基线', function () {
+  var cp = require('child_process');
+  var out = cp.spawnSync('node', [path.join(ROOT, 'scripts', 'sync-wps-bridge.js'), '--report'], {
+    encoding: 'utf-8',
+  });
+  assertEqual(out.status, 0, '--report 应退出码 0，实际 ' + out.status + ': ' + out.stderr);
+  // 必须覆盖三个未单源化 handler
+  ['excel-handler', 'ppt-handler', 'word-handler'].forEach(function (h) {
+    assertTrue(out.stdout.indexOf(h) !== -1, '输出应包含 ' + h);
+  });
+  // 必须输出重复率百分比（格式：xx.x% 或 xx%），证明检测真实执行而非空输出
+  assertTrue(/mac 行在 linux 出现率/.test(out.stdout), '输出应含表头');
+  assertTrue(/\|\s*(excel|ppt|word)-handler\s*\|\s*\d+\s*\|\s*\d+\s*\|\s*\d+(\.\d+)?%\s*\|/.test(out.stdout), '输出行应为「行数|行数|百分比」格式');
+  // 三平台重复率应>0（真实文件存在且有重复），防止空跑
+  assertTrue(/\d+%/.test(out.stdout), '应输出至少一个百分比');
 });
 
 // ==================== 5. gateway 数据表拆分 ====================
