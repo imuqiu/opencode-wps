@@ -1986,6 +1986,21 @@ test('负向：删工作流程 6/12 需求覆盖度检查行应拦截（exit 1�
   );
 });
 
+test('负向：删 QA 卡片需求覆盖度检查职责应拦截（exit 1）', function () {
+  // R6-1 修复：QA 角色卡片需求覆盖度检查职责（与主链 6/12、工作流程同步）。
+  const { code, output } = runValidateCapture(p =>
+    p.replace(
+      '；测试通过后做需求覆盖度检查（需求↔开发落点↔测试覆盖矩阵，经 ⏸CP2.5 确认全覆盖）。',
+      ''
+    )
+  );
+  assertEqual(code, 1, '删 QA 卡片需求覆盖度职责应拦截（exit 1）');
+  assertTrue(
+    /角色卡片 QA 缺少需求覆盖度检查职责/.test(output),
+    '应命中 QA 卡片需求覆盖度职责校验，实际输出：' + output
+  );
+});
+
 // ---- 汇总 ----
 console.log('\n========== 测试结果 ==========');
 console.log('总计: ' + testCount + ' 个测试');
