@@ -541,6 +541,33 @@ test('cleanData: trim 模式去首尾空白', function () {
   assertEqual(result.data.replaced, 1, '替换 1 处');
 });
 
+test('setBorder: rangeAddress 旧兼容参数已清理，缺 range 返回失败', function () {
+  loadExcelHandler();
+  var rangeObj = {
+    Borders: {
+      Item: function () {
+        return { Weight: null, LineStyle: null, Color: null };
+      },
+    },
+  };
+  var sheet = {
+    Range: function () {
+      return rangeObj;
+    },
+  };
+  global.Application = {
+    ActiveWorkbook: { ActiveSheet: sheet },
+    ActiveSheet: sheet,
+  };
+  // 只传 rangeAddress（旧兼容参数）不再生效，应报缺 range
+  var r1 = getHandlerFn('setBorder')({ rangeAddress: 'A1:B2' });
+  assertFalse(r1.success, '仅 rangeAddress 应失败（旧兼容参数已清理）');
+  assertTrue(/缺少 range/.test(r1.error), '应提示缺少 range');
+  // 传 range 正常工作
+  var r2 = getHandlerFn('setBorder')({ range: 'A1:B2' });
+  assertTrue(r2.success, '传 range 应成功');
+});
+
 // ==================== 测试结果汇总 ====================
 
 console.log('\n========== 测试结果 ==========');

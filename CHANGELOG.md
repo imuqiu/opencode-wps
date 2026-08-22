@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **屎山清理（Issue #189，多 PR 推进）**：
+  - **PR-E 双轨兜底清理**：移除 excel `setBorder` 的 `rangeAddress` 旧兼容参数（经全仓库 grep 核实**无任何上游调用方**，删除后仅认 `range` 参数）。其余"双轨兜底"（setCellFormat 顶层 numberFormat 等）经核实为 **MCP 公开 API 契约**（`format.ts` schema 显式声明 + gateway 测试保障），**不能删**，如实保留。
+
 ## [1.8.2] - 2026-08-22
 
 ### Added

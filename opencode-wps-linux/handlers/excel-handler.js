@@ -567,7 +567,8 @@ registerHandler('setBorder', function (params) {
     var wb = Application.ActiveWorkbook;
     if (!wb) return fail('没有打开的工作簿');
     var sheet = getExcelSheet(wb, params.sheet);
-    var range = sheet.Range(params.range || params.rangeAddress);
+    // range 参数（rangeAddress 旧兼容参数已清理，无上游调用方）
+    var range = sheet.Range(params.range);
     var borders = range.Borders;
     if (params.weight !== undefined) {
       for (var i = 1; i <= 6; i++) {
