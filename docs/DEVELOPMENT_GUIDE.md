@@ -449,7 +449,7 @@ cd wps-office-mcp && npm run dev
 | 单测 | `node tests/*.test.js` | 安全/Launcher/Mac/Linux/桥接共享层回归 |
 | 桥接共享层漂移 | `node tests/wps-bridge-shared.test.js` + `node scripts/sync-wps-bridge.js --check` | 单一来源一致性 + 平台产物无漂移（消除三平台 handler 重复重构） |
 | JS 语法 | `node --check <file>` | 三平台脚本 + 共享层语法门禁 |
-| MCP | `cd wps-office-mcp && npm ci && npm run test:unit` | MCP 单测 |
+| MCP | `cd wps-office-mcp && npm ci && npm run test:unit && npm run test:integration` | MCP 单测 + 集成测试 |
 
 提交 PR 前建议本地跑一遍门禁，避免 CI 失败。
 

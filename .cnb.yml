@@ -59,8 +59,8 @@ main:
             node --check shared/wps-bridge/registry.js
             node --check shared/wps-bridge/common-core.js
             node scripts/sync-wps-bridge.js --check
-            # MCP 依赖已在 preflight 前安装，此处直接跑 lint + 单测（Issue #185 评审 R1 修复，去除重复 npm ci）
-            cd wps-office-mcp && npm run lint && npm run test:unit
+            # MCP 依赖已在 preflight 前安装，此处直接跑 lint + 单测 + 集成测试（Issue #185 评审 R1 修复，去除重复 npm ci；Issue #186 接入集成测试）
+            cd wps-office-mcp && npm run lint && npm run test:unit && npm run test:integration
         - name: Docker build
           script: |
             docker build -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:latest .
