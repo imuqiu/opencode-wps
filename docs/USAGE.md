@@ -271,7 +271,7 @@ MCP 服务端 **write 类操作**（含校对报告 `generateProofreadReport` �
 >
 > 原 4 个 subagent 定义文件（`agents/wps-proofread-planner/manager/executor/reporter.md`）已删除（历史存档见 git 历史，Issue #189 清理）。
 
-| ~~subagent~~               | ~~职责~~（已停用）                                                                                                       |
+| ~~subagent~~               | ~~职责~~（已删除，历史存档）                                                                                             |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | ~~wps-proofread-planner~~  | ~~规划：一次性分批计划 + 唯一 session_id + 登记批次分配表 + 编排调度~~（已由服务端 `generateAutoBatches` 取代）          |
 | ~~wps-proofread-manager~~  | ~~管理：调度执行 subagent（≤3 并行）+ 监督逐步凭证落盘防幻觉 + 断点续跑~~                                                |
