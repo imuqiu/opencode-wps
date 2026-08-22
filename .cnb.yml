@@ -21,6 +21,8 @@ main:
           image: node:22
           script: |
             npm ci
+            # 先安装 wps-office-mcp 依赖，保证 preflight 内新增的 MCP lint 可执行（Issue #185 评审 R2 修复）
+            cd wps-office-mcp && npm ci && cd ..
             # 统一门禁入口：validate 系列 + format:check + lint + test + test:e2e（Issue #147 十四条质量红线）
             npm run preflight
             node scripts/sync-npc-team-skill.js --check
@@ -57,7 +59,8 @@ main:
             node --check shared/wps-bridge/registry.js
             node --check shared/wps-bridge/common-core.js
             node scripts/sync-wps-bridge.js --check
-            cd wps-office-mcp && npm ci && npm run test:unit && npm run test:integration
+            # MCP 依赖已在 preflight 前安装，此处直接跑 lint + 单测 + 集成测试（Issue #185 评审 R1 修复，去除重复 npm ci；Issue #186 接入集成测试）
+            cd wps-office-mcp && npm run lint && npm run test:unit && npm run test:integration
         - name: Docker build
           script: |
             docker build -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:latest .
