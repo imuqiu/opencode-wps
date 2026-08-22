@@ -17,6 +17,7 @@
  * 用法：
  *  node scripts/sync-wps-bridge.js            # 同步（写回平台目录）
  *  node scripts/sync-wps-bridge.js --check    # 只校验不写回（CI 用）
+ *  node scripts/sync-wps-bridge.js --report   # 只输出三平台 handler 归一化重复率基线（不写回）
  */
 'use strict';
 
@@ -30,7 +31,11 @@ const PLATFORMS = [
   { dir: 'opencode-wps-linux', name: 'linux' },
 ];
 
+// --report 模式下纳入重复率检测的 handler（尚未单源化的三平台大文件）
+const REPORT_HANDLERS = ['excel-handler', 'ppt-handler', 'word-handler'];
+
 const isCheck = process.argv.includes('--check');
+const isReport = process.argv.includes('--report');
 let driftDetected = false;
 
 function warn(msg) {
@@ -71,7 +76,94 @@ function syncFile(platformDir, sharedRelPath, platformRelPath, content) {
   return true;
 }
 
+/**
+ * 归一化一行代码：去除首尾空白、空行、纯注释/空块行，并剥离平台注入标记
+ * （BRIDGE_PLATFORM 声明、生成产物头部注释等），用于跨平台重复率对比。
+ * 注：当前 report 范围（excel/ppt/word）尚不含 BRIDGE_PLATFORM，此处归一化为后续
+ * 扩展报告范围至 common-handler 时预留，避免平台差异干扰重复率统计。
+ */
+function normalizeLine(line) {
+  const t = line.trim();
+  if (!t) return null; // 空行
+  if (/^\/\//.test(t) || /^\/\*/.test(t) || /^\*/.test(t) || /^\*\/$/.test(t)) return null; // 注释行
+  if (t === '{' || t === '}' || t === ';') return null; // 空块/分号
+  return t
+    .replace(/var BRIDGE_PLATFORM = '[a-z]+';/, "var BRIDGE_PLATFORM = '<p>';") // 平台注入标记
+    .replace(/BRIDGE_PLATFORM\.([A-Z_]+)/g, 'BRIDGE_PLATFORM.<p>'); // 平台差异引用
+}
+
+/**
+ * 计算单文件的行指纹集合（去重后的非空归一化行）。
+ * @returns {Set<string>}
+ */
+function lineFingerprintSet(fileAbs) {
+  const src = fs.readFileSync(fileAbs, 'utf-8');
+  const set = new Set();
+  for (const raw of src.split(/\r?\n/)) {
+    const n = normalizeLine(raw);
+    if (n !== null) set.add(n);
+  }
+  return set;
+}
+
+/**
+ * --report 模式：输出三个未单源化 handler 在 mac/linux 之间的归一化重复率基线。
+ * 重复率 = 本平台行指纹中同时出现在另一平台的比例，反映"改 1 个 bug 需同步几处"。
+ */
+function runReport() {
+  console.log('\n=== WPS bridge handler 归一化重复率基线（Issue #189 屎山清理）===');
+  console.log('说明：剔除空行/注释/平台注入标记后，按行指纹统计两平台行级重叠。\n');
+
+  const macDir = PLATFORMS.find(p => p.name === 'mac').dir;
+  const linuxDir = PLATFORMS.find(p => p.name === 'linux').dir;
+
+  const rows = [];
+  let totalMac = 0;
+  let totalLinux = 0;
+  for (const handler of REPORT_HANDLERS) {
+    const macAbs = path.join(ROOT, macDir, 'handlers', handler + '.js');
+    const linuxAbs = path.join(ROOT, linuxDir, 'handlers', handler + '.js');
+    if (!fs.existsSync(macAbs) || !fs.existsSync(linuxAbs)) {
+      warn('跳过（文件缺失）: ' + handler);
+      continue;
+    }
+    const macSet = lineFingerprintSet(macAbs);
+    const linuxSet = lineFingerprintSet(linuxAbs);
+    const macInLinux = [...macSet].filter(l => linuxSet.has(l)).length;
+    const linuxInMac = [...linuxSet].filter(l => macSet.has(l)).length;
+    const macPct = macSet.size ? Math.round((macInLinux / macSet.size) * 1000) / 10 : 0;
+    const linuxPct = linuxSet.size ? Math.round((linuxInMac / linuxSet.size) * 1000) / 10 : 0;
+    rows.push({ handler, mac: macSet.size, linux: linuxSet.size, macPct, linuxPct });
+    totalMac += macSet.size;
+    totalLinux += linuxSet.size;
+  }
+
+  if (rows.length === 0) {
+    warn('未找到任何可统计的 handler（请确认平台目录 handler 文件存在），跳过基线输出');
+    return;
+  }
+
+  console.log(
+    '| handler | mac 实质行 | linux 实质行 | mac 行在 linux 出现率 | linux 行在 mac 出现率 |'
+  );
+  console.log('|---------|-----------|-------------|---------------------|---------------------|');
+  for (const r of rows) {
+    console.log(`| ${r.handler} | ${r.mac} | ${r.linux} | ${r.macPct.toFixed(1)}% | ${r.linuxPct.toFixed(1)}% |`);
+  }
+  console.log(`\n合计实质行：mac ${totalMac} / linux ${totalLinux}`);
+  console.log('说明：比例越接近 100% 说明两平台重复越严重，单源化收益越大。\n');
+}
+
 function main() {
+  if (isReport && isCheck) {
+    warn(
+      '--report 与 --check 同时指定，优先执行 --report（本次不进行漂移校验）；如要校验请仅用 --check'
+    );
+  }
+  if (isReport) {
+    runReport();
+    return;
+  }
   if (!fs.existsSync(SHARED_DIR)) {
     warn('共享目录不存在: ' + SHARED_DIR);
     process.exit(1);

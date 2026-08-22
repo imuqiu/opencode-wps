@@ -264,6 +264,23 @@ test('sync-wps-bridge --check：无漂移时通过', function () {
   );
 });
 
+test('sync-wps-bridge --report：输出 excel/ppt/word 重复率基线', function () {
+  var cp = require('child_process');
+  var out = cp.spawnSync('node', [path.join(ROOT, 'scripts', 'sync-wps-bridge.js'), '--report'], {
+    encoding: 'utf-8',
+  });
+  assertEqual(out.status, 0, '--report 应退出码 0，实际 ' + out.status + ': ' + out.stderr);
+  // 必须覆盖三个未单源化 handler
+  ['excel-handler', 'ppt-handler', 'word-handler'].forEach(function (h) {
+    assertTrue(out.stdout.indexOf(h) !== -1, '输出应包含 ' + h);
+  });
+  // 必须输出重复率百分比（格式：xx.x% 或 xx%），证明检测真实执行而非空输出
+  assertTrue(/mac 行在 linux 出现率/.test(out.stdout), '输出应含表头');
+  assertTrue(/\|\s*(excel|ppt|word)-handler\s*\|\s*\d+\s*\|\s*\d+\s*\|\s*\d+(\.\d+)?%\s*\|/.test(out.stdout), '输出行应为「行数|行数|百分比」格式');
+  // 三平台重复率应>0（真实文件存在且有重复），防止空跑
+  assertTrue(/\d+%/.test(out.stdout), '应输出至少一个百分比');
+});
+
 // ==================== 5. gateway 数据表拆分 ====================
 console.log('\n--- gateway COM_ACTIONS 数据表拆分 ---');
 
