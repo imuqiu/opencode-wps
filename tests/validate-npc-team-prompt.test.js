@@ -2025,6 +2025,18 @@ test('负向：删冒烟测试方法 F 需求覆盖度语义应拦截（exit 1�
   );
 });
 
+test('负向：删冒烟测试验证点表 CP2.5/需求覆盖度应拦截（exit 1）', function () {
+  // R9-1 修复：冒烟测试验证点表须含 CP2.5 暂停确认 + 需求覆盖度检查验证点（防验收标准脱节）。
+  const { code, output } = runValidateCaptureFull(p =>
+    p.replace('**到 CP1/CP2/CP2.5/CP3 时输出暂停卡', '**到 CP1/CP2/CP3 时输出暂停卡')
+  );
+  assertEqual(code, 1, '删验证点表 CP2.5 应拦截（exit 1）');
+  assertTrue(
+    /冒烟测试验证点表缺少需求覆盖度\/CP2\.5/.test(output),
+    '应命中验证点表 CP2.5 校验，实际输出：' + output
+  );
+});
+
 // ---- 汇总 ----
 console.log('\n========== 测试结果 ==========');
 console.log('总计: ' + testCount + ' 个测试');

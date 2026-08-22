@@ -941,6 +941,20 @@ if (!m) {
     errors.push(
       '冒烟测试方法 D 缺少合并确认接力语义（须含：未获用户回复「确认合并/继续」绝不执行 8/12 合并；用户确认后把合并召唤话术发给下一次召唤 → 8/12 棒真实 merge-pull 并留痕合并结果）'
     );
+
+  // ⑩ 冒烟测试验证点表（需求覆盖度 + 暂停确认含 CP2.5）——R9-1 修复新增：
+  // 冒烟测试「验证点/通过标准」表须含 CP2.5 暂停确认与需求覆盖度检查验证点，
+  // 防冒烟验收标准与实际流水线（4 暂停点 + 需求覆盖度检查）脱节。
+  const smokeVerifyTable = sliceContentSection('| 验证点', '> 实测');
+  if (
+    smokeVerifyTable !== null &&
+    (!/到 CP1\/CP2\/CP2\.5\/CP3 时输出暂停卡/.test(smokeVerifyTable) ||
+      !/CP2\.5 未获「需求全覆盖确认」不进入文档/.test(smokeVerifyTable) ||
+      !smokeVerifyTable.includes('需求覆盖度检查（⏸CP2.5）'))
+  )
+    errors.push(
+      '冒烟测试验证点表缺少需求覆盖度/CP2.5（须含：到 CP1/CP2/CP2.5/CP3 暂停确认、CP2.5 未获需求全覆盖确认不进入文档、需求覆盖度检查（⏸CP2.5）验证点）'
+    );
 }
 
 // ---- 11. 文档级边界声明 ----
