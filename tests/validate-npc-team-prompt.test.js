@@ -2001,6 +2001,18 @@ test('负向：删 QA 卡片需求覆盖度检查职责应拦截（exit 1）', f
   );
 });
 
+test('负向：删门禁表需求覆盖度检查行应拦截（exit 1）', function () {
+  // R7-1 修复：门禁表（文档级）需求覆盖度检查行（与合并/发布门禁行同级）。
+  const { code, output } = runValidateCaptureFull(p =>
+    p.replace(/^\| \*\*需求覆盖度检查（⏸CP2\.5）\*\*.*$/m, '')
+  );
+  assertEqual(code, 1, '删门禁表需求覆盖度检查行应拦截（exit 1）');
+  assertTrue(
+    /门禁表缺少「需求覆盖度检查（⏸CP2\.5）」门禁行/.test(output),
+    '应命中门禁表需求覆盖度检查行校验，实际输出：' + output
+  );
+});
+
 // ---- 汇总 ----
 console.log('\n========== 测试结果 ==========');
 console.log('总计: ' + testCount + ' 个测试');
