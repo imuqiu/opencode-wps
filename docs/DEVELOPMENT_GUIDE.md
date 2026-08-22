@@ -241,6 +241,7 @@ opencode-wps-linux/                # Linux 平台产物（生成，勿手编）
 - **同步**：改完源后运行 `node scripts/sync-wps-bridge.js` 重新生成平台产物。
 - **平台差异**：通过全局 `BRIDGE_PLATFORM`（`'mac' | 'linux'`）隔离，由同步脚本按平台注入。例如 `ensureOutputDir`（saveAs/convertToPDF 前置校验输出目录）仅在 `BRIDGE_PLATFORM==='mac'` 启用。
 - **CI 漂移门禁**：`.cnb.yml` 用 `node scripts/sync-wps-bridge.js --check` 校验平台产物与共享层无漂移；本地用 `node scripts/sync-wps-bridge.js --check` 自查。
+- **重复率基线**：`node scripts/sync-wps-bridge.js --report` 输出未单源化 handler（excel/ppt/word）在 mac/linux 间的归一化重复率基线，用于量化清理收益（Issue #189）。
 - **测试**：`node tests/wps-bridge-shared.test.js`（单源一致性/生成正确性/平台差异隔离/漂移检测）。
 
 > 💡 详细架构说明见 [ARCHITECTURE.md](./ARCHITECTURE.md)「共享层说明」。
