@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.3] - 2026-08-22
+
+### Added
+
+- **补建 MCP ESLint 静态规则检查（PR #200，Issue #185）** — 消灭 `wps-office-mcp` 的「僵尸 lint 脚本」（`npm run lint` 声明但从未安装/运行），落地 Issue #147 质量红线「npm run lint 检查代码」：
+  - `wps-office-mcp` devDependencies 新增 `eslint@^8.57.0`、`@typescript-eslint/parser@^8`、`@typescript-eslint/eslint-plugin@^8`；
+  - 新增 `wps-office-mcp/.eslintrc.cjs`（ESLint 8 + `@typescript-eslint/recommended` 规则，适配项目 CJS 风格与 jest 测试文件）；
+  - 根 `preflight` 与 `.cnb.yml` CI 增加 `cd wps-office-mcp && npm run lint`；
+  - `npm run lint` 在 wps-office-mcp 内真实可运行（0 error，77 个 any warning 不阻塞退出码）。
+
+### Changed
+
+- **版本号升级至 1.8.3** — 根 `package.json` / `package-lock.json` / `opencode-wps/`（package.json、config.js、manifest.xml）/ `opencode-wps-linux/`（package.json、manifest.xml）/ `wps-office-mcp/`（package.json、package-lock.json）版本一致升级至 1.8.3，`validate-versions` 校验通过。
+
 ## [1.8.2] - 2026-08-22
 
 ### Added
