@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.2] - 2026-08-22
+
+### Added
+
+- **NPC_TEAM 7/12 文档阶段按当次需求/bug 整改同步修改完善项目相关文档（PR #190，Issue #147 补充）** — 7/12 文档阶段明确化：当次需求开发/bug 整改对应的实际改动，须同步修改完善项目相关文档，确保文档与当次改动一致、不流于空泛模板：
+  - `docs/NPC_TEAM.md`：工作流程 7/12 文档阶段描述明确化（与 .codebuddy/skills/npc-team/SKILL.md 双源同步一致）；
+  - `scripts/validate-npc-team-prompt.js`：新增 7/12 文档两层门禁（inline 流水线 + 工作流程行，防删减）；
+  - `tests/validate-npc-team-prompt.test.js`：新增 2 个负向回归用例（删 inline / 删 workflow 均拦截），用例 140/140 通过。
+
+### Changed
+
+- **版本号升级至 1.8.2** — 根 `package.json` / `package-lock.json` / `opencode-wps/`（package.json、config.js、manifest.xml）/ `opencode-wps-linux/`（package.json、manifest.xml）/ `wps-office-mcp/`（package.json、package-lock.json）版本一致升级至 1.8.2，`validate-versions` 校验通过。
+
 ## [1.8.1] - 2026-08-21
 
 ### Added
