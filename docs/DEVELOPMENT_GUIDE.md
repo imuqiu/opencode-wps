@@ -411,6 +411,8 @@ npm run test
 npm run test:e2e
 # 全仓 JS 语法检查
 npm run lint
+# MCP ESLint 静态规则检查（TypeScript，Issue #185 补建；preflight 已含，此处为单独执行）
+cd wps-office-mcp && npm run lint
 # 格式化代码（Prettier）
 npm run format
 # 检查格式（Prettier）
