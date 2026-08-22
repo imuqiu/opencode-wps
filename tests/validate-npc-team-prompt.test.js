@@ -853,7 +853,7 @@ test('负向：删工作流程评审行留痕纪律应拦截（exit 1）', funct
   );
   assertEqual(code, 1, '删工作流程评审行留痕纪律应拦截（exit 1）');
   assertTrue(
-    /工作流程合并\/发布\/评审行语义不完整/.test(output),
+    /工作流程合并\/发布\/评审\/文档行语义不完整/.test(output),
     '应命中工作流程内容校验，实际输出：' + output
   );
 });
@@ -950,7 +950,7 @@ test('负向：改工作流程 8/12 合并行为自动合并应拦截（exit 1�
   );
   assertEqual(code, 1, '改工作流程合并语义应拦截（exit 1）');
   assertTrue(
-    /工作流程合并\/发布\/评审行语义不完整/.test(output),
+    /工作流程合并\/发布\/评审\/文档行语义不完整/.test(output),
     '应命中工作流程内容校验，实际输出：' + output
   );
 });
@@ -1002,7 +1002,21 @@ test('负向：工作流程合并行删留痕合并结果应拦截（exit 1）',
   );
   assertEqual(code, 1, '删留痕合并结果应拦截（exit 1）');
   assertTrue(
-    /工作流程合并\/发布\/评审行语义不完整/.test(output),
+    /工作流程合并\/发布\/评审\/文档行语义不完整/.test(output),
+    '应命中工作流程内容校验，实际输出：' + output
+  );
+});
+
+test('负向：工作流程 7/12 文档行删「按本次需求/bug 整改」应拦截（exit 1）', function () {
+  const { code, output } = runValidateCaptureFull(p =>
+    p.replace(
+      '阶段 7/12 文档更新（DEV+PO）→ **按本次需求开发 / bug 整改对应的实际改动，同步修改完善项目相关文档**',
+      '阶段 7/12 文档更新（DEV+PO）→ README / CHANGELOG / 使用文档'
+    )
+  );
+  assertEqual(code, 1, '删按本次需求开发/bug 整改同步文档声明应拦截（exit 1）');
+  assertTrue(
+    /工作流程合并\/发布\/评审\/文档行语义不完整/.test(output),
     '应命中工作流程内容校验，实际输出：' + output
   );
 });
@@ -1871,6 +1885,21 @@ test('负向：删铁律 17「更新 /docs」应拦截（exit 1）', function ()
   );
   assertEqual(code, 1, '删更新 docs 应拦截（exit 1）');
   assertTrue(/改动纪律-更新 docs/.test(output), '应命中改动纪律门禁，实际输出：' + output);
+});
+
+// 7/12 文档阶段按当次需求/bug 整改同步修改完善项目相关文档（Issue #147 补充）
+test('负向：流水线 7/12 文档删「按当次需求/bug 整改同步文档」应拦截（exit 1）', function () {
+  const { code, output } = runValidateCapture(p =>
+    p.replace(
+      '7/12 文档(DEV+PO，按当次需求开发/bug 整改同步修改完善项目相关文档)',
+      '7/12 文档(DEV+PO)'
+    )
+  );
+  assertEqual(code, 1, '删按当次需求/bug 整改同步文档应拦截（exit 1）');
+  assertTrue(
+    /7\/12 文档-按当次需求\/bug 整改同步文档/.test(output),
+    '应命中 7/12 文档门禁，实际输出：' + output
+  );
 });
 
 // 测试纪律（铁律 18）
