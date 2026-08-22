@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **NPC_TEAM 需求覆盖度检查 + ⏸CP2.5 暂停点（PR #188，Issue #147 补充）** — 在 NPC_TEAM skill 流水线 6/12 测试通过后新增「需求覆盖度检查」子步骤（逐条核对需求 ↔ 开发落点 ↔ 测试覆盖矩阵，任一需求无落点或无测试覆盖即不通过），完成后经 ⏸CP2.5 需求覆盖确认暂停待用户确认；未覆盖全部需求不得进入文档：
+  - `docs/NPC_TEAM.md` + `.codebuddy/skills/npc-team/SKILL.md`（双源）：流水线主链 + 工作流程新增需求覆盖度检查 + ⏸CP2.5 暂停点，暂停确认表/门禁表/冒烟方法 F/验证点表/QA 角色卡片同步补齐；
+  - `scripts/validate-npc-team-prompt.js`：新增 5 道 prompt 级门禁（需求覆盖度检查/覆盖度矩阵/⏸CP2.5 暂停点/需求全覆盖语义/暂停卡模板）+ 文档级校验（暂停确认表/工作流程/门禁表/冒烟方法/验证点表）；
+  - `tests/validate-npc-team-prompt.test.js`：新增多个负向回归用例（删需求覆盖度检查/删 ⏸CP2.5/删开发落点矩阵/删 QA 职责等均拦截），用例 140→149 通过；
+  - `README.md`：接力模式说明补齐需求覆盖度检查 + ⏸CP2.5 暂停点。
+
 - **补建 MCP ESLint 静态规则检查（PR #200，Issue #185）** — 消灭 `wps-office-mcp` 的「僵尸 lint 脚本」（`npm run lint` 声明但从未安装/运行），落地 Issue #147 质量红线「npm run lint 检查代码」：
   - `wps-office-mcp` devDependencies 新增 `eslint@^8.57.0`、`@typescript-eslint/parser@^8`、`@typescript-eslint/eslint-plugin@^8`；
   - 新增 `wps-office-mcp/.eslintrc.cjs`（ESLint 8 + `@typescript-eslint/recommended` 规则，适配项目 CJS 风格与 jest 测试文件）；
