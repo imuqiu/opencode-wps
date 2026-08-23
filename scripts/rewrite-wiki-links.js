@@ -37,9 +37,9 @@ const path = require('path');
 
 const rootDir = path.resolve(__dirname, '..');
 
-// 仓库 slug 与默认分支（CNB 平台）
-const REPO_SLUG = 'lnxsun/opencode-wps';
-const DEFAULT_BRANCH = 'main';
+// 仓库 slug 与默认分支（CNB 平台）；优先取环境变量，兜底默认值
+const REPO_SLUG = process.env.CNB_REPO_SLUG || 'lnxsun/opencode-wps';
+const DEFAULT_BRANCH = process.env.CNB_DEFAULT_BRANCH || 'main';
 const BLOB_BASE = `https://cnb.cool/${REPO_SLUG}/-/blob/${DEFAULT_BRANCH}`;
 const TREE_BASE = `https://cnb.cool/${REPO_SLUG}/-/tree/${DEFAULT_BRANCH}`;
 
@@ -74,7 +74,7 @@ function rewriteTarget(target, fileAbs) {
   // 仅处理以 ./ 或 ../ 开头的仓库相对链接
   if (!/^\.\.?\//.test(target)) return target;
 
-  // 拆分锚点（#xxx）
+  // 拆分锚点（#xxx）；锚点原样保留，Markdown 渲染器（CNB blob）可自动解析中文标题
   let hash = '';
   let body = target;
   const hashIdx = target.indexOf('#');
