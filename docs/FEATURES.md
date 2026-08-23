@@ -2,7 +2,7 @@
 
 本文档详细介绍 OpenCode WPS 的两大特色功能：**文档填写（模板自动填值）** 与 **大文档校对（铁律 3.0）**。
 
-> 📖 日常使用方式（打开面板/对话操作/Agents 调用）见 [USAGE.md](./USAGE.md)。
+> 📖 日常使用方式（打开面板/对话操作/Agents 调用）见 [USAGE.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/USAGE.md)。
 
 ## 文档填写 — 模板自动化填值
 
@@ -123,7 +123,7 @@ before 钩子拦截违规 → 工具执行 → after 钩子更新状态 → befo
 - 合同/公文/学术文档的格式一致性校对
 - 批量校对 + 批量修正（铁律 3.0 确保每批严格闭环）
 
-> 📖 校对技术设计细节见 [proofread-fluency-conciseness-design.md](./proofread-fluency-conciseness-design.md)；治理插件实现见 [AGENTS.md](../AGENTS.md) 与 `.opencode/plugins/governance.js`。
+> 📖 校对技术设计细节见 [proofread-fluency-conciseness-design.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/proofread-fluency-conciseness-design.md)；治理插件实现见 [AGENTS.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/AGENTS.md) 与 `.opencode/plugins/governance.js`。
 
 > ℹ️ P1-P16 共 16 条规则，表格中 P2-P3/P4-P7/P8-P10 为编号合并展示，实际每条规则均独立在 `governance.js` 实现。本次重构（Issue #151）在单 agent 逐批校对基础上，新增 **P19/P20/P21/P22** 以支持「规划/管理/执行/报告」4-subagent 并行协同（详见下文「校对 Subagent 组协同」）。
 

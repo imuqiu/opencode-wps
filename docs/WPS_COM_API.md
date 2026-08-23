@@ -99,7 +99,7 @@ $ppt.Quit()
 
 ## 常用操作示例
 
-> **架构说明**：以下示例使用 `New-Object -ComObject` 创建新实例，便于独立演示。本项目实际使用 `[System.Runtime.InteropServices.Marshal]::GetActiveObject()` 获取已运行的 WPS 实例（如上方所示），避免重复创建进程。详见 [WPS_COM_PS1.md](./WPS_COM_PS1.md)。
+> **架构说明**：以下示例使用 `New-Object -ComObject` 创建新实例，便于独立演示。本项目实际使用 `[System.Runtime.InteropServices.Marshal]::GetActiveObject()` 获取已运行的 WPS 实例（如上方所示），避免重复创建进程。详见 [WPS_COM_PS1.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/WPS_COM_PS1.md)。
 
 ### 文字 - 读取文档内容
 

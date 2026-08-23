@@ -2,7 +2,7 @@
 
 本文档是 OpenCode WPS 的**完整使用手册**，覆盖从快速上手到深度使用的全部内容：打开 AI 对话面板、完整对话操作、WPS 专用 Agents 调用、常用文档操作场景、OpenCode 服务管理与配置。
 
-> 若你刚接触本项目，建议先通读 [INSTALLATION.md](./INSTALLATION.md) 完成安装，再回到本文档。三平台完整说明见 [WINDOWS.md](./WINDOWS.md) / [MAC.md](./MAC.md) / [LINUX.md](./LINUX.md)；问题排查见 [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)。
+> 若你刚接触本项目，建议先通读 [INSTALLATION.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/INSTALLATION.md) 完成安装，再回到本文档。三平台完整说明见 [WINDOWS.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/WINDOWS.md) / [MAC.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/MAC.md) / [LINUX.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/LINUX.md)；问题排查见 [TROUBLESHOOTING.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/TROUBLESHOOTING.md)。
 
 ---
 
@@ -32,7 +32,7 @@
 
 **第一条消息**：在输入框输入自然语言指令（如「把标题设为黑体三号」），按 Enter 或点击发送，AI 即开始处理。若涉及文档操作，AI 会自动调用 MCP 工具读写 WPS 当前活动文档。
 
-> ⚠️ **使用前提**：MCP 操作（读写文档）要求 **WPS 处于运行状态**，且当前有打开的文档。若连接不上，先按 [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) 排查，或在**仓库根目录**运行 `cd wps-office-mcp && npm install && npm run build && cd ..` 后重启 OpenCode。
+> ⚠️ **使用前提**：MCP 操作（读写文档）要求 **WPS 处于运行状态**，且当前有打开的文档。若连接不上，先按 [TROUBLESHOOTING.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/TROUBLESHOOTING.md) 排查，或在**仓库根目录**运行 `cd wps-office-mcp && npm install && npm run build && cd ..` 后重启 OpenCode。
 
 ---
 
@@ -293,7 +293,7 @@ MCP 服务端 **write 类操作**（含校对报告 `generateProofreadReport` �
 - **修改方式**：编辑源目录 `agents/*.md`，运行 `node install-addons.js` 同步，重启 OpenCode 生效
 - **自定义新 Agent**：在 `agents/` 新建 `*.md`（含 frontmatter），同步后即可在 Agent 列表中选择
 
-> 📖 Agents 与 Skills 的关系、Skills 详细说明见 [SKILLS.md](./SKILLS.md)。
+> 📖 Agents 与 Skills 的关系、Skills 详细说明见 [SKILLS.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/SKILLS.md)。
 
 ---
 
@@ -334,7 +334,7 @@ MCP 服务端 **write 类操作**（含校对报告 `generateProofreadReport` �
 | 混合任务 | 「把 Excel 里的数据做成 PPT 图表」 |
 | 通用     | 「帮我整理一下当前打开的文档」     |
 
-> 📖 特色功能（模板填值 + 校对铁律 3.0）的完整工作流与治理规则见 [FEATURES.md](./FEATURES.md)。
+> 📖 特色功能（模板填值 + 校对铁律 3.0）的完整工作流与治理规则见 [FEATURES.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/FEATURES.md)。
 
 ---
 
@@ -389,7 +389,7 @@ curl http://127.0.0.1:14097/docinfo
 - **防误报/防振荡**：服务真实停止时不会误报「运行中」；SSE 已连接时信任该最强信号，避免每 10s 的 chat↔setup 状态闪烁。
 - **探测冷却**：服务真停 + Launcher 不可达时，探测性 SSE 连接最多每 30s 创建一次（冷却守卫），避免周期性失败连接风暴。
 
-> 📖 若状态栏长期显示「已停止」而服务实际在跑，见 [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)「服务运行中但状态栏显示已停止」。
+> 📖 若状态栏长期显示「已停止」而服务实际在跑，见 [TROUBLESHOOTING.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/TROUBLESHOOTING.md)「服务运行中但状态栏显示已停止」。
 
 ### 6.2 各平台 Launcher 与自启
 
@@ -410,7 +410,7 @@ curl http://127.0.0.1:14097/docinfo
 | `58890` | WPS 服务保活     | Win/Mac 内置 RelayHttpServer 探测口（`wps-keepalive.ts` 定期探测，断开自动重启） |
 | `3444`  | 开发服务器       | `opencode-wps/serve.js` 静态开发服务器（仅开发用）                               |
 
-> 📚 **交叉参考**：端口对应的 MCP Server 三层工具体系与开发映射详见 [DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md#三层工具体系)；内置工具完整清单与两级网关调用规范详见 [SKILLS.md](./SKILLS.md#内置工具12-个所有-skill-共用)。
+> 📚 **交叉参考**：端口对应的 MCP Server 三层工具体系与开发映射详见 [DEVELOPMENT_GUIDE.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/DEVELOPMENT_GUIDE.md#三层工具体系)；内置工具完整清单与两级网关调用规范详见 [SKILLS.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/SKILLS.md#内置工具12-个所有-skill-共用)。
 
 ### 6.4 手动管理
 
@@ -426,7 +426,7 @@ node launcher-mac.js
 node launcher-linux.js
 ```
 
-> 📖 更详细的平台特定服务管理见 [WINDOWS.md](./WINDOWS.md) / [MAC.md](./MAC.md) / [LINUX.md](./LINUX.md)。
+> 📖 更详细的平台特定服务管理见 [WINDOWS.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/WINDOWS.md) / [MAC.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/MAC.md) / [LINUX.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/LINUX.md)。
 
 ### 6.5 黑窗闪现说明（Windows）
 
@@ -435,7 +435,7 @@ node launcher-linux.js
 - **关闭服务**：Launcher 通过多个 `execSync` 子进程（`netstat` 查端口 → `powershell`/`wmic` 验证进程名 → `taskkill` 结束进程）停止服务，端口 14096 上可能同时存在主进程与多个 SSE 连接，逐 PID 验证+kill 曾累积闪现最多 13 个黑窗。所有 `execSync` 现统一经 `hiddenExecSync()` 强制 `windowsHide:true`（`CREATE_NO_WINDOW`）彻底隐藏。
 - **启动服务**：`spawn` 启动 OpenCode 时，`.cmd` shim（npm 全局 `opencode.cmd` / 无扩展名 PATH shim）依赖 `shell:true` 曾导致嵌套控制台进程闪现 1 个黑窗。现 `.cmd` 分支改**显式 `cmd.exe /d /s /c` 包装**（`shell:false` + `windowsHide:true` + `windowsVerbatimArguments:true`），`.exe`/`.ps1` 直启分支统一走 `hiddenSpawn()`，所有 `spawn` 强制 `windowsHide:true`。
 
-若仍观察到黑窗闪现，请反馈复现步骤与 `opencode-serve.log`（见 [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)）。
+若仍观察到黑窗闪现，请反馈复现步骤与 `opencode-serve.log`（见 [TROUBLESHOOTING.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/TROUBLESHOOTING.md)）。
 
 ---
 
@@ -471,6 +471,6 @@ node launcher-linux.js
 - **MCP 操作依赖 WPS 运行**：无打开文档时文档类工具不可用
 - **Windows 为侧边栏 UI，Mac/Linux 为浏览器对话**：三者交互入口不同，能力一致
 - **WPS Chromium 内核限制**（Windows 侧边栏）：不支持 `fetch` Promise、`ReadableStream` 等现代 Web 特性，本项目已用 `XMLHttpRequest` + SSE 规避
-- **Linux 版为开发完成待实机验证**：见 [LINUX.md](./LINUX.md)
+- **Linux 版为开发完成待实机验证**：见 [LINUX.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/LINUX.md)
 
-> 📖 完整问题排查与避坑指南见 [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)。
+> 📖 完整问题排查与避坑指南见 [TROUBLESHOOTING.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/TROUBLESHOOTING.md)。

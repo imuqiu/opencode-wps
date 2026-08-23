@@ -1,6 +1,6 @@
 # 演进历史与致谢
 
-> 🏠 项目首页（README）见 [../README.md](../README.md)；本文档为 README 演进史的详细展开。
+> 🏠 项目首页（README）见 [../README.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/README.md)；本文档为 README 演进史的详细展开。
 
 ## 演进历程
 

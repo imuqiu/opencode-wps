@@ -2,9 +2,9 @@
 
 OpenCode WPS 的 macOS 版支持，为 macOS 桌面环境下的 WPS Office for Mac 提供 OpenCode AI 能力。Mac 版与 Linux 版同架构（反向轮询桥），因为 Mac 版 WPS 加载项运行在沙箱内，无法启动 HTTP 服务端。
 
-> 状态：✅ 完整支持（经 Issue #84/#86 Mac 侧彻底评审与修复，见 [CHANGELOG.md](../CHANGELOG.md)）。
+> 状态：✅ 完整支持（经 Issue #84/#86 Mac 侧彻底评审与修复，见 [CHANGELOG.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/CHANGELOG.md)）。
 
-> 📖 完整三平台安装指南（含 macOS 环境要求/路径速查/卸载）见 [INSTALLATION.md](./INSTALLATION.md)。
+> 📖 完整三平台安装指南（含 macOS 环境要求/路径速查/卸载）见 [INSTALLATION.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/INSTALLATION.md)。
 
 ## 架构总览
 
@@ -119,4 +119,4 @@ cd wps-office-mcp && npm install && npm run build && cd ..
 **Q: 轮询一直失败/退避？**
 查看 WPS 控制台日志与 launcher 日志（`~/Library/Logs/opencode-launcher.err`），确认 :58891 轮询服务已启动（MCP 服务器 `macPollServer` 在 darwin 平台自动 start）。
 
-> 📖 更多排查见 [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)；Linux 版同架构说明见 [LINUX.md](./LINUX.md)。
+> 📖 更多排查见 [TROUBLESHOOTING.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/TROUBLESHOOTING.md)；Linux 版同架构说明见 [LINUX.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/LINUX.md)。

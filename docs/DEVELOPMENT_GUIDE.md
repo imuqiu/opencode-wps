@@ -2,7 +2,7 @@
 
 本文档是 opencode-wps 的**完整开发手册**，面向开发者/贡献者，覆盖：开发环境搭建、项目结构、五大模块（插件/MCP/Skills/Agents/安装脚本）的开发指南、开发流程、代码规范、提交规范、测试、CI/CD 门禁、二次开发与常见问题。
 
-> 📖 架构与设计见 [ARCHITECTURE.md](./ARCHITECTURE.md)；代码审查规范见 [CODE_REVIEW_GUIDE.md](./CODE_REVIEW_GUIDE.md)；WPS JS 加载项专项开发见 [WPSJS_DEVELOPMENT.md](./WPSJS_DEVELOPMENT.md)。
+> 📖 架构与设计见 [ARCHITECTURE.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/ARCHITECTURE.md)；代码审查规范见 [CODE_REVIEW_GUIDE.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/CODE_REVIEW_GUIDE.md)；WPS JS 加载项专项开发见 [WPSJS_DEVELOPMENT.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/WPSJS_DEVELOPMENT.md)。
 
 ---
 
@@ -153,11 +153,11 @@ wps-office-mcp/
 
 | 层级 | 数量 | 命名 | 注册/调用方式 |
 |------|------|------|---------------|
-| 内置工具 | 12 | `wps_xxx` | 启动即注册，始终可用（含 `wps_office_search`/`wps_office_execute` Gateway；另含 2 个缓存内置工具 `wps_list_cache`/`wps_clear_cache`，完整清单见 [SKILLS.md](./SKILLS.md#内置工具12-个所有-skill-共用)） |
+| 内置工具 | 12 | `wps_xxx` | 启动即注册，始终可用（含 `wps_office_search`/`wps_office_execute` Gateway；另含 2 个缓存内置工具 `wps_list_cache`/`wps_clear_cache`，完整清单见 [SKILLS.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/SKILLS.md#内置工具12-个所有-skill-共用)） |
 | 注册工具 | ~240 | `wps_xxx_xxx` | 经 `tools/index.ts` 注册，Gateway 路由，有完整 TS handler |
 | COM Actions | ~257 | 短名称 | `wps_office_search` → `wps_office_execute` → PS1 兜底 |
 
-> 📚 **交叉参考**：内置工具完整清单与两级网关调用规范详见 [SKILLS.md](./SKILLS.md#内置工具12-个所有-skill-共用)；运行时端口/Launcher 管理（14096/14097/14098）与使用侧配置详见 [USAGE.md](./USAGE.md#63-端口速查)。
+> 📚 **交叉参考**：内置工具完整清单与两级网关调用规范详见 [SKILLS.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/SKILLS.md#内置工具12-个所有-skill-共用)；运行时端口/Launcher 管理（14096/14097/14098）与使用侧配置详见 [USAGE.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/USAGE.md#63-端口速查)。
 
 **开发流程**（新增一个工具）：
 1. 在 `src/tools/<category>/` 下新建 handler（类型安全 + 参数校验）
@@ -182,7 +182,7 @@ skills/wps-word/
 └── README.md   # 使用说明
 ```
 
-> 📖 修改 Skills 前**必读** `skills/README.md`；每个 Skill 的详细用法见 [SKILLS.md](./SKILLS.md)。
+> 📖 修改 Skills 前**必读** `skills/README.md`；每个 Skill 的详细用法见 [SKILLS.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/SKILLS.md)。
 
 **开发流程**：
 1. 编辑 `skills/<name>/SKILL.md`（或 README.md）
@@ -215,7 +215,7 @@ skills/wps-word/
 
 ### 3.6 安装脚本（`install-addons*.js`）
 
-三平台一键安装脚本（Windows/macOS/Linux 各 7-8 步）：安装插件、编译 MCP、配置 OpenCode、同步 Skills/Agents/Plugins、注册自启。实现细节见 [INSTALL_SCRIPT.md](./INSTALL_SCRIPT.md)。
+三平台一键安装脚本（Windows/macOS/Linux 各 7-8 步）：安装插件、编译 MCP、配置 OpenCode、同步 Skills/Agents/Plugins、注册自启。实现细节见 [INSTALL_SCRIPT.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/INSTALL_SCRIPT.md)。
 
 ### 3.7 跨平台共享层（`shared/wps-bridge/`）
 
@@ -245,7 +245,7 @@ opencode-wps-linux/                # Linux 平台产物（生成，勿手编）
 - **重复率基线**：`node scripts/sync-wps-bridge.js --report` 输出未单源化 handler（excel/ppt/word）在 mac/linux 间的归一化重复率基线，用于量化清理收益（Issue #189）。**只读模式**：不写回平台文件、不触发漂移校验。
 - **测试**：`node tests/wps-bridge-shared.test.js`（单源一致性/生成正确性/平台差异隔离/漂移检测）。
 
-> 💡 详细架构说明见 [ARCHITECTURE.md](./ARCHITECTURE.md)「共享层说明」。
+> 💡 详细架构说明见 [ARCHITECTURE.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/ARCHITECTURE.md)「共享层说明」。
 
 ---
 
@@ -475,6 +475,8 @@ $:
 - **`git_doc_dir`**：必填项，指定 codewiki 插件的临时工作目录（官方示例写法）。
 - **`knowledge_enabled: true`**：生成内容自动同步到仓库知识库，可被 AI 问答引用。
 - **触发时机**：仅 `tag_push` 事件触发（打 tag 时），与 `main.push` 全量门禁互不干扰。发布时打 tag 即可触发 Wiki 生成，生成后仓库首页出现 Wiki 入口。
+
+> ⚠️ **文档链接规范（Issue #204）**：codewiki 生成 Wiki 时**不会重写仓库内相对链接**，若 `docs/` 文档使用相对路径（`./xxx.md`、`../xxx.md`）互相引用，Wiki 页面内点击会 404。因此 `docs/` 与根 `README.md` 中的内部链接**一律使用 CNB blob 绝对链接**（`https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/xxx.md`），由脚本 `scripts/rewrite-wiki-links.js` 统一维护，并以 `npm run validate:wikilinks` 在 CI 校验，禁止新增相对链接。
 
 ---
 

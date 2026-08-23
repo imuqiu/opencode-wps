@@ -25,7 +25,7 @@ main:
             cd wps-office-mcp && npm ci && cd ..
             # 统一门禁入口：validate 系列 + format:check + lint + test + test:e2e（Issue #147 十四条质量红线）
             # preflight 已聚合：
-            #   - validate:settings/versions/toolcounts/npc-team（版本/工具数/提示词门禁）
+            #   - validate:settings/versions/toolcounts/npc-team/wikilinks（版本/工具数/提示词/wiki链接门禁）
             #   - format:check（Prettier）
             #   - lint（全仓 .js 语法门禁 node --check，覆盖各平台 handler/main/launcher/脚本）
             #   - test（run-root-tests.js 聚合全部根单元测试：security/launcher/install-permission/mac-bridge/setcellformat/wps-bridge-shared 等）

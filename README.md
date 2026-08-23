@@ -17,9 +17,9 @@
 - **NPC Team 总指挥（零积分）** — 召唤官方免费 `@CodeBuddy` 一句「调用 NPC_TEAM skill」，7 位专家**接力**跑完研发全流程（默认接力模式：每次召唤只执行一步、独立留痕；评审-修复循环自动连续执行，每步在 PR 分别留痕），零平台积分
 - **一键安装** — `node install-addons.js` 自动完成全部组件安装，开机自启
 
-> 💡 **NPC Team（零积分）与 CNB Skills 不是 WPS 插件功能**：`@CodeBuddy`、NPC_TEAM 提示词、`.codebuddy/skills/` 等属于 **cnb.cool 平台的开发辅助工具**，用于在 CNB 平台（Issue/PR/对话）辅助研发，与 WPS 插件本体无关。详见 [docs/NPC_TEAM.md](./docs/NPC_TEAM.md)。
+> 💡 **NPC Team（零积分）与 CNB Skills 不是 WPS 插件功能**：`@CodeBuddy`、NPC_TEAM 提示词、`.codebuddy/skills/` 等属于 **cnb.cool 平台的开发辅助工具**，用于在 CNB 平台（Issue/PR/对话）辅助研发，与 WPS 插件本体无关。详见 [docs/NPC_TEAM.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/NPC_TEAM.md)。
 
-> 📖 详细功能说明见 [docs/FEATURES.md](./docs/FEATURES.md)。
+> 📖 详细功能说明见 [docs/FEATURES.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/FEATURES.md)。
 
 ## 快速开始
 
@@ -48,7 +48,7 @@ node install-addons-linux.js    # Linux（8 步自动安装）
 
 安装完成后重启 WPS，功能区出现 **OpenCode AI** 标签页：Windows 点击 **打开面板** 即可开始对话；macOS / Linux 点击 **打开Web** 在浏览器中对话。
 
-> 📖 三平台完整安装步骤、目录路径与卸载说明见 [docs/INSTALLATION.md](./docs/INSTALLATION.md)。
+> 📖 三平台完整安装步骤、目录路径与卸载说明见 [docs/INSTALLATION.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/INSTALLATION.md)。
 
 ## 使用方式
 
@@ -56,7 +56,7 @@ node install-addons-linux.js    # Linux（8 步自动安装）
 - **macOS / Linux**：Ribbon 点击「打开Web」，浏览器中对话，插件轮询桥操作文档
 - **对话能力**：SSE 流式输出、Markdown 渲染、会话管理、Agent 选择、`@wps-word` 等子 agent 调用
 
-> 📖 完整使用指南见 [docs/USAGE.md](./docs/USAGE.md)；问题排查见 [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md)。
+> 📖 完整使用指南见 [docs/USAGE.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/USAGE.md)；问题排查见 [docs/TROUBLESHOOTING.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/TROUBLESHOOTING.md)。
 
 ## 项目架构（一图速览）
 
@@ -76,18 +76,18 @@ WPS Office MCP 服务器 (12 内置 + ~240 handler + ~257 COM Actions)
 Win: PowerShell COM 桥接  /  Mac·Linux: HTTP 轮询 (反向轮询插件)
 ```
 
-> 📖 完整架构（4 层组件 + 十层调用链 + 平台差异）见 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)。
+> 📖 完整架构（4 层组件 + 十层调用链 + 平台差异）见 [docs/ARCHITECTURE.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/ARCHITECTURE.md)。
 
 ## 文档地图
 
 | 分类            | 文档                                                                                                                                                                                                   |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 🧭 **使用**     | [安装指南](./docs/INSTALLATION.md) · [使用指南](./docs/USAGE.md) · [特色功能](./docs/FEATURES.md) · [问题排查](./docs/TROUBLESHOOTING.md)                                                              |
-| 🔧 **开发**     | [开发指南](./docs/DEVELOPMENT_GUIDE.md) · [代码审查](./docs/CODE_REVIEW_GUIDE.md) · [WPS JS 开发](./docs/WPSJS_DEVELOPMENT.md) · [安装脚本说明](./docs/INSTALL_SCRIPT.md) · [Skills](./docs/SKILLS.md) |
-| 🖥️ **平台专题** | [Windows 支持](./docs/WINDOWS.md) · [macOS 支持](./docs/MAC.md) · [Linux 支持](./docs/LINUX.md)                                                                                                        |
-| 📚 **内部参考** | [架构](./docs/ARCHITECTURE.md) · [MCP](./docs/MCP.md) · [API 参考](./docs/OPENCODE_API.md) · [安全](./docs/SECURITY.md) · [NPC Team](./docs/NPC_TEAM.md)                                               |
+| 🧭 **使用**     | [安装指南](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/INSTALLATION.md) · [使用指南](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/USAGE.md) · [特色功能](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/FEATURES.md) · [问题排查](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/TROUBLESHOOTING.md)                                                              |
+| 🔧 **开发**     | [开发指南](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/DEVELOPMENT_GUIDE.md) · [代码审查](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/CODE_REVIEW_GUIDE.md) · [WPS JS 开发](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/WPSJS_DEVELOPMENT.md) · [安装脚本说明](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/INSTALL_SCRIPT.md) · [Skills](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/SKILLS.md) |
+| 🖥️ **平台专题** | [Windows 支持](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/WINDOWS.md) · [macOS 支持](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/MAC.md) · [Linux 支持](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/LINUX.md)                                                                                                        |
+| 📚 **内部参考** | [架构](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/ARCHITECTURE.md) · [MCP](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/MCP.md) · [API 参考](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/OPENCODE_API.md) · [安全](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/SECURITY.md) · [NPC Team](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/NPC_TEAM.md)                                               |
 
-> 📚 完整文档中心（含全部 24 份顶层文档 + 2 份设计规格的索引）见 [docs/README.md](./docs/README.md)。
+> 📚 完整文档中心（含全部 24 份顶层文档 + 2 份设计规格的索引）见 [docs/README.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/README.md)。
 
 ## NPC 研发助手（CNB 平台开发辅助工具，与 WPS 插件无关）
 
@@ -103,7 +103,7 @@ Win: PowerShell COM 桥接  /  Mac·Linux: HTTP 轮询 (反向轮询插件)
 
 > ⚡ **默认接力模式（每步独立调用；评审-修复循环自动连续执行）**：每次召唤只执行流水线中一个步骤，输出【接力卡】（含任务书 + 下一步召唤话术）后立即停下，用户逐步召唤下一棒续跑——每步独立调用、独立留痕、独立可见，步间天然可确认/纠正/停止，彻底杜绝"单会话闷头跑完 + 编造全绿"；**例外：5/12 评审-修复循环自动连续执行**（用户要求跑 N 轮时同一次召唤内自动跑完 N 轮直至清零，**每一步（评审/修复/复评）都在 PR 分别留痕，留痕以「每步」为粒度而非「每轮」**，中途不暂停、无需逐棒召唤）；**6/12 测试通过后做需求覆盖度检查**（逐条核对开发落点/测试覆盖是否覆盖全部需求，输出覆盖度矩阵）并经 **⏸CP2.5 需求覆盖确认暂停**待用户确认；**8/12 PR 合并前经 ⏸CP3 暂停待用户确认**（输出【合并确认卡】，只有用户确认才合并，禁止未确认就合并/假装已合并）；**9/12 发布真实执行（四要素）**（更新版本号 / 形成 CHANGELOG / 发布产物 / 形成 Release Notes）并留痕。也支持用户明确要求时的全程模式（一次跑完，保留 ⏸CP1/⏸CP2/⏸CP2.5/⏸CP3 暂停确认）。
 
-> 📖 使用方式与提示词见 [docs/NPC_TEAM.md](./docs/NPC_TEAM.md)。
+> 📖 使用方式与提示词见 [docs/NPC_TEAM.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/NPC_TEAM.md)。
 
 ## 交流群
 
@@ -115,8 +115,8 @@ Win: PowerShell COM 桥接  /  Mac·Linux: HTTP 轮询 (反向轮询插件)
 
 ## License
 
-[MIT](./LICENSE)
+[MIT](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/LICENSE)
 
 ---
 
-📖 项目演进历史与致谢见 [docs/HISTORY.md](./docs/HISTORY.md)。
+📖 项目演进历史与致谢见 [docs/HISTORY.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/HISTORY.md)。

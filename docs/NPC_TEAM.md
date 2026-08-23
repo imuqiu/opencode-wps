@@ -1,6 +1,6 @@
 # NPC Team 总指挥 — 一段提示词，让官方免费 @CodeBuddy 化身 NPC Team
 
-> 🏠 项目首页见 [../README.md](../README.md)；日常使用方式见 [USAGE.md](./USAGE.md)。
+> 🏠 项目首页见 [../README.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/README.md)；日常使用方式见 [USAGE.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/USAGE.md)。
 
 > ⚠️ **本文档描述的是 cnb.cool 平台开发辅助工具，与 WPS 插件无关**：`@CodeBuddy`、NPC_TEAM 提示词、`.codebuddy/skills/npc-team/` 均属于 CNB 平台研发辅助能力，**不随 `install-addons*.js` 安装、不进入插件目录（`%APPDATA%`/`~/Library`/`~/.local`）、不依赖 WPS 运行**，使用对象是 CNB 平台上的开发者，而非 WPS 插件使用者。
 
