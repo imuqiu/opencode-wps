@@ -11,7 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **方案 A：手动上传 docs/ 到 Wiki 修复链接 404（Issue #117/#204）** — 由于 codewiki 插件 LLM 生成存在平台侧缺陷（无法自动生成 Wiki），新增脚本 `scripts/upload-wiki.js`，在 `.cnb.yml` 的 `tag_push` 中自动调用 CNB Wiki 上传 API（`POST /{repo}/-/upload/wiki/file`），把 `docs/`（已改写为 CNB blob 绝对链接）按 4 大分类（使用指南/开发指南/平台专题/内部参考）重新上传为 Wiki 页面，从而修复 Wiki 内链接 404。
+- **方案 A：手动上传 docs/ 到 Wiki 修复链接 404（Issue #117/#204）** — 由于 codewiki 插件 LLM 生成存在平台侧缺陷（无法自动生成 Wiki），新增脚本 `scripts/upload-wiki.js`，在 `.cnb.yml` 的 `tag_push` 中尝试调用 CNB Wiki 上传 API（`POST /{repo}/-/upload/wiki/file`），把 `docs/`（已改写为 CNB blob 绝对链接）按 4 大分类（使用指南/开发指南/平台专题/内部参考）重新上传为 Wiki 页面。
+
+### Note
+
+- **方案 A 实测结论（2026-08-23）**：`upload/wiki/file` 为 CNB 内部未公开 API，在 CI（tag_push）环境下流水线临时令牌 `CNB_TOKEN` 无法认证上传——JSON body 返回 `401 errcode:16`（user not logged in），multipart 返回 `400 errcode:3`（Invalid argument）。`upload-wiki.js` 当前在 CI 中不会成功上传，需用户本人（OAuth 权限）通过网页手动上传修正后的 docs/ 覆盖旧版 Wiki，或等待平台修复 codewiki 插件 LLM 缺陷后自动生成。脚本保留作平台能力恢复后的自动尝试。
 
 ### Changed
 

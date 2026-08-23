@@ -678,8 +678,11 @@ codewiki 将仓库 `docs/` 文档生成到 Wiki 平台时，**不会重写文档
    - `node scripts/rewrite-wiki-links.js`（实际改写）
    - `node scripts/rewrite-wiki-links.js --check`（CI 校验，见 `npm run validate:wikilinks`）
 3. 将修正后的 docs/ 重新上传到 Wiki（方案 A）：
-   - 由于 codewiki 插件 LLM 生成存在平台侧缺陷（见上「十三」），改用 `scripts/upload-wiki.js` 直接调用 CNB Wiki 上传 API，把 docs/ 按 4 大分类重新上传为 Wiki 页面。
+   - 由于 codewiki 插件 LLM 生成存在平台侧缺陷（见上「十三」），设计上改用 `scripts/upload-wiki.js` 直接调用 CNB Wiki 上传 API，把 docs/ 按 4 大分类重新上传为 Wiki 页面。
    - `node scripts/upload-wiki.js`（在 `.cnb.yml` 的 `tag_push` 中自动执行，见 `.cnb.yml`）。
+   - ⚠️ **实测结论（Issue #117，2026-08-23）**：该 API（`upload/wiki/file`）在 CI（tag_push）环境下**无法认证上传**——JSON body 返回 `401 errcode:16`（user not logged in），multipart 返回 `400 errcode:3`（Invalid argument）。即流水线临时令牌 `CNB_TOKEN` 对该内部 API 无权限（对 `docker login` 的 OCI 有效，但对 HTTP 上传接口不可用）。**因此当前 `upload-wiki.js` 在 CI 中不会成功上传**，需通过以下任一方式上传修正后的 docs/ 至 Wiki：
+     - **用户本人手动上传**（有 OAuth 权限）：登录 CNB 网页，进入 Wiki 编辑界面，把修正后的 docs/（blob 绝对链接版）重新上传覆盖旧版；或
+     - **等待平台修复 codewiki 插件 LLM 缺陷**后重新打 tag，由 codewiki 自动生成覆盖。
    - 上传后 Wiki 内链接即可正常跳转（blob 绝对链接可访问）。
 
 ### 判定要点
