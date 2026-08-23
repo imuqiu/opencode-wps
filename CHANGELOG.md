@@ -7,9 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.4] - 2026-08-23
+
 ### Fixed
 
 - **修复 Wiki 挂载后内部链接 404（Issue #204）** — codewiki 生成 Wiki 时不重写仓库内相对链接，导致 `docs/` 与根 `README.md` 中 110+26 处相对路径链接在 Wiki 页面点击后 404。本次将全部内部相对链接改写为 CNB blob 绝对链接（`https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/xxx.md`，与知识库入库口径一致），新增脚本 `scripts/rewrite-wiki-links.js` 统一维护 + `npm run validate:wikilinks` CI 校验。新增 `docs/TROUBLESHOOTING.md`「十四、Wiki 已生成但内部链接点击 404」排查指引。重新打 tag 触发 codewiki 后 Wiki 内链接即可正常跳转。
+
+### Changed
+
+- **版本号升级至 1.9.4** — 根 `package.json` / `package-lock.json` / `opencode-wps/`（package.json、config.js、manifest.xml）/ `opencode-wps-linux/`（package.json、manifest.xml）/ `wps-office-mcp/`（package.json、package-lock.json）版本一致升级至 1.9.4，`validate-versions` 校验通过。
 
 ## [1.9.1] - 2026-08-23
 
