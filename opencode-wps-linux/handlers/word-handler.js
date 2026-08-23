@@ -399,7 +399,6 @@ registerHandler('setParagraph', function (params) {
   }
 });
 
-
 var COLOR_NAMES = {
   red: toBgr(0xff0000),
   green: toBgr(0x00ff00),

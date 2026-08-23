@@ -259,8 +259,7 @@ function loadFullHandlers(platform) {
   vm.runInThisContext(reg, { filename: 'registry.js' });
   global.HANDLERS = global.HANDLERS || {};
   __handlers = global.HANDLERS;
-  var dir =
-    platform === 'mac' ? 'opencode-wps-assistant' : 'opencode-wps-linux';
+  var dir = platform === 'mac' ? 'opencode-wps-assistant' : 'opencode-wps-linux';
   // 依次加载：response → registry → handler-utils → 各 handler
   vm.runInThisContext(
     fs.readFileSync(path.join(ROOT, 'shared', 'wps-bridge', 'response.js'), 'utf-8'),
@@ -286,7 +285,10 @@ function loadFullHandlers(platform) {
 }
 
 test('handler-utils.js: mac/linux 均与 shared 逐字节一致', function () {
-  var shared = fs.readFileSync(path.join(ROOT, 'shared', 'wps-bridge', 'handler-utils.js'), 'utf-8');
+  var shared = fs.readFileSync(
+    path.join(ROOT, 'shared', 'wps-bridge', 'handler-utils.js'),
+    'utf-8'
+  );
   var mac = fs.readFileSync(
     path.join(ROOT, 'opencode-wps-assistant', 'handlers', 'handler-utils.js'),
     'utf-8'
@@ -301,9 +303,20 @@ test('handler-utils.js: mac/linux 均与 shared 逐字节一致', function () {
 
 test('handler-utils: 14 个纯函数在沙箱全局可用（两平台）', function () {
   var expected = [
-    'getExcelSheet', 'colToLetter', 'resolveColumnLetter', 'colToNumber', 'resolveRowCol',
-    'resolveAlignment', 'toExcelColor', 'findNotesShape', 'findShape', 'getPPT',
-    'resolveSlideIndex', 'toRgb', 'getSelectionRange', 'toBgr',
+    'getExcelSheet',
+    'colToLetter',
+    'resolveColumnLetter',
+    'colToNumber',
+    'resolveRowCol',
+    'resolveAlignment',
+    'toExcelColor',
+    'findNotesShape',
+    'findShape',
+    'getPPT',
+    'resolveSlideIndex',
+    'toRgb',
+    'getSelectionRange',
+    'toBgr',
   ];
   ['mac', 'linux'].forEach(function (p) {
     loadFullHandlers(p);
@@ -327,10 +340,7 @@ test('handler-utils: 纯函数已从各 handler 移除（不再重复定义）',
   srcs.forEach(function (f) {
     var src = fs.readFileSync(f, 'utf-8');
     duplicated.forEach(function (fn) {
-      assertTrue(
-        !new RegExp('^function ' + fn + '\\(').test(src),
-        f + ' 不应再重复定义 ' + fn
-      );
+      assertTrue(!new RegExp('^function ' + fn + '\\(').test(src), f + ' 不应再重复定义 ' + fn);
     });
   });
 });
@@ -375,7 +385,10 @@ test('sync-wps-bridge --report：输出 excel/ppt/word 重复率基线', functio
   });
   // 必须输出重复率百分比（格式：xx.x% 或 xx%），证明检测真实执行而非空输出
   assertTrue(/mac 行在 linux 出现率/.test(out.stdout), '输出应含表头');
-  assertTrue(/\|\s*(excel|ppt|word)-handler\s*\|\s*\d+\s*\|\s*\d+\s*\|\s*\d+(\.\d+)?%\s*\|/.test(out.stdout), '输出行应为「行数|行数|百分比」格式');
+  assertTrue(
+    /\|\s*(excel|ppt|word)-handler\s*\|\s*\d+\s*\|\s*\d+\s*\|\s*\d+(\.\d+)?%\s*\|/.test(out.stdout),
+    '输出行应为「行数|行数|百分比」格式'
+  );
   // 三平台重复率应>0（真实文件存在且有重复），防止空跑
   assertTrue(/\d+%/.test(out.stdout), '应输出至少一个百分比');
 });

@@ -148,7 +148,9 @@ function runReport() {
   );
   console.log('|---------|-----------|-------------|---------------------|---------------------|');
   for (const r of rows) {
-    console.log(`| ${r.handler} | ${r.mac} | ${r.linux} | ${r.macPct.toFixed(1)}% | ${r.linuxPct.toFixed(1)}% |`);
+    console.log(
+      `| ${r.handler} | ${r.mac} | ${r.linux} | ${r.macPct.toFixed(1)}% | ${r.linuxPct.toFixed(1)}% |`
+    );
   }
   console.log(`\n合计实质行：mac ${totalMac} / linux ${totalLinux}`);
   console.log('说明：比例越接近 100% 说明两平台重复越严重，单源化收益越大。\n');
