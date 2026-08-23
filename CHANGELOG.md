@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.1] - 2026-08-23
+
+### Changed
+
+- **codewiki 使用免费 deepseek-v4-flash 模型生成 Wiki（Issue #117）** — 平台侧 codewiki 插件默认 LLM 模型已切换为免费的 `deepseek-v4-flash`（不消耗 AI 积分），规避此前因平台 AI 积分用尽导致的 Wiki 生成失败。仓库 `.cnb.yml` codewiki 配置显式指定 `llm_model_name: deepseek-v4-flash`，重新打 tag 即可触发 Wiki 自动生成。
+
+- **版本号升级至 1.9.1** — 根 `package.json` / `package-lock.json` / `opencode-wps/`（package.json、config.js、manifest.xml）/ `opencode-wps-linux/`（package.json、manifest.xml）/ `wps-office-mcp/`（package.json、package-lock.json）版本一致升级至 1.9.1，`validate-versions` 校验通过。
+
 ## [1.9.0] - 2026-08-22
 
 ### Added
