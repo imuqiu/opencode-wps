@@ -5,6 +5,14 @@
 
 > **2026-08-23 更新**：经核实，平台侧将 codewiki 插件默认 LLM 模型切换为 **`deepseek-v4-flash`（免费模型，不消耗 AI 积分）**。此前多次 Wiki 生成失败的另一根因（平台 AI 积分用尽）因此可被规避。仓库侧已同步在 `.cnb.yml` 的 codewiki 配置中显式指定 `llm_model_name: deepseek-v4-flash`，重新打 tag 即可触发 Wiki 生成。
 
+> **2026-08-24 复测（Issue #117 / #204 相关）**：docs/ 已改写为 CNB blob 绝对链接并合并（PR #205），仓库知识库已同步（114 chunks）。重新触发 codewiki 生成，**两个接入点（`use_codebuddy=0` 与 `use_codebuddy=1`）仍全部失败**，症状与 2026-08-23 完全一致——`LLM响应中未找到有效的Action标签, LLM响应预览: (空)` 持续约 3 分钟，随后 `agent.run() 返回空内容`，`wiki_status.json` 记录 `status: failed`，`exit code: 1`。工作区挂载与 docs/ 读取均正常（预检 `ENTRY_COUNT=34~37`、README 已正确复制），排除仓库侧问题。
+>
+> 构建容器内（与插件同环境）手工调用端点复测（`CNB_API_ENDPOINT=https://api.cnb.cool`、`CNB_TOKEN` 27 位）：
+> - `POST /-/ai/chat/completions`（use_codebuddy=0）→ **HTTP 404** `errcode:5 "Resource not found."`
+> - `POST /-/ai-ide/v2/chat/completions`（use_codebuddy=1）→ **HTTP 404** `errcode:5 "Resource not found."`
+>
+> 即：当前 LLM 接入端点对流水线临时令牌仍不可用（此前 401 `errcode:16`，现 404 `errcode:5`），导致 codewiki 插件拿不到任何 LLM 响应。需平台侧修复后，仓库重新打 tag 才能自动生成 Wiki。
+
 ---
 
 ## 1. 问题现象
