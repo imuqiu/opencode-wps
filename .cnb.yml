@@ -77,7 +77,14 @@ $:
   # 生成后仓库首页出现 Wiki 入口，并自动入库知识库（knowledge_enabled: true，可被 AI 问答引用）
   # 配置遵循 codewiki 插件 README 推荐模式：image 置于 stage 级 + git_doc_dir 指向工作区
   tag_push:
+    # 方案 A：手动上传 docs/ 到 Wiki（绕过 codewiki 插件 LLM 生成缺陷，Issue #117/#204）
+    # 将 docs/（已改写为 CNB blob 绝对链接）按 4 大分类重新上传为 Wiki 页面，
+    # 从而修复 Wiki 内链接 404。CNB_TOKEN 在 tag_push（push 类）事件下具有 OCI 权限。
     - stages:
+        - name: upload wiki docs
+          image: node:20
+          script: |
+            node scripts/upload-wiki.js
         - name: generate codewiki
           timeout: 10h
           image: cnbcool/codewiki:latest

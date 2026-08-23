@@ -677,7 +677,10 @@ codewiki 将仓库 `docs/` 文档生成到 Wiki 平台时，**不会重写文档
 2. 用脚本 `scripts/rewrite-wiki-links.js` 统一维护与改写：
    - `node scripts/rewrite-wiki-links.js`（实际改写）
    - `node scripts/rewrite-wiki-links.js --check`（CI 校验，见 `npm run validate:wikilinks`）
-3. 提交后重新打 tag 触发 codewiki 生成，Wiki 内链接即可正常跳转。
+3. 将修正后的 docs/ 重新上传到 Wiki（方案 A）：
+   - 由于 codewiki 插件 LLM 生成存在平台侧缺陷（见上「十三」），改用 `scripts/upload-wiki.js` 直接调用 CNB Wiki 上传 API，把 docs/ 按 4 大分类重新上传为 Wiki 页面。
+   - `node scripts/upload-wiki.js`（在 `.cnb.yml` 的 `tag_push` 中自动执行，见 `.cnb.yml`）。
+   - 上传后 Wiki 内链接即可正常跳转（blob 绝对链接可访问）。
 
 ### 判定要点
 
