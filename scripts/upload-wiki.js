@@ -13,6 +13,15 @@
  *   docs/（已由 scripts/rewrite-wiki-links.js 改写为 CNB blob 绝对链接）重新上传为
  *   Wiki 页面，从而修复 Wiki 内链接 404。
  *
+ * ⚠️ 实测结论（Issue #117 2026-08-23 已验证）：
+ *   本脚本在 tag_push（CI）环境下**无法通过 upload/wiki/file API 上传 Wiki**：
+ *   - JSON body（{path,content,branch}）→ 401 errcode:16「user is not logged in」
+ *   - multipart（file/content + path + branch）→ 400 errcode:3「Invalid argument」
+ *   即流水线临时令牌 CNB_TOKEN 对该内部 API 无认证/授权权限（docker login 有效但
+ *   HTTP 上传接口不可用）。上传修正后的 docs/ 至 Wiki 需用户本人（OAuth 权限）
+ *   通过网页手动上传，或等待平台修复 codewiki 插件 LLM 缺陷后自动生成。
+ *   本脚本保留作平台能力恢复后的自动尝试。
+ *
  * 用法（CI，tag_push 事件）：
  *   node scripts/upload-wiki.js
  *
