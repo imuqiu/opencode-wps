@@ -84,6 +84,8 @@ $:
         - name: upload wiki docs
           image: node:20
           script: |
+            # 诊断 upload/wiki/file API 的正确请求格式（Issue #117 实测 10401/errcode:3 定位）
+            node scripts/wiki-upload-diagnose.js
             node scripts/upload-wiki.js
     # codewiki 自动生成（平台侧修复 LLM 缺陷后自动生效，作为方案 A 的兜底）
     - stages:
