@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **方案 A：手动上传 docs/ 到 Wiki 修复链接 404（Issue #117/#204）** — 由于 codewiki 插件 LLM 生成存在平台侧缺陷（无法自动生成 Wiki），新增脚本 `scripts/upload-wiki.js`，在 `.cnb.yml` 的 `tag_push` 中自动调用 CNB Wiki 上传 API（`POST /{repo}/-/upload/wiki/file`），把 `docs/`（已改写为 CNB blob 绝对链接）按 4 大分类（使用指南/开发指南/平台专题/内部参考）重新上传为 Wiki 页面，从而修复 Wiki 内链接 404。
+
 ## [1.9.4] - 2026-08-23
 
 ### Fixed
