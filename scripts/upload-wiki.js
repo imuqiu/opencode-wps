@@ -87,7 +87,8 @@ function collectEntries() {
 /**
  * 上传单篇文档到 Wiki。
  * 调用 `POST /{repo}/-/upload/wiki/file`，Bearer CNB_TOKEN 认证。
- * body 为 application/json：{ path: Wiki 路径, content: 文档内容, branch }
+ * 请求体为 multipart/form-data：file 字段携带文件内容（Blob），path 字段携带 Wiki 路径，
+ * branch 字段携带目标分支。
  * @returns {Promise<{ok: boolean, status?: number, body?: string}>}
  */
 async function uploadFile(wikiPath, content) {
@@ -95,18 +96,18 @@ async function uploadFile(wikiPath, content) {
     throw new Error('环境变量 CNB_TOKEN 未设置，无法调用 wiki 上传 API');
   }
   const url = `${API_BASE}/${REPO_SLUG}/-/upload/wiki/file`;
-  const payload = {
-    path: wikiPath,
-    content,
-    branch: DEFAULT_BRANCH,
-  };
+  const form = new FormData();
+  // file 字段携带文件内容（Blob），path 字段携带 Wiki 路径，branch 携带目标分支
+  form.append('file', new Blob([content], { type: 'text/markdown' }), path.basename(wikiPath));
+  form.append('path', wikiPath);
+  form.append('branch', DEFAULT_BRANCH);
   const resp = await fetch(url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${CNB_TOKEN}`,
-      'Content-Type': 'application/json',
+      // 不手动设置 Content-Type，让 fetch 自动生成 multipart boundary
     },
-    body: JSON.stringify(payload),
+    body: form,
   });
   const text = await resp.text();
   return { ok: resp.ok, status: resp.status, body: text };
