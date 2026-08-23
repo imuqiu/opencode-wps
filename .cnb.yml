@@ -85,6 +85,8 @@ $:
           image: node:20
           script: |
             node scripts/upload-wiki.js
+    # codewiki 自动生成（平台侧修复 LLM 缺陷后自动生效，作为方案 A 的兜底）
+    - stages:
         - name: generate codewiki
           timeout: 10h
           image: cnbcool/codewiki:latest
