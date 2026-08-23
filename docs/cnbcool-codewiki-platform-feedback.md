@@ -3,6 +3,8 @@
 > 用途：面向 CNB 平台（cnb.cool）的缺陷反馈单，供平台侧 codewiki 插件（`cnbcool/codewiki`）维护者定位与修复。关联 Issue：[#117 生成wiki](https://cnb.cool/lnxsun/opencode-wps/-/issues/117)。
 > 状态：**提交待平台侧处理**。本单由仓库侧（`lnxsun/opencode-wps`）在完成全部仓库侧配置与诊断后整理，证据来自真实构建日志。
 
+> **2026-08-23 更新**：经核实，平台侧将 codewiki 插件默认 LLM 模型切换为 **`deepseek-v4-flash`（免费模型，不消耗 AI 积分）**。此前多次 Wiki 生成失败的另一根因（平台 AI 积分用尽）因此可被规避。仓库侧已同步在 `.cnb.yml` 的 codewiki 配置中显式指定 `llm_model_name: deepseek-v4-flash`，重新打 tag 即可触发 Wiki 生成。
+
 ---
 
 ## 1. 问题现象
