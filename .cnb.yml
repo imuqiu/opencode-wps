@@ -83,5 +83,6 @@ $:
           image: cnbcool/codewiki:latest
           settings:
             git_doc_dir: /${CNB_BUILD_WORKSPACE}/${CNB_REPO_SLUG}/codewiki
-            use_codebuddy: 0   # 使用 CNB AI 接入点（官方建议：不写死模型名，让插件走默认模型，见 Issue #117）
+            use_codebuddy: 0   # 使用 CNB AI 接入点
+            llm_model_name: deepseek-v4-flash   # 免费模型（不消耗 AI 积分），规避本月积分用尽导致的 Wiki 生成失败（Issue #117）
             knowledge_enabled: true   # 生成的 Wiki 自动入库仓库知识库
