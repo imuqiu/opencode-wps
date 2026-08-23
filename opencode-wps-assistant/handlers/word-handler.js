@@ -504,7 +504,6 @@ registerHandler('setParagraph', function (params) {
   }
 });
 
-
 // 将颜色参数统一解析为 BGR 整型：支持颜色名/#RRGGBB/RRGGBB；数字直接返回；非法返回 null
 // （setFont 与 setTextColor 共用，避免两处实现漂移）
 function parseColor(color) {

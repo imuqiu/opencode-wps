@@ -10,7 +10,6 @@ var COLOR_SCHEMES = {
   minimal: { title: 0x000000, body: 0x666666, accent: 0x999999 },
 };
 
-
 // 校验并归一化 slideIndex（必须为正整数且不越界）；非法返回 null
 // 大量 handler 直接 pres.Slides.Item(idx) 对越界抛错返回泛化 fail，统一前置校验给出明确错误
 
@@ -1958,7 +1957,6 @@ registerHandler('setImageStyle', function (params) {
     return fail('设置图片样式失败: ' + e.message);
   }
 });
-
 
 registerHandler('setBackgroundColor', function (params) {
   try {
