@@ -2,7 +2,7 @@
 
 OpenCode Skills 定义 AI 在特定领域的操作能力和工作流程。
 
-> ⚠️ **本文档只覆盖随 WPS 插件安装的 5 个 WPS 专用 Skills**（`skills/` 目录，随 `install-addons*.js` 同步到 `~/.opencode/skills/`）。仓库内另有的 `.codebuddy/skills/npc-team/`（NPC_TEAM Skill）属于 **cnb.cool 平台开发辅助工具**，不随插件安装、与 WPS 插件无关，见 [NPC_TEAM.md](./NPC_TEAM.md)。
+> ⚠️ **本文档只覆盖随 WPS 插件安装的 5 个 WPS 专用 Skills**（`skills/` 目录，随 `install-addons*.js` 同步到 `~/.opencode/skills/`）。仓库内另有的 `.codebuddy/skills/npc-team/`（NPC_TEAM Skill）属于 **cnb.cool 平台开发辅助工具**，不随插件安装、与 WPS 插件无关，见 [NPC_TEAM.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/NPC_TEAM.md)。
 
 > 本项目为 WPS Office 定义了 5 个 Skills：wps-excel、wps-word、wps-ppt、wps-office、wps-proofread
 
@@ -190,7 +190,7 @@ AI 识别：使用 wps-ppt skill
 
 > ⚠️ **禁止直接猜测工具名称**——必须经过 `wps_office_search` → `wps_office_execute` 两级网关，确保调用的是索引内真实存在的工具。
 
-> 📚 **交叉参考**：三层工具体系（内置/注册/COM Actions）的完整说明与新增工具流程详见 [DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md#三层工具体系)。
+> 📚 **交叉参考**：三层工具体系（内置/注册/COM Actions）的完整说明与新增工具流程详见 [DEVELOPMENT_GUIDE.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/DEVELOPMENT_GUIDE.md#三层工具体系)。
 
 ---
 
@@ -258,7 +258,7 @@ AI 识别：使用 wps-ppt skill
 5. 所有批次完成后生成 .校对报告.md 保存到文档目录
 ```
 
-> ⚠️ 校对**必须**按 铁律 3.0 严格执行（proofread → confirm → fix），禁止跳批/编造。详见 [FEATURES.md](./FEATURES.md)。
+> ⚠️ 校对**必须**按 铁律 3.0 严格执行（proofread → confirm → fix），禁止跳批/编造。详见 [FEATURES.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/FEATURES.md)。
 
 > ⚠️ ~~🧩 大文档 Subagent 组协同（Issue #151 重构，**已弃用**）~~：~~4 个校对 subagent（planner/manager/executor/reporter）协同~~ 经 Issue #179 真实会话实证在 opencode 上**触发不可靠**，已改为**单 agent 顺序执行 + 服务端强制**（分批/进度/门禁全部下沉 MCP 服务端，见 `skills/wps-proofread/SKILL.md`「校对执行模型」）。subagent 定义文件已删除（历史存档见 git 历史，Issue #189 清理）。
 

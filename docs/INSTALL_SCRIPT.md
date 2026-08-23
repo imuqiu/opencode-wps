@@ -1,6 +1,6 @@
 # 安装脚本说明
 
-> 📖 用户视角的三平台安装步骤（环境要求/路径速查/卸载）见 [INSTALLATION.md](./INSTALLATION.md)；本文档从实现角度解析安装脚本。
+> 📖 用户视角的三平台安装步骤（环境要求/路径速查/卸载）见 [INSTALLATION.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/INSTALLATION.md)；本文档从实现角度解析安装脚本。
 
 ## 概述
 
@@ -17,7 +17,7 @@
 
 ## install-addons.js（Windows 安装脚本）
 
-> 📖 Windows 平台专题（架构/前置条件/已知限制/常见问题）见 [WINDOWS.md](./WINDOWS.md)。
+> 📖 Windows 平台专题（架构/前置条件/已知限制/常见问题）见 [WINDOWS.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/WINDOWS.md)。
 
 ```bash
 node install-addons.js
@@ -42,7 +42,7 @@ node install-addons.js
 
 ## install-addons-mac.js（macOS 安装脚本）
 
-> 📖 macOS 平台专题（架构/前置条件/已知限制/常见问题）见 [MAC.md](./MAC.md)。
+> 📖 macOS 平台专题（架构/前置条件/已知限制/常见问题）见 [MAC.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/MAC.md)。
 
 ```bash
 node install-addons-mac.js
@@ -73,7 +73,7 @@ node install-addons-mac.js
 
 ## install-addons-linux.js（Linux 安装脚本）
 
-> 📖 Linux 平台专题（架构/前置条件/已知限制/常见问题）见 [LINUX.md](./LINUX.md)。
+> 📖 Linux 平台专题（架构/前置条件/已知限制/常见问题）见 [LINUX.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/LINUX.md)。
 
 ```bash
 npm install

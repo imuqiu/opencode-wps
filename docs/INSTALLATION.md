@@ -58,7 +58,7 @@ node install-addons.js
 
 安装完成后重启 WPS，功能区会出现 **OpenCode AI** 标签页。
 
-> 📖 Windows 完整说明（架构/组件清单/应用切换/已知限制/常见问题）见 [WINDOWS.md](./WINDOWS.md)。
+> 📖 Windows 完整说明（架构/组件清单/应用切换/已知限制/常见问题）见 [WINDOWS.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/WINDOWS.md)。
 
 ## macOS 安装
 
@@ -112,13 +112,13 @@ node launcher-mac.js
 
 重启 WPS Office for Mac，功能区会出现 **OpenCode AI** 标签页。
 
-> 📖 macOS 完整说明（架构/组件清单/应用切换/已知限制/常见问题）见 [MAC.md](./MAC.md)。
+> 📖 macOS 完整说明（架构/组件清单/应用切换/已知限制/常见问题）见 [MAC.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/MAC.md)。
 
 ## Linux 安装
 
 > Linux 版与 macOS 版同架构（反向轮询桥），插件独立目录 `opencode-wps-linux/`。状态：✅ 开发完成；⚠️ 尚未在真实 Linux + WPS 环境实测（需要实机验证）。
 
-> 📖 Linux 完整说明（架构/组件清单/应用切换/已知限制/常见问题）见 [LINUX.md](./LINUX.md)。
+> 📖 Linux 完整说明（架构/组件清单/应用切换/已知限制/常见问题）见 [LINUX.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/LINUX.md)。
 
 ### 1. 克隆仓库
 
@@ -166,7 +166,7 @@ node launcher-linux.js
 
 重启 WPS，功能区出现 **OpenCode AI** 标签页，点击 **打开Web** 即可在浏览器中对话。
 
-> 📖 Linux 完整说明（前置条件/组件清单/应用切换/已知限制/常见问题）见 [LINUX.md](./LINUX.md)。
+> 📖 Linux 完整说明（前置条件/组件清单/应用切换/已知限制/常见问题）见 [LINUX.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/LINUX.md)。
 
 ## 平台路径速查
 
@@ -194,6 +194,6 @@ node launcher-linux.js
 - **插件不显示** → 检查插件目录是否存在、WPS 是否重启、`publish.xml/jsplugins.xml` 是否注册
 - **MCP 连接失败** → 在仓库根目录运行 `cd wps-office-mcp && npm install && npm run build && cd ..`，然后重启 OpenCode
 - **Skills/Agents 未加载** → 在**仓库根目录**重新运行安装脚本 `node install-addons.js`（⚠️ `install-addons*.js` 位于仓库根目录，不在 `wps-office-mcp/` 内）+ 重启 OpenCode 服务
-- **Linux 实机验证** → 参考 [LINUX.md](./LINUX.md)「已知限制」「常见问题」章节
+- **Linux 实机验证** → 参考 [LINUX.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/LINUX.md)「已知限制」「常见问题」章节
 
-> 📖 更多排查见 [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)；安装脚本实现细节见 [INSTALL_SCRIPT.md](./INSTALL_SCRIPT.md)。
+> 📖 更多排查见 [TROUBLESHOOTING.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/TROUBLESHOOTING.md)；安装脚本实现细节见 [INSTALL_SCRIPT.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/INSTALL_SCRIPT.md)。

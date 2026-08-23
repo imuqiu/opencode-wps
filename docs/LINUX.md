@@ -4,7 +4,7 @@ OpenCode WPS 的 Linux 版支持，为 Linux 桌面环境下的 WPS Office 提�
 
 > 状态：✅ 开发完成（代码/脚本/测试就绪）；⚠️ 尚未在真实 Linux + WPS 环境实测（需要实机验证）。
 
-> 📖 完整三平台安装指南（含 Linux 环境要求/路径速查/卸载）见 [INSTALLATION.md](./INSTALLATION.md)。
+> 📖 完整三平台安装指南（含 Linux 环境要求/路径速查/卸载）见 [INSTALLATION.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/INSTALLATION.md)。
 
 ## 架构总览
 

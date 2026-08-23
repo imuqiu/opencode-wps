@@ -13,12 +13,13 @@
     "validate:npc-team": "node scripts/validate-npc-team-prompt.js",
     "validate:versions": "node scripts/validate-versions.js",
     "validate:toolcounts": "node scripts/validate-tool-counts.js",
+    "validate:wikilinks": "node scripts/rewrite-wiki-links.js --check",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "node scripts/run-root-tests.js",
     "test:e2e": "node tests/e2e.test.js",
     "lint": "node scripts/lint-js.js",
-    "preflight": "npm run validate:settings && npm run validate:versions && npm run validate:toolcounts && npm run validate:npc-team && npm run format:check && npm run lint && (cd wps-office-mcp && npm run lint) && npm run test && npm run test:e2e"
+    "preflight": "npm run validate:settings && npm run validate:versions && npm run validate:toolcounts && npm run validate:npc-team && npm run validate:wikilinks && npm run format:check && npm run lint && (cd wps-office-mcp && npm run lint) && npm run test && npm run test:e2e"
   },
   "keywords": [
     "opencode",

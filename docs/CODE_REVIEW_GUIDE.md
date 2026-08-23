@@ -126,7 +126,7 @@
 
 ### 1.4 安全性检查
 
-> 参考 [`SECURITY.md`](./SECURITY.md) 中关于 Launcher 本地回环设计的约束。
+> 参考 [`SECURITY.md`](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/SECURITY.md) 中关于 Launcher 本地回环设计的约束。
 
 #### 🔴 Blocker
 
@@ -135,7 +135,7 @@
 - **反序列化漏洞**：`eval` / `new Function` / `JSON.parse` 后直接执行
 - **WPS COM 越权**：调用了会写本地文件/注册表的 Action 但未走 `governance.js` 的 G4 路径安全检查
 - **硬编码密钥**：token、密码、API key 出现在源码中
-- **本地服务监听 `0.0.0.0`**：违反 [`SECURITY.md`](./SECURITY.md) 明确规定
+- **本地服务监听 `0.0.0.0`**：违反 [`SECURITY.md`](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/SECURITY.md) 明确规定
 - **XSS 风险**：`taskpane.html` 中使用 `innerHTML` 拼接用户/AI 返回的 Markdown 未转义
 - **未使用绝对路径**：WPS COM 操作必须用绝对路径（AGENTS.md 已明示）
 
@@ -399,7 +399,7 @@ Proposed | Accepted | Deprecated | Superseded by ADR-XXXX
 
 #### 行为准则
 
-- 禁止人身攻击 / 阴阳怪气（参考 [`CODE_OF_CONDUCT.md`](../CODE_OF_CONDUCT.md)）
+- 禁止人身攻击 / 阴阳怪气（参考 [`CODE_OF_CONDUCT.md`](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/CODE_OF_CONDUCT.md)）
 - 评论聚焦**代码**与**决策**，不针对**个人**
 - 维护者拍板后 30 天内不接受同类争议（除非有新事实）
 
@@ -677,7 +677,7 @@ jobs:
 1. **WPS 侧禁止使用 `fetch` / `ReadableStream` / `TextDecoderStream`**（Chromium 103 不支持）
 2. **WPS 侧禁止使用 `let/const/箭头函数/async-await`**（ES5 兼容要求）
 3. **WPS 侧禁止省略 `var` 声明**（会污染全局）
-4. **MCP / Launcher 禁止绑定 `0.0.0.0`**（违反 [`SECURITY.md`](./SECURITY.md)）
+4. **MCP / Launcher 禁止绑定 `0.0.0.0`**（违反 [`SECURITY.md`](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/SECURITY.md)）
 5. **WPS COM 操作禁止使用相对路径**（必须 `path.resolve` 为绝对路径）
 6. **禁止手动编辑 `~/.opencode/skills/`、`%APPDATA%\kingsoft\wps\jsaddons/`、`~/.config/opencode/`**（这些是 install-addons.js 生成的工件）
 7. **禁止提交 `node_modules/`、`*.log`、`dist/`、`build/`**（仓库根 `.gitignore` 已处理，PR 机器人会提示）
@@ -693,9 +693,9 @@ jobs:
 
 ## 附录 B：相关文档
 
-- [`DEVELOPMENT_GUIDE.md`](./DEVELOPMENT_GUIDE.md) — 开发流程与代码规范
-- [`SECURITY.md`](./SECURITY.md) — 安全模型与红线
-- [`TROUBLESHOOTING.md`](./TROUBLESHOOTING.md) — 常见问题排查
-- [`WPSJS_DEVELOPMENT.md`](./WPSJS_DEVELOPMENT.md) — WPS 加载项开发细节
-- [`MCP.md`](./MCP.md) — MCP 协议说明
-- [`../AGENTS.md`](../AGENTS.md) — 项目根指南（含架构、命令、G1-G7 规则）
+- [`DEVELOPMENT_GUIDE.md`](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/DEVELOPMENT_GUIDE.md) — 开发流程与代码规范
+- [`SECURITY.md`](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/SECURITY.md) — 安全模型与红线
+- [`TROUBLESHOOTING.md`](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/TROUBLESHOOTING.md) — 常见问题排查
+- [`WPSJS_DEVELOPMENT.md`](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/WPSJS_DEVELOPMENT.md) — WPS 加载项开发细节
+- [`MCP.md`](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/MCP.md) — MCP 协议说明
+- [`../AGENTS.md`](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/AGENTS.md) — 项目根指南（含架构、命令、G1-G7 规则）

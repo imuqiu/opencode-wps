@@ -2,9 +2,9 @@
 
 OpenCode WPS 的 Windows 版支持，为 Windows 桌面环境下的 WPS Office 提供 OpenCode AI 能力。Windows 是项目最初支持、功能最完整的平台（**侧边栏 Chat UI + 服务进程管理**）。
 
-> 状态：✅ 完整支持（首版即支持，经 10 轮代码评审加固，见 [windows-code-review-fixes.md](./windows-code-review-fixes.md)）。
+> 状态：✅ 完整支持（首版即支持，经 10 轮代码评审加固，见 [windows-code-review-fixes.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/windows-code-review-fixes.md)）。
 
-> 📖 完整三平台安装指南（含 Windows 环境要求/路径速查/卸载）见 [INSTALLATION.md](./INSTALLATION.md)。
+> 📖 完整三平台安装指南（含 Windows 环境要求/路径速查/卸载）见 [INSTALLATION.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/INSTALLATION.md)。
 
 ## 架构总览
 
@@ -121,4 +121,4 @@ cd wps-office-mcp && npm install && npm run build && cd ..
 **Q: Windows 11 下服务停止异常？**
 launcher 已用 `Get-CimInstance Win32_Process` 替代 Win11 移除的 wmic（失败再回退 wmic，再失败保守跳过），如仍异常请确认 PowerShell 5.1+ 可用。
 
-> 📖 更多排查见 [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)；Windows 侧代码评审与修复细节见 [windows-code-review-fixes.md](./windows-code-review-fixes.md)。
+> 📖 更多排查见 [TROUBLESHOOTING.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/TROUBLESHOOTING.md)；Windows 侧代码评审与修复细节见 [windows-code-review-fixes.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/windows-code-review-fixes.md)。

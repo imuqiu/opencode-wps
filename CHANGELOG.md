@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **修复 Wiki 挂载后内部链接 404（Issue #204）** — codewiki 生成 Wiki 时不重写仓库内相对链接，导致 `docs/` 与根 `README.md` 中 110+26 处相对路径链接在 Wiki 页面点击后 404。本次将全部内部相对链接改写为 CNB blob 绝对链接（`https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/xxx.md`，与知识库入库口径一致），新增脚本 `scripts/rewrite-wiki-links.js` 统一维护 + `npm run validate:wikilinks` CI 校验。新增 `docs/TROUBLESHOOTING.md`「十四、Wiki 已生成但内部链接点击 404」排查指引。重新打 tag 触发 codewiki 后 Wiki 内链接即可正常跳转。
+
 ## [1.9.1] - 2026-08-23
 
 ### Changed

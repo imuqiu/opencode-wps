@@ -1,6 +1,6 @@
 # WPS 插件问题排查与避坑指南
 
-> 🏠 返回 [README](../README.md)；安装与环境问题见 [INSTALLATION.md](./INSTALLATION.md)。
+> 🏠 返回 [README](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/README.md)；安装与环境问题见 [INSTALLATION.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/INSTALLATION.md)。
 
 ## 零、`config.js` 用户目录自引用哨兵被 install-addons.js 误替换（反复踩坑 4 次）
 
@@ -652,3 +652,34 @@ curl -X POST http://127.0.0.1:14097/start -H "Content-Type: application/json" -d
 
 - **是配置问题**：`git_doc_dir` 缺失、`knowledge_enabled` 未开、`tag_push` 事件缺失 → 修改 `.cnb.yml` 即可。
 - **是平台认证问题**：配置逐项核对无误但日志仍报 401 / LLM 空响应 → 平台侧问题，按上文第 3 条处理。
+
+---
+
+## 十四、Wiki 已生成但内部链接点击 404（Issue #204）
+
+> 适用于：Wiki 已成功挂载（首页可正常打开），但 Wiki 页面内**文档间相互引用的链接**点击后跳转到 404。
+
+### 问题现象
+
+- Wiki 首页能正常打开，文档内容可见；
+- 点击页面内「[INSTALLATION.md]」「[README.md]」等**文档互引链接** → 404；
+- 仓库 `docs/` 与根 `README.md` 中存在大量**相对路径链接**（`./xxx.md`、`../xxx.md`）。
+
+### 根因
+
+codewiki 将仓库 `docs/` 文档生成到 Wiki 平台时，**不会重写文档内部的相对链接**。相对链接在仓库文件浏览中正常，但在 Wiki 页面中按当前 Wiki URL 解析到不存在的路径 → **404**。
+
+对照：仓库知识库入库（`knowledge:update`）会**自动把相对链接重写为 CNB blob 绝对链接**（`https://cnb.cool/<slug>/-/blob/main/docs/xxx.md`），因此知识库中的链接可正常访问；但 codewiki 生成的 Wiki 未做同样重写。
+
+### 解决
+
+1. 将 `docs/` 与根 `README.md` 中所有内部相对链接改写为 **CNB blob 绝对链接**（`https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/xxx.md`）。
+2. 用脚本 `scripts/rewrite-wiki-links.js` 统一维护与改写：
+   - `node scripts/rewrite-wiki-links.js`（实际改写）
+   - `node scripts/rewrite-wiki-links.js --check`（CI 校验，见 `npm run validate:wikilinks`）
+3. 提交后重新打 tag 触发 codewiki 生成，Wiki 内链接即可正常跳转。
+
+### 判定要点
+
+- 是相对链接未改写 → 按上文第 1、2 步处理；
+- 是平台侧 Wiki 渲染问题（改写为 blob 绝对链接后仍 404）→ 向 CNB 平台反馈。
