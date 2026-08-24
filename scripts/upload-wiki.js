@@ -78,16 +78,86 @@ const WIKI_MENU = [
   },
 ];
 
-/** 汇总待上传的文档条目：{ wikiPath, sourceFile } */
-function collectEntries() {
+// 一级目录落地页（Issue #210）：Wiki 导航会把每个一级目录渲染成一个“与一级目录同名”的
+// 首个子节点（指向裸目录路径，如 /-/wiki/使用指南）。此前只上传了 `使用指南/USAGE.md` 这类
+// 带子路径的页面，裸目录路径上没有页面，导致点击同名节点 → 404。
+//
+// 修复：为每个一级目录额外上传一页“裸路径落地页”（路径 = 目录名本身），使点击同名节点可落到
+// 真实内容而非 404。落地内容规则：
+//   - 存在“同名文档”（标题与一级目录完全一致）的目录 → 复用该文档内容（使用指南→USAGE.md，
+//     开发指南→DEVELOPMENT_GUIDE.md）；
+//   - 无同名文档的目录（平台专题/内部参考）→ 生成一篇“分类索引页”，列出本目录全部文档链接。
+// 每项：{ dir: 一级目录名, indexSourceFile?: 复用的同名文档路径 }
+const CATEGORY_INDEX = [
+  { dir: '使用指南', indexSourceFile: 'USAGE.md' },
+  { dir: '开发指南', indexSourceFile: 'DEVELOPMENT_GUIDE.md' },
+  { dir: '平台专题' },
+  { dir: '内部参考' },
+];
+
+/** 生成“分类索引页”内容（用于无同名文档的一级目录落地页） */
+function buildCategoryIndex(dir) {
+  const cat = WIKI_MENU.find(c => c.dir === dir);
+  if (!cat) {
+    throw new Error(`未知 Wiki 分类: ${dir}`);
+  }
+  // 索引页链接指向 Wiki 内页面（/-/wiki/<dir>/<file>），让用户停留在 Wiki 内浏览
+  const wikiBase = `https://cnb.cool/${REPO_SLUG}/-/wiki/${encodeURIComponent(dir)}`;
+  const lines = [`# ${dir}`, ''];
+  lines.push(`> 本文档是「${dir}」分类的索引页，汇总该分类下的全部 Wiki 文档。`, '');
+  lines.push('| 文档 | 说明 |', '|------|------|');
+  for (const file of cat.files) {
+    lines.push(
+      `| [${file}](${wikiBase}/${encodeURIComponent(file)}) | ${file.replace(/\.md$/, '')} |`
+    );
+  }
+  return lines.join('\n') + '\n';
+}
+
+/**
+ * 一级目录 → 落地页配置 的 Map 缓存（避免逐 cat 线性查找 CATEGORY_INDEX）。
+ * @type {Map<string, {dir: string, indexSourceFile?: string}>}
+ */
+const CATEGORY_INDEX_MAP = new Map(CATEGORY_INDEX.map(c => [c.dir, c]));
+
+/**
+ * 汇总待上传的文档条目：{ wikiPath, sourceFile, content? }（content 优先于 sourceFile）。
+ * @param {string} [docsDir] 可选：docs 目录绝对路径，默认 path.join(rootDir, 'docs')；
+ *   供测试注入隔离目录使用，避免读写真实工作区文件。
+ */
+function collectEntries(docsDir = path.join(rootDir, 'docs')) {
   const entries = [];
   for (const cat of WIKI_MENU) {
     for (const file of cat.files) {
       // README.md 在仓库根，其余在 docs/ 下
       const sourceFile =
-        file === 'README.md' ? path.join(rootDir, 'README.md') : path.join(rootDir, 'docs', file);
+        file === 'README.md' ? path.join(rootDir, 'README.md') : path.join(docsDir, file);
       const wikiPath = cat.dir ? `${cat.dir}/${file}` : file;
       entries.push({ wikiPath, sourceFile });
+    }
+    // 一级目录“同名”落地页（Issue #210）：让裸目录路径（/-/wiki/<dir>）可访问
+    const landing = CATEGORY_INDEX_MAP.get(cat.dir);
+    if (cat.dir && !landing) {
+      // 一级目录未配置落地页：提示维护者，避免同名节点 404 复发且不可察觉（P13）
+      console.warn(`  ⚠ 分类「${cat.dir}」未配置落地页，一级目录同名节点可能 404`);
+    }
+    if (landing && cat.dir) {
+      let content;
+      if (landing.indexSourceFile) {
+        // 复用同名文档作为落地页，顶部加一行入口说明以区分文档页与入口页
+        const srcPath = path.join(docsDir, landing.indexSourceFile);
+        if (fs.existsSync(srcPath)) {
+          const src = fs.readFileSync(srcPath, 'utf8');
+          content = `> 本页为「${cat.dir}」分类入口页，完整文档见左侧导航或下方链接。\n\n${src}`;
+        } else {
+          // 同名文档缺失时回退为索引页，避免抛 ENOENT 终止整个上传流程
+          console.warn(`  ⚠ ${cat.dir}：同名文档 ${landing.indexSourceFile} 缺失，回退为索引页`);
+          content = buildCategoryIndex(cat.dir);
+        }
+      } else {
+        content = buildCategoryIndex(cat.dir);
+      }
+      entries.push({ wikiPath: cat.dir, content });
     }
   }
   return entries;
@@ -135,13 +205,19 @@ async function main() {
   const failures = [];
 
   for (const e of entries) {
-    if (!fs.existsSync(e.sourceFile)) {
-      console.log(`  ✗ ${e.wikiPath}：源文件不存在 ${e.sourceFile}`);
-      failed++;
-      failures.push(`${e.wikiPath}（源文件缺失）`);
-      continue;
+    // 一级目录索引页走内置生成的 content；普通文档页读 sourceFile
+    let content;
+    if (e.content !== undefined) {
+      content = e.content;
+    } else {
+      if (!fs.existsSync(e.sourceFile)) {
+        console.log(`  ✗ ${e.wikiPath}：源文件不存在 ${e.sourceFile}`);
+        failed++;
+        failures.push(`${e.wikiPath}（源文件缺失）`);
+        continue;
+      }
+      content = fs.readFileSync(e.sourceFile, 'utf8');
     }
-    const content = fs.readFileSync(e.sourceFile, 'utf8');
     try {
       const result = await uploadFile(e.wikiPath, content);
       if (result.ok) {
@@ -181,4 +257,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { collectEntries, uploadFile };
+module.exports = { collectEntries, uploadFile, buildCategoryIndex, CATEGORY_INDEX, WIKI_MENU };

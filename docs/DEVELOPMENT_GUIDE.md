@@ -478,6 +478,26 @@ $:
 
 > ⚠️ **文档链接规范（Issue #204）**：codewiki 生成 Wiki 时**不会重写仓库内相对链接**，若 `docs/` 文档使用相对路径（`./xxx.md`、`../xxx.md`）互相引用，Wiki 页面内点击会 404。因此 `docs/` 与根 `README.md` 中的内部链接**一律使用 CNB blob 绝对链接**（`https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/xxx.md`），由脚本 `scripts/rewrite-wiki-links.js` 统一维护，并以 `npm run validate:wikilinks` 在 CI 校验，禁止新增相对链接。
 
+### Wiki 手动上传脚本（`scripts/upload-wiki.js`，方案 A）
+
+`.cnb.yml` 的 `tag_push` 事件中，在 codewiki 插件**之前**先运行 `scripts/upload-wiki.js`（方案 A），把 `docs/` 按 `WIKI_MENU` 的 4 大分类直接调用 `upload/wiki/file` API 上传为 Wiki 页面（绕过 codewiki 插件 LLM 生成缺陷，Issue #117/#204）：
+
+```yaml
+- name: upload wiki docs
+  image: node:22
+  run: |
+    node scripts/upload-wiki.js
+```
+
+- **`WIKI_MENU`**：脚本顶部定义的 Wiki 菜单结构（4 大分类 + 各分类下 `docs/` 文件名），与仓库首页 Wiki 导航保持一致；新增文档需同步登记到对应分类的 `files`。
+- **`CATEGORY_INDEX`**：一级目录“同名”落地页配置（Issue #210）。Wiki 导航会把每个一级目录渲染成“与一级目录同名”的首个子节点（指向裸目录路径如 `/-/wiki/使用指南`），此前裸路径无页面会 404。脚本为每个一级目录额外上传一页裸路径落地页：
+  - 存在同名文档的目录（使用指南→`USAGE.md`、开发指南→`DEVELOPMENT_GUIDE.md`）：复用该文档内容并在顶部加一行「本页为「××」分类入口页」说明；
+  - 无同名文档的目录（平台专题/内部参考）：用 `buildCategoryIndex` 生成“分类索引页”，汇总本目录全部 Wiki 文档链接（链接指向 Wiki 内页面并做 URL 编码）。
+- **防御行为**：未知分类抛「未知 Wiki 分类」错误；同名文档缺失时回退为索引页并打印警告（不终止上传流程）；`WIKI_MENU` 中未配置落地页的一级目录打印警告（防 404 复发）。
+- **单测**：`tests/upload-wiki.test.js`（12 用例）覆盖落地页生成/复用/回退/编码/未注册警告，`npm run test` 会运行。
+
+> ⚠️ **实测结论（Issue #117，2026-08-23）**：`upload/wiki/file` API 在 CI（tag_push）环境下**无法认证上传**（JSON `401 errcode:16`、multipart `400 errcode:3`），流水线临时令牌 `CNB_TOKEN` 对该内部 API 无权限。因此当前 `upload-wiki.js` 在 CI 中不会成功上传，需由用户本人（OAuth 权限）网页手动上传 `docs/`，或等平台修复 codewiki 插件 LLM 缺陷后自动生成；脚本保留作平台能力恢复后的自动尝试。
+
 ---
 
 ## 九、二次开发
