@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.6] - 2026-08-24
+
+### Fixed
+
+- **修复 Wiki 一级目录同名首子节点 404（Issue #210）** — CNB Wiki 导航会把每个一级目录本身渲染成「与一级目录同名」的可点击子节点，指向裸目录路径（`/-/wiki/使用指南`、`/-/wiki/开发指南`、`/-/wiki/平台专题`、`/-/wiki/内部参考`），但此前脚本只上传了带子路径的页面、没有裸路径落地页，导致点击报 `404 Not Found`。本次在 `scripts/upload-wiki.js` 新增 `CATEGORY_INDEX` 映射 + `buildCategoryIndex()` 索引页生成：对 4 个一级目录各追加一页裸路径落地页——「使用指南」「开发指南」复用同名 `docs/USAGE.md`、`docs/DEVELOPMENT_GUIDE.md`；「平台专题」「内部参考」自动生成分类索引页（汇总本目录全部文档链接）。落地页纳入上传清单，手动重传后四个一级目录点击即可正常打开、不再 404。（PR #211）
+
+### Changed
+
+- **版本号升级至 1.9.6** — 根 `package.json` / `package-lock.json` / `opencode-wps/`（package.json、config.js、manifest.xml）/ `opencode-wps-linux/`（package.json、manifest.xml）/ `wps-office-mcp/`（package.json、package-lock.json）版本一致升级至 1.9.6，`validate-versions` 校验通过。
+
+
 ## [1.9.5] - 2026-08-23
 
 ### Fixed
