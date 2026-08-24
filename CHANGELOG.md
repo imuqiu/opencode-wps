@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.8] - 2026-08-24
+
+### Added
+
+- **新增自建「研究员」NPC（Issue #16）** — 在 `.cnb/settings.yml` 的 `npc.roles:` 列表末尾追加第 7 个自建 NPC「研究员」（深度调研与资料检索专家），人设、核心能力、安全约束齐全；同时让其余 6 个角色（项目经理/产品经理/架构师/全栈开发/代码评审员/测试工程师）在团队协作表中各补 1 行 `@研究员` 协同认知，研究员 prompt 亦认识全部 6 个角色，实现双向协作互认闭环。`button.description` 一并纳入研究员。配套更新：`.cnb.yml` 注释「5 个 NPC 角色」→「7 个 NPC 角色」；`docs/NPC_TEAM.md` 副标题「六位专家」→「七位专家」、角色清单/研发流程覆盖图（调研前置）/对比表 6→7 全面对齐，历史实测记录注明发生在新增研究员之前。`validate:settings`（7 角色）、`validate:npc-team`（双源一致）通过。（PR #212，merge commit `492149f`）
+
+### Changed
+
+- **版本号升级至 1.9.8** — 根 `package.json` / `package-lock.json` / `opencode-wps/`（package.json、config.js、manifest.xml）/ `opencode-wps-linux/`（package.json、manifest.xml）/ `wps-office-mcp/`（package.json、package-lock.json）版本一致升级至 1.9.8，`validate-versions` 校验通过。
+
+> ℹ️ 说明：v1.9.7 已用于 Wiki 上传两步协议修复（Issue #210，见 Releases），本仓库 `main` 分支的 NPC 研究员变更使用下一个可用版本号 1.9.8。
+
 ## [1.9.6] - 2026-08-24
 
 ### Fixed
