@@ -4,7 +4,7 @@
 
 > ⚠️ **本文档描述的是 cnb.cool 平台开发辅助工具，与 WPS 插件无关**：`@CodeBuddy`、NPC_TEAM 提示词、`.codebuddy/skills/npc-team/` 均属于 CNB 平台研发辅助能力，**不随 `install-addons*.js` 安装、不进入插件目录（`%APPDATA%`/`~/Library`/`~/.local`）、不依赖 WPS 运行**，使用对象是 CNB 平台上的开发者，而非 WPS 插件使用者。
 
-> 一个需求，一次会话，六位专家自动接力 — **零 NPC 积分消耗**。核心交付物是**一段可直接粘贴给官方免费 `@CodeBuddy` 的提示词**。
+> 一个需求，一次会话，七位专家自动接力 — **零 NPC 积分消耗**。核心交付物是**一段可直接粘贴给官方免费 `@CodeBuddy` 的提示词**。
 
 ## 背景：为什么做这个组件
 
