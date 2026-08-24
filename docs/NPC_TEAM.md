@@ -309,7 +309,7 @@ CodeBuddy 会自动加载该 Skill 化身 NPC Team，行为与粘贴下方提示
 
 ## 附：仓库内置自建 NPC（7 角色）配置参考
 
-> 仓库 `.cnb/settings.yml` 内置 7 个自建 NPC 角色，覆盖软件研发全生命周期：统筹管理 → 需求分析 → 架构设计 → 代码开发 → 代码评审 → 测试验证 → 调研。加入调研环节后，研发全生命周期更完整。角色定义见 `.cnb/settings.yml`，由 `.cnb.yml` + `Dockerfile` 驱动（源自 `mustang-code-ai/trip` 的 NPC 配置，新增「项目经理」源自 `zhengms-team/npc-team`）。
+> 仓库 `.cnb/settings.yml` 内置 7 个自建 NPC 角色，覆盖软件研发全生命周期：调研 → 需求分析 → 架构设计 → 代码开发 → 代码评审 → 测试验证 → 统筹管理。加入调研环节后，研发全生命周期更完整。角色定义见 `.cnb/settings.yml`，由 `.cnb.yml` + `Dockerfile` 驱动（源自 `mustang-code-ai/trip` 的 NPC 配置，新增「项目经理」源自 `zhengms-team/npc-team`）。
 
 | 角色               | Slogan                                                   | 职责                                                    |
 | ------------------ | -------------------------------------------------------- | ------------------------------------------------------- |
