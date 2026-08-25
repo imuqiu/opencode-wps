@@ -139,6 +139,40 @@ test('P23：空 issues 上报判定逻辑正确（白盒）', function () {
   assertTrue(!isFakeProgress({ issues: [] }, false), '未上报进度不应触发');
 });
 
+test('P23：首次累加失败重试后 doc_info 强制不失效（R4-1）', function () {
+  // 关键点：accumulateCount 只在「全部校验通过后」递增；
+  // 若首次累加因缺 doc_info 被拦截，accumulateCount 保持 0，重试时 isFirstRealAccumulate 仍为 true，
+  // 继续强制 doc_info，不会被"失败重试"绕过。
+  assertContains(govSource, 'R4-1', '应标注 R4-1 修复');
+  assertContains(govSource, 'isFirstRealAccumulate = (st.accumulateCount || 0) === 0', '首次判定应基于成功累加计数为 0');
+  assertContains(govSource, '全部校验通过后才递增成功累加计数', '应在校验通过后递增计数');
+
+  // 白盒验证时序：模拟失败重试——首次因缺 doc_info 被拦，accumulateCount 不应递增
+  var accumulateCount = 0;
+  function attemptAccumulate(args, docInfoValid) {
+    if (!docInfoValid) throw new Error('P23 拦截：缺 doc_info');
+    accumulateCount += 1;
+    return true;
+  }
+  // 首次失败（缺 doc_info）→ 抛错，计数不变
+  var failed = false;
+  try { attemptAccumulate({}, false); } catch (e) { failed = true; }
+  assertTrue(failed, '首次缺 doc_info 应被拦截');
+  assertTrue(accumulateCount === 0, '失败后 accumulateCount 不应递增（保持 0）');
+  // 重试成功（补上 doc_info）→ 计数+1
+  assertTrue(attemptAccumulate({}, true), '重试成功应放行');
+  assertTrue(accumulateCount === 1, '成功后 accumulateCount 应递增为 1');
+});
+
+test('P24：getActiveDocument 重置覆盖状态（R4-2）', function () {
+  // getActiveDocument 是「重新开始」信号，应重置 fullCoverageReached / accumulateCount / maxReportedParagraph，
+  // 避免报告失败后 fullCoverageReached 锁死后续所有校对推进工具（死锁）。
+  assertContains(govSource, 'R4-2', '应标注 R4-2 修复');
+  assertContains(govSource, 'st.fullCoverageReached = false;', '应重置 fullCoverageReached');
+  assertContains(govSource, 'st.accumulateCount = 0;', '应重置 accumulateCount');
+  assertContains(govSource, 'st.maxReportedParagraph = 0;', '应重置 maxReportedParagraph');
+});
+
 // ==================== P24：覆盖全文后强制报告（Issue #223 P0-4） ====================
 
 test('P24：覆盖全文后强制生成报告逻辑存在', function () {

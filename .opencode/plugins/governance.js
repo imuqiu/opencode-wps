@@ -477,6 +477,12 @@ export const WpsGovernancePlugin = async () => {
           st.allBatchesComplete = false;
           st.batchCount = 0;
           st.lastBatchParaIndex = 0;
+          // R4-2（Issue #223 评审）：getActiveDocument 是「重新开始」的信号，
+          // 重置 P23/P24 会话级校对状态（覆盖全文标记/累加计数/最大上报段），
+          // 避免报告失败后 fullCoverageReached 锁死后续所有校对推进工具（死锁）。
+          st.fullCoverageReached = false;
+          st.accumulateCount = 0;
+          st.maxReportedParagraph = 0;
           st.templateFilling.paragraphsFetched = false;
           st.templateFilling.trackChangesEnabled = false;
           st.templateFilling.userConfirmed = false;
@@ -657,8 +663,10 @@ export const WpsGovernancePlugin = async () => {
           const issuesArg = innerArgs.issues;
           const hasIssuesArg = Array.isArray(issuesArg) && issuesArg.length > 0;
           if (!isPlannerInit) {
-            st.accumulateCount = (st.accumulateCount || 0) + 1;
-            const isFirstRealAccumulate = st.accumulateCount === 1;
+            // R4-1（Issue #223 评审）：accumulateCount 只在「全部校验通过后」递增，
+            // 避免首次累加因缺 doc_info / totalParagraphs 被拦截后，重试时 isFirstRealAccumulate
+            // 已变 false 导致 doc_info 强制被跳过（P0-2 可被“失败重试”绕过）。
+            const isFirstRealAccumulate = (st.accumulateCount || 0) === 0;
             if (isFirstRealAccumulate) {
               const hasDocInfo =
                 innerArgs.doc_info &&
@@ -715,6 +723,8 @@ export const WpsGovernancePlugin = async () => {
                 st.fullCoverageReached = true;
               }
             }
+            // 全部校验通过后才递增成功累加计数（保证失败重试时首次判定不失效）
+            st.accumulateCount = (st.accumulateCount || 0) + 1;
           }
           return;
         }
