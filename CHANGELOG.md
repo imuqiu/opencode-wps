@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.13] - 2026-08-25
+
+### Fixed
+
+- **修复实际校对流程漏洞（Issue #223，PR #226）** — 基于实际校对会话排查出的 4 个 P0 级流程漏洞完成治理插件加固：P16 新增「findText 含截断标记即拦截」杜绝零修复；P23 新增「首次 proofreadAccumulate 强制 doc_info」+「空 issues 上报进度即拦截」堵死丢数据/进度造假；P24 新增「覆盖全文未生成报告禁止推进」强制收尾报告。配套 SKILL/docs 同步 + 11 条回归测试，经 10 轮评审-修复清零后合并。
+
+### Changed
+
+- **版本号升级至 1.9.13** — 根 package.json / package-lock.json / opencode-wps/ / opencode-wps-linux/ / wps-office-mcp/ 全量版本一致升级至 1.9.13，validate-versions 校验通过。
+
 ## [1.9.12] - 2026-08-25
 
 ### Changed
