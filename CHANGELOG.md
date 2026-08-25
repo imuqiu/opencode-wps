@@ -7,9 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.9] - 2026-08-25
+
 ### Added
 
-- **Wiki 导航子项中文显示名（Issue #210）** — `scripts/upload-wiki.js` 新增 `WIKI_NAME_MAP` 映射表（源文件名 → Wiki 中文显示名），让 Wiki 左侧导航子项显示中文名称（如 `使用说明`、`安装指南`、`问题排查`、`功能特性`）替代英文文件名（`USAGE`、`INSTALLATION` 等）。新增 `wikiName()` 函数负责转换，未映射文件原样返回；`buildCategoryIndex` 索引页链接同步使用中文显示名。配套更新开发指南。
+- **Wiki 导航子项中文显示名（Issue #210）** — `scripts/upload-wiki.js` 新增 `WIKI_NAME_MAP` 映射表（源文件名 → Wiki 中文显示名），让 Wiki 左侧导航子项显示中文名称（如 `使用说明`、`安装指南`、`问题排查`、`功能特性`）替代英文文件名（`USAGE`、`INSTALLATION` 等）。新增 `wikiName()` 函数负责转换，未映射文件原样返回；`buildCategoryIndex` 索引页链接同步使用中文显示名。配套更新开发指南。（PR #216，merge commit `d63c895`）
+
+### Changed
+
+- **版本号升级至 1.9.9** — 根 `package.json` / `package-lock.json` / `opencode-wps/`（package.json、config.js、manifest.xml）/ `opencode-wps-linux/`（package.json、manifest.xml）/ `wps-office-mcp/`（package.json、package-lock.json）版本一致升级至 1.9.9，`validate-versions` 校验通过。
 
 ## [1.9.8] - 2026-08-24
 
