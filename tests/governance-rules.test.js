@@ -92,6 +92,43 @@ test('P16 补充：截断检测逻辑正确（白盒，精确判定）', functio
   assertTrue(!hasTruncationMarker('我们一致地……认真执行'), '省略号后紧跟中文（正文省略号）不应误拦');
 });
 
+test('P16 补充：截断标记但匹配 issue.original 时放行（R8-1）', function () {
+  // R8-1：修复省略号问题（findText=真实 original）不应被截断拦截误伤。
+  // 治理实现：截断拦截条件为 hasTruncation && !matchesIssue（matchesIssue=findText 匹配已知 issue.original）。
+  assertContains(govSource, 'if (hasTruncation && !matchesIssue)', '截断拦截应仅在 不匹配任何 known issue 时触发');
+  assertContains(govSource, '若 findText 匹配已知 issue.original（即使含省略号，如合法省略号修复），则放行不误拦', '应说明省略号修复放行语义');
+
+  // 白盒验证：findText=含省略号的真实 original（如修复中英混排标点），能匹配 issue.original → 不拦截
+  function shouldBlockForTruncation(findText, issueOriginals, hasTruncationFn) {
+    var hasTruncation = hasTruncationFn(findText);
+    var matchesIssue = issueOriginals.some(function (orig) {
+      return orig && (orig.indexOf(findText) !== -1 || findText.indexOf(orig) !== -1);
+    });
+    return hasTruncation && !matchesIssue;
+  }
+  function hasTruncationMarker(text) {
+    const ellipsisPattern = /(\.\.\.|…+)/g;
+    let m;
+    while ((m = ellipsisPattern.exec(text)) !== null) {
+      const after = text[m.index + m[0].length];
+      if (after === undefined || !/[\u4e00-\u9fff]/.test(after)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  // 修复省略号：findText="……" 匹配 original="……" → 放行（不拦截）
+  assertTrue(
+    !shouldBlockForTruncation('……', ['……'], hasTruncationMarker),
+    '修复省略号（匹配 original）不应被截断拦截'
+  );
+  // 截断展示文本：findText="省公共资..." 不匹配任何 original → 拦截
+  assertTrue(
+    shouldBlockForTruncation('省公共资...', ['省公共资源交易平台'], hasTruncationMarker),
+    '截断展示文本（不匹配 original）应被拦截'
+  );
+});
+
 // ==================== P23：首次 doc_info + 禁止空 issues（Issue #223 P0-2/P0-3） ====================
 
 test('P23：首次累加强制 doc_info 逻辑存在', function () {

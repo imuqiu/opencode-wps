@@ -1304,17 +1304,21 @@ export const WpsGovernancePlugin = async () => {
                 return false;
               }
               const hasTruncation = hasTruncationMarker(findText);
-              if (hasTruncation) {
+              const matchesIssue = st.proofreadIssueOriginals.some(function (orig) {
+                return orig && (orig.indexOf(findText) !== -1 || findText.indexOf(orig) !== -1);
+              });
+              // P16 补充（Issue #223 实际校对问题 P0-1，R8-1 精确化）：
+              // 含截断标记 且 不匹配任何已知 issue.original → 判定为 context 截断展示文本（非原文），
+              // 文档中必然不存在，拦截并引导改用 proofreadBasic 返回的 original。
+              // 若 findText 匹配已知 issue.original（即使含省略号，如合法省略号修复），则放行不误拦。
+              if (hasTruncation && !matchesIssue) {
                 throw new Error(
-                  `【执行治理】【P16】replaceInParagraph findText="${findText}" 含截断标记（.../…/……），` +
+                  `【执行治理】【P16】replaceInParagraph findText="${findText}" 含截断标记（.../…/……）且不匹配任何已知问题原文，` +
                     `该文本在文档中不存在，替换必然失败。\n` +
                     `请改用 proofreadBasic / getDocumentParagraphs 返回的完整 original 原文作为 findText，` +
                     `不得使用带截断标记的 context 展示文本。如需强制修复请传 _force_ai_fix: true。`
                 );
               }
-              const matchesIssue = st.proofreadIssueOriginals.some(function (orig) {
-                return orig && (orig.indexOf(findText) !== -1 || findText.indexOf(orig) !== -1);
-              });
               if (!matchesIssue) {
                 const maxShow = 5;
                 const shown = st.proofreadIssueOriginals.slice(0, maxShow);

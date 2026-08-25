@@ -1009,7 +1009,7 @@ COM 超时已从 30s 增加到 60s（#116 问题八，MCP v1.1.1 起），200 �
 
 **P16 说明**：当 `proofreadBasic` 返回了问题列表，`replaceInParagraph` 的 `findText` 必须与至少一条 issue 的 `original` 原文匹配（子串匹配即可）。如 `findText` 与任何已知 issue 都不匹配，说明 AI 在修复基础校对未发现的问题，P16 拦截。如需强制修复需传 `_force_ai_fix: true`。
 
-**P16 补充（Issue #223 问题 P0-1，禁止截断 findText）**：`findText` 若含截断标记（`...`/`…`/`……`），说明你拿的是 `context` 截断展示文本而非 `issue.original` 原文，文档中必然不存在该文本，替换必定失败导致零修复。**必须用 `proofreadBasic` 返回的 `original` 字段（或 `getDocumentParagraphs` 获取的完整段落文本）作为 `findText`**。判定规则：省略号出现处之后若不紧跟中文字符（位于末尾、或后跟数字/`)`/`；`/空格等非中文）即判为截断符并被 P16 拦截；若省略号后紧跟中文字符（正文合法省略号，如引文/列举）则不误拦。
+**P16 补充（Issue #223 问题 P0-1，禁止截断 findText）**：`findText` 若含截断标记（`...`/`…`/`……`），说明你拿的是 `context` 截断展示文本而非 `issue.original` 原文，文档中必然不存在该文本，替换必定失败导致零修复。**必须用 `proofreadBasic` 返回的 `original` 字段（或 `getDocumentParagraphs` 获取的完整段落文本）作为 `findText`**。判定规则：省略号出现处之后若不紧跟中文字符（位于末尾、或后跟数字/`)`/`；`/空格等非中文）即判为截断符；**且仅在 `findText` 不匹配任何已知 issue 原文时才被 P16 拦截**——若 `findText` 匹配某个 `issue.original`（如合法省略号修复），则放行不误拦。
 
 **P17 说明**（session_ffa8 问题一）：写文件路径含「校对报告」时，若服务端尚未通过 `generateProofreadReport` 成功生成报告（`reportGenerated !== true`），插件直接拦截。这防止 AI 在 `generateProofreadReport` 失败后手动 `write` 自拼 Markdown 报告（真实会话中出现过 3 份互相矛盾的手写报告）。
 
