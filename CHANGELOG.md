@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **NPC_TEAM 阶段编号调整为 1/12~12/12（Issue #224，PR #225）** — 将流水线 12 阶段编号整体 +1：0/12 需求接收 → 1/12、…、11/12 复盘 → 12/12，修复原编号从 0 起步、到 11 结束永远看不到 12/12 的进度错觉。同步迁移 docs/NPC_TEAM.md（权威源）、.codebuddy/skills/npc-team/SKILL.md（双源一致）、scripts/validate-npc-team-prompt.js（阶段完整性校验 0..11→1..12）、scripts/lib/npc-team-triggers.js、tests/validate-npc-team-prompt.test.js（151 用例）及 README.md。
+
 ## [1.9.11] - 2026-08-25
 
 ### Fixed
