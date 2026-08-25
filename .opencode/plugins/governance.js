@@ -914,7 +914,7 @@ export const WpsGovernancePlugin = async () => {
           `【执行治理】【P24】文档已覆盖全文（累计到段落 ${st.maxReportedParagraph}/${st.totalParagraphs}），` +
             `但尚未调用 generateProofreadReport 生成收尾报告。\n` +
             `覆盖全文后必须调用 generateProofreadReport（走 wps_office_execute 网关，传 session_id + output_file）\n` +
-            `生成服务端真实累计数据的六维报告，禁止继续推进校对流程或直接结束。`
+            `生成服务端真实累计数据的六维报告，禁止继续推进校对流程。`
         );
       }
 
