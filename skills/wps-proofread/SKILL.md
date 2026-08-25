@@ -985,7 +985,7 @@ COM 超时已从 30s 增加到 60s（#116 问题八，MCP v1.1.1 起），200 �
 | **P21** | **并行区间重叠检测**                              | `getDocumentParagraphs`                        | 同一会话不同批次请求区间相交                                                                                       |
 | **P22** | **必须上报校对进度**                              | `proofreadAccumulate`                          | 未携带 `_processed_to_paragraph`（规划初始化登记豁免）                                                             |
 | **P23** | **首次累加必带 doc_info + 禁止空 issues 报进度** | `proofreadAccumulate`                          | 首次实际累加缺 `doc_info`；或上报进度但 `issues` 为空数组（进度造假）                                             |
-| **P24** | **覆盖全文后强制生成报告**                      | `getDocumentParagraphs`                        | 已覆盖全文（进度≥totalParagraphs）但尚未 `generateProofreadReport`                                                 |
+| **P24** | **覆盖全文后强制生成报告**                      | `getDocumentParagraphs`/`proofreadBasic`/`confirmBatchAiProofread`/`replaceInParagraph` | 已覆盖全文（进度≥totalParagraphs）但尚未 `generateProofreadReport`，继续推进校对流程即拦截  |
 
 ### 通用执行规则（G1-G7，始终生效）
 
@@ -1007,7 +1007,7 @@ COM 超时已从 30s 增加到 60s（#116 问题八，MCP v1.1.1 起），200 �
 
 **P16 说明**：当 `proofreadBasic` 返回了问题列表，`replaceInParagraph` 的 `findText` 必须与至少一条 issue 的 `original` 原文匹配（子串匹配即可）。如 `findText` 与任何已知 issue 都不匹配，说明 AI 在修复基础校对未发现的问题，P16 拦截。如需强制修复需传 `_force_ai_fix: true`。
 
-**P16 补充（Issue #223 问题 P0-1，禁止截断 findText）**：`findText` 若含截断标记（`...`/`…`/`……`），说明你拿的是 `context` 截断展示文本而非 `issue.original` 原文，文档中必然不存在该文本，替换必定失败导致零修复。**必须用 `proofreadBasic` 返回的 `original` 字段（或 `getDocumentParagraphs` 获取的完整段落文本）作为 `findText`**。含截断标记的 `findText` 会被 P16 直接拦截。
+**P16 补充（Issue #223 问题 P0-1，禁止截断 findText）**：`findText` 若含截断标记（`...`/`…`/`……`），说明你拿的是 `context` 截断展示文本而非 `issue.original` 原文，文档中必然不存在该文本，替换必定失败导致零修复。**必须用 `proofreadBasic` 返回的 `original` 字段（或 `getDocumentParagraphs` 获取的完整段落文本）作为 `findText`**。判定规则：省略号出现处之后若不紧跟中文字符（位于末尾、或后跟数字/`)`/`；`/空格等非中文）即判为截断符并被 P16 拦截；若省略号后紧跟中文字符（正文合法省略号，如引文/列举）则不误拦。
 
 **P17 说明**（session_ffa8 问题一）：写文件路径含「校对报告」时，若服务端尚未通过 `generateProofreadReport` 成功生成报告（`reportGenerated !== true`），插件直接拦截。这防止 AI 在 `generateProofreadReport` 失败后手动 `write` 自拼 Markdown 报告（真实会话中出现过 3 份互相矛盾的手写报告）。
 
@@ -1017,7 +1017,7 @@ COM 超时已从 30s 增加到 60s（#116 问题八，MCP v1.1.1 起），200 �
 
 **P23 说明**（Issue #223 问题 P0-2/P0-3）：① **首次实际累加（非规划初始化）必须携带 `doc_info`**（含 `fileName`/`filePath`/`totalParagraphs`）。服务端据此建立校对会话上下文；缺 `doc_info` 时本批携带的 issues 会被丢弃（真实会话中因此丢失 7 条）。② **禁止用空 `issues` 上报进度**：携带 `_processed_to_paragraph` 上报进度却 `issues` 为空数组，属于"报了进度但丢了数据"的进度造假（真实会话中 AI 为绕过单批增量上限把合并大批拆成 4 次空上报，丢失 74 条）。如本批确有问题，必须真实放入 issues 后再累加。
 
-**P24 说明**（Issue #223 问题 P0-4）：文档覆盖全文（累计 `_processed_to_paragraph` ≥ `totalParagraphs`）后，若尚未调用 `generateProofreadReport` 生成收尾报告，再次调用 `getDocumentParagraphs` 开启新批次即被拦截，强制先生成报告。防止"覆盖全文后忘了生成报告就直接结束"（真实会话中 AI 空上报到全文后未生成报告就结束，用户拿到的只是 AI 编造的内容）。
+**P24 说明**（Issue #223 问题 P0-4）：文档覆盖全文（累计 `_processed_to_paragraph` ≥ `totalParagraphs`）后，若尚未调用 `generateProofreadReport` 生成收尾报告，任何继续推进校对流程的工具（`getDocumentParagraphs`/`proofreadBasic`/`confirmBatchAiProofread`/`replaceInParagraph`）都会被拦截，强制先生成报告。**最后一批 `proofreadAccumulate` 上报到覆盖全文后，应紧接着调用 `generateProofreadReport` 收尾，中间不要再穿插其他校对操作**。防止"覆盖全文后忘了生成报告就直接结束"（真实会话中 AI 空上报到全文后未生成报告就结束，用户拿到的只是 AI 编造的内容）。
 
 **规则 2a 说明**：首次 `getDocumentParagraphs` 必须从第 1 段开始。若 `lastBatchParaIndex === 0` 时 `start_paragraph !== 1`，插件直接拒绝。这是为了防止从文档中间开始校对导致遗漏。
 

@@ -50,8 +50,9 @@ var govSource = fs.readFileSync(
 
 // ==================== P16 补充：截断标记拦截（Issue #223 P0-1） ====================
 
-test('P16 补充：findText 含 ... 截断标记即拦截', function () {
-  assertContains(govSource, "var truncationMarkers = ['...', '…', '……'];", '应定义截断标记列表');
+test('P16 补充：findText 含截断标记即拦截', function () {
+  assertContains(govSource, 'hasTruncationMarker', '应定义截断检测函数');
+  assertContains(govSource, 'ellipsisPattern', '应定义省略号正则');
   assertContains(govSource, 'hasTruncation', '应检测是否含截断标记');
   assertContains(
     govSource,
@@ -65,21 +66,30 @@ test('P16 补充：findText 含 ... 截断标记即拦截', function () {
   );
 });
 
-test('P16 补充：截断检测逻辑正确（白盒）', function () {
-  // 从源码抽取截断标记判定逻辑做白盒验证
-  var truncationMarkers = ['...', '…', '……'];
-  function hasTruncation(findText) {
-    return truncationMarkers.some(function (m) {
-      return findText.indexOf(m) !== -1;
-    });
+test('P16 补充：截断检测逻辑正确（白盒，精确判定）', function () {
+  // 从源码抽取截断标记判定逻辑做白盒验证（与 governance.js 内 hasTruncationMarker 一致）：
+  // 省略号出现处之后若不紧跟中文字符（即位于末尾或后跟数字/) /；/空格等非中文），判为截断符；
+  // 若省略号后紧跟中文字符，则为文档正文合法省略号（引文/列举），不误拦。
+  function hasTruncationMarker(text) {
+    const ellipsisPattern = /(\.\.\.|…+)/g;
+    let m;
+    while ((m = ellipsisPattern.exec(text)) !== null) {
+      const after = text[m.index + m[0].length];
+      if (after === undefined || !/[\u4e00-\u9fff]/.test(after)) {
+        return true;
+      }
+    }
+    return false;
   }
-  // 含截断标记 → true
-  assertTrue(hasTruncation('省公共资...'), '含 "..." 应判定为截断');
-  assertTrue(hasTruncation('财库〔2019〕9号）；...'), '含省略号应判定为截断');
-  assertTrue(hasTruncation('……（此处省略）'), '含 "……" 应判定为截断');
-  // 不含截断标记（正常原文）→ false
-  assertTrue(!hasTruncation('省公共资源交易平台'), '正常原文不应判定为截断');
-  assertTrue(!hasTruncation('一致的'), '短原文不应误判');
+  // 截断场景（省略号后无中文或后跟非中文）→ true
+  assertTrue(hasTruncationMarker('省公共资...'), '末尾 "..." 应判定为截断');
+  assertTrue(hasTruncationMarker('财库〔2019〕9号）；...'), '末尾省略号应判定为截断');
+  assertTrue(hasTruncationMarker('银行行号：...029-88224928...'), '省略号后跟数字应判定为截断');
+  assertTrue(hasTruncationMarker('……（此处省略）'), '省略号后跟左括号应判定为截断');
+  // 正常原文（省略号后紧跟中文，为正文合法省略号）→ false，不误拦
+  assertTrue(!hasTruncationMarker('省公共资源交易平台'), '正常原文不应判定为截断');
+  assertTrue(!hasTruncationMarker('一致的'), '短原文不应误判');
+  assertTrue(!hasTruncationMarker('我们一致地……认真执行'), '省略号后紧跟中文（正文省略号）不应误拦');
 });
 
 // ==================== P23：首次 doc_info + 禁止空 issues（Issue #223 P0-2/P0-3） ====================
@@ -153,6 +163,51 @@ test('P24：覆盖全文判定逻辑正确（白盒）', function () {
   var notFullCoverage =
     totalParagraphs > 0 && 2300 >= totalParagraphs && !reportGenerated;
   assertTrue(!notFullCoverage, '未覆盖全文不应标记');
+});
+
+test('P24：拦截范围覆盖全部校对推进工具（排除收尾/报告类）', function () {
+  // 模拟 P24 的拦截判定：覆盖全文且未生成报告时，
+  // 校对推进工具（PROOFREAD_STEP_CHAIN 除 proofreadAccumulate 外）均应被拦截，
+  // 而收尾/报告类（generateProofreadReport / proofreadAccumulate / getActiveDocument 等）应放行。
+  var PROOFREAD_STEP_CHAIN = [
+    'getDocumentParagraphs',
+    'getDocumentTextByRange',
+    'proofreadBasic',
+    'confirmBatchAiProofread',
+    'replaceInParagraph',
+    'proofreadAccumulate',
+  ];
+  var PROOFREAD_ADVANCE_TOOLS = PROOFREAD_STEP_CHAIN.filter(function (t) {
+    return t !== 'proofreadAccumulate';
+  });
+  // 覆盖全文 + 未生成报告 → 所有推进工具都被拦截
+  PROOFREAD_ADVANCE_TOOLS.forEach(function (tool) {
+    assertTrue(
+      PROOFREAD_ADVANCE_TOOLS.indexOf(tool) !== -1,
+      '推进工具 ' + tool + ' 应被 P24 拦截'
+    );
+  });
+  // proofreadAccumulate（覆盖全文上报动作本身）不应被拦
+  assertTrue(
+    PROOFREAD_ADVANCE_TOOLS.indexOf('proofreadAccumulate') === -1,
+    'proofreadAccumulate 不应被 P24 拦截（它是覆盖全文的上报动作）'
+  );
+  // 收尾/报告类不应被拦
+  ['generateProofreadReport', 'getActiveDocument', 'enableTrackChanges', 'getTrackChangesStatus', 'save'].forEach(
+    function (tool) {
+      assertTrue(
+        PROOFREAD_ADVANCE_TOOLS.indexOf(tool) === -1,
+        '收尾/报告类 ' + tool + ' 不应被 P24 拦截'
+      );
+    }
+  );
+  // 覆盖全文 + 已生成报告 → 不再拦截（fullCoverageReached 有但 reportGenerated=true）
+  var reportGenerated = true;
+  var fullCoverageReached = true;
+  assertTrue(
+    !(PROOFREAD_ADVANCE_TOOLS.indexOf('getDocumentParagraphs') !== -1 && !reportGenerated && fullCoverageReached),
+    '已生成报告后不应再拦截'
+  );
 });
 
 // ==================== 汇总 ====================

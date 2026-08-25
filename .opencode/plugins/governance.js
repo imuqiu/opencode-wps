@@ -878,9 +878,16 @@ export const WpsGovernancePlugin = async () => {
       // P24（Issue #223 实际校对问题 P0-4）：覆盖全文后强制生成报告
       // 真实会话中 AI 空上报到 2518（覆盖全文）后未调用 generateProofreadReport 就直接结束，
       // 用户拿到的只是 AI 编造的内容而非服务端真实报告。当累计进度已达 totalParagraphs 且
-      // 服务端尚未成功生成报告时，禁止新开批次（getDocumentParagraphs），强制先生成收尾报告。
+      // 服务端尚未成功生成报告时，禁止继续推进校对流程（获取段落/基础校对/确认/替换），
+      // 强制先生成收尾报告。
+      // 注意：不拦截 proofreadAccumulate（覆盖全文正是通过它上报，不能拦本动作）、
+      //       generateProofreadReport（收尾报告本身）、getActiveDocument / enableTrackChanges /
+      //       getTrackChangesStatus / save（结束前收尾/保存类操作）。
+      const PROOFREAD_ADVANCE_TOOLS = PROOFREAD_STEP_CHAIN.filter(function (t) {
+        return t !== 'proofreadAccumulate';
+      });
       if (
-        toolName === 'getDocumentParagraphs' &&
+        PROOFREAD_ADVANCE_TOOLS.indexOf(toolName) !== -1 &&
         !st.reportGenerated &&
         st.fullCoverageReached
       ) {
@@ -888,7 +895,7 @@ export const WpsGovernancePlugin = async () => {
           `【执行治理】【P24】文档已覆盖全文（累计到段落 ${st.maxReportedParagraph}/${st.totalParagraphs}），` +
             `但尚未调用 generateProofreadReport 生成收尾报告。\n` +
             `覆盖全文后必须调用 generateProofreadReport（走 wps_office_execute 网关，传 session_id + output_file）\n` +
-            `生成服务端真实累计数据的六维报告，禁止直接结束或开启新批次。`
+            `生成服务端真实累计数据的六维报告，禁止继续推进校对流程或直接结束。`
         );
       }
 
@@ -1261,13 +1268,23 @@ export const WpsGovernancePlugin = async () => {
             // 两者都需兜底，否则 P16 会因 findText 为空而跳过校验（#55 遗留：F11–F15 零拦截）
             const findText = innerArgs.findText || innerArgs.find || innerArgs.find_text || '';
             if (findText && !innerArgs._force_ai_fix) {
-              // P16 补充（Issue #223 实际校对问题 P0-1）：findText 含截断标记（.../…/……）
+              // P16 补充（Issue #223 实际校对问题 P0-1）：findText 含截断标记（.../…/……）即拦截
               // 说明 AI 用的是 context 截断展示文本而非 issue.original 原文，文档中必然不存在，
               // 一定匹配失败导致零修复。直接拦截并引导使用 proofreadBasic 返回的 original。
-              var truncationMarkers = ['...', '…', '……'];
-              var hasTruncation = truncationMarkers.some(function (m) {
-                return findText.indexOf(m) !== -1;
-              });
+              // 精确判定：省略号出现处之后若不紧跟中文字符（即位于末尾或后跟数字/) /；/空格等非中文），
+              // 判定为「截断展示符」；若省略号后紧跟中文字符，则为文档正文合法省略号（引文/列举），不误拦。
+              function hasTruncationMarker(text) {
+                const ellipsisPattern = /(\.\.\.|…+)/g;
+                let m;
+                while ((m = ellipsisPattern.exec(text)) !== null) {
+                  const after = text[m.index + m[0].length];
+                  if (after === undefined || !/[\u4e00-\u9fff]/.test(after)) {
+                    return true;
+                  }
+                }
+                return false;
+              }
+              const hasTruncation = hasTruncationMarker(findText);
               if (hasTruncation) {
                 throw new Error(
                   `【执行治理】【P16】replaceInParagraph findText="${findText}" 含截断标记（.../…/……），` +
