@@ -237,9 +237,8 @@ function createSessionState() {
     reportSessionId: '',
     // P23（Issue #223 实际校对问题 P0-2/P0-4）：
     // accumulateCount 记录 proofreadAccumulate 实际累加次数（首次强制 doc_info）；
-    // reportRequestedFullCoverage 记录覆盖全文后是否已请求生成报告（强制收尾报告）。
+    // maxReportedParagraph / fullCoverageReached 用于判定覆盖全文后强制生成收尾报告（P0-4）。
     accumulateCount: 0,
-    reportRequestedFullCoverage: false,
     maxReportedParagraph: 0,
     fullCoverageReached: false,
     // P19-P21（Issue #151 校对 subagent 并行重构）：执行 agent 被分配的段落区间与并行隔离
