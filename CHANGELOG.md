@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.10] - 2026-08-25
+
+### Fixed
+
+- **Wiki 上传恢复两步协议（Issue #210）** — `scripts/upload-wiki.js` 的 `uploadFile()` 从「直接 multipart 上传到 `/-/upload/wiki/file`」恢复为「两步协议」：① JSON 预上传 `{name, size, ext:{commit_sha}}` → 返回 `upload_url`；② multipart 上传到 `upload_url`。修复 v1.9.9 发布时 `tag_push` 下 26 篇 Wiki 全部 `HTTP 400 Invalid argument` 的问题（此前两步协议提交未合并到 main，导致基于 main 的发布上传失败）。补充 `BRANCH_SHA`（commit_sha）变量。（PR #219，merge commit `0083786`）
+
+### Changed
+
+- **版本号升级至 1.9.10** — 根 `package.json` / `package-lock.json` / `opencode-wps/`（package.json、config.js、manifest.xml）/ `opencode-wps-linux/`（package.json、manifest.xml）/ `wps-office-mcp/`（package.json、package-lock.json）版本一致升级至 1.9.10，`validate-versions` 校验通过。
+
 ## [1.9.9] - 2026-08-25
 
 ### Added
