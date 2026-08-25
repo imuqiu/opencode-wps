@@ -203,6 +203,21 @@ const PROOFREAD_ADVANCE_TOOLS = PROOFREAD_STEP_CHAIN.filter(function (t) {
   return t !== 'proofreadAccumulate';
 });
 
+// P16（Issue #223 实际校对问题 P0-1）：判定 findText 是否含截断展示标记（.../…/……）。
+// 精确判定：省略号出现处之后若不紧跟中文字符（位于末尾或后跟数字/) /；/空格等非中文），
+// 判定为「截断展示符」；若省略号后紧跟中文字符，则为文档正文合法省略号（引文/列举），不误拦。
+function hasTruncationMarker(text) {
+  const ellipsisPattern = /(\.\.\.|…+)/g;
+  let m;
+  while ((m = ellipsisPattern.exec(text)) !== null) {
+    const after = text[m.index + m[0].length];
+    if (after === undefined || !/[\u4e00-\u9fff]/.test(after)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 const EXECUTE_METHOD_WHITELIST = new Set([
   'Application.ActiveDocument',
   'Application.ActiveWorkbook',
@@ -1287,30 +1302,14 @@ export const WpsGovernancePlugin = async () => {
             // 两者都需兜底，否则 P16 会因 findText 为空而跳过校验（#55 遗留：F11–F15 零拦截）
             const findText = innerArgs.findText || innerArgs.find || innerArgs.find_text || '';
             if (findText && !innerArgs._force_ai_fix) {
-              // P16 补充（Issue #223 实际校对问题 P0-1）：findText 含截断标记（.../…/……）即拦截
-              // 说明 AI 用的是 context 截断展示文本而非 issue.original 原文，文档中必然不存在，
-              // 一定匹配失败导致零修复。直接拦截并引导使用 proofreadBasic 返回的 original。
-              // 精确判定：省略号出现处之后若不紧跟中文字符（即位于末尾或后跟数字/) /；/空格等非中文），
-              // 判定为「截断展示符」；若省略号后紧跟中文字符，则为文档正文合法省略号（引文/列举），不误拦。
-              function hasTruncationMarker(text) {
-                const ellipsisPattern = /(\.\.\.|…+)/g;
-                let m;
-                while ((m = ellipsisPattern.exec(text)) !== null) {
-                  const after = text[m.index + m[0].length];
-                  if (after === undefined || !/[\u4e00-\u9fff]/.test(after)) {
-                    return true;
-                  }
-                }
-                return false;
-              }
-              const hasTruncation = hasTruncationMarker(findText);
-              const matchesIssue = st.proofreadIssueOriginals.some(function (orig) {
-                return orig && (orig.indexOf(findText) !== -1 || findText.indexOf(orig) !== -1);
-              });
               // P16 补充（Issue #223 实际校对问题 P0-1，R8-1 精确化）：
               // 含截断标记 且 不匹配任何已知 issue.original → 判定为 context 截断展示文本（非原文），
               // 文档中必然不存在，拦截并引导改用 proofreadBasic 返回的 original。
               // 若 findText 匹配已知 issue.original（即使含省略号，如合法省略号修复），则放行不误拦。
+              const hasTruncation = hasTruncationMarker(findText);
+              const matchesIssue = st.proofreadIssueOriginals.some(function (orig) {
+                return orig && (orig.indexOf(findText) !== -1 || findText.indexOf(orig) !== -1);
+              });
               if (hasTruncation && !matchesIssue) {
                 throw new Error(
                   `【执行治理】【P16】replaceInParagraph findText="${findText}" 含截断标记（.../…/……）且不匹配任何已知问题原文，` +
