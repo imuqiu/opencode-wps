@@ -202,9 +202,8 @@ test('P24：覆盖全文判定逻辑正确（白盒）', function () {
 });
 
 test('P24：拦截范围覆盖全部校对推进工具（排除收尾/报告类）', function () {
-  // 模拟 P24 的拦截判定：覆盖全文且未生成报告时，
-  // 校对推进工具（PROOFREAD_STEP_CHAIN 除 proofreadAccumulate 外）均应被拦截，
-  // 而收尾/报告类（generateProofreadReport / proofreadAccumulate / getActiveDocument 等）应放行。
+  // 模拟 P24 的真实拦截判定（R5-1 修复，避免恒真断言）：
+  // shouldBlock(toolName) = PROOFREAD_ADVANCE_TOOLS 命中 && 未生成报告 && 已覆盖全文
   var PROOFREAD_STEP_CHAIN = [
     'getDocumentParagraphs',
     'getDocumentTextByRange',
@@ -216,33 +215,38 @@ test('P24：拦截范围覆盖全部校对推进工具（排除收尾/报告类�
   var PROOFREAD_ADVANCE_TOOLS = PROOFREAD_STEP_CHAIN.filter(function (t) {
     return t !== 'proofreadAccumulate';
   });
-  // 覆盖全文 + 未生成报告 → 所有推进工具都被拦截
+  function shouldBlock(toolName, reportGenerated, fullCoverageReached) {
+    return (
+      PROOFREAD_ADVANCE_TOOLS.indexOf(toolName) !== -1 &&
+      !reportGenerated &&
+      fullCoverageReached
+    );
+  }
+  // 场景1：覆盖全文 + 未生成报告 → 所有推进工具都应被拦截
   PROOFREAD_ADVANCE_TOOLS.forEach(function (tool) {
     assertTrue(
-      PROOFREAD_ADVANCE_TOOLS.indexOf(tool) !== -1,
-      '推进工具 ' + tool + ' 应被 P24 拦截'
+      shouldBlock(tool, false, true),
+      '覆盖全文+未报告：推进工具 ' + tool + ' 应被拦截'
     );
   });
-  // proofreadAccumulate（覆盖全文上报动作本身）不应被拦
-  assertTrue(
-    PROOFREAD_ADVANCE_TOOLS.indexOf('proofreadAccumulate') === -1,
-    'proofreadAccumulate 不应被 P24 拦截（它是覆盖全文的上报动作）'
-  );
-  // 收尾/报告类不应被拦
-  ['generateProofreadReport', 'getActiveDocument', 'enableTrackChanges', 'getTrackChangesStatus', 'save'].forEach(
+  // 场景2：覆盖全文 + 未生成报告 → 报告/收尾/上报类不应被拦
+  ['proofreadAccumulate', 'generateProofreadReport', 'getActiveDocument', 'enableTrackChanges', 'getTrackChangesStatus', 'save'].forEach(
     function (tool) {
       assertTrue(
-        PROOFREAD_ADVANCE_TOOLS.indexOf(tool) === -1,
-        '收尾/报告类 ' + tool + ' 不应被 P24 拦截'
+        !shouldBlock(tool, false, true),
+        '覆盖全文+未报告：收尾/报告类 ' + tool + ' 不应被拦截'
       );
     }
   );
-  // 覆盖全文 + 已生成报告 → 不再拦截（fullCoverageReached 有但 reportGenerated=true）
-  var reportGenerated = true;
-  var fullCoverageReached = true;
+  // 场景3：覆盖全文 + 已生成报告 → 推进工具不再拦截
   assertTrue(
-    !(PROOFREAD_ADVANCE_TOOLS.indexOf('getDocumentParagraphs') !== -1 && !reportGenerated && fullCoverageReached),
-    '已生成报告后不应再拦截'
+    !shouldBlock('getDocumentParagraphs', true, true),
+    '覆盖全文+已报告：推进工具不应再拦截'
+  );
+  // 场景4：未覆盖全文（fullCoverageReached=false）→ 不拦截
+  assertTrue(
+    !shouldBlock('getDocumentParagraphs', false, false),
+    '未覆盖全文：不应拦截'
   );
 });
 
