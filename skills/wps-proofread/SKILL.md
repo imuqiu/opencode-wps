@@ -264,6 +264,8 @@ deduped.sort(
 
 **🔥 禁止合并批次（Issue #223 问题 P0-3）**：不得把多个 `getDocumentParagraphs` 取得的文本拼到一个文件里单次调用 `proofreadBasic`（如把 418 段合并为单批）。**每批必须 ≤200 段**，且每批要独立走完整链条：`getDocumentParagraphs → proofreadBasic → confirmBatchAiProofread → replaceInParagraph → proofreadAccumulate`。合并批次会触发单批进度增量上限（>200 段）被服务端拒绝，且 AI 可能用空 `issues` 拆分上报进度导致问题丢失（真实会话因此丢失 74 条）。
 
+**📁 文件批次纪律（Issue #223 问题 P1-2）**：**每批文本独立写入/读取独立文件**（如 `batch_01.txt`/`batch_02.txt`），禁止把多批内容拼入同一文件或复用未清空的旧文件——真实会话中出现过 `batch_01.txt`/`batch_21.txt` ENOENT、写入后读取不到而需重写的问题。每批文件的写入、读取、调用 `proofreadBasic` 必须在同一批内完成，勿跨批错用。
+
 违规后果：请求过多段落会导致 COM 调用超时（即使 60s 也不够），浪费时间和 token。
 
 ## 分批校对计划表（执行第一个工具前必须输出）
@@ -683,7 +685,7 @@ const toReport = deduped.filter(i => i.fix_action === 'report_only');
 > - 真实会话中 AI 发现 8 处异常空格/重复标点却只修 2 处，报告却写"全部已修复"，导致用户误以为校对完成。
 > - 修复后报告"全部已修复"的判定应基于服务端真实修订记录（`getTrackChangesStatus` 修订数增量），而非 AI 主观判断。
 
-**映射方法 1：从 getDocumentParagraphs 返回的 [start-end] 中查找 offset 所在的段落。**
+**映射方法 1：从 getDocumentParagraphs 返回的 [start-end] 中查找 offset 所在的段落。**（**推荐优先**：基于已有段落范围直接计算，不额外调用 findInDocument，避免其在大文档/长文本下超时——真实会话中 findInDocument 曾多次超时、单次最长约 69s）
 
 ```javascript
 // 从 getDocumentParagraphs 输出中解析段落范围
@@ -737,7 +739,7 @@ for (const issue of toFix) {
 }
 ```
 
-**映射方法 2：用 findInDocument 查找偏移量对应的段落索引。**
+**映射方法 2：用 findInDocument 查找偏移量对应的段落索引。**（**仅降级使用**：方法 1 无法定位（如段落范围不连续/offset 异常）时才用；大文档下可能超时，超时后回退方法 1 计算）
 
 ```javascript
 // 用 findInDocument 确定 offset 对应的段落索引

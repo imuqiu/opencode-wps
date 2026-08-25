@@ -95,6 +95,16 @@
 | **P0-3 进度造假**：为绕过单批 200 段上限把合并大批拆成多次空 `issues` 上报（丢失 74 条） | **P23** | 上报 `_processed_to_paragraph` 但 `issues` 为空数组即拦截，禁止用空 issues 填充进度 |
 | **P0-4 报告未生成**：覆盖全文后未调用 `generateProofreadReport` 就结束，用户拿到的是 AI 编造内容 | **P24** | 覆盖全文（进度≥totalParagraphs）但未生成报告时，任何继续推进校对流程的工具（获取段落/基础校对/确认/替换）均被拦截，强制收尾报告 |
 
+**P1 级问题在 SKILL 层面的落地**（不改治理代码，通过 `skills/wps-proofread/SKILL.md` 说明防复发）：
+
+| 问题 | 落地 | 说明 |
+|------|------|------|
+| **P1-1 API 调用格式错误**（直接调 MCP、缺 tool_name） | 既有 P16 截断拦截 + G1 网关强制引导 | 与既有治理规则配合，SKILL 强调走 `wps_office_execute` 网关 |
+| **P1-2 文件管理混乱**（ENOENT、写入后读不到） | SKILL 新增「📁 文件批次纪律」 | 每批文本独立写入/读取独立文件，禁止拼单/复用旧文件 |
+| **P1-3 findInDocument 超时**（4 次、最长 69s） | SKILL 明确「映射方法 1 优先、方法 2 降级」 | 优先用 `getDocumentParagraphs` 范围计算，避免 findInDocument 大文档超时 |
+
+**状态机健壮性**（评审 R4-1/R4-2 加固）：`accumulateCount` 只在全部校验通过后递增（防失败重试绕过首次 doc_info 强制）；`getActiveDocument` 重置覆盖状态（防报告失败后死锁）。
+
 ### 上下文用量条（Issue #116 session_ffa9 假修复）
 
 用量条数据源改为**多路径防御性探测**（`extractCtxUsage`：usage/tokens/context/info/status 各字段组合，含 used+total 自动换算百分比），信息文本默认可见；无用量数据时诚实降级展示（不显示假百分比），并监听 Compaction 压缩事件显式提示用户。
