@@ -78,6 +78,55 @@ const WIKI_MENU = [
   },
 ];
 
+// 源文件名 → Wiki 中文显示名 映射（导航显示名 = wiki 路径文件名）
+// 用途：让 Wiki 左侧导航显示中文而非英文文件名（Issue #210 用户反馈）
+// 说明：仅影响 Wiki 路径/导航显示名，不改变 docs/ 下实际源文件名。
+// 命名规范：优先使用纯中文；英文专有名词（MCP/OpenCode/WPS/API/Skills）保留原拼写；
+//          缩写组合（WPSJS/WPS_COM_PS1）保留下划线转空格（WPS COM PS1），不拆分缩写字母；格式统一为「英文 中文」或「纯中文」。
+const WIKI_NAME_MAP = {
+  'USAGE.md': '使用说明.md',
+  'INSTALLATION.md': '安装指南.md',
+  'TROUBLESHOOTING.md': '问题排查.md',
+  'FEATURES.md': '功能特性.md',
+  'DEVELOPMENT_GUIDE.md': '开发手册.md',
+  'SKILLS.md': '技能.md',
+  'ARCHITECTURE.md': '架构设计.md',
+  'CODE_REVIEW_GUIDE.md': '代码审查.md',
+  'WPSJS_DEVELOPMENT.md': 'WPSJS 开发.md',
+  'INSTALL_SCRIPT.md': '安装脚本.md',
+  'WINDOWS.md': 'Windows 支持.md',
+  'MAC.md': 'macOS 支持.md',
+  'LINUX.md': 'Linux 支持.md',
+  'MCP.md': 'MCP 协议.md',
+  'OPENCODE_API.md': 'OpenCode API.md',
+  'WPS_COM_API.md': 'WPS COM 接口.md',
+  'WPS_COM_PS1.md': 'WPS COM PS1 解析.md',
+  'POWERSHELL_COM.md': 'PowerShell 桥接.md',
+  'SECURITY.md': '安全模型.md',
+  'NPC_TEAM.md': 'NPC Team.md',
+  'HISTORY.md': '演进历史.md',
+};
+
+/** 获取 Wiki 显示文件名（源文件名 → 中文显示名，未映射则原样返回） */
+function wikiName(sourceFile) {
+  const mapped = WIKI_NAME_MAP[sourceFile];
+  if (mapped === undefined && sourceFile !== 'README.md') {
+    // 防遗漏保护：新增文档到 WIKI_MENU 时若忘记登记中文名，提示维护者
+    console.warn(
+      `  ⚠ wikiName: 「${sourceFile}」未在 WIKI_NAME_MAP 中登记中文名，将使用英文原文件名`
+    );
+  }
+  if (mapped !== undefined && !mapped.endsWith('.md')) {
+    // 防后缀遗漏：Wiki 中文显示名应带 .md 后缀，与源文件名保持一致
+    console.warn(`  ⚠ wikiName: 「${sourceFile}」的映射值「${mapped}」缺少 .md 后缀`);
+  }
+  if (mapped !== undefined && mapped.includes('/')) {
+    // 防路径分隔符：Wiki 显示名不应包含 /，否则会拼接出错误的多级路径
+    console.warn(`  ⚠ wikiName: 「${sourceFile}」的映射值「${mapped}」包含路径分隔符 /`);
+  }
+  return mapped || sourceFile;
+}
+
 // 一级目录落地页（Issue #210）：Wiki 导航会把每个一级目录渲染成一个“与一级目录同名”的
 // 首个子节点（指向裸目录路径，如 /-/wiki/使用指南）。此前只上传了 `使用指南/USAGE.md` 这类
 // 带子路径的页面，裸目录路径上没有页面，导致点击同名节点 → 404。
@@ -95,7 +144,13 @@ const CATEGORY_INDEX = [
   { dir: '内部参考' },
 ];
 
-/** 生成“分类索引页”内容（用于无同名文档的一级目录落地页） */
+/**
+ * 生成“分类索引页”内容（用于无同名文档的一级目录落地页）。
+ * 索引页包含标题、说明和文档链接表格，链接指向 Wiki 内页面。
+ * @param {string} dir 一级目录名（须在 WIKI_MENU 中定义）
+ * @returns {string} 生成的 Markdown 索引页内容
+ * @throws {Error} 如果 dir 不在 WIKI_MENU 中，抛出「未知 Wiki 分类」错误
+ */
 function buildCategoryIndex(dir) {
   const cat = WIKI_MENU.find(c => c.dir === dir);
   if (!cat) {
@@ -107,8 +162,10 @@ function buildCategoryIndex(dir) {
   lines.push(`> 本文档是「${dir}」分类的索引页，汇总该分类下的全部 Wiki 文档。`, '');
   lines.push('| 文档 | 说明 |', '|------|------|');
   for (const file of cat.files) {
+    const wikiFileName = wikiName(file);
+    const displayName = wikiFileName.replace(/\.md$/, '');
     lines.push(
-      `| [${file}](${wikiBase}/${encodeURIComponent(file)}) | ${file.replace(/\.md$/, '')} |`
+      `| [${displayName}](${wikiBase}/${encodeURIComponent(wikiFileName)}) | ${displayName} |`
     );
   }
   return lines.join('\n') + '\n';
@@ -127,12 +184,21 @@ const CATEGORY_INDEX_MAP = new Map(CATEGORY_INDEX.map(c => [c.dir, c]));
  */
 function collectEntries(docsDir = path.join(rootDir, 'docs')) {
   const entries = [];
+  // 防冲突保护：检查 WIKI_NAME_MAP 中是否有重复的目标文件名（两个源文件映射到同一个中文名）
+  const seenWikiNames = new Set();
   for (const cat of WIKI_MENU) {
     for (const file of cat.files) {
-      // README.md 在仓库根，其余在 docs/ 下
+      // README.md 在仓库根，其余在 docs/ 下。README 的 cat.dir 为空字符串，
+      // wikiPath 直接为 'README.md'（根级路径），作为 Wiki 入口/首页页面处理。
       const sourceFile =
         file === 'README.md' ? path.join(rootDir, 'README.md') : path.join(docsDir, file);
-      const wikiPath = cat.dir ? `${cat.dir}/${file}` : file;
+      const wikiFileName = wikiName(file);
+      const wikiPath = cat.dir ? `${cat.dir}/${wikiFileName}` : wikiFileName;
+      if (seenWikiNames.has(wikiPath)) {
+        console.warn(`  ⚠ 重复 wiki 路径: 「${file}」与已有文档冲突，跳过该条目（避免重复上传）`);
+        continue;
+      }
+      seenWikiNames.add(wikiPath);
       entries.push({ wikiPath, sourceFile });
     }
     // 一级目录“同名”落地页（Issue #210）：让裸目录路径（/-/wiki/<dir>）可访问
@@ -145,6 +211,11 @@ function collectEntries(docsDir = path.join(rootDir, 'docs')) {
       let content;
       if (landing.indexSourceFile) {
         // 复用同名文档作为落地页，顶部加一行入口说明以区分文档页与入口页
+        if (WIKI_NAME_MAP[landing.indexSourceFile] === undefined) {
+          console.warn(
+            `  ⚠ 分类「${cat.dir}」落地页源文件 ${landing.indexSourceFile} 未在 WIKI_NAME_MAP 登记中文名`
+          );
+        }
         const srcPath = path.join(docsDir, landing.indexSourceFile);
         if (fs.existsSync(srcPath)) {
           const src = fs.readFileSync(srcPath, 'utf8');
@@ -157,6 +228,10 @@ function collectEntries(docsDir = path.join(rootDir, 'docs')) {
       } else {
         content = buildCategoryIndex(cat.dir);
       }
+      if (seenWikiNames.has(cat.dir)) {
+        console.warn(`  ⚠ 重复 wiki 路径: 落地页「${cat.dir}」与已有文档路径冲突`);
+      }
+      seenWikiNames.add(cat.dir);
       entries.push({ wikiPath: cat.dir, content });
     }
   }
@@ -257,4 +332,12 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { collectEntries, uploadFile, buildCategoryIndex, CATEGORY_INDEX, WIKI_MENU };
+module.exports = {
+  collectEntries,
+  uploadFile,
+  buildCategoryIndex,
+  CATEGORY_INDEX,
+  WIKI_MENU,
+  WIKI_NAME_MAP,
+  wikiName,
+};

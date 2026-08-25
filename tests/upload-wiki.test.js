@@ -23,6 +23,8 @@ var uploadWiki = require('../scripts/upload-wiki.js');
 var collectEntries = uploadWiki.collectEntries;
 var buildCategoryIndex = uploadWiki.buildCategoryIndex;
 var CATEGORY_INDEX = uploadWiki.CATEGORY_INDEX;
+var WIKI_NAME_MAP = uploadWiki.WIKI_NAME_MAP;
+var wikiName = uploadWiki.wikiName;
 
 // ==================== 测试框架 ====================
 
@@ -88,12 +90,12 @@ test('buildCategoryIndex 平台专题 生成 Wiki 链接索引页', function () 
   const content = buildCategoryIndex('平台专题');
   assertMatch(content, /^# 平台专题/m, '标题应为平台专题');
   assertMatch(content, /分类的索引页/, '应含索引页说明');
-  assertMatch(content, /\[WINDOWS\.md\]/, '应包含 WINDOWS.md 链接');
+  assertMatch(content, /\[Windows 支持\]/, '应包含中文显示名链接');
   // Wiki 链接 + 中文目录名 URL 编码
   assertMatch(
     content,
-    /\/-\/wiki\/%E5%B9%B3%E5%8F%B0%E4%B8%93%E9%A2%98\/WINDOWS\.md/,
-    '链接应指向 Wiki 且目录名已编码'
+    /\/-\/wiki\/%E5%B9%B3%E5%8F%B0%E4%B8%93%E9%A2%98\/Windows%20%E6%94%AF%E6%8C%81\.md/,
+    '链接应指向 Wiki 且目录名和中文文件名已编码'
   );
   // 不应再指向 blob
   assertTrue(!content.includes('/-/blob/'), '链接不应指向 blob 源码');
@@ -102,7 +104,12 @@ test('buildCategoryIndex 平台专题 生成 Wiki 链接索引页', function () 
 test('buildCategoryIndex 内部参考 生成索引页', function () {
   const content = buildCategoryIndex('内部参考');
   assertMatch(content, /^# 内部参考/m, '标题应为内部参考');
-  assertMatch(content, /\[MCP\.md\]/, '应包含 MCP.md 链接');
+  assertMatch(content, /\[MCP 协议\]/, '应包含 MCP 协议链接');
+  // 验证该分类下多个文档链接
+  assertMatch(content, /\[WPS COM 接口\]/, '应包含 WPS COM 接口链接');
+  assertMatch(content, /\[WPS COM PS1 解析\]/, '应包含 WPS COM PS1 解析链接');
+  assertMatch(content, /\[PowerShell 桥接\]/, '应包含 PowerShell 桥接链接');
+  assertMatch(content, /\[安全模型\]/, '应包含 安全模型 链接');
 });
 
 // --- buildCategoryIndex：未知分类抛错 ---
@@ -162,7 +169,7 @@ test('collectEntries 同名文档缺失时回退为索引页（P7，隔离目录
     // 缺失时回退为索引页（标题为「使用指南」而非「使用指南（Wiki 级）」）
     assertMatch(us.content, /^# 使用指南(?![（(]Wiki 级)/m, '缺失时应回退为普通索引页标题');
     // 隔离目录下普通文档 sourceFile 也应指向隔离目录
-    const usage = entries.find(e => e.wikiPath === '使用指南/USAGE.md');
+    const usage = entries.find(e => e.wikiPath === '使用指南/使用说明.md');
     assertTrue(usage.sourceFile.startsWith(tmpDir), 'sourceFile 应指向隔离目录');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -196,6 +203,97 @@ test('collectEntries 开发指南落地页复用 DEVELOPMENT_GUIDE.md（P11）',
     assertMatch(dev.content, /# 开发指南（Wiki 级）/, '应复用 DEVELOPMENT_GUIDE.md 内容');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+// --- WIKI_NAME_MAP 中文显示名映射 ---
+
+test('WIKI_NAME_MAP 覆盖全部非 README 文档', function () {
+  const allFiles = [];
+  const uploadWikiMod = require('../scripts/upload-wiki.js');
+  uploadWikiMod.WIKI_MENU.forEach(cat => {
+    cat.files.forEach(f => allFiles.push(f));
+  });
+  // 每个源文件都应有中文映射（README 除外，保持原名）
+  allFiles
+    .filter(f => f !== 'README.md')
+    .forEach(f => {
+      assertTrue(WIKI_NAME_MAP[f] !== undefined, '缺少中文映射: ' + f);
+    });
+  // README 保持原名
+  assertEqual(wikiName('README.md'), 'README.md', 'README 应保持原名');
+});
+
+test('wikiName 返回中文显示名', function () {
+  assertEqual(wikiName('USAGE.md'), '使用说明.md', 'USAGE.md 应映射为使用说明.md');
+  assertEqual(wikiName('INSTALLATION.md'), '安装指南.md', 'INSTALLATION.md 应映射为安装指南.md');
+  assertEqual(wikiName('MCP.md'), 'MCP 协议.md', 'MCP.md 应映射为 MCP 协议.md');
+  assertEqual(wikiName('SKILLS.md'), '技能.md', 'SKILLS.md 应映射为技能.md');
+  assertEqual(
+    wikiName('WPS_COM_PS1.md'),
+    'WPS COM PS1 解析.md',
+    'WPS_COM_PS1.md 应映射为 WPS COM PS1 解析.md'
+  );
+  // 未映射的文件名原样返回（捕获防遗漏警告避免测试输出噪音）
+  const origWarn = console.warn;
+  console.warn = function () {};
+  try {
+    assertEqual(wikiName('NOT_IN_MAP.md'), 'NOT_IN_MAP.md', '未映射文件应原样返回');
+  } finally {
+    console.warn = origWarn;
+  }
+});
+
+test('collectEntries 普通文档 wiki 路径使用中文显示名', function () {
+  const entries = collectEntries();
+  // 使用指南分类下的文档路径应使用中文名
+  const usage = entries.find(e => e.wikiPath === '使用指南/使用说明.md');
+  assertTrue(usage !== undefined, '应存在 使用指南/使用说明.md 条目');
+  assertTrue(usage.sourceFile.endsWith('USAGE.md'), 'sourceFile 应指向 docs/USAGE.md');
+  // 不应存在英文名路径
+  const oldPath = entries.find(e => e.wikiPath === '使用指南/USAGE.md');
+  assertTrue(oldPath === undefined, '不应存在 使用指南/USAGE.md 条目');
+  // 多个分类中的文档路径应使用中文名
+  const dev = entries.find(e => e.wikiPath === '开发指南/开发手册.md');
+  assertTrue(dev !== undefined, '应存在 开发指南/开发手册.md 条目');
+  const pt = entries.find(e => e.wikiPath === '平台专题/Windows 支持.md');
+  assertTrue(pt !== undefined, '应存在 平台专题/Windows 支持.md 条目');
+  const mcp = entries.find(e => e.wikiPath === '内部参考/MCP 协议.md');
+  assertTrue(mcp !== undefined, '应存在 内部参考/MCP 协议.md 条目');
+  const wps = entries.find(e => e.wikiPath === '内部参考/WPS COM PS1 解析.md');
+  assertTrue(wps !== undefined, '应存在 内部参考/WPS COM PS1 解析.md 条目');
+  // 各分类 sourceFile 应指向对应英文源文件
+  assertTrue(
+    dev.sourceFile.endsWith('DEVELOPMENT_GUIDE.md'),
+    'sourceFile 应指向 DEVELOPMENT_GUIDE.md'
+  );
+  assertTrue(pt.sourceFile.endsWith('WINDOWS.md'), 'sourceFile 应指向 WINDOWS.md');
+  assertTrue(mcp.sourceFile.endsWith('MCP.md'), 'sourceFile 应指向 MCP.md');
+  assertTrue(wps.sourceFile.endsWith('WPS_COM_PS1.md'), 'sourceFile 应指向 WPS_COM_PS1.md');
+});
+
+// 防冲突检测：验证 collectEntries 对重复 wiki 路径输出警告（R6 评审）
+test('collectEntries 重复 wiki 路径检测（R6）', function () {
+  // 捕获 console.warn 输出
+  const origWarn = console.warn;
+  const warnings = [];
+  console.warn = function (msg) {
+    warnings.push(String(msg));
+  };
+  // 临时替换映射，模拟重复
+  const origMap = WIKI_NAME_MAP['FEATURES.md'];
+  try {
+    // 将 FEATURES.md 映射为与 USAGE.md 相同的目标名
+    WIKI_NAME_MAP['FEATURES.md'] = '使用说明.md';
+    collectEntries();
+    // 验证输出了重复路径警告
+    const dupWarning = warnings.find(w => w.includes('重复 wiki 路径'));
+    assertTrue(dupWarning !== undefined, '应输出重复 wiki 路径警告');
+    assertMatch(dupWarning, /FEATURES\.md/, '警告应包含冲突的源文件名');
+  } finally {
+    // 确保恢复映射和 console.warn，避免测试间污染
+    WIKI_NAME_MAP['FEATURES.md'] = origMap;
+    console.warn = origWarn;
   }
 });
 
