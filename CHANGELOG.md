@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.11] - 2026-08-25
+
+### Fixed
+
+- **Wiki 一级目录落地页补 `.md` 后缀（Issue #210）** — `collectEntries()` 生成的 4 个一级目录落地页路径从裸目录名（`使用指南`）改为带 `.md` 后缀（`使用指南.md`）。修复 v1.9.10 发布时 `tag_push` 下 4 个落地页 `HTTP 400 {"errcode":10402,"errmsg":" file format is not supported."}` 失败问题（其余 22 篇带 .md 文档已成功）。同步更新冲突检测与测试断言。（PR #221，merge commit `f793d89`）
+
+### Changed
+
+- **版本号升级至 1.9.11** — 根 `package.json` / `package-lock.json` / `opencode-wps/`（package.json、config.js、manifest.xml）/ `opencode-wps-linux/`（package.json、manifest.xml）/ `wps-office-mcp/`（package.json、package-lock.json）版本一致升级至 1.9.11，`validate-versions` 校验通过。
+
 ## [1.9.10] - 2026-08-25
 
 ### Fixed
