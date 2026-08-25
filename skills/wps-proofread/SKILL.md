@@ -262,6 +262,8 @@ deduped.sort(
 
 **推荐每批 100 段**（#116 问题十）：大段请求输出易被 MCP 截断导致漏检，且 Windows COM + PowerShell 下 200 段可能触发超时（60s）。100 段是稳妥值，建议作为默认。
 
+**🔥 禁止合并批次（Issue #223 问题 P0-3）**：不得把多个 `getDocumentParagraphs` 取得的文本拼到一个文件里单次调用 `proofreadBasic`（如把 418 段合并为单批）。**每批必须 ≤200 段**，且每批要独立走完整链条：`getDocumentParagraphs → proofreadBasic → confirmBatchAiProofread → replaceInParagraph → proofreadAccumulate`。合并批次会触发单批进度增量上限（>200 段）被服务端拒绝，且 AI 可能用空 `issues` 拆分上报进度导致问题丢失（真实会话因此丢失 74 条）。
+
 违规后果：请求过多段落会导致 COM 调用超时（即使 60s 也不够），浪费时间和 token。
 
 ## 分批校对计划表（执行第一个工具前必须输出）
@@ -807,6 +809,10 @@ await wps_office_execute({
 > **🔥 `_processed_to_paragraph` 必填（P22）**：每次 `proofreadAccumulate` 都必须携带本批已校对到的最末段落索引（≥1）。
 > 服务端据此追踪文档真实覆盖进度；缺此字段会被治理 P22 拦截，且 `generateProofreadReport` 将因完整性门禁拒绝生成报告（防"中途结束就假装完成"）。
 >
+> **🔴 首次累加必带 `doc_info`（P23）**：第一次实际累加（非规划初始化）必须携带 `doc_info`（含 `fileName`/`filePath`/`totalParagraphs`）。缺 `doc_info` 时服务端无法建立会话上下文，本批 issues 会被丢弃（真实会话中因此丢失 7 条）。
+>
+> **🔴 禁止空 `issues` 上报进度（P23）**：携带 `_processed_to_paragraph` 上报进度但 `issues` 为空数组会被治理 P23 拦截（"报了进度但丢了数据"的进度造假）。本批确有校对问题时必须真实放入 `issues`，禁止用空数组填充进度绕过批次增量上限。
+>
 > **⚠️ 单批进度增量上限（PR #181 评审 R2-1/R3-1）**：串行模式下，单批进度增量不得超过 **200 段**（与 `getDocumentParagraphs` 单次上限一致，`getDocumentParagraphs` 每批最多取 200 段校对）——增量 > 200 会被服务端判为"跳号假进度"拒绝（如 700→1600 增量 900）。请按批次逐批上报：上一批进度 `N` → 本批 ≤ `N+200`。同时 `_processed_to_paragraph` 不得超过文档总段数（超界直接拒绝）。
 >
 > **🔴 报告硬性完整性门禁（Issue #151 遗留修复）**：`generateProofreadReport` 现在是**硬门禁**而非仅告警——
@@ -978,6 +984,8 @@ COM 超时已从 30s 增加到 60s（#116 问题八，MCP v1.1.1 起），200 �
 | **P20** | **逐步凭证落盘（防幻觉）**                        | `proofreadAccumulate`                          | 携带 `_batch_id` 却缺非空 `_steps_log`，或步骤名非法                                                               |
 | **P21** | **并行区间重叠检测**                              | `getDocumentParagraphs`                        | 同一会话不同批次请求区间相交                                                                                       |
 | **P22** | **必须上报校对进度**                              | `proofreadAccumulate`                          | 未携带 `_processed_to_paragraph`（规划初始化登记豁免）                                                             |
+| **P23** | **首次累加必带 doc_info + 禁止空 issues 报进度** | `proofreadAccumulate`                          | 首次实际累加缺 `doc_info`；或上报进度但 `issues` 为空数组（进度造假）                                             |
+| **P24** | **覆盖全文后强制生成报告**                      | `getDocumentParagraphs`                        | 已覆盖全文（进度≥totalParagraphs）但尚未 `generateProofreadReport`                                                 |
 
 ### 通用执行规则（G1-G7，始终生效）
 
@@ -999,11 +1007,17 @@ COM 超时已从 30s 增加到 60s（#116 问题八，MCP v1.1.1 起），200 �
 
 **P16 说明**：当 `proofreadBasic` 返回了问题列表，`replaceInParagraph` 的 `findText` 必须与至少一条 issue 的 `original` 原文匹配（子串匹配即可）。如 `findText` 与任何已知 issue 都不匹配，说明 AI 在修复基础校对未发现的问题，P16 拦截。如需强制修复需传 `_force_ai_fix: true`。
 
+**P16 补充（Issue #223 问题 P0-1，禁止截断 findText）**：`findText` 若含截断标记（`...`/`…`/`……`），说明你拿的是 `context` 截断展示文本而非 `issue.original` 原文，文档中必然不存在该文本，替换必定失败导致零修复。**必须用 `proofreadBasic` 返回的 `original` 字段（或 `getDocumentParagraphs` 获取的完整段落文本）作为 `findText`**。含截断标记的 `findText` 会被 P16 直接拦截。
+
 **P17 说明**（session_ffa8 问题一）：写文件路径含「校对报告」时，若服务端尚未通过 `generateProofreadReport` 成功生成报告（`reportGenerated !== true`），插件直接拦截。这防止 AI 在 `generateProofreadReport` 失败后手动 `write` 自拼 Markdown 报告（真实会话中出现过 3 份互相矛盾的手写报告）。
 
 **P18 说明**（session_ffa8 问题四）：`getDocumentParagraphs` 在已处理到段落 N 后，再次从段落 1 回卷获取即被拦截。批次必须严格连续，禁止把已检查过的段落重复扫描（真实会话中 AI 在已处理完第 1-2 批后又 `getDocumentParagraphs(start=1)` 重复跑了一遍）。如需重新开始，请先 `getActiveDocument` 重置进度。
 
 **P22 说明**（Issue #151 遗留修复）：每次 `proofreadAccumulate` 必须携带 `_processed_to_paragraph`（本批已校对到的最末段落索引）。服务端据此追踪真实覆盖进度，`generateProofreadReport` 的**硬性完整性门禁**据此判断是否允许生成报告——未覆盖全文（含编排模式有未完成批次、串行模式进度不足）时直接拒绝生成，杜绝"中途结束就假装完成"。规划 agent 初始化登记（带 `_batch_allocations` 且无 issues）豁免。
+
+**P23 说明**（Issue #223 问题 P0-2/P0-3）：① **首次实际累加（非规划初始化）必须携带 `doc_info`**（含 `fileName`/`filePath`/`totalParagraphs`）。服务端据此建立校对会话上下文；缺 `doc_info` 时本批携带的 issues 会被丢弃（真实会话中因此丢失 7 条）。② **禁止用空 `issues` 上报进度**：携带 `_processed_to_paragraph` 上报进度却 `issues` 为空数组，属于"报了进度但丢了数据"的进度造假（真实会话中 AI 为绕过单批增量上限把合并大批拆成 4 次空上报，丢失 74 条）。如本批确有问题，必须真实放入 issues 后再累加。
+
+**P24 说明**（Issue #223 问题 P0-4）：文档覆盖全文（累计 `_processed_to_paragraph` ≥ `totalParagraphs`）后，若尚未调用 `generateProofreadReport` 生成收尾报告，再次调用 `getDocumentParagraphs` 开启新批次即被拦截，强制先生成报告。防止"覆盖全文后忘了生成报告就直接结束"（真实会话中 AI 空上报到全文后未生成报告就结束，用户拿到的只是 AI 编造的内容）。
 
 **规则 2a 说明**：首次 `getDocumentParagraphs` 必须从第 1 段开始。若 `lastBatchParaIndex === 0` 时 `start_paragraph !== 1`，插件直接拒绝。这是为了防止从文档中间开始校对导致遗漏。
 

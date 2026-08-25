@@ -229,6 +229,13 @@ function createSessionState() {
     // 用于区分「合法 writeFile 落盘服务端报告」与「AI 手动 write 伪造报告」。
     reportGenerated: false,
     reportSessionId: '',
+    // P23（Issue #223 实际校对问题 P0-2/P0-4）：
+    // accumulateCount 记录 proofreadAccumulate 实际累加次数（首次强制 doc_info）；
+    // reportRequestedFullCoverage 记录覆盖全文后是否已请求生成报告（强制收尾报告）。
+    accumulateCount: 0,
+    reportRequestedFullCoverage: false,
+    maxReportedParagraph: 0,
+    fullCoverageReached: false,
     // P19-P21（Issue #151 校对 subagent 并行重构）：执行 agent 被分配的段落区间与并行隔离
     // 管理 agent 派发执行 agent 时，通过 getDocumentParagraphs 参数 _batch_range 声明区间；
     // governance 缓存并校验后续段落请求/替换不越界，并检测同一会话内并行区间重叠。
@@ -637,6 +644,66 @@ export const WpsGovernancePlugin = async () => {
                 `请在本批校对完成后，将实际处理到的段落索引作为 _processed_to_paragraph 传入。`
             );
           }
+          // P23（Issue #223 实际校对问题 P0-2/P0-3）：
+          // 1) 首次实际累加（非规划初始化）必须携带 doc_info（fileName/filePath/totalParagraphs），
+          //    否则服务端无法建立会话上下文，携带的 issues 会被丢弃（真实会话中前两批 7 条因此丢失）。
+          // 2) 携带了 _processed_to_paragraph 上报进度却 issues 为空数组：说明 AI 在"报了进度但丢了数据"
+          //    （为绕过单批 200 段上限把合并大批拆成多次空 issues 上报），直接拦截防进度造假。
+          const issuesArg = innerArgs.issues;
+          const hasIssuesArg = Array.isArray(issuesArg) && issuesArg.length > 0;
+          if (!isPlannerInit) {
+            st.accumulateCount = (st.accumulateCount || 0) + 1;
+            const isFirstRealAccumulate = st.accumulateCount === 1;
+            if (isFirstRealAccumulate) {
+              const hasDocInfo =
+                innerArgs.doc_info &&
+                typeof innerArgs.doc_info === 'object' &&
+                innerArgs.doc_info.fileName &&
+                innerArgs.doc_info.filePath;
+              if (!hasDocInfo) {
+                throw new Error(
+                  `【执行治理】【P23】首次 proofreadAccumulate 必须携带 doc_info（{ fileName, filePath, totalParagraphs }）。\n` +
+                    `服务端据此建立校对会话上下文；缺 doc_info 时本批携带的 issues 会被丢弃（真实会话中因此丢失 7 条）。\n` +
+                    `请在首次实际累加时补齐 doc_info 后再调用。`
+                );
+              }
+              // 记录文档总段数（用于后续判定是否覆盖全文并强制收尾报告 P0-4）
+              if (
+                innerArgs.doc_info &&
+                typeof innerArgs.doc_info === 'object' &&
+                typeof innerArgs.doc_info.totalParagraphs === 'number'
+              ) {
+                st.totalParagraphs = innerArgs.doc_info.totalParagraphs;
+              }
+            }
+            if (
+              innerArgs._processed_to_paragraph !== undefined &&
+              !hasIssuesArg &&
+              !isFirstRealAccumulate
+            ) {
+              throw new Error(
+                `【执行治理】【P23】proofreadAccumulate 上报了 _processed_to_paragraph=${innerArgs._processed_to_paragraph} 但 issues 为空数组。\n` +
+                  `这属于"报了进度但丢了数据"的进度造假（为绕过单批增量上限把大批拆成多次空上报）。\n` +
+                  `禁止用空 issues 填充进度。请把本批真实发现的校对问题放入 issues 后再累加；` +
+                  `若本批确实无问题，请核对是否有未修复/未累加的 issue。`
+              );
+            }
+            // P23 补充（Issue #223 实际校对问题 P0-4）：跟踪最大上报段落，
+            // 当覆盖全文（达到 totalParagraphs）且尚未生成报告时，置 fullCoverageReached 标记，
+            // 后续新开批次/收尾将由 P24 强制要求先生成报告，防"覆盖全文后忘了生成报告就结束"。
+            if (typeof innerArgs._processed_to_paragraph === 'number') {
+              if (innerArgs._processed_to_paragraph > (st.maxReportedParagraph || 0)) {
+                st.maxReportedParagraph = innerArgs._processed_to_paragraph;
+              }
+              if (
+                st.totalParagraphs > 0 &&
+                st.maxReportedParagraph >= st.totalParagraphs &&
+                !st.reportGenerated
+              ) {
+                st.fullCoverageReached = true;
+              }
+            }
+          }
           return;
         }
 
@@ -806,6 +873,23 @@ export const WpsGovernancePlugin = async () => {
 
       if (toolName === 'getActiveDocument' || toolName === 'enableTrackChanges') {
         return;
+      }
+
+      // P24（Issue #223 实际校对问题 P0-4）：覆盖全文后强制生成报告
+      // 真实会话中 AI 空上报到 2518（覆盖全文）后未调用 generateProofreadReport 就直接结束，
+      // 用户拿到的只是 AI 编造的内容而非服务端真实报告。当累计进度已达 totalParagraphs 且
+      // 服务端尚未成功生成报告时，禁止新开批次（getDocumentParagraphs），强制先生成收尾报告。
+      if (
+        toolName === 'getDocumentParagraphs' &&
+        !st.reportGenerated &&
+        st.fullCoverageReached
+      ) {
+        throw new Error(
+          `【执行治理】【P24】文档已覆盖全文（累计到段落 ${st.maxReportedParagraph}/${st.totalParagraphs}），` +
+            `但尚未调用 generateProofreadReport 生成收尾报告。\n` +
+            `覆盖全文后必须调用 generateProofreadReport（走 wps_office_execute 网关，传 session_id + output_file）\n` +
+            `生成服务端真实累计数据的六维报告，禁止直接结束或开启新批次。`
+        );
       }
 
       // ── 规则 P1 + P2：getDocumentParagraphs ──
@@ -1177,6 +1261,21 @@ export const WpsGovernancePlugin = async () => {
             // 两者都需兜底，否则 P16 会因 findText 为空而跳过校验（#55 遗留：F11–F15 零拦截）
             const findText = innerArgs.findText || innerArgs.find || innerArgs.find_text || '';
             if (findText && !innerArgs._force_ai_fix) {
+              // P16 补充（Issue #223 实际校对问题 P0-1）：findText 含截断标记（.../…/……）
+              // 说明 AI 用的是 context 截断展示文本而非 issue.original 原文，文档中必然不存在，
+              // 一定匹配失败导致零修复。直接拦截并引导使用 proofreadBasic 返回的 original。
+              var truncationMarkers = ['...', '…', '……'];
+              var hasTruncation = truncationMarkers.some(function (m) {
+                return findText.indexOf(m) !== -1;
+              });
+              if (hasTruncation) {
+                throw new Error(
+                  `【执行治理】【P16】replaceInParagraph findText="${findText}" 含截断标记（.../…/……），` +
+                    `该文本在文档中不存在，替换必然失败。\n` +
+                    `请改用 proofreadBasic / getDocumentParagraphs 返回的完整 original 原文作为 findText，` +
+                    `不得使用带截断标记的 context 展示文本。如需强制修复请传 _force_ai_fix: true。`
+                );
+              }
               const matchesIssue = st.proofreadIssueOriginals.some(function (orig) {
                 return orig && (orig.indexOf(findText) !== -1 || findText.indexOf(orig) !== -1);
               });
