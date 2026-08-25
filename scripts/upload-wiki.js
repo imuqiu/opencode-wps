@@ -45,6 +45,9 @@ const REPO_SLUG = process.env.CNB_REPO_SLUG || 'lnxsun/opencode-wps';
 const CNB_TOKEN = process.env.CNB_TOKEN;
 const API_BASE = process.env.CNB_API_ENDPOINT || 'https://api.cnb.cool';
 const DEFAULT_BRANCH = process.env.CNB_DEFAULT_BRANCH || 'main';
+// 当前提交 SHA（用于 wiki 预上传协议 ext.commit_sha）
+const BRANCH_SHA =
+  process.env.CNB_BRANCH_SHA || process.env.CNB_COMMIT || process.env.CI_COMMIT_SHA || '';
 
 // 当前 Wiki 菜单结构（与仓库首页 wiki 菜单保持一致，含 4 大分类）
 // 每项：{ dir: 上传到 Wiki 的路径前缀, files: [docs/ 下文件名] }
@@ -239,28 +242,70 @@ function collectEntries(docsDir = path.join(rootDir, 'docs')) {
 }
 
 /**
- * 上传单篇文档到 Wiki。
- * 调用 `POST /{repo}/-/upload/wiki/file`，Bearer CNB_TOKEN 认证。
- * 请求体为 multipart/form-data：file 字段携带文件内容（Blob），path 字段携带 Wiki 路径，
- * branch 字段携带目标分支。
+ * 上传单篇文档到 Wiki（两步协议，Issue #210 实测修正）。
+ *
+ * ⚠️ 协议修正（2026-08-24 实测，Issue #210）：
+ *   此前对 `/-/upload/wiki/file` 直接发 multipart 文件上传，平台返回
+ *   `HTTP 400 {"errcode":3,"errmsg":"Invalid argument"}`（即使 CNB_TOKEN 在
+ *   tag_push 下具有 OCI 权限也全部失败）。经对照官方 codewiki 插件
+ *   `post_process/upload_wiki2cos.py`，正确上传需两步：
+ *
+ *   ① 预上传：`POST /-/upload/wiki/file`，JSON body `{name, size, ext:{commit_sha}}`，
+ *      Bearer CNB_TOKEN 认证 → 返回 `upload_url`；
+ *   ② 上传：把文件内容以 multipart 上传到该 `upload_url`。
+ *
+ * @param {string} wikiPath Wiki 路径（含 .md 后缀，如 `使用指南.md`）
+ * @param {string} content 文档内容
  * @returns {Promise<{ok: boolean, status?: number, body?: string}>}
  */
 async function uploadFile(wikiPath, content) {
   if (!CNB_TOKEN) {
     throw new Error('环境变量 CNB_TOKEN 未设置，无法调用 wiki 上传 API');
   }
-  const url = `${API_BASE}/${REPO_SLUG}/-/upload/wiki/file`;
-  const form = new FormData();
-  // file 字段携带文件内容（Blob），path 字段携带 Wiki 路径，branch 携带目标分支
-  form.append('file', new Blob([content], { type: 'text/markdown' }), path.basename(wikiPath));
-  form.append('path', wikiPath);
-  form.append('branch', DEFAULT_BRANCH);
-  const resp = await fetch(url, {
+  const preUrl = `${API_BASE}/${REPO_SLUG}/-/upload/wiki/file`;
+  const size = Buffer.byteLength(content, 'utf8');
+
+  // ① 预上传：JSON 获取上传 URL
+  const preResp = await fetch(preUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${CNB_TOKEN}`,
-      // 不手动设置 Content-Type，让 fetch 自动生成 multipart boundary
+      'Content-Type': 'application/json',
     },
+    body: JSON.stringify({
+      name: wikiPath,
+      size,
+      ext: { commit_sha: BRANCH_SHA },
+    }),
+  });
+  const preText = await preResp.text();
+  if (!preResp.ok) {
+    return { ok: false, status: preResp.status, body: preText };
+  }
+  let uploadUrl;
+  try {
+    uploadUrl = JSON.parse(preText).upload_url;
+  } catch (_) {
+    return {
+      ok: false,
+      status: preResp.status,
+      body: `预上传响应缺少 upload_url：${preText.slice(0, 200)}`,
+    };
+  }
+  if (!uploadUrl) {
+    return {
+      ok: false,
+      status: preResp.status,
+      body: `预上传响应缺少 upload_url：${preText.slice(0, 200)}`,
+    };
+  }
+
+  // ② 上传文件内容（multipart）到 upload_url
+  const form = new FormData();
+  form.append('file', new Blob([content], { type: 'text/markdown' }), path.basename(wikiPath));
+  const resp = await fetch(uploadUrl, {
+    method: 'POST',
+    // 不手动设置 Content-Type，让 fetch 自动生成 multipart boundary
     body: form,
   });
   const text = await resp.text();
