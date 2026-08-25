@@ -1015,7 +1015,7 @@ COM 超时已从 30s 增加到 60s（#116 问题八，MCP v1.1.1 起），200 �
 
 **P22 说明**（Issue #151 遗留修复）：每次 `proofreadAccumulate` 必须携带 `_processed_to_paragraph`（本批已校对到的最末段落索引）。服务端据此追踪真实覆盖进度，`generateProofreadReport` 的**硬性完整性门禁**据此判断是否允许生成报告——未覆盖全文（含编排模式有未完成批次、串行模式进度不足）时直接拒绝生成，杜绝"中途结束就假装完成"。规划 agent 初始化登记（带 `_batch_allocations` 且无 issues）豁免。
 
-**P23 说明**（Issue #223 问题 P0-2/P0-3）：① **首次实际累加（非规划初始化）必须携带 `doc_info`**（含 `fileName`/`filePath`/`totalParagraphs`）。服务端据此建立校对会话上下文；缺 `doc_info` 时本批携带的 issues 会被丢弃（真实会话中因此丢失 7 条）。② **禁止用空 `issues` 上报进度**：携带 `_processed_to_paragraph` 上报进度却 `issues` 为空数组，属于"报了进度但丢了数据"的进度造假（真实会话中 AI 为绕过单批增量上限把合并大批拆成 4 次空上报，丢失 74 条）。如本批确有问题，必须真实放入 issues 后再累加。
+**P23 说明**（Issue #223 问题 P0-2/P0-3）：① **首次实际累加（非规划初始化）必须携带 `doc_info`**（含 `fileName`/`filePath`/**`totalParagraphs`（正整数，文档总段数）**）。服务端据此建立校对会话上下文；缺 `doc_info` 时本批携带的 issues 会被丢弃（真实会话中因此丢失 7 条）；**缺 `totalParagraphs` 时全文覆盖判定与 P24 收尾报告强制将失效**，故 `totalParagraphs` 同样为强制项（可先 `getActiveDocument` 获取）。② **禁止用空 `issues` 上报进度**：携带 `_processed_to_paragraph` 上报进度却 `issues` 为空数组，属于"报了进度但丢了数据"的进度造假（真实会话中 AI 为绕过单批增量上限把合并大批拆成 4 次空上报，丢失 74 条）。如本批确有问题，必须真实放入 issues 后再累加。
 
 **P24 说明**（Issue #223 问题 P0-4）：文档覆盖全文（累计 `_processed_to_paragraph` ≥ `totalParagraphs`）后，若尚未调用 `generateProofreadReport` 生成收尾报告，任何继续推进校对流程的工具（`getDocumentParagraphs`/`proofreadBasic`/`confirmBatchAiProofread`/`replaceInParagraph`）都会被拦截，强制先生成报告。**最后一批 `proofreadAccumulate` 上报到覆盖全文后，应紧接着调用 `generateProofreadReport` 收尾，中间不要再穿插其他校对操作**。防止"覆盖全文后忘了生成报告就直接结束"（真实会话中 AI 空上报到全文后未生成报告就结束，用户拿到的只是 AI 编造的内容）。
 

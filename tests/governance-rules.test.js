@@ -99,6 +99,8 @@ test('P23：首次累加强制 doc_info 逻辑存在', function () {
   assertContains(govSource, '首次 proofreadAccumulate 必须携带 doc_info', '应输出首次必带 doc_info 提示');
   assertContains(govSource, 'innerArgs.doc_info.fileName', '应校验 fileName');
   assertContains(govSource, 'innerArgs.doc_info.filePath', '应校验 filePath');
+  assertContains(govSource, 'hasTotalParagraphs', '应校验 totalParagraphs');
+  assertContains(govSource, 'totalParagraphs（正整数，文档总段数）', '应强制 totalParagraphs 为正整数');
 });
 
 test('P23：禁止空 issues 上报进度逻辑存在', function () {

@@ -91,7 +91,7 @@
 | 问题 | 规则 | 说明 |
 |------|------|------|
 | **P0-1 零修复**：`replaceInParagraph` 用含 `...` 截断标记的 `context` 展示文本作 `findText`，文档中不存在必然匹配失败 | **P16 补充** | `findText` 含截断标记（`...`/`…`/`……`，省略号后不紧跟中文）即拦截，引导改用 `proofreadBasic` 返回的 `original` 原文 |
-| **P0-2 首次缺 doc_info**：首次 `proofreadAccumulate` 缺 `doc_info`，本批 issues 被丢弃（丢失 7 条） | **P23** | 首次实际累加（非规划初始化）必须携带 `doc_info`（fileName/filePath/totalParagraphs） |
+| **P0-2 首次缺 doc_info**：首次 `proofreadAccumulate` 缺 `doc_info`，本批 issues 被丢弃（丢失 7 条） | **P23** | 首次实际累加（非规划初始化）必须携带 `doc_info`（fileName/filePath/**totalParagraphs 正整数**，后两项强制） |
 | **P0-3 进度造假**：为绕过单批 200 段上限把合并大批拆成多次空 `issues` 上报（丢失 74 条） | **P23** | 上报 `_processed_to_paragraph` 但 `issues` 为空数组即拦截，禁止用空 issues 填充进度 |
 | **P0-4 报告未生成**：覆盖全文后未调用 `generateProofreadReport` 就结束，用户拿到的是 AI 编造内容 | **P24** | 覆盖全文（进度≥totalParagraphs）但未生成报告时，任何继续推进校对流程的工具（获取段落/基础校对/确认/替换）均被拦截，强制收尾报告 |
 

@@ -197,6 +197,12 @@ const PROOFREAD_STEP_CHAIN = [
   'proofreadAccumulate',
 ];
 
+// P24（Issue #223 实际校对问题 P0-4）：覆盖全文后禁止继续推进校对流程的工具集合
+// （PROOFREAD_STEP_CHAIN 中除 proofreadAccumulate 外——覆盖全文正是通过它上报，不能拦本动作）。
+const PROOFREAD_ADVANCE_TOOLS = PROOFREAD_STEP_CHAIN.filter(function (t) {
+  return t !== 'proofreadAccumulate';
+});
+
 const EXECUTE_METHOD_WHITELIST = new Set([
   'Application.ActiveDocument',
   'Application.ActiveWorkbook',
@@ -660,6 +666,12 @@ export const WpsGovernancePlugin = async () => {
                 typeof innerArgs.doc_info === 'object' &&
                 innerArgs.doc_info.fileName &&
                 innerArgs.doc_info.filePath;
+              const hasTotalParagraphs =
+                innerArgs.doc_info &&
+                typeof innerArgs.doc_info === 'object' &&
+                typeof innerArgs.doc_info.totalParagraphs === 'number' &&
+                Number.isFinite(innerArgs.doc_info.totalParagraphs) &&
+                innerArgs.doc_info.totalParagraphs > 0;
               if (!hasDocInfo) {
                 throw new Error(
                   `【执行治理】【P23】首次 proofreadAccumulate 必须携带 doc_info（{ fileName, filePath, totalParagraphs }）。\n` +
@@ -667,14 +679,15 @@ export const WpsGovernancePlugin = async () => {
                     `请在首次实际累加时补齐 doc_info 后再调用。`
                 );
               }
-              // 记录文档总段数（用于后续判定是否覆盖全文并强制收尾报告 P0-4）
-              if (
-                innerArgs.doc_info &&
-                typeof innerArgs.doc_info === 'object' &&
-                typeof innerArgs.doc_info.totalParagraphs === 'number'
-              ) {
-                st.totalParagraphs = innerArgs.doc_info.totalParagraphs;
+              if (!hasTotalParagraphs) {
+                throw new Error(
+                  `【执行治理】【P23】首次 proofreadAccumulate 的 doc_info 必须携带 totalParagraphs（正整数，文档总段数）。\n` +
+                    `服务端据此判定全文覆盖进度；缺 totalParagraphs 时覆盖全文判定无法生效，` +
+                    `P24 收尾报告强制将失效（P0-4）。请先 getActiveDocument 获取总段数后携带。`
+                );
               }
+              // 记录文档总段数（用于后续判定是否覆盖全文并强制收尾报告 P0-4）
+              st.totalParagraphs = innerArgs.doc_info.totalParagraphs;
             }
             if (
               innerArgs._processed_to_paragraph !== undefined &&
@@ -883,9 +896,6 @@ export const WpsGovernancePlugin = async () => {
       // 注意：不拦截 proofreadAccumulate（覆盖全文正是通过它上报，不能拦本动作）、
       //       generateProofreadReport（收尾报告本身）、getActiveDocument / enableTrackChanges /
       //       getTrackChangesStatus / save（结束前收尾/保存类操作）。
-      const PROOFREAD_ADVANCE_TOOLS = PROOFREAD_STEP_CHAIN.filter(function (t) {
-        return t !== 'proofreadAccumulate';
-      });
       if (
         PROOFREAD_ADVANCE_TOOLS.indexOf(toolName) !== -1 &&
         !st.reportGenerated &&
