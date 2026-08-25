@@ -137,7 +137,7 @@ test('collectEntries 总条目 = 22 文档 + 4 落地页', function () {
 test('collectEntries 生成 4 个落地页且带 content', function () {
   const entries = collectEntries();
   const landing = entries.filter(e =>
-    ['使用指南', '开发指南', '平台专题', '内部参考'].includes(e.wikiPath)
+    ['使用指南.md', '开发指南.md', '平台专题.md', '内部参考.md'].includes(e.wikiPath)
   );
   assertEqual(landing.length, 4, '应有 4 个落地页条目');
   landing.forEach(e => {
@@ -147,14 +147,14 @@ test('collectEntries 生成 4 个落地页且带 content', function () {
 
 test('collectEntries 复用同名文档的落地页含入口说明（P6）', function () {
   const entries = collectEntries();
-  const us = entries.find(e => e.wikiPath === '使用指南');
+  const us = entries.find(e => e.wikiPath === '使用指南.md');
   assertMatch(us.content, /分类入口页/, '使用指南落地页应含入口说明');
   assertMatch(us.content, /# 使用指南（Wiki 级）/, '应复用 USAGE.md 内容');
 });
 
 test('collectEntries 无同名文档的落地页为索引页', function () {
   const entries = collectEntries();
-  const pt = entries.find(e => e.wikiPath === '平台专题');
+  const pt = entries.find(e => e.wikiPath === '平台专题.md');
   assertMatch(pt.content, /分类的索引页/, '平台专题落地页应为索引页');
 });
 
@@ -165,7 +165,7 @@ test('collectEntries 同名文档缺失时回退为索引页（P7，隔离目录
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'upload-wiki-test-'));
   try {
     const entries = collectEntries(tmpDir);
-    const us = entries.find(e => e.wikiPath === '使用指南');
+    const us = entries.find(e => e.wikiPath === '使用指南.md');
     // 缺失时回退为索引页（标题为「使用指南」而非「使用指南（Wiki 级）」）
     assertMatch(us.content, /^# 使用指南(?![（(]Wiki 级)/m, '缺失时应回退为普通索引页标题');
     // 隔离目录下普通文档 sourceFile 也应指向隔离目录
@@ -182,7 +182,7 @@ test('collectEntries 隔离目录下复用同名文档含入口说明（P10 隔�
   try {
     fs.writeFileSync(path.join(tmpDir, 'USAGE.md'), '# 使用指南（Wiki 级）\n测试内容\n');
     const entries = collectEntries(tmpDir);
-    const us = entries.find(e => e.wikiPath === '使用指南');
+    const us = entries.find(e => e.wikiPath === '使用指南.md');
     assertMatch(us.content, /分类入口页/, '使用指南落地页应含入口说明');
     assertMatch(us.content, /# 使用指南（Wiki 级）/, '应复用隔离目录中的 USAGE.md 内容');
   } finally {
@@ -198,7 +198,7 @@ test('collectEntries 开发指南落地页复用 DEVELOPMENT_GUIDE.md（P11）',
       '# 开发指南（Wiki 级）\n开发内容\n'
     );
     const entries = collectEntries(tmpDir);
-    const dev = entries.find(e => e.wikiPath === '开发指南');
+    const dev = entries.find(e => e.wikiPath === '开发指南.md');
     assertMatch(dev.content, /分类入口页/, '开发指南落地页应含入口说明');
     assertMatch(dev.content, /# 开发指南（Wiki 级）/, '应复用 DEVELOPMENT_GUIDE.md 内容');
   } finally {

@@ -231,11 +231,12 @@ function collectEntries(docsDir = path.join(rootDir, 'docs')) {
       } else {
         content = buildCategoryIndex(cat.dir);
       }
-      if (seenWikiNames.has(cat.dir)) {
-        console.warn(`  ⚠ 重复 wiki 路径: 落地页「${cat.dir}」与已有文档路径冲突`);
+      const landingPath = `${cat.dir}.md`; // 落地页须带 .md 后缀（平台要求，否则 errcode 10402）
+      if (seenWikiNames.has(landingPath)) {
+        console.warn(`  ⚠ 重复 wiki 路径: 落地页「${landingPath}」与已有文档路径冲突`);
       }
-      seenWikiNames.add(cat.dir);
-      entries.push({ wikiPath: cat.dir, content });
+      seenWikiNames.add(landingPath);
+      entries.push({ wikiPath: landingPath, content });
     }
   }
   return entries;
