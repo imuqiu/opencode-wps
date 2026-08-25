@@ -71,6 +71,10 @@
 | **P16** | before | `replaceInParagraph` 的 `findText` 必须与至少一条 `proofreadIssueOriginals` 原文匹配 |
 | **P17** | before | 写「校对报告」路径且服务端未成功生成报告时拦截，禁止 AI 手动 `write` 伪造报告（Issue #116 session_ffa8 问题一） |
 | **P18** | before | 已处理到段落 N 后再次从段落 1 回卷获取即拦截，禁止重复扫描已检查段落（Issue #116 session_ffa8 问题四） |
+| **P19-P21** | before/after | 并行区间隔离/逐步凭证落盘/区间重叠检测（Issue #151，现行单 agent 模式已简化） |
+| **P22** | after | `proofreadAccumulate` 必须上报 `_processed_to_paragraph`（本批已校对最末段，服务端追踪覆盖进度） |
+| **P23** | after | 首次实际累加必须携带 `doc_info`；禁止用空 `issues` 上报进度（Issue #223 问题 P0-2/P0-3） |
+| **P24** | before | 覆盖全文后未生成报告即禁止继续推进校对流程，强制 `generateProofreadReport` 收尾（Issue #223 问题 P0-4） |
 
 ### 校对报告防伪造（Issue #116 session_ffa8 问题一）
 
@@ -79,6 +83,27 @@
 ### 禁止重复获取已处理段落（Issue #116 session_ffa8 问题四）
 
 真实会话中 AI 已处理完某批次后，又对已检查过的段落执行 `getDocumentParagraphs(start=1)` 回卷重复扫描，既浪费 token 又可能造成重复/遗漏的修复误判。治理插件 **P18** 记录已处理到的最大段落号 `N`，当已处理到 N 段后再次从段落 1 回卷获取（`start=1`）时直接拦截，要求批次必须严格连续向前推进（如需重新开始须先 `getActiveDocument` 重置）。
+
+### 实际校对问题整改（Issue #223）
+
+基于真实校对会话（session-ses_fc82，2518 段）暴露的问题，新增 3 条治理规则（P16 补充 + P23 + P24）：
+
+| 问题 | 规则 | 说明 |
+|------|------|------|
+| **P0-1 零修复**：`replaceInParagraph` 用含 `...` 截断标记的 `context` 展示文本作 `findText`，文档中不存在必然匹配失败 | **P16 补充** | `findText` 含截断标记（`...`/`…`/`……`，省略号后不紧跟中文）**且不匹配任何已知 issue 原文**才拦截，引导改用 `proofreadBasic` 返回的 `original` 原文 |
+| **P0-2 首次缺 doc_info**：首次 `proofreadAccumulate` 缺 `doc_info`，本批 issues 被丢弃（丢失 7 条） | **P23** | 首次实际累加（非规划初始化）必须携带 `doc_info`（fileName/filePath/**totalParagraphs 正整数**，后两项强制） |
+| **P0-3 进度造假**：为绕过单批 200 段上限把合并大批拆成多次空 `issues` 上报（丢失 74 条） | **P23** | 上报 `_processed_to_paragraph` 但 `issues` 为空数组即拦截，禁止用空 issues 填充进度 |
+| **P0-4 报告未生成**：覆盖全文后未调用 `generateProofreadReport` 就结束，用户拿到的是 AI 编造内容 | **P24** | 覆盖全文（进度≥totalParagraphs）但未生成报告时，任何继续推进校对流程的工具（获取段落/基础校对/确认/替换）均被拦截，强制收尾报告 |
+
+**P1 级问题在 SKILL 层面的落地**（不改治理代码，通过 `skills/wps-proofread/SKILL.md` 说明防复发）：
+
+| 问题 | 落地 | 说明 |
+|------|------|------|
+| **P1-1 API 调用格式错误**（直接调 MCP、缺 tool_name） | 既有 P16 截断拦截 + G1 网关强制引导 | 与既有治理规则配合，SKILL 强调走 `wps_office_execute` 网关 |
+| **P1-2 文件管理混乱**（ENOENT、写入后读不到） | SKILL 新增「📁 文件批次纪律」 | 每批文本独立写入/读取独立文件，禁止拼单/复用旧文件 |
+| **P1-3 findInDocument 超时**（4 次、最长 69s） | SKILL 明确「映射方法 1 优先、方法 2 降级」 | 优先用 `getDocumentParagraphs` 范围计算，避免 findInDocument 大文档超时 |
+
+**状态机健壮性**（评审 R4-1/R4-2 加固）：`accumulateCount` 只在全部校验通过后递增（防失败重试绕过首次 doc_info 强制）；`getActiveDocument` 重置覆盖状态（防报告失败后死锁）。
 
 ### 上下文用量条（Issue #116 session_ffa9 假修复）
 
