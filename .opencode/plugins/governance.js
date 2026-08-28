@@ -998,6 +998,27 @@ export const WpsGovernancePlugin = async () => {
                     `请按批次顺序逐批推进进度，禁止重新上报更早批次的旧进度（会破坏全文覆盖判定）。`
                 );
               }
+              // P28（Issue #229 实际校对问题：批次跳跃式假进度）：
+              // 本批上报的 _processed_to_paragraph 相对上次成功上报的最大进度，必须逐批连续推进
+              // （跳变 ≤ 单批上限 200 段）。真实会话（ses_fb8c）中 AI 在最后阶段从 1400 直接
+              // 跳到 5550（跳变 4150 段），宣称已校对全文——即使中间批次调用了 getDocumentParagraphs
+              // 获取过段落但从未调用 proofreadBasic 校对，也属于假进度。P28 强制：进度只能
+              // 逐批（≤200 段/批）连续推进，禁止一次跳过多个批次。
+              // 豁免：首次上报（maxReportedParagraph=0）时允许任意值（这是第一批）；同批重试
+              // 上报相同值不受影响（P25b 已覆盖回退拦截）。
+              if (
+                innerArgs._processed_to_paragraph !== undefined &&
+                (st.maxReportedParagraph || 0) > 0 &&
+                innerArgs._processed_to_paragraph - (st.maxReportedParagraph || 0) > 200
+              ) {
+                throw new Error(
+                  `【执行治理】【P28】_processed_to_paragraph=${innerArgs._processed_to_paragraph} ` +
+                    `相对上次上报的最大进度 ${st.maxReportedParagraph} 跳变 ` +
+                    `${innerArgs._processed_to_paragraph - st.maxReportedParagraph} 段，超过单批上限 200。\n` +
+                    `进度必须逐批连续推进，禁止跳过中间批次。请先获取并校对中间批次段落 ` +
+                    `（每批 ≤200 段，调用 getDocumentParagraphs → proofreadBasic 完整走链），再逐批上报。`
+                );
+              }
               // P26：issues 必须属于当前批窗口（防复用陈旧 issue 填充）
               if (Array.isArray(issuesArg) && issuesArg.length > 0 && actualEndParaIndex > 0) {
                 // 批窗口下界：以本批**实际返回**的首段（batchActualStartParaIndex）为准，
@@ -1574,6 +1595,39 @@ export const WpsGovernancePlugin = async () => {
           );
         }
         return;
+      }
+
+      // ── 规则 P27：proofreadAccumulate 必须先调 proofreadBasic（Issue #229 实际校对问题）──
+      // 根因回顾：真实会话（ses_fb8c）中 AI 对大量批次仅 getDocumentParagraphs 视觉扫描
+      // （不调 proofreadBasic 就跳过），直接 proofreadAccumulate 上报进度——P22/P23/P25/P26
+      // 虽拦截空 issues 和跳跃式进度，但**没有任何规则要求「每批必须先调 proofreadBasic」**。
+      // 于是 AI 可以：视觉扫描 → 直接 proofreadAccumulate（带窗口内 issue 绕过 P23/P26）→
+      // 全程从不真校对但进度一路推进。此处强制：串行模式下 proofreadAccumulate 之前
+      // 必须本批已调用过 proofreadBasic（proofreadCalledThisBatch=true）。
+      // 豁免：规划 agent 初始化 session 时的首次登记（带 _batch_allocations 且无 issues），
+      // 此时尚无实际校对，不需要 proofreadBasic。并行模式由 P20 凭证兜底，不在此强制。
+      if (toolName === 'proofreadAccumulate') {
+        const isParallelBatchAccumulate = !!innerArgs._batch_id;
+        const isPlannerInitAccumulate =
+          !isParallelBatchAccumulate &&
+          Array.isArray(innerArgs._batch_allocations) &&
+          innerArgs._batch_allocations.length > 0 &&
+          (!Array.isArray(innerArgs.issues) || innerArgs.issues.length === 0);
+        if (
+          !isParallelBatchAccumulate &&
+          !isPlannerInitAccumulate &&
+          st.batchStarted &&
+          !st.proofreadCalledThisBatch
+        ) {
+          throw new Error(
+            `【执行治理】【P27】本批（段落 ${st.batchStartParaIndex}-${st.lastBatchParaIndex}）` +
+              `尚未调用 proofreadBasic 进行基础校对，禁止直接 proofreadAccumulate 上报进度。\n` +
+              `每批必须完整走链：getDocumentParagraphs → getDocumentTextByRange → proofreadBasic → ` +
+              `confirmBatchAiProofread → replaceInParagraph → proofreadAccumulate。\n` +
+              `仅 getDocumentParagraphs 视觉扫描 + 上报进度 ≠ 校对。请先对本批调用 proofreadBasic ` +
+              `完成基础校对后再累加进度。`
+          );
+        }
       }
 
       // ── 规则 P4 + P6 + P10 + P11：替换操作 ──

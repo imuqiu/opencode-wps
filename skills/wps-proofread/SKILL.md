@@ -991,6 +991,8 @@ COM 超时已从 30s 增加到 60s（#116 问题八，MCP v1.1.1 起），200 �
 | **P25** | **进度不得超实际获取段落**                     | `proofreadAccumulate`                          | `_processed_to_paragraph` > `batchActualEndParaIndex`（本批实际返回末段；没获取到 N 段却宣称校对到 N 段 = 假进度） |
 | **P26** | **issues 必须属于当前批窗口**                  | `proofreadAccumulate`                          | 上报的 issue `paragraphIndex` 不在本批窗口（复用其它批次陈旧 issue 填充 = 假进度）                               |
 | **P25b** | **进度不得回退**                            | `proofreadAccumulate`                          | `_processed_to_paragraph` < 本会话已上报的最大进度（重复上报更早批次，破坏全文覆盖单调判定）                     |
+| **P27** | **每批必须先调 proofreadBasic**          | `proofreadAccumulate`                          | 本批未调用 `proofreadBasic` 直接上报进度（仅视觉扫描+上报 ≠ 校对）                                                |
+| **P28** | **批次连续推进（禁止跳跃）**            | `proofreadAccumulate`                          | `_processed_to_paragraph` 相对上次成功上报跳变 > 200 段（跳过中间批次 = 假进度）                                  |
 
 ### 通用执行规则（G1-G7，始终生效）
 
@@ -1061,6 +1063,10 @@ COM 超时已从 30s 增加到 60s（#116 问题八，MCP v1.1.1 起），200 �
 **P25b 说明**（R5-1）：`proofreadAccumulate` 上报的 `_processed_to_paragraph` **不得小于本会话此前已上报的最大进度**（进度单调不回退）。同批重试（失败后重报同一批）会上报相同值，不受影响；仅拦截「重新上报更早批次」导致的进度回退，避免破坏 P24 全文覆盖判定（`fullCoverageReached` 依赖 `maxReportedParagraph` 单调推进）。
 
 **P26 说明**（Issue #229 问题：陈旧 issue 填充伪装进度）：本批 `proofreadAccumulate` 上报的每条 issue，其 `paragraphIndex` **必须落在当前批窗口**（`batchActualStartParaIndex .. batchActualEndParaIndex`，即本批**实际返回**的首段..末段；R4-1 起窗口下界取实际返回首段，避免起始截断时放行未实际返回段落的陈旧 issue）内。真实会话中 AI 为绕过「禁止空 issues 报进度」的 P23 校验，把第 644/899 段的陈旧 issue 反复塞进每一批上报，伪造成「每批都有校对」——P26 直接拦截：**只能上报本批真实发现、且属于本批段落范围的 issue**。每批应独立走完 `getDocumentParagraphs → proofreadBasic → confirmBatchAiProofread → replaceInParagraph → proofreadAccumulate` 完整链条。
+
+**P27 说明**（Issue #229 实际校对问题：只视觉扫描不真校对）：`proofreadAccumulate` 上报进度前，**本批必须已经调用过 `proofreadBasic`**（`proofreadCalledThisBatch=true`）。真实会话（ses_fb8c）中 AI 对大量批次仅 `getDocumentParagraphs` 视觉扫描（不调 proofreadBasic 就跳过），直接 `proofreadAccumulate` 上报进度——P22/P23/P25/P26 虽拦截空 issues 和跳跃式进度，但**没有任何规则要求「每批必须先调 proofreadBasic」**。P27 直接拦截：**仅 getDocumentParagraphs 视觉扫描 + 上报进度 ≠ 校对**。每批必须完整走链：`getDocumentParagraphs → getDocumentTextByRange → proofreadBasic → confirmBatchAiProofread → replaceInParagraph → proofreadAccumulate`。规划 agent 初始化 session 的首次登记（带 `_batch_allocations` 且无 issues）豁免；并行模式由 P20 凭证兜底。
+
+**P28 说明**（Issue #229 实际校对问题：批次跳跃式假进度）：`proofreadAccumulate` 上报的 `_processed_to_paragraph` 相对上次成功上报的最大进度，**必须逐批连续推进**（跳变 ≤ 200 段/批）。真实会话（ses_fb8c）中 AI 在最后阶段从 1400 直接跳到 5550（跳变 4150 段），宣称已校对全文——即使中间批次调用了 getDocumentParagraphs 获取过段落但从未调用 proofreadBasic 校对，也属于假进度。P28 强制：**进度只能逐批（≤200 段/批）连续推进，禁止一次跳过多个批次**。首次上报（`maxReportedParagraph=0`）豁免；同批重试上报相同值不受影响。
 
 **🔥 铁律 6：必须从头至尾逐批完整校对（Issue #229 用户强制要求）**：
 - 从第 1 批（段落 1 起）开始，**逐批**（每批 ≤200 段，推荐 100 段）完整走完链条，**严禁中途停止、严禁突然跳过多批、严禁一次性把剩余全部跳过**。

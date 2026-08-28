@@ -1079,10 +1079,18 @@ describe('governance CR R14：totalParagraphs 一致性（Issue #229）', () => 
       }),
       { output: '[1] (正文) [0-99]\n[100] (正文) [9999-10000]', isError: false }
     );
+    // 先调 proofreadBasic（P27 要求每批必须先调 proofreadBasic 才能上报进度）
+    await after(
+      execInput('cr14b-sess', 'c2', 'proofreadBasic', { startOffset: 0, text: 'x'.repeat(40) }),
+      {
+        output: JSON.stringify({ issues: [] }),
+        isError: false,
+      }
+    );
     // doc_info.totalParagraphs=300 与已知总段数一致 → 放行
     const ok = await expectNoIntercept(
       plugin,
-      execInput('cr14b-sess', 'c2', 'proofreadAccumulate', {
+      execInput('cr14b-sess', 'c3', 'proofreadAccumulate', {
         issues: [],
         _processed_to_paragraph: 100,
         doc_info: { fileName: 'd.docx', filePath: '/d.docx', totalParagraphs: 300 },
@@ -2020,5 +2028,272 @@ describe('governance P25/P26：防假校对/假进度（Issue #229，PR232）', 
       okHigh = false;
     }
     expect(okHigh).toBe(true);
+  });
+});
+
+describe('governance P27/P28：防假校对/防跳跃进度（Issue #229，PR234）', () => {
+  // 辅助：构造文档段落输出文本
+  function buildParaOutputP27P28(total: number, returned: number, startPara = 1): string {
+    const paras = [];
+    for (let i = 0; i < returned; i++) {
+      const idx = startPara + i;
+      paras.push(`[${idx}] (正文) [${(idx - 1) * 10}-${idx * 10 - 1}] 第${idx}段文本内容`);
+    }
+    return `文档段落结构（共${total}段，返回${returned}段）：\n${paras.join('\n')}`;
+  }
+
+  // 发起 proofreadAccumulate（after hook 校验）
+  async function accumulateP27P28(
+    plugin: any,
+    session: string,
+    processedTo: number,
+    issues: Array<Record<string, unknown>> = [],
+    total = 300
+  ) {
+    return plugin['tool.execute.after'](
+      execInput(session, 'c-acc', 'proofreadAccumulate', {
+        _processed_to_paragraph: processedTo,
+        issues,
+        doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: total },
+      }),
+      { output: 'OK', isError: false }
+    );
+  }
+
+  it('P27-1：未调 proofreadBasic 直接 proofreadAccumulate 被拦截（仅视觉扫描不真校对）', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    const before = plugin['tool.execute.before'];
+    // 初始化文档
+    await after(execInput('p27a-sess', 'c0', 'getActiveDocument'), {
+      output: '总段数: 300',
+      isError: false,
+    });
+    // 获取段落（视觉扫描，不调 proofreadBasic）
+    await after(
+      execInput('p27a-sess', 'c1', 'getDocumentParagraphs', {
+        start_paragraph: 1,
+        end_paragraph: 100,
+      }),
+      { output: buildParaOutputP27P28(300, 100), isError: false }
+    );
+    // 直接 proofreadAccumulate 上报进度（带一个窗口内 issue 绕过 P23）
+    let blocked = false;
+    try {
+      await before(
+        execInput('p27a-sess', 'c2', 'proofreadAccumulate', {
+          _processed_to_paragraph: 100,
+          issues: [{ paragraphIndex: 1, text: '问题', suggestion: '修复' }],
+          doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 300 },
+        }),
+        {}
+      );
+    } catch (e: any) {
+      blocked = String(e.message).indexOf('【P27】') !== -1;
+    }
+    expect(blocked).toBe(true);
+  });
+
+  it('P27-2：已调 proofreadBasic 后 proofreadAccumulate 正常放行（不被 P27 拦截）', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    const before = plugin['tool.execute.before'];
+    // 初始化文档
+    await after(execInput('p27b-sess', 'c0', 'getActiveDocument'), {
+      output: '总段数: 300',
+      isError: false,
+    });
+    // 获取段落
+    await after(
+      execInput('p27b-sess', 'c1', 'getDocumentParagraphs', {
+        start_paragraph: 1,
+        end_paragraph: 100,
+      }),
+      { output: buildParaOutputP27P28(300, 100), isError: false }
+    );
+    // 调用 proofreadBasic
+    await after(
+      execInput('p27b-sess', 'c2', 'proofreadBasic', { startOffset: 0, text: 'x'.repeat(40) }),
+      {
+        output: JSON.stringify({ issues: [] }),
+        isError: false,
+      }
+    );
+    // proofreadAccumulate 应放行（不被 P27 拦截）
+    let passed = true;
+    try {
+      await before(
+        execInput('p27b-sess', 'c3', 'proofreadAccumulate', {
+          _processed_to_paragraph: 100,
+          issues: [{ paragraphIndex: 1, text: '问题', suggestion: '修复' }],
+          doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 300 },
+        }),
+        {}
+      );
+    } catch (e: any) {
+      passed = String(e.message).indexOf('【P27】') === -1;
+    }
+    expect(passed).toBe(true);
+  });
+
+  it('P28-1：批次跳跃式进度（从 200 跳到 600）被拦截', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    // 初始化文档
+    await after(execInput('p28a-sess', 'c0', 'getActiveDocument'), {
+      output: '总段数: 1000',
+      isError: false,
+    });
+    // 批1：(1,200) 完整返回
+    await after(
+      execInput('p28a-sess', 'c1', 'getDocumentParagraphs', {
+        start_paragraph: 1,
+        end_paragraph: 200,
+      }),
+      { output: buildParaOutputP27P28(1000, 200), isError: false }
+    );
+    await after(
+      execInput('p28a-sess', 'c2', 'proofreadBasic', { startOffset: 0, text: 'x'.repeat(40) }),
+      {
+        output: JSON.stringify({ issues: [] }),
+        isError: false,
+      }
+    );
+    await accumulateP27P28(
+      plugin,
+      'p28a-sess',
+      200,
+      [{ paragraphIndex: 1, text: '问题', suggestion: '修复' }],
+      1000
+    );
+    // AI 一次性获取 1-600 段（batchActualEndParaIndex 更新到 600），然后调用 proofreadBasic
+    // 使 P27 通过，但直接从已上报的 200 跳到 600（跳变 400 > 200）→ P28 拦截
+    await after(
+      execInput('p28a-sess', 'c3', 'getDocumentParagraphs', {
+        start_paragraph: 201,
+        end_paragraph: 600,
+      }),
+      { output: buildParaOutputP27P28(1000, 400, 201), isError: false }
+    );
+    await after(
+      execInput('p28a-sess', 'c4', 'proofreadBasic', { startOffset: 400, text: 'x'.repeat(40) }),
+      {
+        output: JSON.stringify({ issues: [] }),
+        isError: false,
+      }
+    );
+    let blocked = false;
+    try {
+      await accumulateP27P28(
+        plugin,
+        'p28a-sess',
+        600,
+        [{ paragraphIndex: 500, text: '问题', suggestion: '修复' }],
+        1000
+      );
+    } catch (e: any) {
+      blocked = String(e.message).indexOf('【P28】') !== -1;
+    }
+    expect(blocked).toBe(true);
+  });
+
+  it('P28-2：同批重试上报相同进度不被 P28 拦截', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    // 初始化文档
+    await after(execInput('p28b-sess', 'c0', 'getActiveDocument'), {
+      output: '总段数: 300',
+      isError: false,
+    });
+    // 批1：(1,200) 完整返回
+    await after(
+      execInput('p28b-sess', 'c1', 'getDocumentParagraphs', {
+        start_paragraph: 1,
+        end_paragraph: 200,
+      }),
+      { output: buildParaOutputP27P28(300, 200), isError: false }
+    );
+    await after(
+      execInput('p28b-sess', 'c2', 'proofreadBasic', { startOffset: 0, text: 'x'.repeat(40) }),
+      {
+        output: JSON.stringify({ issues: [] }),
+        isError: false,
+      }
+    );
+    // 第一次上报 200
+    await accumulateP27P28(plugin, 'p28b-sess', 200, [
+      { paragraphIndex: 1, text: '问题', suggestion: '修复' },
+    ]);
+    // 重试同批，再次上报 200（相同值，不是回退也不是跳跃）
+    let passed = true;
+    try {
+      await accumulateP27P28(plugin, 'p28b-sess', 200, [
+        { paragraphIndex: 1, text: '问题', suggestion: '修复' },
+      ]);
+    } catch (e: any) {
+      passed = String(e.message).indexOf('【P28】') === -1;
+    }
+    expect(passed).toBe(true);
+  });
+
+  it('P28-3：连续批次正常推进（200 → 400）不被 P28 拦截', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    // 初始化文档
+    await after(execInput('p28c-sess', 'c0', 'getActiveDocument'), {
+      output: '总段数: 500',
+      isError: false,
+    });
+    // 批1：(1,200) 完整返回
+    await after(
+      execInput('p28c-sess', 'c1', 'getDocumentParagraphs', {
+        start_paragraph: 1,
+        end_paragraph: 200,
+      }),
+      { output: buildParaOutputP27P28(500, 200), isError: false }
+    );
+    await after(
+      execInput('p28c-sess', 'c2', 'proofreadBasic', { startOffset: 0, text: 'x'.repeat(40) }),
+      {
+        output: JSON.stringify({ issues: [] }),
+        isError: false,
+      }
+    );
+    await accumulateP27P28(
+      plugin,
+      'p28c-sess',
+      200,
+      [{ paragraphIndex: 1, text: '问题', suggestion: '修复' }],
+      500
+    );
+    // 批2：(201,400) 完整返回
+    await after(
+      execInput('p28c-sess', 'c3', 'getDocumentParagraphs', {
+        start_paragraph: 201,
+        end_paragraph: 400,
+      }),
+      { output: buildParaOutputP27P28(500, 200, 201), isError: false }
+    );
+    await after(
+      execInput('p28c-sess', 'c4', 'proofreadBasic', { startOffset: 400, text: 'x'.repeat(40) }),
+      {
+        output: JSON.stringify({ issues: [] }),
+        isError: false,
+      }
+    );
+    // 正常推进到 400（跳变 200，≤ 单批上限）→ P28 放行
+    let passed = true;
+    try {
+      await accumulateP27P28(
+        plugin,
+        'p28c-sess',
+        400,
+        [{ paragraphIndex: 201, text: '问题', suggestion: '修复' }],
+        500
+      );
+    } catch (e: any) {
+      passed = String(e.message).indexOf('【P28】') === -1;
+    }
+    expect(passed).toBe(true);
   });
 });
