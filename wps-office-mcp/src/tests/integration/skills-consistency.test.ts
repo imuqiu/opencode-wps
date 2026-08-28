@@ -108,6 +108,8 @@ const NON_TOOL_NAMES = new Set([
   '_batch_range',
   '_batch_id',
   '_steps_log',
+  // Issue #229 PR#233：SKILL.md 引用治理层重试上限常量（非 MCP 工具）
+  'MAX_BATCH_RETRY_LIMIT',
   '_batch_allocations',
   '_processed_to_paragraph',
 ]);

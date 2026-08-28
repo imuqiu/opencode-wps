@@ -1434,4 +1434,48 @@ describe('governance CR R14：totalParagraphs 一致性（Issue #229）', () => 
       }
     });
   });
+
+  it('R7-1：file_path 传参 + 真截断 + 重试耗尽 → proofreadBasic 放行（AI 已尽最大努力）', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    const before = plugin['tool.execute.before'];
+    await after(execInput('pr233-r7-sess', 'c0', 'getActiveDocument'), {
+      output: '总段数: 300',
+      isError: false,
+    });
+    // 请求 (1,100) 但只返回 80 段（真截断）——内联输出避免依赖 describe 内局部 helper
+    const truncOut =
+      '文档段落结构（共300段，返回80段）：\n[1] (正文) [0-99] 第1段\n[80] (正文) [7999-8099] 第80段';
+    await after(
+      execInput('pr233-r7-sess', 'c1', 'getDocumentParagraphs', {
+        start_paragraph: 1,
+        end_paragraph: 100,
+      }),
+      { output: truncOut, isError: false }
+    );
+    // 同批重试 4 次（batchRetryCount 达到 MAX_BATCH_RETRY_LIMIT=3）后，仍截断
+    for (let i = 0; i < 4; i++) {
+      await after(
+        execInput('pr233-r7-sess', 'c2' + i, 'getDocumentParagraphs', {
+          start_paragraph: 1,
+          end_paragraph: 100,
+        }),
+        { output: truncOut, isError: false }
+      );
+    }
+    // 重试耗尽后，file_path 传 proofreadBasic → 放行（不再拦截，AI 已尽最大努力）
+    let ok = true;
+    try {
+      await before(
+        execInput('pr233-r7-sess', 'c7', 'proofreadBasic', {
+          file_path: 'C:\\tmp\\batch.txt',
+          startOffset: 0,
+        }),
+        {}
+      );
+    } catch {
+      ok = false;
+    }
+    expect(ok).toBe(true);
+  });
 });
