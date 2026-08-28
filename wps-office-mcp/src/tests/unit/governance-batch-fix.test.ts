@@ -1363,4 +1363,46 @@ describe('governance P25/P26：防假校对/假进度（Issue #229，PR232）', 
     }
     expect(ok).toBe(true);
   });
+
+  it('P25b（R7-1）：同批重试上报相同进度不被拦截（仅拦回退）', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    await after(execInput('p25d-sess', 'c0', 'getActiveDocument'), {
+      output: '总段数: 200',
+      isError: false,
+    });
+    // 请求 (1,100) 完整返回，首次上报进度 100
+    await after(
+      execInput('p25d-sess', 'c1', 'getDocumentParagraphs', {
+        start_paragraph: 1,
+        end_paragraph: 100,
+      }),
+      { output: buildParaOutput(200, 100), isError: false }
+    );
+    await after(
+      execInput('p25d-sess', 'c2', 'proofreadBasic', { startOffset: 0, text: 'x'.repeat(40) }),
+      { output: JSON.stringify({ issues: [] }), isError: false }
+    );
+    await accumulate(
+      plugin,
+      'p25d-sess',
+      100,
+      [{ paragraphIndex: 50, text: '问题', suggestion: '修复' }],
+      200
+    );
+    // 同批重试（失败后重报同一批），进度仍为 100（相同值）→ 放行（不误伤）
+    let ok = true;
+    try {
+      await accumulate(
+        plugin,
+        'p25d-sess',
+        100,
+        [{ paragraphIndex: 50, text: '问题', suggestion: '修复' }],
+        200
+      );
+    } catch {
+      ok = false;
+    }
+    expect(ok).toBe(true);
+  });
 });
