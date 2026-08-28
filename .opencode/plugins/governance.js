@@ -1364,7 +1364,7 @@ export const WpsGovernancePlugin = async () => {
         if (count > MAX_PARAGRAPHS_PER_BATCH) {
           throw new Error(
             `【执行治理】getDocumentParagraphs 单次请求 ${count} 段，` +
-              `超过上限 200 段。请分多次获取。`
+              `超过上限 ${MAX_PARAGRAPHS_PER_BATCH} 段。请分多次获取。`
           );
         }
         if (!isParallelBatch && st.lastBatchParaIndex === 0 && start !== 1) {
@@ -1552,7 +1552,7 @@ export const WpsGovernancePlugin = async () => {
               throw new Error(
                 `【执行治理】【P6b】proofreadBasic 传入文本 ${text.length} 字符 ` +
                   `远超本批预期范围 ${expectedLen} 字符。` +
-                  `禁止一次性校对多批。请严格每批 ≤200 段、单次 proofreadBasic 只传本批文本。`
+                  `禁止一次性校对多批。请严格每批 ≤${MAX_PARAGRAPHS_PER_BATCH} 段、单次 proofreadBasic 只传本批文本。`
               );
             }
           }
@@ -1579,7 +1579,7 @@ export const WpsGovernancePlugin = async () => {
               throw new Error(
                 `【执行治理】【P13】getDocumentTextByRange length=${requestedLen} ` +
                   `远超本批预期范围长度 ${expectedBatchLen}。` +
-                  `禁止一次性拉取多批文本。请只获取本批范围内的文本（≤200 段）。`
+                  `禁止一次性拉取多批文本。请只获取本批范围内的文本（≤${MAX_PARAGRAPHS_PER_BATCH} 段）。`
               );
             }
           }
