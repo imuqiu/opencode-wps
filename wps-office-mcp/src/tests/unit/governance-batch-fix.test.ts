@@ -1091,3 +1091,183 @@ describe('governance CR R14：totalParagraphs 一致性（Issue #229）', () => 
     expect(ok).toBe(true);
   });
 });
+
+describe('governance P25/P26：防假校对/假进度（Issue #229，PR232）', () => {
+  // 辅助：构造文档段落输出文本（startPara 指定返回起始段，默认 1）
+  function buildParaOutput(total: number, returned: number, startPara = 1): string {
+    const paras = [];
+    for (let i = 0; i < returned; i++) {
+      const idx = startPara + i;
+      paras.push(`[${idx}] (正文) [${(idx - 1) * 10}-${idx * 10 - 1}] 第${idx}段文本内容`);
+    }
+    return `文档段落结构（共${total}段，返回${returned}段）：\n${paras.join('\n')}`;
+  }
+
+  // 发起一次 proofreadAccumulate（after hook 校验 P25/P26）
+  async function accumulate(
+    plugin: any,
+    session: string,
+    processedTo: number,
+    issues: Array<Record<string, unknown>>,
+    total = 300
+  ) {
+    return plugin['tool.execute.after'](
+      execInput(session, 'c-acc', 'proofreadAccumulate', {
+        _processed_to_paragraph: processedTo,
+        issues,
+        doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: total },
+      }),
+      { output: 'OK', isError: false }
+    );
+  }
+
+  it('P25-1：截断场景下 _processed_to_paragraph 超过实际返回末段被拦截（防假进度）', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    // 文档 300 段，请求 (1,100) 只返回 80 段（真截断）
+    await after(execInput('p25a-sess', 'c0', 'getActiveDocument'), {
+      output: '总段数: 300',
+      isError: false,
+    });
+    await after(
+      execInput('p25a-sess', 'c1', 'getDocumentParagraphs', {
+        start_paragraph: 1,
+        end_paragraph: 100,
+      }),
+      { output: buildParaOutput(300, 80), isError: false }
+    );
+    // AI 宣称校对到 100 段（实际只获取到 80 段）→ P25 拦截（假进度）
+    let blocked = false;
+    try {
+      await accumulate(plugin, 'p25a-sess', 100, [
+        { paragraphIndex: 50, text: '问题', suggestion: '修复' },
+      ]);
+    } catch (e: any) {
+      blocked = String(e.message).indexOf('【P25】') !== -1;
+    }
+    expect(blocked).toBe(true);
+    // 改为实际末段 80 → 放行
+    let ok = true;
+    try {
+      await accumulate(plugin, 'p25a-sess', 80, [
+        { paragraphIndex: 50, text: '问题', suggestion: '修复' },
+      ]);
+    } catch {
+      ok = false;
+    }
+    expect(ok).toBe(true);
+  });
+
+  it('P25-2：完整批次 _processed_to_paragraph 不超实际返回末段时正常放行', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    await after(execInput('p25b-sess', 'c0', 'getActiveDocument'), {
+      output: '总段数: 300',
+      isError: false,
+    });
+    await after(
+      execInput('p25b-sess', 'c1', 'getDocumentParagraphs', {
+        start_paragraph: 1,
+        end_paragraph: 100,
+      }),
+      { output: buildParaOutput(300, 100), isError: false }
+    );
+    let ok = true;
+    try {
+      await accumulate(plugin, 'p25b-sess', 100, [
+        { paragraphIndex: 50, text: '问题', suggestion: '修复' },
+      ]);
+    } catch {
+      ok = false;
+    }
+    expect(ok).toBe(true);
+  });
+
+  it('P26-1：截断场景下上报未实际获取段落的陈旧 issue 被拦截（窗口以实际返回末段为准）', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    await after(execInput('p26a-sess', 'c0', 'getActiveDocument'), {
+      output: '总段数: 300',
+      isError: false,
+    });
+    await after(
+      execInput('p26a-sess', 'c1', 'getDocumentParagraphs', {
+        start_paragraph: 1,
+        end_paragraph: 100,
+      }),
+      { output: buildParaOutput(300, 80), isError: false }
+    );
+    // 上报 paragraphIndex=90（81-100 段实际未获取）→ P26 拦截（假 issue 填充）
+    let blocked = false;
+    try {
+      await accumulate(plugin, 'p26a-sess', 80, [
+        { paragraphIndex: 90, text: '问题', suggestion: '修复' },
+      ]);
+    } catch (e: any) {
+      blocked = String(e.message).indexOf('【P26】') !== -1;
+    }
+    expect(blocked).toBe(true);
+    // 上报 paragraphIndex=50（窗口 1..80 内）→ 放行
+    let ok = true;
+    try {
+      await accumulate(plugin, 'p26a-sess', 80, [
+        { paragraphIndex: 50, text: '问题', suggestion: '修复' },
+      ]);
+    } catch {
+      ok = false;
+    }
+    expect(ok).toBe(true);
+  });
+
+  it('P26-2：上报早于本批起始段的陈旧 issue 被拦截', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    await after(execInput('p26b-sess', 'c0', 'getActiveDocument'), {
+      output: '总段数: 300',
+      isError: false,
+    });
+    // 第一批：请求 (1,100) 完整返回
+    await after(
+      execInput('p26b-sess', 'c1', 'getDocumentParagraphs', {
+        start_paragraph: 1,
+        end_paragraph: 100,
+      }),
+      { output: buildParaOutput(300, 100), isError: false }
+    );
+    await after(
+      execInput('p26b-sess', 'c2', 'proofreadBasic', { startOffset: 0, text: 'x'.repeat(40) }),
+      {
+        output: JSON.stringify({ issues: [] }),
+        isError: false,
+      }
+    );
+    // 第二批：请求 (101,200)
+    await after(
+      execInput('p26b-sess', 'c3', 'getDocumentParagraphs', {
+        start_paragraph: 101,
+        end_paragraph: 200,
+      }),
+      { output: buildParaOutput(300, 100, 101), isError: false }
+    );
+    // 上报 paragraphIndex=50（早于本批窗口 101..200）→ P26 拦截（陈旧 issue）
+    let blocked = false;
+    try {
+      await accumulate(plugin, 'p26b-sess', 200, [
+        { paragraphIndex: 50, text: '问题', suggestion: '修复' },
+      ]);
+    } catch (e: any) {
+      blocked = String(e.message).indexOf('【P26】') !== -1;
+    }
+    expect(blocked).toBe(true);
+    // 上报 paragraphIndex=150（窗口 101..200 内）→ 放行
+    let ok = true;
+    try {
+      await accumulate(plugin, 'p26b-sess', 200, [
+        { paragraphIndex: 150, text: '问题', suggestion: '修复' },
+      ]);
+    } catch {
+      ok = false;
+    }
+    expect(ok).toBe(true);
+  });
+});

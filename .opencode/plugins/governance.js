@@ -238,6 +238,10 @@ function createSessionState() {
     // 避免进行中的校对会话被新会话挤掉导致批次状态丢失）。
     lastAccessTime: Date.now(),
     lastBatchParaIndex: 0,
+    // P25/P26（Issue #229）：本批 getDocumentParagraphs **实际返回**的末段索引（ranges 末段 index），
+    // 区别于 lastBatchParaIndex（逻辑请求末段，截断/超界时可能大于实际返回末段）。
+    // P25/P26 以实际返回末段为基准校验假进度/陈旧 issue，避免"宣称校对到未实际获取段落"。
+    batchActualEndParaIndex: 0,
     batchStartParaIndex: 0,
     docInfoFetched: false,
     batchStarted: false,
@@ -639,6 +643,11 @@ export const WpsGovernancePlugin = async () => {
           const hasReqEnd = Number.isInteger(requestedEnd) && requestedEnd >= requestedStart;
           const lastIndex = hasReqEnd ? requestedEnd : ranges[ranges.length - 1].index;
           st.lastBatchParaIndex = lastIndex;
+          // P25/P26（Issue #229）：记录本批**实际返回**末段（ranges 实际覆盖到的最后一段），
+          // 供 proofreadAccumulate 的 P25/P26 以"实际获取到的段落"为基准校验假进度。
+          // 注意：截断/超界时 lastBatchParaIndex（逻辑请求末段）可能大于实际返回末段，
+          // 若以 lastBatchParaIndex 为基准会放行"宣称校对到未实际获取段落"的假进度。
+          st.batchActualEndParaIndex = ranges[ranges.length - 1].index;
           st.batchStartParaIndex = ranges[0].index;
           st.batchStarted = true;
           st.batchCount++;
@@ -918,30 +927,36 @@ export const WpsGovernancePlugin = async () => {
             // 视觉扫描、不调 proofreadBasic 就跳过；又用「空 issues」+ 跳跃式 _processed_to_paragraph
             // （100→600→800→1500→2500→3500→4468）上报假进度，并反复塞入第 644/899 段的陈旧 issue
             // 填充 issues 数组绕过 P23 空数组拦截，最终伪造覆盖全文并生成虚假报告。此处强制：
-            //  P25：_processed_to_paragraph 不得超过本批实际获取到的段落（st.lastBatchParaIndex），
+            //  P25：_processed_to_paragraph 不得超过本批实际获取到的段落（batchActualEndParaIndex），
             //       杜绝「没取到 N 段却宣称校对到 N 段」的假进度。
             //  P26：本批上报的 issues 其 paragraphIndex 必须落在「当前批窗口」内
-            //       （batchRequestedStart .. lastBatchParaIndex），禁止复用旧批次的陈旧 issue 来
+            //       （batchRequestedStart .. batchActualEndParaIndex），禁止复用旧批次的陈旧 issue 来
             //       填充 issues 数组以绕过 P23 空数组校验（假进度）。
             // 串行模式才做这两项严格校验（并行模式由 P19 区间归属 + P20 凭证兜底）。
+            // 【联动修复】基准用 batchActualEndParaIndex（本批**实际返回**末段）而非 lastBatchParaIndex
+            // （逻辑请求末段）——截断/超界时 lastBatchParaIndex 可能大于实际返回末段，若以其为基准
+            // 会放行「宣称校对到未实际获取段落」的假进度（与超界/截断治理 PR233 联动的一致基准）。
             const isParallelBatch = !!innerArgs._batch_id;
             if (!isParallelBatch) {
+              const actualEndParaIndex = st.batchActualEndParaIndex || st.lastBatchParaIndex || 0;
               // P25：进度不得超实际获取段落
               if (
                 innerArgs._processed_to_paragraph !== undefined &&
-                st.lastBatchParaIndex > 0 &&
-                innerArgs._processed_to_paragraph > st.lastBatchParaIndex
+                actualEndParaIndex > 0 &&
+                innerArgs._processed_to_paragraph > actualEndParaIndex
               ) {
                 throw new Error(
                   `【执行治理】【P25】_processed_to_paragraph=${innerArgs._processed_to_paragraph} ` +
-                    `超过本批实际获取到的段落 ${st.lastBatchParaIndex}。\n` +
+                    `超过本批实际获取到的段落 ${actualEndParaIndex}。\n` +
                     `你尚未通过 getDocumentParagraphs 获取到段落 ${innerArgs._processed_to_paragraph}，` +
-                    `不能宣称已校对到该段落（假进度）。请逐批真实获取并校对，本批进度应 ≤ ${st.lastBatchParaIndex}。`
+                    `不能宣称已校对到该段落（假进度）。请逐批真实获取并校对，本批进度应 ≤ ${actualEndParaIndex}。`
                 );
               }
               // P26：issues 必须属于当前批窗口（防复用陈旧 issue 填充）
-              if (Array.isArray(issuesArg) && issuesArg.length > 0 && st.lastBatchParaIndex > 0) {
-                const winStart = st.batchRequestedStart || st.lastBatchParaIndex - 200;
+              if (Array.isArray(issuesArg) && issuesArg.length > 0 && actualEndParaIndex > 0) {
+                // 批窗口起点：优先用本批实际请求的起始段（batchRequestedStart），
+                // 未设置时回退到本批实际末段（极少见，仅作防御）。
+                const winStart = st.batchRequestedStart || actualEndParaIndex;
                 for (const it of issuesArg) {
                   const pid =
                     it &&
@@ -950,10 +965,10 @@ export const WpsGovernancePlugin = async () => {
                       : typeof it.paragraph_index === 'number'
                         ? it.paragraph_index
                         : undefined);
-                  if (pid !== undefined && (pid < winStart || pid > st.lastBatchParaIndex)) {
+                  if (pid !== undefined && (pid < winStart || pid > actualEndParaIndex)) {
                     throw new Error(
                       `【执行治理】【P26】本批上报的 issue 段落索引 ${pid} 不在当前批窗口 ` +
-                        `（段落 ${winStart}..${st.lastBatchParaIndex}）内。\n` +
+                        `（段落 ${winStart}..${actualEndParaIndex}）内。\n` +
                         `禁止复用其它批次的陈旧 issue 填充 issues 数组来伪装本批进度。` +
                         `请只上报本批真实发现的校对问题。`
                     );
