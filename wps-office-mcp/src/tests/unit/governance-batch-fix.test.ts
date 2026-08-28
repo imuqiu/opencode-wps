@@ -1478,4 +1478,41 @@ describe('governance CR R14：totalParagraphs 一致性（Issue #229）', () => 
     }
     expect(ok).toBe(true);
   });
+
+  it('R9-1：total未知 + 真截断时 R12-1 消息展示请求末段收口（81..100）而非误导', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    const before = plugin['tool.execute.before'];
+    // getActiveDocument 总段数未知（launcher 回退）
+    await after(execInput('pr233-r9-sess', 'c0', 'getActiveDocument'), {
+      output: '总段数: 未知',
+      isError: false,
+    });
+    // 请求 (1,100) 只返回 80 段（真截断），输出不含「共N段」→ total 保持未知
+    await after(
+      execInput('pr233-r9-sess', 'c1', 'getDocumentParagraphs', {
+        start_paragraph: 1,
+        end_paragraph: 100,
+      }),
+      {
+        output:
+          '文档段落结构（返回80段）：\n[1] (正文) [0-99] 第1段\n[80] (正文) [7999-8099] 第80段',
+        isError: false,
+      }
+    );
+    // 截断且未达重试上限 → proofreadBasic 被拦截
+    let msg = '';
+    try {
+      await before(
+        execInput('pr233-r9-sess', 'c2', 'proofreadBasic', {
+          startOffset: 0,
+          text: 'x'.repeat(40),
+        }),
+        {}
+      );
+    } catch (e: any) {
+      msg = String(e.message);
+    }
+    expect(msg.indexOf('段落 81..100') !== -1).toBe(true);
+  });
 });
