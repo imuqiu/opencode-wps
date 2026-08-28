@@ -1237,5 +1237,79 @@ describe('governance CR R14：totalParagraphs 一致性（Issue #229）', () => 
       );
       expect(ok).toBe(true);
     });
+    it('复盘R1-2a：已知 total(150) + 超界请求(1,200)且完整返回 → 不误判 batchTruncated，allBatchesComplete clamp 到 150', async () => {
+      const plugin = await loadGovernancePlugin()();
+      const after = plugin['tool.execute.after'];
+
+      // 已知总段数 150（getActiveDocument 直接给出，不走兜底提取）
+      await after(execInput('pfrd-a-sess', 'c0', 'getActiveDocument'), {
+        output: '当前文档: t.docx\n路径: C:\\t.docx\n类型: docx\n总段数: 150\n字数: 3000',
+        isError: false,
+      });
+      // 超界请求 (1,200)，150 段全部返回
+      await after(
+        execInput('pfrd-a-sess', 'c1', 'getDocumentParagraphs', {
+          start_paragraph: 1,
+          end_paragraph: 200,
+        }),
+        { output: buildParaOutput(150, 150), isError: false }
+      );
+      // 已知 total 路径下同样不误判截断 → proofreadBasic 正常放行
+      const ok = await expectNoIntercept(
+        plugin,
+        execInput('pfrd-a-sess', 'c2', 'proofreadBasic', {
+          text: '这是已知总段数超界请求的校对文本内容共二十字以上',
+          startOffset: 0,
+        })
+      );
+      expect(ok).toBe(true);
+      // allBatchesComplete 已置位且边界 clamp 到 150（拦截消息含 1-150/150）
+      const msg = await expectIntercept(
+        plugin,
+        execInput('pfrd-a-sess', 'c3', 'getDocumentParagraphs', {
+          start_paragraph: 1,
+          end_paragraph: 200,
+        }),
+        '1-150/150'
+      );
+      expect(msg).toBe(true);
+    });
+
+    it('复盘R1-2b：已知 total(300) + 超界请求(1,200)但只返回 150 → 仍判真截断，同批重试放行', async () => {
+      const plugin = await loadGovernancePlugin()();
+      const after = plugin['tool.execute.after'];
+
+      await after(execInput('pfrd-b-sess', 'c0', 'getActiveDocument'), {
+        output: '总段数: 300',
+        isError: false,
+      });
+      // 请求 (1,200) 未超文档 total(300)，但只返回 150 → 真截断（不能因 clamp 而放过）
+      await after(
+        execInput('pfrd-b-sess', 'c1', 'getDocumentParagraphs', {
+          start_paragraph: 1,
+          end_paragraph: 200,
+        }),
+        { output: buildParaOutput(300, 150), isError: false }
+      );
+      // 真截断 → proofreadBasic 应被 R12-1 拦截（不能校对不完整文本）
+      const blocked = await expectIntercept(
+        plugin,
+        execInput('pfrd-b-sess', 'c2', 'proofreadBasic', {
+          text: '这是部分返回场景的校对文本内容啊二十字以上',
+          startOffset: 0,
+        }),
+        'batchTruncated'
+      );
+      expect(blocked).toBe(true);
+      // 同批重试 (1,200) 应放行（batchTruncated=true 且未达重试上限）
+      const retryOk = await expectNoIntercept(
+        plugin,
+        execInput('pfrd-b-sess', 'c3', 'getDocumentParagraphs', {
+          start_paragraph: 1,
+          end_paragraph: 200,
+        })
+      );
+      expect(retryOk).toBe(true);
+    });
   });
 });

@@ -648,15 +648,19 @@ export const WpsGovernancePlugin = async () => {
               st.totalParagraphs = parseInt(totalMatch[1], 10);
             }
           }
-          const rangeEndIdx0 = ranges[ranges.length - 1].index;
           // 【Issue #229 复盘修复】批次边界 clamp：当请求的 end_paragraph 超出文档实际总段数
           // （如文档 150 段却请求 1-200）时，lastBatchParaIndex 应记录实际存在的末段（150），
           // 而非超界的请求 end（200）。避免 P2 连续性/覆盖判定基于错误的超界值。
+          // 输出末段索引（ranges 实际覆盖到的最后一段）。
+          const rangeEndIdx = ranges[ranges.length - 1].index;
+          // 本批逻辑末段：total 已知时按文档实际末段 clamp；total 未知（0）时不能把请求 end
+          // 之外的推断当成文档末尾，保持按请求 end 记录（由 batchTruncated 提示补齐）。
+          // 注意：total 未知时不做 clamp，避免把"请求内真实截断"误判为"已达文档末尾"（R1-1 说明）。
           const lastIndex = hasReqEnd
             ? st.totalParagraphs > 0
               ? Math.min(requestedEnd, st.totalParagraphs)
               : requestedEnd
-            : rangeEndIdx0;
+            : rangeEndIdx;
           st.lastBatchParaIndex = lastIndex;
           st.batchStartParaIndex = ranges[0].index;
           st.batchStarted = true;
@@ -694,7 +698,6 @@ export const WpsGovernancePlugin = async () => {
               hasReqStart && hasReqEnd ? requestedEnd - requestedStart + 1 : null;
             const returnMatch = outText.match(/返回(\d+)段/i);
             const returnedCount = returnMatch ? parseInt(returnMatch[1], 10) : null;
-            const rangeEndIdx = ranges[ranges.length - 1].index;
             // 【Issue #229 复盘修复】修正截断判定：当返回末段已达到文档实际末尾
             // （rangeEndIdx >= totalParagraphs，前提 totalParagraphs 已知）时，说明请求超界
             // 但所有存在的段落都已返回，**不是**输出截断——不应标记 batchTruncated 引导
