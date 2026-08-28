@@ -188,6 +188,9 @@ const AI_FIXES_NO_ISSUES_LIMIT = 1;
 // CR R11-1：同批重试上限（proofreadBasic 失败或 batchTruncated 输出被截断时最多允许重试 3 次），
 // 超过上限后不再放行同批重试，防止 AI 无限循环。
 const MAX_BATCH_RETRY_LIMIT = 3;
+// Issue #229 R3-2（PR238）：单批段落数上限（getDocumentParagraphs 单次请求、P28 跳变阈值、
+// P13 文本上限、R12-1 消息共用），统一抽取避免魔法数字重复导致日后调整批量上限时不一致。
+const MAX_PARAGRAPHS_PER_BATCH = 200;
 
 // 校对标准步骤链（与 wps-office-mcp proofread-store 的 PROOFREAD_STEP_CHAIN 保持一致，R4-2）
 // 用于 P20 校验 _steps_log 的 step 名合法性，杜绝编造任意步骤名。
@@ -359,6 +362,22 @@ function resetProofreadState(st) {
   st.fullCoverageReached = false;
   st.assignedRanges = {};
   st.registeredRanges = [];
+}
+
+// Issue #229 R1-1/R1-2（PR238）：真正的「规划 agent 初始化 session 首次登记」判定（P22/P23/P27 共用）。
+// 仅当：串行模式（无 _batch_id）、从未实际累加（accumulateCount===0）、未上报 _processed_to_paragraph
+// （初始化登记不报进度）、带非空 _batch_allocations、且无 issues 时，才视为规划初始化，豁免
+// 「必须先调 proofreadBasic / 必带 _processed_to_paragraph / 必带 doc_info」等要求。
+// 防止 AI 通过伪造 _batch_allocations 数组反复绕过 P27（Issue #229 R1-1：必须每批先调 proofreadBasic）。
+function isPlannerInitAccumulate(innerArgs, st) {
+  if (!!innerArgs._batch_id) return false; // 并行模式不豁免（由 P20 凭证兜底）
+  if ((st.accumulateCount || 0) !== 0) return false; // 已实际累加过，不再是初始化登记
+  if (innerArgs._processed_to_paragraph !== undefined) return false; // 初始化登记不报进度
+  return (
+    Array.isArray(innerArgs._batch_allocations) &&
+    innerArgs._batch_allocations.length > 0 &&
+    (!Array.isArray(innerArgs.issues) || innerArgs.issues.length === 0)
+  );
 }
 
 function getSessionState(input) {
@@ -868,11 +887,7 @@ export const WpsGovernancePlugin = async () => {
           // 否则服务端无法追踪真实覆盖进度，报告硬性完整性门禁无法生效（防"中途结束就假装完成"）。
           // 豁免：规划 agent 初始化 session 时的首次登记（无 issues 且带 _batch_allocations），
           // 此时尚无实际校对，不必上报进度。
-          const isPlannerInit =
-            !innerArgs._batch_id &&
-            Array.isArray(innerArgs._batch_allocations) &&
-            innerArgs._batch_allocations.length > 0 &&
-            (!Array.isArray(innerArgs.issues) || innerArgs.issues.length === 0);
+          const isPlannerInit = isPlannerInitAccumulate(innerArgs, st);
           if (
             !isPlannerInit &&
             (typeof innerArgs._processed_to_paragraph !== 'number' ||
@@ -996,6 +1011,28 @@ export const WpsGovernancePlugin = async () => {
                   `【执行治理】【P25b】_processed_to_paragraph=${innerArgs._processed_to_paragraph} ` +
                     `小于本会话已上报的最大进度 ${st.maxReportedParagraph}（进度回退）。\n` +
                     `请按批次顺序逐批推进进度，禁止重新上报更早批次的旧进度（会破坏全文覆盖判定）。`
+                );
+              }
+              // P28（Issue #229 实际校对问题：批次跳跃式假进度）：
+              // 本批上报的 _processed_to_paragraph 相对上次成功上报的最大进度，必须逐批连续推进
+              // （跳变 ≤ 单批上限 200 段）。真实会话（ses_fb8c）中 AI 在最后阶段从 1400 直接
+              // 跳到 5550（跳变 4150 段），宣称已校对全文——即使中间批次调用了 getDocumentParagraphs
+              // 获取过段落但从未调用 proofreadBasic 校对，也属于假进度。P28 强制：进度只能
+              // 逐批（≤200 段/批）连续推进，禁止一次跳过多个批次。
+              // 豁免：首次上报（maxReportedParagraph=0）时允许任意值（这是第一批）；同批重试
+              // 上报相同值不受影响（P25b 已覆盖回退拦截）。
+              if (
+                innerArgs._processed_to_paragraph !== undefined &&
+                (st.maxReportedParagraph || 0) > 0 &&
+                innerArgs._processed_to_paragraph - (st.maxReportedParagraph || 0) >
+                  MAX_PARAGRAPHS_PER_BATCH
+              ) {
+                throw new Error(
+                  `【执行治理】【P28】_processed_to_paragraph=${innerArgs._processed_to_paragraph} ` +
+                    `相对上次上报的最大进度 ${st.maxReportedParagraph} 跳变 ` +
+                    `${innerArgs._processed_to_paragraph - st.maxReportedParagraph} 段，超过单批上限 ${MAX_PARAGRAPHS_PER_BATCH}。\n` +
+                    `进度必须逐批连续推进，禁止跳过中间批次。请先获取并校对中间批次段落 ` +
+                    `（每批 ≤${MAX_PARAGRAPHS_PER_BATCH} 段，调用 getDocumentParagraphs → proofreadBasic 完整走链），再逐批上报。`
                 );
               }
               // P26：issues 必须属于当前批窗口（防复用陈旧 issue 填充）
@@ -1324,10 +1361,10 @@ export const WpsGovernancePlugin = async () => {
             `【执行治理】end_paragraph（${end}）必须 ≥ start_paragraph（${start}）。`
           );
         }
-        if (count > 200) {
+        if (count > MAX_PARAGRAPHS_PER_BATCH) {
           throw new Error(
             `【执行治理】getDocumentParagraphs 单次请求 ${count} 段，` +
-              `超过上限 200 段。请分多次获取。`
+              `超过上限 ${MAX_PARAGRAPHS_PER_BATCH} 段。请分多次获取。`
           );
         }
         if (!isParallelBatch && st.lastBatchParaIndex === 0 && start !== 1) {
@@ -1515,7 +1552,7 @@ export const WpsGovernancePlugin = async () => {
               throw new Error(
                 `【执行治理】【P6b】proofreadBasic 传入文本 ${text.length} 字符 ` +
                   `远超本批预期范围 ${expectedLen} 字符。` +
-                  `禁止一次性校对多批。请严格每批 ≤200 段、单次 proofreadBasic 只传本批文本。`
+                  `禁止一次性校对多批。请严格每批 ≤${MAX_PARAGRAPHS_PER_BATCH} 段、单次 proofreadBasic 只传本批文本。`
               );
             }
           }
@@ -1542,7 +1579,7 @@ export const WpsGovernancePlugin = async () => {
               throw new Error(
                 `【执行治理】【P13】getDocumentTextByRange length=${requestedLen} ` +
                   `远超本批预期范围长度 ${expectedBatchLen}。` +
-                  `禁止一次性拉取多批文本。请只获取本批范围内的文本（≤200 段）。`
+                  `禁止一次性拉取多批文本。请只获取本批范围内的文本（≤${MAX_PARAGRAPHS_PER_BATCH} 段）。`
               );
             }
           }
@@ -1574,6 +1611,46 @@ export const WpsGovernancePlugin = async () => {
           );
         }
         return;
+      }
+
+      // ── 规则 P27：proofreadAccumulate 必须先调 proofreadBasic（Issue #229 实际校对问题）──
+      // 根因回顾：真实会话（ses_fb8c）中 AI 对大量批次仅 getDocumentParagraphs 视觉扫描
+      // （不调 proofreadBasic 就跳过），直接 proofreadAccumulate 上报进度——P22/P23/P25/P26
+      // 虽拦截空 issues 和跳跃式进度，但**没有任何规则要求「每批必须先调 proofreadBasic」**。
+      // 于是 AI 可以：视觉扫描 → 直接 proofreadAccumulate（带窗口内 issue 绕过 P23/P26）→
+      // 全程从不真校对但进度一路推进。此处强制：串行模式下 proofreadAccumulate 之前
+      // 必须本批已调用过 proofreadBasic（proofreadCalledThisBatch=true）。
+      // 豁免：规划 agent 初始化 session 时的首次登记（带 _batch_allocations 且无 issues），
+      // 此时尚无实际校对，不需要 proofreadBasic。并行模式由 P20 凭证兜底，不在此强制。
+      if (toolName === 'proofreadAccumulate') {
+        const isParallelBatchAccumulate = !!innerArgs._batch_id;
+        const isPlannerInit = isPlannerInitAccumulate(innerArgs, st);
+        // R3-1（Issue #229 PR238）：P27 不仅在有批次（batchStarted）时要求先调 proofreadBasic，
+        // 也在「上报了进度（_processed_to_paragraph）却从未开始批次 / 未调 proofreadBasic」时拦截。
+        // 修复绕过路径：AI 不调 getDocumentParagraphs（batchStarted=false）时，P25/P26/P27 原本
+        // 全部因 batchStarted 守卫短路而跳过，可凭伪造 doc_info + issue 一次上报整篇假进度。
+        // 现：串行模式上报进度（_processed_to_paragraph 存在）且非规划初始化时，必须已调 proofreadBasic。
+        const reportingProgress = innerArgs._processed_to_paragraph !== undefined;
+        if (
+          !isParallelBatchAccumulate &&
+          !isPlannerInit &&
+          !st.proofreadCalledThisBatch &&
+          (st.batchStarted || reportingProgress)
+        ) {
+          throw new Error(
+            `【执行治理】【P27】${
+              st.batchStarted
+                ? `本批（段落 ${st.batchStartParaIndex}-${st.lastBatchParaIndex}）尚未调用 proofreadBasic`
+                : `尚未通过 getDocumentParagraphs 获取任何批次段落，却上报进度 ${innerArgs._processed_to_paragraph}`
+            }，` +
+              `禁止直接 proofreadAccumulate 上报进度。\n` +
+              `每批必须完整走链：getDocumentParagraphs → getDocumentTextByRange → proofreadBasic → ` +
+              `confirmBatchAiProofread → replaceInParagraph → proofreadAccumulate。\n` +
+              `仅 getDocumentParagraphs 视觉扫描 + 上报进度 ≠ 校对；未获取段落就报进度更是假进度。` +
+              `请先 getActiveDocument → getDocumentParagraphs 获取本批段落，再对本批调用 proofreadBasic ` +
+              `完成基础校对后再累加进度。`
+          );
+        }
       }
 
       // ── 规则 P4 + P6 + P10 + P11：替换操作 ──
