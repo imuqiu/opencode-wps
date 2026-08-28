@@ -1024,7 +1024,8 @@ export const WpsGovernancePlugin = async () => {
               if (
                 innerArgs._processed_to_paragraph !== undefined &&
                 (st.maxReportedParagraph || 0) > 0 &&
-                innerArgs._processed_to_paragraph - (st.maxReportedParagraph || 0) > MAX_PARAGRAPHS_PER_BATCH
+                innerArgs._processed_to_paragraph - (st.maxReportedParagraph || 0) >
+                  MAX_PARAGRAPHS_PER_BATCH
               ) {
                 throw new Error(
                   `【执行治理】【P28】_processed_to_paragraph=${innerArgs._processed_to_paragraph} ` +
@@ -1637,9 +1638,11 @@ export const WpsGovernancePlugin = async () => {
           (st.batchStarted || reportingProgress)
         ) {
           throw new Error(
-            `【执行治理】【P27】${st.batchStarted
-              ? `本批（段落 ${st.batchStartParaIndex}-${st.lastBatchParaIndex}）尚未调用 proofreadBasic`
-              : `尚未通过 getDocumentParagraphs 获取任何批次段落，却上报进度 ${innerArgs._processed_to_paragraph}`}，` +
+            `【执行治理】【P27】${
+              st.batchStarted
+                ? `本批（段落 ${st.batchStartParaIndex}-${st.lastBatchParaIndex}）尚未调用 proofreadBasic`
+                : `尚未通过 getDocumentParagraphs 获取任何批次段落，却上报进度 ${innerArgs._processed_to_paragraph}`
+            }，` +
               `禁止直接 proofreadAccumulate 上报进度。\n` +
               `每批必须完整走链：getDocumentParagraphs → getDocumentTextByRange → proofreadBasic → ` +
               `confirmBatchAiProofread → replaceInParagraph → proofreadAccumulate。\n` +
