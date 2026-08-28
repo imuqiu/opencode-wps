@@ -2377,7 +2377,8 @@ describe('governance R2：P28/P27 边界与文档切换隔离（Issue #229，PR2
     }
     return `文档段落结构（共${total}段，返回${returned}段）：\n${rows.join('\n')}`;
   }
-  async function acc(
+  // R5-1：用 after hook 执行 proofreadAccumulate，使 P25/P25b/P26/P28（after hook）真正被触发并更新状态。
+  async function accAfter(
     plugin: any,
     sess: string,
     cid: string,
@@ -2386,14 +2387,14 @@ describe('governance R2：P28/P27 边界与文档切换隔离（Issue #229，PR2
     total: number,
     fname: string
   ) {
-    const before = plugin['tool.execute.before'];
-    await before(
+    const after = plugin['tool.execute.after'];
+    await after(
       execInput(sess, cid, 'proofreadAccumulate', {
         _processed_to_paragraph: processedTo,
         issues,
         doc_info: { fileName: fname, filePath: `C:\\${fname}`, totalParagraphs: total },
       }),
-      {}
+      { output: 'OK', isError: false }
     );
   }
 
@@ -2415,15 +2416,21 @@ describe('governance R2：P28/P27 边界与文档切换隔离（Issue #229，PR2
       execInput('r2a-sess', 'c2', 'proofreadBasic', { startOffset: 0, text: 'x'.repeat(40) }),
       { output: JSON.stringify({ issues: [] }), isError: false }
     );
-    const ok = await expectNoIntercept(
-      plugin,
-      execInput('r2a-sess', 'c3', 'proofreadAccumulate', {
-        _processed_to_paragraph: 150,
-        issues: [{ paragraphIndex: 1 }],
-        doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 150 },
-      })
-    );
-    expect(ok).toBe(true);
+    // 首次上报到 total=150（diff 从 0 开始，P28 首次豁免），P28（after hook）不应拦截
+    let blocked = false;
+    try {
+      await after(
+        execInput('r2a-sess', 'c3', 'proofreadAccumulate', {
+          _processed_to_paragraph: 150,
+          issues: [{ paragraphIndex: 1 }],
+          doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 150 },
+        }),
+        { output: 'OK', isError: false }
+      );
+    } catch (e: any) {
+      blocked = String(e.message).indexOf('【P28】') !== -1;
+    }
+    expect(blocked).toBe(false);
   });
 
   it('R2-1b：截断后先报部分进度，同批重试补齐后报满，不被 P28 拦截', async () => {
@@ -2445,8 +2452,8 @@ describe('governance R2：P28/P27 边界与文档切换隔离（Issue #229，PR2
       execInput('r2b-sess', 'c2', 'proofreadBasic', { startOffset: 0, text: 'x'.repeat(40) }),
       { output: JSON.stringify({ issues: [] }), isError: false }
     );
-    // 报已拿到的 100
-    await acc(plugin, 'r2b-sess', 'c3', 100, [{ paragraphIndex: 1 }], 1000, 't.docx');
+    // 报已拿到的 100（after hook，maxReportedParagraph 更新为 100）
+    await accAfter(plugin, 'r2b-sess', 'c3', 100, [{ paragraphIndex: 1 }], 1000, 't.docx');
     // 同批重试补齐到 200（same start/end）
     await after(
       execInput('r2b-sess', 'c4', 'getDocumentParagraphs', {
@@ -2459,16 +2466,21 @@ describe('governance R2：P28/P27 边界与文档切换隔离（Issue #229，PR2
       execInput('r2b-sess', 'c5', 'proofreadBasic', { startOffset: 0, text: 'x'.repeat(40) }),
       { output: JSON.stringify({ issues: [] }), isError: false }
     );
-    // 报满 200：diff=100 ≤200，P28 不应拦截
-    const ok = await expectNoIntercept(
-      plugin,
-      execInput('r2b-sess', 'c6', 'proofreadAccumulate', {
-        _processed_to_paragraph: 200,
-        issues: [{ paragraphIndex: 1 }],
-        doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 1000 },
-      })
-    );
-    expect(ok).toBe(true);
+    // 报满 200：diff=100 ≤200，P28（after hook）不应拦截
+    let blocked = false;
+    try {
+      await after(
+        execInput('r2b-sess', 'c6', 'proofreadAccumulate', {
+          _processed_to_paragraph: 200,
+          issues: [{ paragraphIndex: 1 }],
+          doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 1000 },
+        }),
+        { output: 'OK', isError: false }
+      );
+    } catch (e: any) {
+      blocked = String(e.message).indexOf('【P28】') !== -1;
+    }
+    expect(blocked).toBe(false);
   });
 
   it('R2-2：文档切换后 P25b/P28 状态隔离，新文档首报不被误拦', async () => {
@@ -2490,8 +2502,8 @@ describe('governance R2：P28/P27 边界与文档切换隔离（Issue #229，PR2
       execInput('r2c-sess', 'c2', 'proofreadBasic', { startOffset: 0, text: 'x'.repeat(40) }),
       { output: JSON.stringify({ issues: [] }), isError: false }
     );
-    await acc(plugin, 'r2c-sess', 'c3', 200, [{ paragraphIndex: 1 }], 500, 'docA.docx');
-    // 切到 Doc B: 300 段，首报 100（若状态未重置，P25b 会误拦 100 < 200）
+    await accAfter(plugin, 'r2c-sess', 'c3', 200, [{ paragraphIndex: 1 }], 500, 'docA.docx');
+    // 切到 Doc B: 300 段，首报 100（若状态未重置，P25b 会误拦 100 < 200；P28 首次上报豁免）
     await after(execInput('r2c-sess', 'c4', 'getActiveDocument'), {
       output: '路径: /docB.docx 总段数: 300',
       isError: false,
@@ -2507,15 +2519,22 @@ describe('governance R2：P28/P27 边界与文档切换隔离（Issue #229，PR2
       execInput('r2c-sess', 'c6', 'proofreadBasic', { startOffset: 0, text: 'x'.repeat(40) }),
       { output: JSON.stringify({ issues: [] }), isError: false }
     );
-    const ok = await expectNoIntercept(
-      plugin,
-      execInput('r2c-sess', 'c7', 'proofreadAccumulate', {
-        _processed_to_paragraph: 100,
-        issues: [{ paragraphIndex: 1 }],
-        doc_info: { fileName: 'docB.docx', filePath: 'C:\\docB.docx', totalParagraphs: 300 },
-      })
-    );
-    expect(ok).toBe(true);
+    // P25b/P28（after hook）在文档切换后应重置，不误拦新文档首报
+    let blocked = false;
+    try {
+      await after(
+        execInput('r2c-sess', 'c7', 'proofreadAccumulate', {
+          _processed_to_paragraph: 100,
+          issues: [{ paragraphIndex: 1 }],
+          doc_info: { fileName: 'docB.docx', filePath: 'C:\\docB.docx', totalParagraphs: 300 },
+        }),
+        { output: 'OK', isError: false }
+      );
+    } catch (e: any) {
+      blocked =
+        String(e.message).indexOf('【P25b】') !== -1 || String(e.message).indexOf('【P28】') !== -1;
+    }
+    expect(blocked).toBe(false);
   });
 });
 
