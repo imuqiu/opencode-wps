@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.15] - 2026-08-28
+
+### Changed
+
+- **NPC Team 提示词强化「先验证后整改/先验证后报告」机制（Issue #234，PR #235）** — 在 NPC Team 提示词中显式贯彻「先验证后整改」原则，杜绝想当然拍方案/凭经验直接改代码：①铁律 16 新增第⑤点「整改前必须先验证方案可行性」（复现→定位根因→写测试验证假设→确认可行才改，验证失败回退方案）；②铁律 16 新增第⑥点「报告/判定问题前必须先求证」（先验证后报告，防垒屎山）；③5/12 开发改为验证先行五步（复现→定位根因→验证方案→整改→自测）；④4/12 方案设计必须含可行性预验证计划；⑤CR/QA 角色卡片及 6/12、7/12 阶段落实先验证后报告。经 10 轮评审-修复循环清零，validate:npc-team 双源一致性校验通过。
+
+- **版本号升级至 1.9.15** — 根 `package.json` / `package-lock.json` / `opencode-wps/`（package.json、config.js、manifest.xml）/ `opencode-wps-linux/`（package.json、manifest.xml）/ `wps-office-mcp/`（package.json、package-lock.json）版本一致升级至 1.9.15，`validate-versions` 校验通过。
+
 ## [1.9.14] - 2026-08-28
 
 ### Fixed
