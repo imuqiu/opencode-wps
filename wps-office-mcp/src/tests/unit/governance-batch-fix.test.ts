@@ -2768,3 +2768,31 @@ describe('governance R8：合法规划初始化登记回归保护（Issue #229�
     expect(blocked).toBe(false);
   });
 });
+
+describe('governance R9：并行模式不受 P28 约束（Issue #229，PR238）', () => {
+  it('R9-1：并行模式（带 _batch_id + _steps_log）跨大步上报（diff>200）不被 P28 拦截', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    await after(execInput('r9a-sess', 'c0', 'getActiveDocument'), {
+      output: '总段数: 1000',
+      isError: false,
+    });
+    // 并行批次 b9：上报 900（diff 从 0 起 900 > 200），带 _batch_id + _steps_log（P20 凭证）
+    let blocked = false;
+    try {
+      await after(
+        execInput('r9a-sess', 'c1', 'proofreadAccumulate', {
+          _processed_to_paragraph: 900,
+          issues: [{ paragraphIndex: 850 }],
+          doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 1000 },
+          _batch_id: 'b9',
+          _steps_log: [{ step: 'proofreadBasic' }],
+        }),
+        { output: 'OK', isError: false }
+      );
+    } catch (e: any) {
+      blocked = String(e.message).indexOf('【P28】') !== -1;
+    }
+    expect(blocked).toBe(false);
+  });
+});
