@@ -1405,4 +1405,57 @@ describe('governance P25/P26：防假校对/假进度（Issue #229，PR232）', 
     }
     expect(ok).toBe(true);
   });
+
+  it('P25b（R8-1）：覆盖全文的末批正常推进不被 P25b 误伤', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    await after(execInput('p25e-sess', 'c0', 'getActiveDocument'), {
+      output: '总段数: 200',
+      isError: false,
+    });
+    // 第一批：1-100，进度 100
+    await after(
+      execInput('p25e-sess', 'c1', 'getDocumentParagraphs', {
+        start_paragraph: 1,
+        end_paragraph: 100,
+      }),
+      { output: buildParaOutput(200, 100), isError: false }
+    );
+    await after(
+      execInput('p25e-sess', 'c2', 'proofreadBasic', { startOffset: 0, text: 'x'.repeat(40) }),
+      { output: JSON.stringify({ issues: [] }), isError: false }
+    );
+    await accumulate(
+      plugin,
+      'p25e-sess',
+      100,
+      [{ paragraphIndex: 50, text: '问题', suggestion: '修复' }],
+      200
+    );
+    // 第二批：101-200，覆盖全文进度 200 → 放行（不误伤末批）
+    await after(
+      execInput('p25e-sess', 'c3', 'getDocumentParagraphs', {
+        start_paragraph: 101,
+        end_paragraph: 200,
+      }),
+      { output: buildParaOutput(200, 100, 101), isError: false }
+    );
+    await after(
+      execInput('p25e-sess', 'c4', 'proofreadBasic', { startOffset: 400, text: 'x'.repeat(40) }),
+      { output: JSON.stringify({ issues: [] }), isError: false }
+    );
+    let ok = true;
+    try {
+      await accumulate(
+        plugin,
+        'p25e-sess',
+        200,
+        [{ paragraphIndex: 150, text: '问题', suggestion: '修复' }],
+        200
+      );
+    } catch {
+      ok = false;
+    }
+    expect(ok).toBe(true);
+  });
 });
