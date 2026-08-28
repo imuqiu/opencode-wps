@@ -263,6 +263,12 @@ function createSessionState() {
     // 以及批次边界以请求参数为准（不信任输出截断处）。
     batchRequestedStart: null,
     batchRequestedEnd: null,
+    // 【Issue #229 复盘修复】R5-1：本批 getDocumentParagraphs 实际返回的最后一段索引（rangeEndIdx），
+    // 供 R12-1 拦截消息精确展示「未返回段落范围」，避免用原始请求 end 造成误导（如"200 之后"越过文档末尾）。
+    // 注（R6-1）：与 P25/P26 用的 batchActualEndParaIndex 语义一致（均为 ranges 末段 index），
+    // 分属两个 PR 引入；合并后为同一值的两个字段，仅用途不同（R12-1 消息展示 / P25/P26 窗口基准），
+    // 不构成逻辑冲突，可后续统一命名。
+    batchActualEndPara: 0,
     // CR R1-1：标记本批 getDocumentParagraphs 输出是否被截断（返回段数 < 请求段数），
     // 提示 AI 应用同批重试补齐段落后再校对，避免静默漏检。
     batchTruncated: false,
@@ -337,6 +343,7 @@ function resetProofreadState(st) {
   st.batchEndOffset = null;
   st.batchRequestedStart = null;
   st.batchRequestedEnd = null;
+  st.batchActualEndPara = 0;
   st.batchTruncated = false;
   // CR R11-2：重置同批重试计数。
   st.batchRetryCount = 0;
@@ -649,7 +656,30 @@ export const WpsGovernancePlugin = async () => {
           const requestedEnd = Number(innerArgs.end_paragraph);
           const hasReqStart = Number.isInteger(requestedStart) && requestedStart >= 1;
           const hasReqEnd = Number.isInteger(requestedEnd) && requestedEnd >= requestedStart;
-          const lastIndex = hasReqEnd ? requestedEnd : ranges[ranges.length - 1].index;
+          // Issue #229 问题5：getActiveDocument 走 launcher 回退输出 [总段数: 未知] 时 totalParagraphs=0，
+          // 导致 allBatchesComplete 永不置 true、报告完整性门禁失效。
+          // 兜底：从 getDocumentParagraphs 输出的 [共N段] 提取文档总段数（仅当尚未确定时）。
+          // 【Issue #229 复盘修复】totalParagraphs 提取提前到 lastIndex 计算之前，
+          // 以便在计算批次边界时就能感知文档实际总段数，避免请求超界被误判。
+          if (!st.totalParagraphs) {
+            const totalMatch = outText.match(/共(\d+)段/i);
+            if (totalMatch) {
+              st.totalParagraphs = parseInt(totalMatch[1], 10);
+            }
+          }
+          // 【Issue #229 复盘修复】批次边界 clamp：当请求的 end_paragraph 超出文档实际总段数
+          // （如文档 150 段却请求 1-200）时，lastBatchParaIndex 应记录实际存在的末段（150），
+          // 而非超界的请求 end（200）。避免 P2 连续性/覆盖判定基于错误的超界值。
+          // 输出末段索引（ranges 实际覆盖到的最后一段）。
+          const rangeEndIdx = ranges[ranges.length - 1].index;
+          // 本批逻辑末段：total 已知时按文档实际末段 clamp；total 未知（0）时不能把请求 end
+          // 之外的推断当成文档末尾，保持按请求 end 记录（由 batchTruncated 提示补齐）。
+          // 注意：total 未知时不做 clamp，避免把"请求内真实截断"误判为"已达文档末尾"（R1-1 说明）。
+          const lastIndex = hasReqEnd
+            ? st.totalParagraphs > 0
+              ? Math.min(requestedEnd, st.totalParagraphs)
+              : requestedEnd
+            : rangeEndIdx;
           st.lastBatchParaIndex = lastIndex;
           // P25/P26（Issue #229）：记录本批**实际返回**末段（ranges 实际覆盖到的最后一段），
           // 供 proofreadAccumulate 的 P25/P26 以"实际获取到的段落"为基准校验假进度。
@@ -683,7 +713,13 @@ export const WpsGovernancePlugin = async () => {
             st.batchRetryCount = 0;
           }
           st.batchRequestedStart = hasReqStart ? requestedStart : ranges[0].index;
-          st.batchRequestedEnd = lastIndex;
+          // 【Issue #229 复盘修复】R2-1：batchRequestedEnd 记录**原始请求的 end_paragraph**（非 clamp 值），
+          // 供「同批重试」识别（AI 用相同的 start/end 重试补齐）与 R12-1 拦截消息使用。
+          // 若这里记录被 clamp 的 lastIndex，则超界请求(1,200)的 batchRequestedEnd 会被记为 150，
+          // AI 按消息提示用 (1,200) 重试时 batchEndArg=200 ≠ 150，永远不被识别为同批重试 → 死锁。
+          st.batchRequestedEnd = hasReqEnd ? requestedEnd : rangeEndIdx;
+          // 【Issue #229 复盘修复】R5-1：记录本批实际返回末段索引，供截断消息精确展示未返回范围。
+          st.batchActualEndPara = rangeEndIdx;
           // CR R1-1：检测本批输出是否「不完整」（返回段数 < 请求段数，或展示未覆盖到请求 end）。
           // 输出不完整时，lastBatchParaIndex 仍按请求 end 记录以便连续性，但标记 truncationDetected
           // 提示 AI 应用同批重试补齐段落后再校对，杜绝静默漏检。proofreadBasic 文本长度校验
@@ -693,10 +729,16 @@ export const WpsGovernancePlugin = async () => {
               hasReqStart && hasReqEnd ? requestedEnd - requestedStart + 1 : null;
             const returnMatch = outText.match(/返回(\d+)段/i);
             const returnedCount = returnMatch ? parseInt(returnMatch[1], 10) : null;
-            const rangeEndIdx = ranges[ranges.length - 1].index;
+            // 【Issue #229 复盘修复】修正截断判定：当返回末段已达到文档实际末尾
+            // （rangeEndIdx >= totalParagraphs，前提 totalParagraphs 已知）时，说明请求超界
+            // 但所有存在的段落都已返回，**不是**输出截断——不应标记 batchTruncated 引导
+            // 无谓重试（重试也补不出不存在的段落）。只有确实还有段落未返回
+            // （rangeEndIdx < totalParagraphs）时，才可能是 MCP 输出截断，需同批重试补齐。
+            const reachedDocEnd = st.totalParagraphs > 0 && rangeEndIdx >= st.totalParagraphs;
             const truncated =
-              (returnedCount != null && requestCount != null && returnedCount < requestCount) ||
-              (hasReqEnd && rangeEndIdx < requestedEnd);
+              ((returnedCount != null && requestCount != null && returnedCount < requestCount) ||
+                (hasReqEnd && rangeEndIdx < requestedEnd)) &&
+              !reachedDocEnd;
             st.batchTruncated = !!truncated;
           }
           st.proofreadCalledThisBatch = false;
@@ -707,16 +749,11 @@ export const WpsGovernancePlugin = async () => {
           st.replaceCountThisBatch = 0;
           st.templateFilling.paragraphsFetched = true;
           st.templateFilling.lastParagraphIndex = lastIndex;
-          // Issue #229 问题5：getActiveDocument 走 launcher 回退输出 [总段数: 未知] 时 totalParagraphs=0，
-          // 导致 allBatchesComplete 永不置 true、报告完整性门禁失效。
-          // 兜底：从 getDocumentParagraphs 输出的 [共N段] 提取文档总段数（仅当尚未确定时）。
-          if (!st.totalParagraphs) {
-            const totalMatch = outText.match(/共(\d+)段/i);
-            if (totalMatch) {
-              st.totalParagraphs = parseInt(totalMatch[1], 10);
-            }
-          }
-          if (st.totalParagraphs > 0 && lastIndex >= st.totalParagraphs) {
+          // 【Issue #229 复盘修复】R2-1：allBatchesComplete 必须以**实际返回末段 rangeEndIdx**
+          // 是否覆盖到文档末尾为准，而非被 clamp 的请求末段 lastIndex。若请求超界(1,200)但输出
+          // 只返回 100/150（真截断），lastIndex 被 clamp 成 150 会让本判定误置位为"已覆盖全文"，
+          // 从而拦截同批重试补齐，与 batchTruncated 一起造成死锁（R2-1 复现）。
+          if (st.totalParagraphs > 0 && rangeEndIdx >= st.totalParagraphs) {
             st.allBatchesComplete = true;
           }
           return;
@@ -1433,20 +1470,32 @@ export const WpsGovernancePlugin = async () => {
               `${st.batchStartOffset} 不匹配。`
           );
         }
+        // 【Issue #229 复盘修复】R12-1 截断保护需同样作用于 file_path 传参路径：
+        // SKILL 推荐用 file_path 传文本给 proofreadBasic，但原实现把 R12-1 截断拦截放在
+        // !innerArgs.file_path 分支内，导致 file_path 时截断保护失效——AI 可校对不完整文本，
+        // 截断的段落（如请求 1-100 只返回 80 段，段落 81-100）被静默漏检。
+        // 修复：将截断拦截独立于 file_path 分支，任何传参方式下 batchTruncated 都拦截。
+        if (
+          !isParallelBatchProofread &&
+          st.batchTruncated &&
+          (st.batchRetryCount || 0) < MAX_BATCH_RETRY_LIMIT
+        ) {
+          // R5-1：精确展示未返回段落范围，避免用原始请求 end 造成误导（如超界请求"200 之后"越过文档末尾）。
+          // 未返回范围 = (实际返回末段+1) .. min(请求 end, 文档总段数)；total 未知时以请求 end 收口。
+          const missFrom = (st.batchActualEndPara || 0) + 1;
+          const missTo =
+            st.totalParagraphs > 0
+              ? Math.min(st.batchRequestedEnd, st.totalParagraphs)
+              : st.batchRequestedEnd;
+          throw new Error(
+            `【执行治理】本批段落输出不完整（batchTruncated=true，请求段落 ${st.batchRequestedStart}-${st.batchRequestedEnd} 但只返回至段落 ${st.batchActualEndPara || 0}）。\n` +
+              `禁止直接校对不完整的段落文本，段落 ${missFrom}..${missTo}（实际未返回）会被静默漏检。\n` +
+              `请先用相同的 start_paragraph/end_paragraph 重试 getDocumentParagraphs 补齐段落（剩余重试次数：${MAX_BATCH_RETRY_LIMIT - (st.batchRetryCount || 0)} 次），再进入 proofreadBasic。`
+          );
+        }
+
         if (!isParallelBatchProofread && !innerArgs.file_path && st.batchEndOffset !== null) {
           const text = innerArgs.text || '';
-          // CR R12-1：当本批输出被截断（batchTruncated=true）时，禁止直接 proofreadBasic——
-          // 截断输出未覆盖本批请求的全部段落（如请求 1-100 段但只返回 80 段），直接校对会
-          // 导致段落 81-100 被静默漏检。强制 AI 先重试同批补齐段落。
-          // 注意：batchRetryCount 已达上限（MAX_BATCH_RETRY_LIMIT）时，允许 AI 用当前文本继续
-          // （此时 AI 已尽最大努力，若再拦截将死锁）。但提示 AI 需了解当前覆盖范围可能不完整。
-          if (st.batchTruncated && (st.batchRetryCount || 0) < MAX_BATCH_RETRY_LIMIT) {
-            throw new Error(
-              `【执行治理】本批段落输出不完整（batchTruncated=true，请求段落 ${st.batchRequestedStart}-${st.batchRequestedEnd} 但输出未覆盖到结束段落）。\n` +
-                `禁止直接校对不完整的段落文本，段落 ${st.batchRequestedEnd || ''} 之后会被静默漏检。\n` +
-                `请先用相同的 start_paragraph/end_paragraph 重试 getDocumentParagraphs 补齐段落（剩余重试次数：${MAX_BATCH_RETRY_LIMIT - (st.batchRetryCount || 0)} 次），再进入 proofreadBasic。`
-            );
-          }
           if (text.length === 0) {
             throw new Error(
               `【执行治理】proofreadBasic 传入文本为空。` +
