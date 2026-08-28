@@ -1001,7 +1001,7 @@ describe('governance CR R13：错误消息修正与参数边界（Issue #229）'
         isError: false,
       }
     );
-    // proofreadBasic 被拦截时，错误消息应包含段落号 100
+    // proofreadBasic 被拦截时，错误消息应包含精确的未返回段落范围 81..100（R5-1）
     try {
       await before(
         execInput('cr13b-sess', 'c2', 'proofreadBasic', {
@@ -1012,7 +1012,7 @@ describe('governance CR R13：错误消息修正与参数边界（Issue #229）'
       );
       fail('应被拦截但被放行');
     } catch (e: any) {
-      expect(String(e.message)).toContain('段落 100');
+      expect(String(e.message)).toContain('81..100');
     }
   });
 });
@@ -1399,6 +1399,39 @@ describe('governance CR R14：totalParagraphs 一致性（Issue #229）', () => 
         })
       );
       expect(ok).toBe(true);
+    });
+    it('复盘R5-1：超界+截断时 R12-1 消息精确展示未返回范围（81..150 而非"200 之后"）', async () => {
+      const plugin = await loadGovernancePlugin()();
+      const after = plugin['tool.execute.after'];
+      const before = plugin['tool.execute.before'];
+
+      // 文档 150 段，请求 (1,200) 超界，只返回 100 段
+      await after(execInput('pf-r5-sess', 'c0', 'getActiveDocument'), {
+        output: '总段数: 150',
+        isError: false,
+      });
+      await after(
+        execInput('pf-r5-sess', 'c1', 'getDocumentParagraphs', {
+          start_paragraph: 1,
+          end_paragraph: 200,
+        }),
+        { output: buildParaOutput(150, 100), isError: false }
+      );
+      try {
+        await before(
+          execInput('pf-r5-sess', 'c2', 'proofreadBasic', {
+            startOffset: 0,
+            text: '这是超界截断场景的校对文本内容共二十个字以上',
+          }),
+          {}
+        );
+        fail('应被拦截但被放行');
+      } catch (e: any) {
+        const msg = String(e.message);
+        // 未返回范围应为 101..150（clamp 到文档末段），而非误导性的"200 之后"
+        expect(msg).toContain('101..150');
+        expect(msg).not.toContain('200 之后');
+      }
     });
   });
 });
