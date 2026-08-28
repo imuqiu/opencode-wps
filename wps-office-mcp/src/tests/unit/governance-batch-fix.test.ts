@@ -2427,3 +2427,35 @@ describe('governance R2：P28/P27 边界与文档切换隔离（Issue #229，PR2
     expect(ok).toBe(true);
   });
 });
+
+describe('governance R3：P27 拦截未获取段落即伪造整篇进度（Issue #229，PR238）', () => {
+  it('R3-1：未调用 getActiveDocument/getDocumentParagraphs/proofreadBasic 直接上报整篇进度被 P27 拦截', async () => {
+    const plugin = await loadGovernancePlugin()();
+    // 直接 proofreadAccumulate，无任何批次获取
+    const blocked = await expectIntercept(plugin,
+      execInput('r3a-sess', 'c0', 'proofreadAccumulate', {
+        _processed_to_paragraph: 1000,
+        issues: [{ paragraphIndex: 1, text: '问题', suggestion: '修复' }],
+        doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 1000 },
+      }),
+      '【P27】'
+    );
+    expect(blocked).toBe(true);
+  });
+
+  it('R3-1b：getActiveDocument 后未获取段落即上报进度仍被 P27 拦截', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    await after(execInput('r3b-sess', 'c0', 'getActiveDocument'), { output: '总段数: 300', isError: false });
+    // 只 getActiveDocument，未 getDocumentParagraphs，直接上报进度
+    const blocked = await expectIntercept(plugin,
+      execInput('r3b-sess', 'c1', 'proofreadAccumulate', {
+        _processed_to_paragraph: 300,
+        issues: [{ paragraphIndex: 1, text: '问题', suggestion: '修复' }],
+        doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 300 },
+      }),
+      '【P27】'
+    );
+    expect(blocked).toBe(true);
+  });
+});
