@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.14] - 2026-08-28
+
+### Fixed
+
+- **修复分批校对执行极不稳定问题（Issue #229，PR #230）** — 分批校对无法按批次从头到尾严格执行的 6 项根因全部修复：①批次中途失败死锁（新增同批重试放行，P2/P12/P18 规则联动）；②getDocumentParagraphs 输出截断致状态错乱（批次边界以请求 end_paragraph 为准）；③proofreadBasic JSON 解析失败致 P15/P16 失灵（proofreadHadIssues 三态化 null/false/true）；④会话状态作用域过宽（activeDocPath 文档切换自动重置 + LRU 淘汰）；⑤总段数「未知」解析失败（「共N段」兜底提取）；⑥parseParagraphRanges 正则误解析（style 非贪婪匹配）。经 16 轮评审-修复循环清零，25 条分批稳定性测试全通过。
+
+### Changed
+
+- **版本号升级至 1.9.14** — 根 `package.json` / `package-lock.json` / `opencode-wps/`（package.json、config.js、manifest.xml）/ `opencode-wps-linux/`（package.json、manifest.xml）/ `wps-office-mcp/`（package.json、package-lock.json）版本一致升级至 1.9.14，`validate-versions` 校验通过。
+
+
 ## [1.9.13] - 2026-08-25
 
 ### Fixed
