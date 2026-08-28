@@ -255,6 +255,9 @@ function createSessionState() {
     batchRequestedEnd: null,
     // 【Issue #229 复盘修复】R5-1：本批 getDocumentParagraphs 实际返回的最后一段索引（rangeEndIdx），
     // 供 R12-1 拦截消息精确展示「未返回段落范围」，避免用原始请求 end 造成误导（如"200 之后"越过文档末尾）。
+    // 注（R6-1）：与 P25/P26 用的 batchActualEndParaIndex 语义一致（均为 ranges 末段 index），
+    // 分属两个 PR 引入；合并后为同一值的两个字段，仅用途不同（R12-1 消息展示 / P25/P26 窗口基准），
+    // 不构成逻辑冲突，可后续统一命名。
     batchActualEndPara: 0,
     // CR R1-1：标记本批 getDocumentParagraphs 输出是否被截断（返回段数 < 请求段数），
     // 提示 AI 应用同批重试补齐段落后再校对，避免静默漏检。
