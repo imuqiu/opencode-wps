@@ -2694,3 +2694,55 @@ describe('governance R4：P28 批量上限边界（Issue #229，PR238）', () =>
     expect(blocked).toBe(true);
   });
 });
+
+describe('governance R7：P25 兜底 P28 首次豁免（Issue #229，PR238）', () => {
+  function paraOutR7(total: number, returned: number): string {
+    return (
+      '文档段落结构（共' +
+      total +
+      '段，返回' +
+      returned +
+      '段）：\n' +
+      Array.from(
+        { length: returned },
+        (_, i) => `[${i + 1}] (正文) [${i * 10}-${i * 10 + 9}] 第${i + 1}段`
+      ).join('\n')
+    );
+  }
+
+  it('R7-1：获取 100 段却上报 200（P28 首次豁免内但超实际获取范围）被 P25 拦截', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    await after(execInput('r7a-sess', 'c0', 'getActiveDocument'), {
+      output: '总段数: 500',
+      isError: false,
+    });
+    // 完整获取 (1,100)，未截断
+    await after(
+      execInput('r7a-sess', 'c1', 'getDocumentParagraphs', {
+        start_paragraph: 1,
+        end_paragraph: 100,
+      }),
+      { output: paraOutR7(500, 100), isError: false }
+    );
+    await after(
+      execInput('r7a-sess', 'c2', 'proofreadBasic', { startOffset: 0, text: 'x'.repeat(40) }),
+      { output: JSON.stringify({ issues: [] }), isError: false }
+    );
+    // 上报 200：跳变 200（P28 首次豁免不拦），但 200 > 实际获取末段 100 → P25 拦截
+    let blocked = false;
+    try {
+      await after(
+        execInput('r7a-sess', 'c3', 'proofreadAccumulate', {
+          _processed_to_paragraph: 200,
+          issues: [{ paragraphIndex: 1 }],
+          doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 500 },
+        }),
+        { output: 'OK', isError: false }
+      );
+    } catch (e: any) {
+      blocked = String(e.message).indexOf('【P25】') !== -1;
+    }
+    expect(blocked).toBe(true);
+  });
+});
