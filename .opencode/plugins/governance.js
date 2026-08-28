@@ -1030,9 +1030,9 @@ export const WpsGovernancePlugin = async () => {
                 throw new Error(
                   `【执行治理】【P28】_processed_to_paragraph=${innerArgs._processed_to_paragraph} ` +
                     `相对上次上报的最大进度 ${st.maxReportedParagraph} 跳变 ` +
-                    `${innerArgs._processed_to_paragraph - st.maxReportedParagraph} 段，超过单批上限 200。\n` +
+                    `${innerArgs._processed_to_paragraph - st.maxReportedParagraph} 段，超过单批上限 ${MAX_PARAGRAPHS_PER_BATCH}。\n` +
                     `进度必须逐批连续推进，禁止跳过中间批次。请先获取并校对中间批次段落 ` +
-                    `（每批 ≤200 段，调用 getDocumentParagraphs → proofreadBasic 完整走链），再逐批上报。`
+                    `（每批 ≤${MAX_PARAGRAPHS_PER_BATCH} 段，调用 getDocumentParagraphs → proofreadBasic 完整走链），再逐批上报。`
                 );
               }
               // P26：issues 必须属于当前批窗口（防复用陈旧 issue 填充）

@@ -2555,3 +2555,123 @@ describe('governance R3：P27 拦截未获取段落即伪造整篇进度（Issue
     expect(blocked).toBe(true);
   });
 });
+
+describe('governance R4：P28 批量上限边界（Issue #229，PR238）', () => {
+  function paraOutR4(total: number, returned: number, start = 1): string {
+    const rows = [];
+    for (let i = 0; i < returned; i++) {
+      const idx = start + i;
+      rows.push(`[${idx}] (正文) [${(idx - 1) * 10}-${idx * 10 - 1}] 第${idx}段`);
+    }
+    return `文档段落结构（共${total}段，返回${returned}段）：\n${rows.join('\n')}`;
+  }
+
+  it('R4-2a：diff=200（恰好等于批量上限）放行，不被 P28 拦截', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    await after(execInput('r4a-sess', 'c0', 'getActiveDocument'), {
+      output: '总段数: 1000',
+      isError: false,
+    });
+    await after(
+      execInput('r4a-sess', 'c1', 'getDocumentParagraphs', {
+        start_paragraph: 1,
+        end_paragraph: 200,
+      }),
+      { output: paraOutR4(1000, 200), isError: false }
+    );
+    await after(
+      execInput('r4a-sess', 'c2', 'proofreadBasic', { startOffset: 0, text: 'x'.repeat(40) }),
+      { output: JSON.stringify({ issues: [] }), isError: false }
+    );
+    await after(
+      execInput('r4a-sess', 'c3', 'proofreadAccumulate', {
+        _processed_to_paragraph: 200,
+        issues: [{ paragraphIndex: 1 }],
+        doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 1000 },
+      }),
+      { output: 'OK', isError: false }
+    );
+    await after(
+      execInput('r4a-sess', 'c4', 'getDocumentParagraphs', {
+        start_paragraph: 201,
+        end_paragraph: 400,
+      }),
+      { output: paraOutR4(1000, 200, 201), isError: false }
+    );
+    await after(
+      execInput('r4a-sess', 'c5', 'proofreadBasic', { startOffset: 2000, text: 'x'.repeat(40) }),
+      { output: JSON.stringify({ issues: [] }), isError: false }
+    );
+    // diff=200，恰好等于批量上限 → P28 放行（P28 在 after hook 校验）
+    let blocked = false;
+    try {
+      await after(
+        execInput('r4a-sess', 'c6', 'proofreadAccumulate', {
+          _processed_to_paragraph: 400,
+          issues: [{ paragraphIndex: 201 }],
+          doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 1000 },
+        }),
+        { output: 'OK', isError: false }
+      );
+    } catch (e: any) {
+      blocked = String(e.message).indexOf('【P28】') !== -1;
+    }
+    expect(blocked).toBe(false);
+  });
+
+  it('R4-2b：diff=201（超过批量上限 1 段）被 P28 拦截', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    await after(execInput('r4b-sess', 'c0', 'getActiveDocument'), {
+      output: '总段数: 1000',
+      isError: false,
+    });
+    await after(
+      execInput('r4b-sess', 'c1', 'getDocumentParagraphs', {
+        start_paragraph: 1,
+        end_paragraph: 200,
+      }),
+      { output: paraOutR4(1000, 200), isError: false }
+    );
+    await after(
+      execInput('r4b-sess', 'c2', 'proofreadBasic', { startOffset: 0, text: 'x'.repeat(40) }),
+      { output: JSON.stringify({ issues: [] }), isError: false }
+    );
+    await after(
+      execInput('r4b-sess', 'c3', 'proofreadAccumulate', {
+        _processed_to_paragraph: 200,
+        issues: [{ paragraphIndex: 1 }],
+        doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 1000 },
+      }),
+      { output: 'OK', isError: false }
+    );
+    // 请求 (201,401) 共 201 段；直接模拟已获取到 401（用于验证 P28 的 201 跳变独立判定）
+    await after(
+      execInput('r4b-sess', 'c4', 'getDocumentParagraphs', {
+        start_paragraph: 201,
+        end_paragraph: 401,
+      }),
+      { output: paraOutR4(1000, 201, 201), isError: false }
+    );
+    await after(
+      execInput('r4b-sess', 'c5', 'proofreadBasic', { startOffset: 2000, text: 'x'.repeat(40) }),
+      { output: JSON.stringify({ issues: [] }), isError: false }
+    );
+    // diff=201 > 200 → P28 拦截（P28 在 after hook 校验）
+    let blocked = false;
+    try {
+      await after(
+        execInput('r4b-sess', 'c6', 'proofreadAccumulate', {
+          _processed_to_paragraph: 401,
+          issues: [{ paragraphIndex: 201 }],
+          doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 1000 },
+        }),
+        { output: 'OK', isError: false }
+      );
+    } catch (e: any) {
+      blocked = String(e.message).indexOf('【P28】') !== -1;
+    }
+    expect(blocked).toBe(true);
+  });
+});
