@@ -1338,7 +1338,7 @@ describe('governance CR R14：totalParagraphs 一致性（Issue #229）', () => 
       );
       expect(retryOk).toBe(true);
     });
-it('复盘R3-1：total未知 + 超界请求(1,200) + 部分返回(100/150) → 兜底提取total=150，同批重试放行，allBatchesComplete不误置位', async () => {
+    it('复盘R3-1：total未知 + 超界请求(1,200) + 部分返回(100/150) → 兜底提取total=150，同批重试放行，allBatchesComplete不误置位', async () => {
       const plugin = await loadGovernancePlugin()();
       const after = plugin['tool.execute.after'];
 
@@ -1373,6 +1373,32 @@ it('复盘R3-1：total未知 + 超界请求(1,200) + 部分返回(100/150) → �
         'batchTruncated'
       );
       expect(blocked).toBe(true);
+    });
+    it('复盘R4-1：file_path 传参 + 正常完整批次(1,100) → proofreadBasic 正常放行（不误伤 file_path 正向用法）', async () => {
+      const plugin = await loadGovernancePlugin()();
+      const after = plugin['tool.execute.after'];
+
+      // 文档 150 段，请求 (1,100) 完整返回 100 段（无截断）
+      await after(execInput('pf-r4-sess', 'c0', 'getActiveDocument'), {
+        output: '总段数: 150',
+        isError: false,
+      });
+      await after(
+        execInput('pf-r4-sess', 'c1', 'getDocumentParagraphs', {
+          start_paragraph: 1,
+          end_paragraph: 100,
+        }),
+        { output: buildParaOutput(150, 100), isError: false }
+      );
+      // file_path 传参在正常批次下不被 R12-1 误拦截（batchTruncated=false）
+      const ok = await expectNoIntercept(
+        plugin,
+        execInput('pf-r4-sess', 'c2', 'proofreadBasic', {
+          file_path: 'C:\\tmp\\batch1.txt',
+          startOffset: 0,
+        })
+      );
+      expect(ok).toBe(true);
     });
   });
 });
