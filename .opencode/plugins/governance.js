@@ -242,6 +242,12 @@ function createSessionState() {
     // 区别于 lastBatchParaIndex（逻辑请求末段，截断/超界时可能大于实际返回末段）。
     // P25/P26 以实际返回末段为基准校验假进度/陈旧 issue，避免"宣称校对到未实际获取段落"。
     batchActualEndParaIndex: 0,
+    // P25/P26（R4-1）：本批 getDocumentParagraphs **实际返回**的首段索引（ranges 首段 index）。
+    // 用于 P26 issue 窗口下界。窗口应以「实际返回」的段落区间为准（batchActualStartParaIndex ..
+    // batchActualEndParaIndex），而非「请求」的起始段——若本批实际返回从更靠后的段落开始
+    // （起始截断/未显式给 start 时回退 ranges[0].index），以请求起始段为下界会放行「未实际
+    // 返回段落」的陈旧 issue。
+    batchActualStartParaIndex: 0,
     batchStartParaIndex: 0,
     docInfoFetched: false,
     batchStarted: false,
@@ -317,6 +323,7 @@ const MAX_SESSIONS = 50;
 function resetProofreadState(st) {
   st.lastBatchParaIndex = 0;
   st.batchActualEndParaIndex = 0;
+  st.batchActualStartParaIndex = 0;
   st.batchStartParaIndex = 0;
   st.docInfoFetched = false;
   st.batchStarted = false;
@@ -649,6 +656,7 @@ export const WpsGovernancePlugin = async () => {
           // 注意：截断/超界时 lastBatchParaIndex（逻辑请求末段）可能大于实际返回末段，
           // 若以 lastBatchParaIndex 为基准会放行"宣称校对到未实际获取段落"的假进度。
           st.batchActualEndParaIndex = ranges[ranges.length - 1].index;
+          st.batchActualStartParaIndex = ranges[0].index;
           st.batchStartParaIndex = ranges[0].index;
           st.batchStarted = true;
           st.batchCount++;
@@ -955,9 +963,14 @@ export const WpsGovernancePlugin = async () => {
               }
               // P26：issues 必须属于当前批窗口（防复用陈旧 issue 填充）
               if (Array.isArray(issuesArg) && issuesArg.length > 0 && actualEndParaIndex > 0) {
-                // 批窗口起点：优先用本批实际请求的起始段（batchRequestedStart），
-                // 未设置时回退到本批实际末段（极少见，仅作防御）。
-                const winStart = st.batchRequestedStart || actualEndParaIndex;
+                // 批窗口下界：以本批**实际返回**的首段（batchActualStartParaIndex）为准，
+                // 使窗口 = [实际返回首段 .. 实际返回末段]，与 P25 的末段基准一致。
+                // （R4-1：不要用 batchRequestedStart——若本批实际返回从更靠后的段落开始，
+                //  用请求起始段为下界会放行「未实际返回段落」的陈旧 issue。）
+                const winStart =
+                  st.batchActualStartParaIndex > 0
+                    ? st.batchActualStartParaIndex
+                    : st.batchRequestedStart || actualEndParaIndex;
                 for (const it of issuesArg) {
                   const pid =
                     it &&

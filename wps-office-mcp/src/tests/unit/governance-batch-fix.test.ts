@@ -1270,4 +1270,41 @@ describe('governance P25/P26：防假校对/假进度（Issue #229，PR232）', 
     }
     expect(ok).toBe(true);
   });
+
+  it('P26-3（R4-1）：本批实际返回从更靠后段落开始时，未实际返回段落的陈旧 issue 被拦截', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    await after(execInput('p26c-sess', 'c0', 'getActiveDocument'), {
+      output: '总段数: 300',
+      isError: false,
+    });
+    // 请求 (1,100)，但实际返回从段落 5 开始（起始截断），只返回 5..80
+    await after(
+      execInput('p26c-sess', 'c1', 'getDocumentParagraphs', {
+        start_paragraph: 1,
+        end_paragraph: 100,
+      }),
+      { output: buildParaOutput(300, 76, 5), isError: false }
+    );
+    // 上报 paragraphIndex=2（段落 2 本批实际未返回，但在"请求起始段"1 之下界内）→ P26 拦截
+    let blocked = false;
+    try {
+      await accumulate(plugin, 'p26c-sess', 80, [
+        { paragraphIndex: 2, text: '问题', suggestion: '修复' },
+      ]);
+    } catch (e: any) {
+      blocked = String(e.message).indexOf('【P26】') !== -1;
+    }
+    expect(blocked).toBe(true);
+    // 上报 paragraphIndex=50（窗口 5..80 内）→ 放行
+    let ok = true;
+    try {
+      await accumulate(plugin, 'p26c-sess', 80, [
+        { paragraphIndex: 50, text: '问题', suggestion: '修复' },
+      ]);
+    } catch {
+      ok = false;
+    }
+    expect(ok).toBe(true);
+  });
 });
