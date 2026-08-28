@@ -1458,4 +1458,50 @@ describe('governance P25/P26：防假校对/假进度（Issue #229，PR232）', 
     }
     expect(ok).toBe(true);
   });
+
+  it('R9-1：同一调用既回退进度又上报陈旧 issue 时被 P25b/P26 拦截', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    await after(execInput('p25f-sess', 'c0', 'getActiveDocument'), {
+      output: '总段数: 300',
+      isError: false,
+    });
+    // 第一批：1-100，进度 100
+    await after(
+      execInput('p25f-sess', 'c1', 'getDocumentParagraphs', {
+        start_paragraph: 1,
+        end_paragraph: 100,
+      }),
+      { output: buildParaOutput(300, 100), isError: false }
+    );
+    await after(
+      execInput('p25f-sess', 'c2', 'proofreadBasic', { startOffset: 0, text: 'x'.repeat(40) }),
+      { output: JSON.stringify({ issues: [] }), isError: false }
+    );
+    await accumulate(plugin, 'p25f-sess', 100, [
+      { paragraphIndex: 50, text: '问题', suggestion: '修复' },
+    ]);
+    // 第二批：101-200，窗口 101..200
+    await after(
+      execInput('p25f-sess', 'c3', 'getDocumentParagraphs', {
+        start_paragraph: 101,
+        end_paragraph: 200,
+      }),
+      { output: buildParaOutput(300, 100, 101), isError: false }
+    );
+    await after(
+      execInput('p25f-sess', 'c4', 'proofreadBasic', { startOffset: 400, text: 'x'.repeat(40) }),
+      { output: JSON.stringify({ issues: [] }), isError: false }
+    );
+    // 回退进度到 50 + 上报段落 90 的陈旧 issue → P25b 先拦截（进度回退）
+    let blockedP25b = false;
+    try {
+      await accumulate(plugin, 'p25f-sess', 50, [
+        { paragraphIndex: 90, text: '问题', suggestion: '修复' },
+      ]);
+    } catch (e: any) {
+      blockedP25b = String(e.message).indexOf('【P25b】') !== -1;
+    }
+    expect(blockedP25b).toBe(true);
+  });
 });
