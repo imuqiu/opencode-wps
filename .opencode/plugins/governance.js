@@ -361,6 +361,22 @@ function resetProofreadState(st) {
   st.registeredRanges = [];
 }
 
+// Issue #229 R1-1/R1-2（PR238）：真正的「规划 agent 初始化 session 首次登记」判定（P22/P23/P27 共用）。
+// 仅当：串行模式（无 _batch_id）、从未实际累加（accumulateCount===0）、未上报 _processed_to_paragraph
+// （初始化登记不报进度）、带非空 _batch_allocations、且无 issues 时，才视为规划初始化，豁免
+// 「必须先调 proofreadBasic / 必带 _processed_to_paragraph / 必带 doc_info」等要求。
+// 防止 AI 通过伪造 _batch_allocations 数组反复绕过 P27（Issue #229 R1-1：必须每批先调 proofreadBasic）。
+function isPlannerInitAccumulate(innerArgs, st) {
+  if (!!innerArgs._batch_id) return false; // 并行模式不豁免（由 P20 凭证兜底）
+  if ((st.accumulateCount || 0) !== 0) return false; // 已实际累加过，不再是初始化登记
+  if (innerArgs._processed_to_paragraph !== undefined) return false; // 初始化登记不报进度
+  return (
+    Array.isArray(innerArgs._batch_allocations) &&
+    innerArgs._batch_allocations.length > 0 &&
+    (!Array.isArray(innerArgs.issues) || innerArgs.issues.length === 0)
+  );
+}
+
 function getSessionState(input) {
   // input.sessionID 是钩子回调的顶层字段；input.args.sessionID 由调用方手动注入
   var sessionId = (input && (input.sessionID || (input.args && input.args.sessionID))) || 'default';
@@ -868,11 +884,7 @@ export const WpsGovernancePlugin = async () => {
           // 否则服务端无法追踪真实覆盖进度，报告硬性完整性门禁无法生效（防"中途结束就假装完成"）。
           // 豁免：规划 agent 初始化 session 时的首次登记（无 issues 且带 _batch_allocations），
           // 此时尚无实际校对，不必上报进度。
-          const isPlannerInit =
-            !innerArgs._batch_id &&
-            Array.isArray(innerArgs._batch_allocations) &&
-            innerArgs._batch_allocations.length > 0 &&
-            (!Array.isArray(innerArgs.issues) || innerArgs.issues.length === 0);
+          const isPlannerInit = isPlannerInitAccumulate(innerArgs, st);
           if (
             !isPlannerInit &&
             (typeof innerArgs._processed_to_paragraph !== 'number' ||
@@ -1608,14 +1620,10 @@ export const WpsGovernancePlugin = async () => {
       // 此时尚无实际校对，不需要 proofreadBasic。并行模式由 P20 凭证兜底，不在此强制。
       if (toolName === 'proofreadAccumulate') {
         const isParallelBatchAccumulate = !!innerArgs._batch_id;
-        const isPlannerInitAccumulate =
-          !isParallelBatchAccumulate &&
-          Array.isArray(innerArgs._batch_allocations) &&
-          innerArgs._batch_allocations.length > 0 &&
-          (!Array.isArray(innerArgs.issues) || innerArgs.issues.length === 0);
+        const isPlannerInit = isPlannerInitAccumulate(innerArgs, st);
         if (
           !isParallelBatchAccumulate &&
-          !isPlannerInitAccumulate &&
+          !isPlannerInit &&
           st.batchStarted &&
           !st.proofreadCalledThisBatch
         ) {

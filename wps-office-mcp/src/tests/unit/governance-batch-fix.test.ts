@@ -2297,3 +2297,46 @@ describe('governance P27/P28：防假校对/防跳跃进度（Issue #229，PR234
     expect(passed).toBe(true);
   });
 });
+
+describe('governance R1-1：P27 规划初始化豁免不可伪造（Issue #229，PR238）', () => {
+  function buildParaOutputR1(total: number, returned: number): string {
+    return '文档段落结构（共' + total + '段，返回' + returned + '段）：\n' +
+      Array.from({ length: returned }, (_, i) => `[${i + 1}] (正文) [${i * 10}-${i * 10 + 9}] 第${i + 1}段`).join('\n');
+  }
+
+  it('R1-1：伪造 _batch_allocations（带 _processed_to_paragraph）不能绕过 P27', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    await after(execInput('r1a-sess', 'c0', 'getActiveDocument'), { output: '总段数: 300', isError: false });
+    await after(execInput('r1a-sess', 'c1', 'getDocumentParagraphs', { start_paragraph: 1, end_paragraph: 100 }),
+      { output: buildParaOutputR1(300, 100), isError: false });
+    // 伪造 _batch_allocations + 上报进度，但从未调 proofreadBasic → 必须被 P27 拦截
+    const blocked = await expectIntercept(plugin,
+      execInput('r1a-sess', 'c2', 'proofreadAccumulate', {
+        _processed_to_paragraph: 100,
+        _batch_allocations: [{ batch_id: 'b1', start: 1, end: 100 }],
+        issues: [],
+        doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 300 },
+      }),
+      '【P27】'
+    );
+    expect(blocked).toBe(true);
+  });
+
+  it('R1-1b：无 _batch_allocations 的普通上报（未调 proofreadBasic）仍被 P27 拦截', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    await after(execInput('r1b-sess', 'c0', 'getActiveDocument'), { output: '总段数: 300', isError: false });
+    await after(execInput('r1b-sess', 'c1', 'getDocumentParagraphs', { start_paragraph: 1, end_paragraph: 100 }),
+      { output: buildParaOutputR1(300, 100), isError: false });
+    const blocked = await expectIntercept(plugin,
+      execInput('r1b-sess', 'c2', 'proofreadAccumulate', {
+        _processed_to_paragraph: 100,
+        issues: [{ paragraphIndex: 1, text: '问题', suggestion: '修复' }],
+        doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 300 },
+      }),
+      '【P27】'
+    );
+    expect(blocked).toBe(true);
+  });
+});

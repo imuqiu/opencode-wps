@@ -253,8 +253,8 @@ proofreadHadIssues: null   // null = 未知，true = 有问题，false = 无问�
 | P25 | `_processed_to_paragraph` 不得超过本批实际返回末段（`batchActualEndParaIndex`，防假进度） |
 | P25b | `_processed_to_paragraph` 不得回退（会话内单调推进，防重复上报旧批次） |
 | P26 | issue `paragraphIndex` 必须落在当前批窗口（`batchActualStartParaIndex .. batchActualEndParaIndex`，防陈旧 issue 填充） |
-| P27 | proofreadAccumulate 前必须先调 proofreadBasic（防只视觉扫描不真校对） |
-| P28 | 进度必须逐批连续推进（跳变 ≤ 200 段/批，防跳跃式假进度） |
+| P27 | proofreadAccumulate 前必须先调 proofreadBasic（防只视觉扫描不真校对）；仅首次规划登记豁免，伪造 `_batch_allocations` 无法绕过 |
+| P28 | 进度必须逐批连续推进（跳变 ≤ 200 段/批，防跳跃式假进度）；仅串行模式生效 |
 
 ---
 
