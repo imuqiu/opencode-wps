@@ -1515,4 +1515,40 @@ describe('governance CR R14：totalParagraphs 一致性（Issue #229）', () => 
     }
     expect(msg.indexOf('段落 81..100') !== -1).toBe(true);
   });
+
+  it('R10-1：超界最终批（已覆盖全文）proofreadBasic 不被截断拦截且文本长度校验正常', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    const before = plugin['tool.execute.before'];
+    // 文档 150 段，请求超界 (1,200)，但完整返回 150（已达文档末尾）
+    await after(execInput('pr233-r10-sess', 'c0', 'getActiveDocument'), {
+      output: '总段数: 150',
+      isError: false,
+    });
+    await after(
+      execInput('pr233-r10-sess', 'c1', 'getDocumentParagraphs', {
+        start_paragraph: 1,
+        end_paragraph: 200,
+      }),
+      {
+        output:
+          '文档段落结构（共150段，返回150段）：\n[1] (正文) [0-99] 第1段\n[150] (正文) [14999-15099] 第150段',
+        isError: false,
+      }
+    );
+    // 超界且完整返回 → 不误判截断，proofreadBasic 正常放行
+    let ok = true;
+    try {
+      await before(
+        execInput('pr233-r10-sess', 'c2', 'proofreadBasic', {
+          startOffset: 0,
+          text: '这是一段足够长的正常文本用于校对，超过二十个字符。',
+        }),
+        {}
+      );
+    } catch {
+      ok = false;
+    }
+    expect(ok).toBe(true);
+  });
 });
