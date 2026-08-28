@@ -1504,4 +1504,60 @@ describe('governance P25/P26：防假校对/假进度（Issue #229，PR232）', 
     }
     expect(blockedP25b).toBe(true);
   });
+
+  it('R10-1：正常连续多批窗口下界各自正确（R4-1 不误伤普通批次）', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    await after(execInput('p25g-sess', 'c0', 'getActiveDocument'), {
+      output: '总段数: 300',
+      isError: false,
+    });
+    // 批1：(1,100) 完整返回，窗口 1..100
+    await after(
+      execInput('p25g-sess', 'c1', 'getDocumentParagraphs', {
+        start_paragraph: 1,
+        end_paragraph: 100,
+      }),
+      { output: buildParaOutput(300, 100), isError: false }
+    );
+    await after(
+      execInput('p25g-sess', 'c2', 'proofreadBasic', { startOffset: 0, text: 'x'.repeat(40) }),
+      { output: JSON.stringify({ issues: [] }), isError: false }
+    );
+    await accumulate(plugin, 'p25g-sess', 100, [
+      { paragraphIndex: 100, text: '问题', suggestion: '修复' },
+    ]);
+    // 批2：(101,200) 完整返回，窗口 101..200
+    await after(
+      execInput('p25g-sess', 'c3', 'getDocumentParagraphs', {
+        start_paragraph: 101,
+        end_paragraph: 200,
+      }),
+      { output: buildParaOutput(300, 100, 101), isError: false }
+    );
+    await after(
+      execInput('p25g-sess', 'c4', 'proofreadBasic', { startOffset: 400, text: 'x'.repeat(40) }),
+      { output: JSON.stringify({ issues: [] }), isError: false }
+    );
+    // 批2窗口应为 101..200：上报 issue 在 101（下界）与 200（上界）均放行
+    let okLow = true;
+    try {
+      await accumulate(plugin, 'p25g-sess', 200, [
+        { paragraphIndex: 101, text: '问题', suggestion: '修复' },
+      ]);
+    } catch {
+      okLow = false;
+    }
+    expect(okLow).toBe(true);
+    // 上报 200（上界）放行
+    let okHigh = true;
+    try {
+      await accumulate(plugin, 'p25g-sess', 200, [
+        { paragraphIndex: 200, text: '问题', suggestion: '修复' },
+      ]);
+    } catch {
+      okHigh = false;
+    }
+    expect(okHigh).toBe(true);
+  });
 });
