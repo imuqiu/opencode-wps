@@ -916,21 +916,6 @@ export const WpsGovernancePlugin = async () => {
                   `若本批确实无问题，请核对是否有未修复/未累加的 issue。`
               );
             }
-            // P23 补充（Issue #223 实际校对问题 P0-4）：跟踪最大上报段落，
-            // 当覆盖全文（达到 totalParagraphs）且尚未生成报告时，置 fullCoverageReached 标记，
-            // 后续新开批次/收尾将由 P24 强制要求先生成报告，防"覆盖全文后忘了生成报告就结束"。
-            if (typeof innerArgs._processed_to_paragraph === 'number') {
-              if (innerArgs._processed_to_paragraph > (st.maxReportedParagraph || 0)) {
-                st.maxReportedParagraph = innerArgs._processed_to_paragraph;
-              }
-              if (
-                st.totalParagraphs > 0 &&
-                st.maxReportedParagraph >= st.totalParagraphs &&
-                !st.reportGenerated
-              ) {
-                st.fullCoverageReached = true;
-              }
-            }
             // ── P25/P26（Issue #229 实际校对问题：假装校对 / 假进度 / 提前出报告）──
             // 根因回顾：真实会话中 AI 对第 13 批及之后（1201-4468 段）仅 getDocumentParagraphs
             // 视觉扫描、不调 proofreadBasic 就跳过；又用「空 issues」+ 跳跃式 _processed_to_paragraph
@@ -961,6 +946,21 @@ export const WpsGovernancePlugin = async () => {
                     `不能宣称已校对到该段落（假进度）。请逐批真实获取并校对，本批进度应 ≤ ${actualEndParaIndex}。`
                 );
               }
+              // P25b（R5-1）：进度不得回退（会话内单调不减）。本批上报的 _processed_to_paragraph
+              // 若小于本会话此前已上报的最大进度，说明 AI 在重新上报旧批次/乱序上报，会破坏 P24
+              // 全文覆盖判定（fullCoverageReached 依赖 maxReportedParagraph 单调推进）。
+              // 同批重试（失败后重报同一批）会上报相同值，不受影响；仅拦截「回退到更小值」。
+              if (
+                innerArgs._processed_to_paragraph !== undefined &&
+                (st.maxReportedParagraph || 0) > 0 &&
+                innerArgs._processed_to_paragraph < st.maxReportedParagraph
+              ) {
+                throw new Error(
+                  `【执行治理】【P25b】_processed_to_paragraph=${innerArgs._processed_to_paragraph} ` +
+                    `小于本会话已上报的最大进度 ${st.maxReportedParagraph}（进度回退）。\n` +
+                    `请按批次顺序逐批推进进度，禁止重新上报更早批次的旧进度（会破坏全文覆盖判定）。`
+                );
+              }
               // P26：issues 必须属于当前批窗口（防复用陈旧 issue 填充）
               if (Array.isArray(issuesArg) && issuesArg.length > 0 && actualEndParaIndex > 0) {
                 // 批窗口下界：以本批**实际返回**的首段（batchActualStartParaIndex）为准，
@@ -988,6 +988,22 @@ export const WpsGovernancePlugin = async () => {
                     );
                   }
                 }
+              }
+            }
+            // P23 补充（Issue #223 实际校对问题 P0-4）：跟踪最大上报段落。
+            // 放在 P25/P26 全部校验通过之后更新，确保 maxReportedParagraph 只反映
+            // **校验通过**的进度——被 P25/P26 拦截的上报不得计入，避免污染 P25b 的
+            // 单调回退基准（R5-1：被 P25 拦截的首次上报若计入 max，会误伤合法重试）。
+            if (typeof innerArgs._processed_to_paragraph === 'number') {
+              if (innerArgs._processed_to_paragraph > (st.maxReportedParagraph || 0)) {
+                st.maxReportedParagraph = innerArgs._processed_to_paragraph;
+              }
+              if (
+                st.totalParagraphs > 0 &&
+                st.maxReportedParagraph >= st.totalParagraphs &&
+                !st.reportGenerated
+              ) {
+                st.fullCoverageReached = true;
               }
             }
             // 全部校验通过后才递增成功累加计数（保证失败重试时首次判定不失效）
