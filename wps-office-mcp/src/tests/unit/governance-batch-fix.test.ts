@@ -2746,3 +2746,25 @@ describe('governance R7：P25 兜底 P28 首次豁免（Issue #229，PR238）', 
     expect(blocked).toBe(true);
   });
 });
+
+describe('governance R8：合法规划初始化登记回归保护（Issue #229，PR238）', () => {
+  it('R8-1：合法规划初始化登记（带 _batch_allocations、空 issues、无 _processed_to_paragraph）不被拦截', async () => {
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    // 规划 agent 初始化 session 的首次登记：_batch_allocations + 空 issues + 无进度
+    let blocked = false;
+    try {
+      await after(
+        execInput('r8a-sess', 'c0', 'proofreadAccumulate', {
+          _batch_allocations: [{ batch_id: 'b1', start: 1, end: 100 }],
+          issues: [],
+        }),
+        { output: 'OK', isError: false }
+      );
+    } catch (e: any) {
+      blocked =
+        String(e.message).indexOf('【P27】') !== -1 || String(e.message).indexOf('【P22】') !== -1;
+    }
+    expect(blocked).toBe(false);
+  });
+});
