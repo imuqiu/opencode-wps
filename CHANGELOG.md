@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.16] - 2026-08-28
+
+### Fixed
+
+- **分批校对防假校对/假进度补充治理（Issue #229，PR #238）** — 在 v1.9.15（PR #232/#233）治理基础上，实测（ses_fb8c）仍暴露的 2 个残留根因彻底整改：①**每批必须先调 proofreadBasic（P27）**——AI 对大量批次仅 getDocumentParagraphs 视觉扫描（不调 proofreadBasic 就跳过），直接 proofreadAccumulate 上报进度，现有规则无法拦截；新增 P27 在串行模式下 proofreadAccumulate 上报进度前，本批必须先调用 proofreadBasic，杜绝只视觉扫描+上报的假校对；②**批次连续推进禁止跳跃（P28）**——AI 从 200 跳到 600 或从 1400 跳到 5550 的跳跃式假进度仍可放行；新增 P28 进度必须逐批连续推进（跳变 ≤ 200 段/批），中间批次未校对直接拦截。经 10 轮评审-修复循环清零，governance-batch-fix 66/66、全量单测 515/515 通过。
+
+### Changed
+
+- **版本号升级至 1.9.16** — 根 `package.json` / `package-lock.json` / `opencode-wps/`（package.json、config.js、manifest.xml）/ `opencode-wps-linux/`（package.json、manifest.xml）/ `wps-office-mcp/`（package.json、package-lock.json）版本一致升级至 1.9.16，`validate-versions` 校验通过。
+
 ## [1.9.15] - 2026-08-28
 
 ### Fixed
