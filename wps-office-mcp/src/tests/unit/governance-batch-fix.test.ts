@@ -1090,4 +1090,152 @@ describe('governance CR R14：totalParagraphs 一致性（Issue #229）', () => 
     );
     expect(ok).toBe(true);
   });
+
+  // ===== Issue #229 复盘：超界请求误判截断 + file_path 绕过截断保护 =====
+  describe('Issue #229 复盘：超界请求与 file_path 截断保护（额外发现的残留问题）', () => {
+    // 辅助：构造文档段落输出文本
+    function buildParaOutput(total: number, returned: number): string {
+      const paras = [];
+      for (let i = 1; i <= returned; i++) {
+        paras.push(`[${i}] (正文) [${(i - 1) * 10}-${i * 10 - 1}] 第${i}段文本内容`);
+      }
+      return `文档段落结构（共${total}段，返回${returned}段）：\n${paras.join('\n')}`;
+    }
+
+    it('复盘A1：getActiveDocument 总段数未知时，超界请求(1,200)不误判 batchTruncated（不死锁，可正常校对）', async () => {
+      const plugin = await loadGovernancePlugin()();
+      const after = plugin['tool.execute.after'];
+
+      // 总段数未知（launcher 回退），文档实际 150 段
+      await after(execInput('pfa-sess', 'c0', 'getActiveDocument'), {
+        output: '当前文档: t.docx\n路径: C:\\t.docx\n类型: docx\n总段数: 未知\n字数: 3000',
+        isError: false,
+      });
+      // 请求 (1,200) 超界，但 150 段全部返回
+      await after(
+        execInput('pfa-sess', 'c1', 'getDocumentParagraphs', {
+          start_paragraph: 1,
+          end_paragraph: 200,
+        }),
+        { output: buildParaOutput(150, 150), isError: false }
+      );
+      // 关键：不因 batchTruncated 误判而死锁——proofreadBasic 应放行（不再要求"补齐不存在的段落"）
+      const ok = await expectNoIntercept(
+        plugin,
+        execInput('pfa-sess', 'c2', 'proofreadBasic', {
+          text: '这是本批需要校对的文本内容一共二十个字以上',
+          startOffset: 0,
+        })
+      );
+      expect(ok).toBe(true);
+    });
+
+    it('复盘A2：超界请求时 allBatchesComplete 边界被 clamp 到实际末段(150)而非超界值(200)', async () => {
+      const plugin = await loadGovernancePlugin()();
+      const afterHook = plugin['tool.execute.after'];
+
+      await afterHook(execInput('pfa2-sess', 'c0', 'getActiveDocument'), {
+        output: '当前文档: t.docx\n路径: C:\\t.docx\n类型: docx\n总段数: 未知\n字数: 3000',
+        isError: false,
+      });
+      await afterHook(
+        execInput('pfa2-sess', 'c1', 'getDocumentParagraphs', {
+          start_paragraph: 1,
+          end_paragraph: 200,
+        }),
+        { output: buildParaOutput(150, 150), isError: false }
+      );
+      // 覆盖全文（clamp 到 150 后 150>=150）→ allBatchesComplete=true 拦截后续获取。
+      // 但拦截消息中的段落边界应为「1-150/150」（clamp 生效）而非「1-200/150」（超界残留）。
+      // 这验证 lastBatchParaIndex 未被错误记录为超界的 200。
+      const msg = await expectIntercept(
+        plugin,
+        execInput('pfa2-sess', 'c2', 'getDocumentParagraphs', {
+          start_paragraph: 1,
+          end_paragraph: 200,
+        }),
+        '1-150/150'
+      );
+      expect(msg).toBe(true);
+    });
+
+    it('复盘B1：真截断时 file_path 传 proofreadBasic 也受 R12-1 拦截（不再绕过截断保护）', async () => {
+      const plugin = await loadGovernancePlugin()();
+      const after = plugin['tool.execute.after'];
+
+      // 文档 300 段，请求 (1,100) 只返回 80 段 → 真截断
+      await after(execInput('pfb-sess', 'c0', 'getActiveDocument'), {
+        output: '总段数: 300',
+        isError: false,
+      });
+      await after(
+        execInput('pfb-sess', 'c1', 'getDocumentParagraphs', {
+          start_paragraph: 1,
+          end_paragraph: 100,
+        }),
+        { output: buildParaOutput(300, 80), isError: false }
+      );
+      // file_path 传参（SKILL 推荐方式）在真截断时也须被 R12-1 拦截
+      const blocked = await expectIntercept(
+        plugin,
+        execInput('pfb-sess', 'c2', 'proofreadBasic', {
+          file_path: 'C:\\tmp\\batch1.txt',
+          startOffset: 0,
+        }),
+        'batchTruncated'
+      );
+      expect(blocked).toBe(true);
+    });
+
+    it('复盘B2：真截断时 text 传 proofreadBasic 仍受 R12-1 拦截（回归保护不破坏）', async () => {
+      const plugin = await loadGovernancePlugin()();
+      const after = plugin['tool.execute.after'];
+
+      await after(execInput('pfb2-sess', 'c0', 'getActiveDocument'), {
+        output: '总段数: 300',
+        isError: false,
+      });
+      await after(
+        execInput('pfb2-sess', 'c1', 'getDocumentParagraphs', {
+          start_paragraph: 1,
+          end_paragraph: 100,
+        }),
+        { output: buildParaOutput(300, 80), isError: false }
+      );
+      const blocked = await expectIntercept(
+        plugin,
+        execInput('pfb2-sess', 'c2', 'proofreadBasic', {
+          text: '这是真截断场景的校对文本内容啊二十字以上',
+          startOffset: 0,
+        }),
+        'batchTruncated'
+      );
+      expect(blocked).toBe(true);
+    });
+
+    it('复盘C1：正常批次(1,100)不受影响，proofreadBasic 正常放行（回归）', async () => {
+      const plugin = await loadGovernancePlugin()();
+      const after = plugin['tool.execute.after'];
+
+      await after(execInput('pfc-sess', 'c0', 'getActiveDocument'), {
+        output: '总段数: 150',
+        isError: false,
+      });
+      await after(
+        execInput('pfc-sess', 'c1', 'getDocumentParagraphs', {
+          start_paragraph: 1,
+          end_paragraph: 100,
+        }),
+        { output: buildParaOutput(150, 100), isError: false }
+      );
+      const ok = await expectNoIntercept(
+        plugin,
+        execInput('pfc-sess', 'c2', 'proofreadBasic', {
+          text: '这是批1需要校对的文本内容一共二十个字以上',
+          startOffset: 0,
+        })
+      );
+      expect(ok).toBe(true);
+    });
+  });
 });

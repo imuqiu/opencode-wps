@@ -1019,6 +1019,18 @@ COM 超时已从 30s 增加到 60s（#116 问题八，MCP v1.1.1 起），200 �
 
 > **Issue #229 补充（批次边界以请求参数为准）**：治理层以你请求的 `end_paragraph` 作为本批逻辑结束，而非输出文本的实际段数——即使输出被 MCP 截断，批次连续性校验仍按请求的段落范围推进，避免"后续批次起始判断错乱"。**因此务必在每次 `getDocumentParagraphs` 中显式传对 `start_paragraph`/`end_paragraph`**，并保证批次严格连续（上一批 end+1 = 本批 start）。当输出被截断（返回段数 < 请求段数）时，治理层会标记本批输出不完整（CR R1-1 `batchTruncated`）并引导你用**相同的 start/end 重试同批**补齐段落，再继续校对——请务必在拿到完整段落后再进入 `proofreadBasic`，避免段落被静默漏检。
 
+> **Issue #229 复盘补充（超界请求不再误判截断 / file_path 也受截断保护）**：
+> - **超界请求不再误判截断**：若 `getDocumentParagraphs` 请求的 `end_paragraph` 超出文档实际总段数
+>   （如文档 150 段却请求 1-200），治理层现在会把批次边界 **clamp 到文档实际末段**（`lastBatchParaIndex=150`），
+>   **不再因"返回段数 < 请求段数"误判为输出截断**（`batchTruncated=false`）。此前会误判截断，
+>   一方面要求 AI"用相同 start/end 重试补齐"，另一方面 `allBatchesComplete` 又因超界段数 ≥ 总段数提前置位拦截所有获取，
+>   造成**自相矛盾的死锁**（AI 无论重试还是校对都被拦截，只能 `_restart` 重置丢进度）。
+>   现在超界请求可正常进入 `proofreadBasic`，不再死锁。
+> - **file_path 传参也受截断保护（R12-1）**：`proofreadBasic` 用 `file_path` 传文本（SKILL 推荐方式）时，
+>   若本批输出确实被截断（`batchTruncated=true`，且同批重试未达上限），**同样会被拦截要求先补齐段落**。
+>   此前 R12-1 拦截只在 `text` 传参分支生效，`file_path` 会绕过截断保护，导致截断段落被**静默漏检**。
+>   现在两种传参方式一致受保护。仍请优先每批 100 段、确保 `end_paragraph` 不超过文档总段数，减少截断与超界发生。
+
 > **Issue #229 补充（proofreadHadIssues 三态化）**：`proofreadBasic` 返回的 JSON 若因截断/格式异常解析失败，治理层按"未知"处理（不再误判为"无问题"），P15/P16 均放行，避免合法修复被误拦截。**注意：JSON 解析失败（null 态）时 P15 的"无问题限流"和 P16 的"交叉校验"均不生效**——AI 可自由修复，不受次数限制，也不校验是否与已知 issue 匹配。此时请 AI 自行审慎判断，尽量不做过多的额外替换。但**请尽量让 `proofreadBasic` 的返回 JSON 完整**（每批 ≤200 段、优先 100 段），以便 P16 交叉校验正常生效。
 
 > **Issue #229 补充（总段数兜底）**：当 `getActiveDocument` 走 launcher 回退返回"总段数: 未知"时，治理层会从 `getDocumentParagraphs` 输出的"共 N 段"兜底提取文档总段数，确保覆盖全文判定与收尾报告完整性门禁可用。
