@@ -316,6 +316,7 @@ const MAX_SESSIONS = 50;
 // 会与 P2/P12/P15/P16/P18/P19/P24 等规则产生误拦截。
 function resetProofreadState(st) {
   st.lastBatchParaIndex = 0;
+  st.batchActualEndParaIndex = 0;
   st.batchStartParaIndex = 0;
   st.docInfoFetched = false;
   st.batchStarted = false;
