@@ -688,7 +688,11 @@ export const WpsGovernancePlugin = async () => {
             st.batchRetryCount = 0;
           }
           st.batchRequestedStart = hasReqStart ? requestedStart : ranges[0].index;
-          st.batchRequestedEnd = lastIndex;
+          // 【Issue #229 复盘修复】R2-1：batchRequestedEnd 记录**原始请求的 end_paragraph**（非 clamp 值），
+          // 供「同批重试」识别（AI 用相同的 start/end 重试补齐）与 R12-1 拦截消息使用。
+          // 若这里记录被 clamp 的 lastIndex，则超界请求(1,200)的 batchRequestedEnd 会被记为 150，
+          // AI 按消息提示用 (1,200) 重试时 batchEndArg=200 ≠ 150，永远不被识别为同批重试 → 死锁。
+          st.batchRequestedEnd = hasReqEnd ? requestedEnd : rangeEndIdx;
           // CR R1-1：检测本批输出是否「不完整」（返回段数 < 请求段数，或展示未覆盖到请求 end）。
           // 输出不完整时，lastBatchParaIndex 仍按请求 end 记录以便连续性，但标记 truncationDetected
           // 提示 AI 应用同批重试补齐段落后再校对，杜绝静默漏检。proofreadBasic 文本长度校验
@@ -718,7 +722,11 @@ export const WpsGovernancePlugin = async () => {
           st.replaceCountThisBatch = 0;
           st.templateFilling.paragraphsFetched = true;
           st.templateFilling.lastParagraphIndex = lastIndex;
-          if (st.totalParagraphs > 0 && lastIndex >= st.totalParagraphs) {
+          // 【Issue #229 复盘修复】R2-1：allBatchesComplete 必须以**实际返回末段 rangeEndIdx**
+          // 是否覆盖到文档末尾为准，而非被 clamp 的请求末段 lastIndex。若请求超界(1,200)但输出
+          // 只返回 100/150（真截断），lastIndex 被 clamp 成 150 会让本判定误置位为"已覆盖全文"，
+          // 从而拦截同批重试补齐，与 batchTruncated 一起造成死锁（R2-1 复现）。
+          if (st.totalParagraphs > 0 && rangeEndIdx >= st.totalParagraphs) {
             st.allBatchesComplete = true;
           }
           return;

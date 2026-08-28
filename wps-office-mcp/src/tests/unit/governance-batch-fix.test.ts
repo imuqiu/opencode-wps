@@ -1311,5 +1311,32 @@ describe('governance CR R14：totalParagraphs 一致性（Issue #229）', () => 
       );
       expect(retryOk).toBe(true);
     });
+    it('复盘R2-1：超界请求(1,200)+部分返回(100/150)时，allBatchesComplete 不得误置位（避免死锁，同批重试应可补齐）', async () => {
+      const plugin = await loadGovernancePlugin()();
+      const after = plugin['tool.execute.after'];
+
+      // 文档 150 段，请求 (1,200) 超界，但输出被截断只返回 100 段
+      await after(execInput('pf-r2-sess', 'c0', 'getActiveDocument'), {
+        output: '总段数: 150',
+        isError: false,
+      });
+      await after(
+        execInput('pf-r2-sess', 'c1', 'getDocumentParagraphs', {
+          start_paragraph: 1,
+          end_paragraph: 200,
+        }),
+        { output: buildParaOutput(150, 100), isError: false }
+      );
+      // 关键：实际未覆盖全文（只到 100），allBatchesComplete 必须为 false，
+      // 同批重试 (1,200) 应被放行以补齐 101-150，而不是被 allBatchesComplete 拦截而死锁。
+      const retryOk = await expectNoIntercept(
+        plugin,
+        execInput('pf-r2-sess', 'c2', 'getDocumentParagraphs', {
+          start_paragraph: 1,
+          end_paragraph: 200,
+        })
+      );
+      expect(retryOk).toBe(true);
+    });
   });
 });
