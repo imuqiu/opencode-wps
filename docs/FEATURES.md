@@ -82,7 +82,7 @@
 
 ### 禁止重复获取已处理段落（Issue #116 session_ffa8 问题四）
 
-真实会话中 AI 已处理完某批次后，又对已检查过的段落执行 `getDocumentParagraphs(start=1)` 回卷重复扫描，既浪费 token 又可能造成重复/遗漏的修复误判。治理插件 **P18** 记录已处理到的最大段落号 `N`，当已处理到 N 段后再次从段落 1 回卷获取（`start=1`）时直接拦截，要求批次必须严格连续向前推进（如需重新开始须先 `getActiveDocument` 重置）。
+真实会话中 AI 已处理完某批次后，又对已检查过的段落执行 `getDocumentParagraphs(start=1)` 回卷重复扫描，既浪费 token 又可能造成重复/遗漏的修复误判。治理插件 **P18** 记录已处理到的最大段落号 `N`，当已处理到 N 段后再次从段落 1 回卷获取（`start=1`）时直接拦截，要求批次必须严格连续向前推进。如需重新开始，请调用 `getActiveDocument` 并传 `_restart: true` 显式重置进度（CR R2-1：同一文档重复刷新 `getActiveDocument` 不打断已处理批次；仅当显式传 `_restart: true` 或切换到不同文档时才重置）。
 
 ### 实际校对问题整改（Issue #223）
 
@@ -104,6 +104,23 @@
 | **P1-3 findInDocument 超时**（4 次、最长 69s） | SKILL 明确「映射方法 1 优先、方法 2 降级」 | 优先用 `getDocumentParagraphs` 范围计算，避免 findInDocument 大文档超时 |
 
 **状态机健壮性**（评审 R4-1/R4-2 加固）：`accumulateCount` 只在全部校验通过后递增（防失败重试绕过首次 doc_info 强制）；`getActiveDocument` 重置覆盖状态（防报告失败后死锁）。
+
+### 分批校对执行稳定性整改（Issue #229）
+
+真实会话中分批校对「不能按分批从头到尾严格执行」，根因集中在**批次中途失败死锁、输出截断导致状态错乱、JSON 解析失败致规则失灵、多文档状态互相污染、总段数解析失败**五类。治理层逐一整改（PR #230）：
+
+| 根因 | 整改 | 规则/位置 |
+|------|------|-----------|
+| **批次中途失败死锁**：本批 `proofreadBasic` 连续失败时无法重试同批、也无法取下一批/回卷，唯一出路是重置全部进度 | **同批重试放行**：请求范围与本批实际范围一致时放行重新获取段落（不再被 P2/P12/P18 当"回卷/不连续/未完成"拦截）；但**跨批推进仍要求本批走完** `proofreadBasic → confirmBatchAiProofread → replaceInParagraph` 完整链条 | P2/P12/P18（CR R3-1） |
+| **同批重试无限循环**：`batchTruncated` 输出截断时 AI 可能无限重试同批 | **重试上限**：新增 `MAX_BATCH_RETRY_LIMIT=3`，超过后同范围重取不再放行；提示改用更小批次（如 50 段/批） | `batchRetryCount`（CR R11-1） |
+| **输出截断导致状态错乱**：治理层信任截断后的输出，把末段 index/end 当本批边界，导致段落被静默漏检 | **批次边界以请求参数为准**：以请求的 `end_paragraph` 作为本批逻辑结束，不信任输出截断处；输出段数 < 请求段数时标记 `batchTruncated` 并引导用相同 start/end 重试补齐；**截断未补齐时禁止直接 `proofreadBasic`**，杜绝静默漏检 | after hook（CR R1-1/R12-1） |
+| **proofreadBasic JSON 解析失败**：返回截断致 `extractJsonFromOutput` 返回 null，P15/P16 误判"无问题"或失效 | **三态化**：解析失败按"未知"（`null`）处理，P15 无问题限流与 P16 交叉校验均放行，避免合法修复被误拦截；同时引导尽量让返回 JSON 完整以便 P16 生效 | `proofreadHadIssues`（CR R11-2） |
+| **会话状态作用域过宽**：状态按 OpenCode 会话 ID 存储，同一对话校多文档互相污染；`MAX_SESSIONS=50` FIFO 淘汰可能挤掉进行中的会话 | **按文档隔离 + LRU 淘汰**：跟踪 `activeDocPath`，文档切换自动完整重置全部批次状态；同一文档重复 `getActiveDocument` 不打断进度；`MAX_SESSIONS` 改为 LRU（最久未访问优先淘汰） | `getSessionState`（问题4） |
+| **总段数解析失败**：`getActiveDocument` 走 launcher 回退输出"总段数: 未知"，正则不匹配致 `totalParagraphs=0`，收尾报告完整性门禁失效 | **兜底提取**：从 `getDocumentParagraphs` 输出的"共 N 段"兜底提取文档总段数，确保覆盖全文判定与报告门禁可用 | after hook（问题5） |
+
+**重新开始语义变更**（CR R2-1）：同一文档内**刷新 `getActiveDocument` 不再重置进度**（避免打断已处理批次）。如需在同一文档内显式重新开始整个校对（覆盖全文后重跑、报告失败后重来），请在 `getActiveDocument` 中传 `_restart: true` 完整重置批次进度；切换到不同文档则自动重置。所有批次状态字段（`lastBatchParaIndex`/`batchStarted`/`batchStartOffset`/`proofreadCalledThisBatch`/`assignedRanges`/`reportGenerated`/`batchRetryCount` 等）在文档切换或 `_restart` 时全部清零。
+
+**totalParagraphs 一致性校验**（CR R14-1）：当治理层已通过 `getActiveDocument` 或"共 N 段"确定文档总段数后，`proofreadAccumulate` 携带的 `doc_info.totalParagraphs` 必须与之一致，否则拦截，防止 AI 传入错误总段数导致覆盖全文判定错乱。
 
 ### 上下文用量条（Issue #116 session_ffa9 假修复）
 

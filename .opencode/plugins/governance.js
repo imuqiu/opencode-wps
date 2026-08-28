@@ -185,6 +185,9 @@ const PARAM_RANGES = {
 };
 
 const AI_FIXES_NO_ISSUES_LIMIT = 1;
+// CR R11-1：同批重试上限（proofreadBasic 失败或 batchTruncated 输出被截断时最多允许重试 3 次），
+// 超过上限后不再放行同批重试，防止 AI 无限循环。
+const MAX_BATCH_RETRY_LIMIT = 3;
 
 // 校对标准步骤链（与 wps-office-mcp proofread-store 的 PROOFREAD_STEP_CHAIN 保持一致，R4-2）
 // 用于 P20 校验 _steps_log 的 step 名合法性，杜绝编造任意步骤名。
@@ -229,6 +232,11 @@ const EXECUTE_METHOD_WHITELIST = new Set([
 
 function createSessionState() {
   return {
+    // Issue #229 问题4：跟踪当前活动文档路径，用于检测文档切换并自动重置状态。
+    activeDocPath: '',
+    // Issue #229 问题4：记录最近访问时间，用于 MAX_SESSIONS LRU 淘汰（最久未用优先淘汰，
+    // 避免进行中的校对会话被新会话挤掉导致批次状态丢失）。
+    lastAccessTime: Date.now(),
     lastBatchParaIndex: 0,
     batchStartParaIndex: 0,
     docInfoFetched: false,
@@ -241,9 +249,21 @@ function createSessionState() {
     allBatchesComplete: false,
     batchStartOffset: null,
     batchEndOffset: null,
+    // Issue #229：记录本批实际请求的段落范围，用于「同批重试」放行（proofreadBasic 失败后重取本批），
+    // 以及批次边界以请求参数为准（不信任输出截断处）。
+    batchRequestedStart: null,
+    batchRequestedEnd: null,
+    // CR R1-1：标记本批 getDocumentParagraphs 输出是否被截断（返回段数 < 请求段数），
+    // 提示 AI 应用同批重试补齐段落后再校对，避免静默漏检。
+    batchTruncated: false,
+    // CR R11-2：同批重试计数（当 batchTruncated 或 proofreadBasic 失败时递增，
+    // 超过 MAX_BATCH_RETRY_LIMIT 后不再放行同批重试，防止 AI 无限循环）。
+    // CR R15-2：仅串行模式使用（retryingSameBatch/wasRetrying 在 isParallelBatch 时不生效），
+    // 并行模式下由 P20 凭证校验兜底，本计数不参与并行行为判定。
+    batchRetryCount: 0,
     proofreadCalledThisBatch: false,
     replaceCalledThisBatch: false,
-    proofreadHadIssues: false,
+    proofreadHadIssues: null,
     proofreadIssueOriginals: [],
     replaceCountThisBatch: 0,
     // P17（session_ffa8 问题一）：记录服务端是否已成功生成过校对报告，
@@ -285,23 +305,74 @@ function createSessionState() {
 var sessions = new Map();
 const MAX_SESSIONS = 50;
 
+// Issue #229 问题4：完整重置校对/模板状态（文档切换时调用）。
+// getActiveDocument 原有的重置逻辑只覆盖部分字段（lastBatchParaIndex/batchCount/
+// fullCoverageReached 等），遗漏了 batchStarted/batchStartOffset/proofreadCalledThisBatch/
+// assignedRanges/reportGenerated 等字段——若这些残留状态在切换到新文档后继续生效，
+// 会与 P2/P12/P15/P16/P18/P19/P24 等规则产生误拦截。
+function resetProofreadState(st) {
+  st.lastBatchParaIndex = 0;
+  st.batchStartParaIndex = 0;
+  st.docInfoFetched = false;
+  st.batchStarted = false;
+  st.batchCount = 0;
+  st.trackChangesOn = false;
+  st.aiProofreadDoneThisBatch = false;
+  st.lastRevisionCount = 0;
+  st.totalParagraphs = 0;
+  st.allBatchesComplete = false;
+  st.batchStartOffset = null;
+  st.batchEndOffset = null;
+  st.batchRequestedStart = null;
+  st.batchRequestedEnd = null;
+  st.batchTruncated = false;
+  // CR R11-2：重置同批重试计数。
+  st.batchRetryCount = 0;
+  st.proofreadCalledThisBatch = false;
+  st.replaceCalledThisBatch = false;
+  st.proofreadHadIssues = null;
+  st.proofreadIssueOriginals = [];
+  st.replaceCountThisBatch = 0;
+  st.reportGenerated = false;
+  st.reportSessionId = '';
+  st.accumulateCount = 0;
+  st.maxReportedParagraph = 0;
+  st.fullCoverageReached = false;
+  st.assignedRanges = {};
+  st.registeredRanges = [];
+}
+
 function getSessionState(input) {
   // input.sessionID 是钩子回调的顶层字段；input.args.sessionID 由调用方手动注入
   var sessionId = (input && (input.sessionID || (input.args && input.args.sessionID))) || 'default';
   if (!sessions.has(sessionId)) {
     if (sessions.size >= MAX_SESSIONS) {
-      var firstKey = sessions.keys().next().value;
-      sessions.delete(firstKey);
+      // Issue #229 问题4：从 FIFO 淘汰改为 LRU 淘汰（最久未访问优先淘汰），
+      // 避免正在进行的校对会话被新会话挤掉导致批次追踪状态丢失。
+      var lruKey = null;
+      var lruTime = Infinity;
+      sessions.forEach(function (st, key) {
+        var t = st.lastAccessTime || 0;
+        if (t < lruTime) {
+          lruTime = t;
+          lruKey = key;
+        }
+      });
+      if (lruKey) sessions.delete(lruKey);
     }
     sessions.set(sessionId, createSessionState());
   }
-  return sessions.get(sessionId);
+  var st = sessions.get(sessionId);
+  st.lastAccessTime = Date.now();
+  return st;
 }
 
 // ==================== 辅助函数 ====================
 
 function parseParagraphRanges(outputText) {
-  const regex = /^\s*\[(\d+)\] \((.+)\)\s*\[(\d+)-(\d+)\]/gm;
+  // Issue #229 问题6：用非贪婪 (.+?) 匹配 style，避免段落文本内含 [N] (style) [start-end]
+  // 结构时被贪婪吞并而取错段落范围。行首锚定+非贪婪：只匹配行首首个结构。
+  const regex = /^\s*\[(\d+)\] \((.+?)\)\s*\[(\d+)-(\d+)\]/gm;
   const matches = [];
   let m;
   while ((m = regex.exec(outputText)) !== null) {
@@ -478,6 +549,30 @@ export const WpsGovernancePlugin = async () => {
         if (toolName === 'getActiveDocument') {
           const outText = getOutputText(output);
           if (!outText) return;
+          // Issue #229 问题4：解析文档路径，检测文档切换。
+          // 同一 OpenCode 会话中校对多个文档时，若切换到不同文档而状态未重置，
+          // P2/P18 会基于上一文档的批次进度误拦截。通过路径检测实现自动切换重置——
+          // 即使 AI 在切换到新文档后未显式要求重置，治理层也能识别并隔离。
+          const docPathMatch = outText.match(/路径[：:]/i)
+            ? outText.match(/路径[：:]\s*(.+)/i)
+            : null;
+          const currentDocPath = docPathMatch ? docPathMatch[1].trim() : '';
+          // 文档切换检测：已跟踪过路径且与当前不同 → 完整重置校对状态。
+          // 注意：st.docInfoFetched 初始为 false，首次 getActiveDocument 也会走完整重置路径，
+          // 但不影响正确性（只是重复重置空状态）。
+          const docSwitched =
+            !!st.activeDocPath && !!currentDocPath && currentDocPath !== st.activeDocPath;
+          // CR R2-1（评审）：getActiveDocument 支持显式「重新开始」信号。
+          // R1-2 为避免「同文档重复调用打断进度」移除了无条件重置 lastBatchParaIndex，
+          // 但同时破坏了 R4-2「getActiveDocument 作为重新开始信号」的语义——同一文档想
+          // 重新从头校对时会被 P18 回卷拦截。修复：AI 传 _restart:true 时显式完整重置
+          // 批次进度（重新开始），不传则保留进度（同文档刷新）。
+          const restartRequested = innerArgs._restart === true || innerArgs.restart === true;
+          if (docSwitched || restartRequested) {
+            resetProofreadState(st);
+          }
+          st.activeDocPath = currentDocPath;
+
           st.docInfoFetched = true;
           st.appReadState.word.activeDocRead = true;
           const paraMatch =
@@ -489,9 +584,12 @@ export const WpsGovernancePlugin = async () => {
           }
           st.templateFilling.active = false;
           st.templateFilling.docFetched = true;
+          // R1-2（CR R1-2，Issue #229）：批次进度（lastBatchParaIndex/batchCount/batchStarted）
+          // 仅在文档切换时由 resetProofreadState 完整重置；同一文档重复调用 getActiveDocument
+          // 不重置批次进度，避免打断已处理的校对批次（问题4「同文档不打断」语义）。
+          // allBatchesComplete 仍允许置 false：同一文档全部完成后重新 getActiveDocument，
+          // 可视为重新开始收尾（P24 完整性判定不受影响）。
           st.allBatchesComplete = false;
-          st.batchCount = 0;
-          st.lastBatchParaIndex = 0;
           // R4-2（Issue #223 评审）：getActiveDocument 是「重新开始」的信号，
           // 重置 P23/P24 会话级校对状态（覆盖全文标记/累加计数/最大上报段），
           // 避免报告失败后 fullCoverageReached 锁死后续所有校对推进工具（死锁）。
@@ -526,21 +624,81 @@ export const WpsGovernancePlugin = async () => {
           if (!outText) return;
           const ranges = parseParagraphRanges(outText);
           if (ranges.length === 0) return;
-          st.lastBatchParaIndex = ranges[ranges.length - 1].index;
+          // Issue #229 问题2：批次边界以「请求参数」为准，不信任输出截断处。
+          // getParagraphsHandler 输出含完整段落文本，大段请求易被 MCP 截断（SKILL 已知风险）。
+          // 若请求 1-100 段而输出只到 80 段，旧逻辑把 lastBatchParaIndex=80，导致 P2 连续性校验
+          // 在后续批次错乱。修复：以请求的 end_paragraph 作为本批逻辑结束，使批次边界始终与
+          // AI 实际请求一致。
+          // CR R1-1：batchEndOffset 与 lastBatchParaIndex 保持语义一致——取 ranges 中
+          // lastIndex 对应段的 end（当展示覆盖到请求 end 时）；若展示被截断（ranges 末段
+          // index < 请求 end），则 batchEndOffset 回退为输出末段 end，并通过本批输出
+          // 「不完整」标记引导 AI 用同批重试补齐，避免 81-100 段被静默漏检。
+          const requestedStart = Number(innerArgs.start_paragraph);
+          const requestedEnd = Number(innerArgs.end_paragraph);
+          const hasReqStart = Number.isInteger(requestedStart) && requestedStart >= 1;
+          const hasReqEnd = Number.isInteger(requestedEnd) && requestedEnd >= requestedStart;
+          const lastIndex = hasReqEnd ? requestedEnd : ranges[ranges.length - 1].index;
+          st.lastBatchParaIndex = lastIndex;
           st.batchStartParaIndex = ranges[0].index;
           st.batchStarted = true;
           st.batchCount++;
           st.batchStartOffset = ranges[0].start;
-          st.batchEndOffset = ranges[ranges.length - 1].end;
+          // CR R1-1：优先用 lastIndex 对应段的 end；展示截断时用输出末段 end（AI 将据此发现
+          // 本批文本不完整而重试同批补齐）。
+          const endParaForLast = ranges.find(function (r) {
+            return r.index === lastIndex;
+          });
+          st.batchEndOffset = endParaForLast ? endParaForLast.end : ranges[ranges.length - 1].end;
+          // Issue #229 问题1：记录本批实际请求段落范围，供 P2/P18 「同批重试」放行（死锁修复）。
+          // CR R11-1：若本次请求范围与上次记录的本批请求范围一致，则视为「同批重试」，递增计数。
+          // 注意：st.batchRequestedStart 在首次调用时为 null，不算重试。
+          const wasRetrying =
+            !innerArgs._batch_id &&
+            st.batchRequestedStart != null &&
+            hasReqStart &&
+            requestedStart === st.batchRequestedStart &&
+            requestedEnd === st.batchRequestedEnd;
+          if (wasRetrying) {
+            st.batchRetryCount = (st.batchRetryCount || 0) + 1;
+          } else {
+            // 新批次（或首次调用）重置重试计数。
+            st.batchRetryCount = 0;
+          }
+          st.batchRequestedStart = hasReqStart ? requestedStart : ranges[0].index;
+          st.batchRequestedEnd = lastIndex;
+          // CR R1-1：检测本批输出是否「不完整」（返回段数 < 请求段数，或展示未覆盖到请求 end）。
+          // 输出不完整时，lastBatchParaIndex 仍按请求 end 记录以便连续性，但标记 truncationDetected
+          // 提示 AI 应用同批重试补齐段落后再校对，杜绝静默漏检。proofreadBasic 文本长度校验
+          // （P6b）也会因 batchEndOffset 偏小而提示文本不足，双重保险。
+          {
+            const requestCount =
+              hasReqStart && hasReqEnd ? requestedEnd - requestedStart + 1 : null;
+            const returnMatch = outText.match(/返回(\d+)段/i);
+            const returnedCount = returnMatch ? parseInt(returnMatch[1], 10) : null;
+            const rangeEndIdx = ranges[ranges.length - 1].index;
+            const truncated =
+              (returnedCount != null && requestCount != null && returnedCount < requestCount) ||
+              (hasReqEnd && rangeEndIdx < requestedEnd);
+            st.batchTruncated = !!truncated;
+          }
           st.proofreadCalledThisBatch = false;
           st.aiProofreadDoneThisBatch = false;
           st.replaceCalledThisBatch = false;
-          st.proofreadHadIssues = false;
+          st.proofreadHadIssues = null;
           st.proofreadIssueOriginals = [];
           st.replaceCountThisBatch = 0;
           st.templateFilling.paragraphsFetched = true;
-          st.templateFilling.lastParagraphIndex = ranges[ranges.length - 1].index;
-          if (st.totalParagraphs > 0 && st.lastBatchParaIndex >= st.totalParagraphs) {
+          st.templateFilling.lastParagraphIndex = lastIndex;
+          // Issue #229 问题5：getActiveDocument 走 launcher 回退输出 [总段数: 未知] 时 totalParagraphs=0，
+          // 导致 allBatchesComplete 永不置 true、报告完整性门禁失效。
+          // 兜底：从 getDocumentParagraphs 输出的 [共N段] 提取文档总段数（仅当尚未确定时）。
+          if (!st.totalParagraphs) {
+            const totalMatch = outText.match(/共(\d+)段/i);
+            if (totalMatch) {
+              st.totalParagraphs = parseInt(totalMatch[1], 10);
+            }
+          }
+          if (st.totalParagraphs > 0 && lastIndex >= st.totalParagraphs) {
             st.allBatchesComplete = true;
           }
           return;
@@ -560,7 +718,10 @@ export const WpsGovernancePlugin = async () => {
           st.proofreadCalledThisBatch = true;
           st.aiProofreadDoneThisBatch = false;
           st.replaceCalledThisBatch = false;
-          st.proofreadHadIssues = false;
+          // Issue #229 问题3：三态化 proofreadHadIssues，防 JSON 解析失败被误判为「无问题」。
+          // 旧逻辑初始置 false，解析失败时保持 false → P15 误限流、P16 失效。
+          // 现：null=未知（解析失败），false=确实无问题，true=确实有问题。
+          st.proofreadHadIssues = null;
           st.proofreadIssueOriginals = [];
           // T1（#55）：proofreadBasic 返回 = 文本展示 + 末尾 JSON 行（{ issues: [...] }），
           // 从返回文本中提取 JSON 解析，P15/P16 才能拿到真实 issue 列表
@@ -709,6 +870,20 @@ export const WpsGovernancePlugin = async () => {
                 );
               }
               // 记录文档总段数（用于后续判定是否覆盖全文并强制收尾报告 P0-4）
+              // CR R14-1：若 st.totalParagraphs 已通过 getActiveDocument 或 getDocumentParagraphs
+              // 的「共N段」确定，则校验 doc_info.totalParagraphs 是否一致——AI 传入的总段数
+              // 若与已知文档总段数不符，说明 AI 编造/写错了 doc_info，会导致覆盖判定错乱
+              // （fullCoverageReached 提前触发、段落被 P24 错误拦截）。
+              if (
+                st.totalParagraphs > 0 &&
+                st.totalParagraphs !== innerArgs.doc_info.totalParagraphs
+              ) {
+                throw new Error(
+                  `【执行治理】【P23】doc_info.totalParagraphs=${innerArgs.doc_info.totalParagraphs} ` +
+                    `与已确认的文档总段数 ${st.totalParagraphs} 不一致。\n` +
+                    `请从 getActiveDocument 获取正确的总段数后重试。`
+                );
+              }
               st.totalParagraphs = innerArgs.doc_info.totalParagraphs;
             }
             if (
@@ -941,13 +1116,36 @@ export const WpsGovernancePlugin = async () => {
         // start=101 不满足「start = lastBatchParaIndex+1」）。并行模式下由 P19 的 _batch_range
         // 区间隔离承担正确校验，故此处跳过程序级单值的串行连续性检查。
         const isParallelBatch = !!innerArgs._batch_id;
+        // CR R3-1（评审）：提前计算本批请求范围与「同批重试」判定，供 P12/P2/P18 共用。
+        // 原实现 start/end 在 P12 之后才定义，导致 proofreadBasic 失败后同批重试
+        // getDocumentParagraphs 被 P12 拦截（未走完 P2/P18 的 retryingSameBatch 放行）——
+        // 问题1 死锁修复不完整。修复：提前定义并让 P12 同批重试放行。
+        // CR R11-3：统一做 Number 转换，防止 MCP 网关传递字符串参数时发生字符串拼接/比较失败。
+        const batchStartArg = Number(innerArgs.start_paragraph) ?? 1;
+        const batchEndArg = Number(innerArgs.end_paragraph) ?? batchStartArg + 199;
+        const batchNotCompleted = !st.proofreadCalledThisBatch || st.batchTruncated === true;
+        // CR R11-1：同批重试次数上限。batchRetryCount 在 after hook 的 getDocumentParagraphs
+        // 成功处理中递增（当 retryingSameBatch 为 true 时），超过上限后不再放行同批重试，
+        // 防止 AI 因 batchTruncated 持续为 true 而陷入无限循环。
+        const retryingSameBatch =
+          !isParallelBatch &&
+          st.batchRequestedStart != null &&
+          batchStartArg === st.batchRequestedStart &&
+          batchEndArg === st.batchRequestedEnd &&
+          batchNotCompleted &&
+          (st.batchRetryCount || 0) < MAX_BATCH_RETRY_LIMIT;
         if (!isParallelBatch && st.allBatchesComplete) {
           throw new Error(
             `【执行治理】所有 ${st.batchCount} 批已全部完成（段落 1-${st.lastBatchParaIndex}/${st.totalParagraphs}）。\n` +
               `请直接生成校对报告（.校对报告.md），不要再调用 getDocumentParagraphs。`
           );
         }
-        if (!isParallelBatch && st.batchStarted && !st.proofreadCalledThisBatch) {
+        if (
+          !isParallelBatch &&
+          st.batchStarted &&
+          !st.proofreadCalledThisBatch &&
+          !retryingSameBatch
+        ) {
           throw new Error(
             `【执行治理】【P12】当前批（段落 ${st.batchStartParaIndex}-${st.lastBatchParaIndex}）` +
               `尚未调用 proofreadBasic，不得获取下一批。\n` +
@@ -958,7 +1156,8 @@ export const WpsGovernancePlugin = async () => {
           !isParallelBatch &&
           st.batchStarted &&
           st.proofreadCalledThisBatch &&
-          !st.aiProofreadDoneThisBatch
+          !st.aiProofreadDoneThisBatch &&
+          !retryingSameBatch
         ) {
           throw new Error(
             `【执行治理】【P12】当前批的 AI 智能校对尚未确认。` +
@@ -969,8 +1168,9 @@ export const WpsGovernancePlugin = async () => {
           !isParallelBatch &&
           st.batchStarted &&
           st.proofreadCalledThisBatch &&
-          st.proofreadHadIssues &&
-          !st.replaceCalledThisBatch
+          st.proofreadHadIssues === true &&
+          !st.replaceCalledThisBatch &&
+          !retryingSameBatch
         ) {
           throw new Error(
             `【执行治理】【P12】当前批（段落 ${st.batchStartParaIndex}-${st.lastBatchParaIndex}）` +
@@ -983,8 +1183,8 @@ export const WpsGovernancePlugin = async () => {
             `【执行治理】请先调用 getActiveDocument 了解文档总段落数，` + `再获取段落列表。`
           );
         }
-        const start = innerArgs.start_paragraph ?? 1;
-        const end = innerArgs.end_paragraph ?? start + 199;
+        const start = batchStartArg;
+        const end = batchEndArg;
         const count = end - start + 1;
         if (start < 1) {
           throw new Error(`【执行治理】start_paragraph 必须 ≥ 1（当前值: ${start}）。`);
@@ -1005,7 +1205,20 @@ export const WpsGovernancePlugin = async () => {
             `【执行治理】首次 getDocumentParagraphs 必须从第 1 段开始（当前 start=${start}）。`
           );
         }
-        if (!isParallelBatch && st.lastBatchParaIndex > 0 && start !== st.lastBatchParaIndex + 1) {
+        // Issue #229 问题1（死锁修复）：「同批重试」放行。
+        // 当 getDocumentParagraphs 成功后 proofreadBasic 连续失败（COM 超时）时，AI 需重新获取
+        // 当前批段落文本重试。旧逻辑因 start !== lastBatchParaIndex+1 拦截同批重取，且取下一批被
+        // P12 拦截、回卷被 P18 拦截，唯一出路是 getActiveDocument 重置（丢失全部进度）——死锁。
+        // 修复：请求范围与本批实际请求范围一致时视为「重试同批」，放行 P2/P18 的连续性与回卷检查。
+        // CR R1-3：同批重试仅在本批「尚未走完」时放行——即本批尚未调用 proofreadBasic，
+        // 或本批输出被截断（batchTruncated，需重取补齐段落）。若本批已完整走完
+        // （proofreadCalledThisBatch=true 且未截断），则不再放行同范围重取，避免多余重复获取。
+        if (
+          !isParallelBatch &&
+          st.lastBatchParaIndex > 0 &&
+          start !== st.lastBatchParaIndex + 1 &&
+          !retryingSameBatch
+        ) {
           if (start !== 1) {
             throw new Error(
               `【执行治理】批次不连续：上一批结束于段落 ${st.lastBatchParaIndex}，` +
@@ -1019,7 +1232,8 @@ export const WpsGovernancePlugin = async () => {
         // 这里拦截「start=1 且已有已处理批次」的重复回卷获取；如需重新开始请先 getActiveDocument 重置。
         // Issue #151 R1-2：并行模式下跳过（P19 的 _batch_range 区间隔离已按批次校验归属，
         // 各执行 agent 独立区间不适用全局 lastBatchParaIndex 的回卷判断）。
-        if (!isParallelBatch && st.lastBatchParaIndex > 0 && start === 1) {
+        // Issue #229 问题1（死锁修复）：第一批（start=1）同批重试不受 P18 回卷拦截。
+        if (!isParallelBatch && st.lastBatchParaIndex > 0 && start === 1 && !retryingSameBatch) {
           throw new Error(
             `【执行治理】【P18】禁止重复获取已处理段落：已处理到段落 ${st.lastBatchParaIndex}，` +
               `当前又从段落 1 重新获取。\n` +
@@ -1128,6 +1342,18 @@ export const WpsGovernancePlugin = async () => {
         }
         if (!isParallelBatchProofread && !innerArgs.file_path && st.batchEndOffset !== null) {
           const text = innerArgs.text || '';
+          // CR R12-1：当本批输出被截断（batchTruncated=true）时，禁止直接 proofreadBasic——
+          // 截断输出未覆盖本批请求的全部段落（如请求 1-100 段但只返回 80 段），直接校对会
+          // 导致段落 81-100 被静默漏检。强制 AI 先重试同批补齐段落。
+          // 注意：batchRetryCount 已达上限（MAX_BATCH_RETRY_LIMIT）时，允许 AI 用当前文本继续
+          // （此时 AI 已尽最大努力，若再拦截将死锁）。但提示 AI 需了解当前覆盖范围可能不完整。
+          if (st.batchTruncated && (st.batchRetryCount || 0) < MAX_BATCH_RETRY_LIMIT) {
+            throw new Error(
+              `【执行治理】本批段落输出不完整（batchTruncated=true，请求段落 ${st.batchRequestedStart}-${st.batchRequestedEnd} 但输出未覆盖到结束段落）。\n` +
+                `禁止直接校对不完整的段落文本，段落 ${st.batchRequestedEnd || ''} 之后会被静默漏检。\n` +
+                `请先用相同的 start_paragraph/end_paragraph 重试 getDocumentParagraphs 补齐段落（剩余重试次数：${MAX_BATCH_RETRY_LIMIT - (st.batchRetryCount || 0)} 次），再进入 proofreadBasic。`
+            );
+          }
           if (text.length === 0) {
             throw new Error(
               `【执行治理】proofreadBasic 传入文本为空。` +
@@ -1276,7 +1502,7 @@ export const WpsGovernancePlugin = async () => {
             !isParallelBatchReplace &&
             !st.templateFilling.active &&
             st.batchStarted &&
-            !st.proofreadHadIssues
+            st.proofreadHadIssues === false
           ) {
             if (st.replaceCountThisBatch >= AI_FIXES_NO_ISSUES_LIMIT) {
               if (!innerArgs._force_ai_fix) {
@@ -1295,7 +1521,7 @@ export const WpsGovernancePlugin = async () => {
             !isParallelBatchReplace &&
             !st.templateFilling.active &&
             st.batchStarted &&
-            st.proofreadHadIssues &&
+            st.proofreadHadIssues === true &&
             st.proofreadIssueOriginals.length > 0
           ) {
             // 参数名兼容：AI 走网关时可能传 camelCase（findText）或 snake_case（find_text），

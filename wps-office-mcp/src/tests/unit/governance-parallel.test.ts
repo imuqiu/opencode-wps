@@ -298,6 +298,13 @@ describe('governance 并行模式适配（Issue #151 R1-2/R1-3）', () => {
           issues: [],
           _batch_id: 'batch-1',
           _processed_to_paragraph: 100,
+          // Issue #229 同步：P23 要求首次 proofreadAccumulate 必须携带 doc_info，补齐以验证 P20/P22 语义
+          doc_info: {
+            fileName: 'd.docx',
+            filePath: '/p/d.docx',
+            totalParagraphs: 200,
+            totalWords: 1000,
+          },
           _steps_log: [
             { step: 'getDocumentParagraphs', paragraphIndex: 1 },
             { step: 'proofreadAccumulate', paragraphIndex: 1 },
@@ -358,6 +365,12 @@ describe('governance 并行模式适配（Issue #151 R1-2/R1-3）', () => {
           issues: [],
           _batch_id: 'batch-1',
           _processed_to_paragraph: 100,
+          doc_info: {
+            fileName: 'd.docx',
+            filePath: '/p/d.docx',
+            totalParagraphs: 200,
+            totalWords: 1000,
+          },
           _steps_log: [
             { step: ' getDocumentParagraphs', paragraphIndex: 1 }, // 带前导空白
             { step: 'proofreadAccumulate ', paragraphIndex: 1 }, // 带尾随空白
@@ -435,6 +448,12 @@ describe('governance 并行模式适配（Issue #151 R1-2/R1-3）', () => {
           issues: [],
           _batch_id: 'batch-1',
           _processed_to_paragraph: 200,
+          doc_info: {
+            fileName: 'd.docx',
+            filePath: '/p/d.docx',
+            totalParagraphs: 200,
+            totalWords: 1000,
+          },
           _steps_log: [{ step: 'getDocumentParagraphs', paragraphIndex: 1 }],
         }),
         { content: [{ type: 'text', text: 'ok' }], isError: false }

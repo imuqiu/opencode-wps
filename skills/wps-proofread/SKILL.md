@@ -1013,13 +1013,23 @@ COM 超时已从 30s 增加到 60s（#116 问题八，MCP v1.1.1 起），200 �
 
 **P17 说明**（session_ffa8 问题一）：写文件路径含「校对报告」时，若服务端尚未通过 `generateProofreadReport` 成功生成报告（`reportGenerated !== true`），插件直接拦截。这防止 AI 在 `generateProofreadReport` 失败后手动 `write` 自拼 Markdown 报告（真实会话中出现过 3 份互相矛盾的手写报告）。
 
-**P18 说明**（session_ffa8 问题四）：`getDocumentParagraphs` 在已处理到段落 N 后，再次从段落 1 回卷获取即被拦截。批次必须严格连续，禁止把已检查过的段落重复扫描（真实会话中 AI 在已处理完第 1-2 批后又 `getDocumentParagraphs(start=1)` 重复跑了一遍）。如需重新开始，请先 `getActiveDocument` 重置进度。
+**P18 说明**（session_ffa8 问题四）：`getDocumentParagraphs` 在已处理到段落 N 后，再次从段落 1 回卷获取即被拦截。批次必须严格连续，禁止把已检查过的段落重复扫描（真实会话中 AI 在已处理完第 1-2 批后又 `getDocumentParagraphs(start=1)` 重复跑了一遍）。如需重新开始，请调用 `getActiveDocument` 并传 `_restart: true` 显式重置进度（CR R2-1：同一文档刷新 `getActiveDocument` 不重置进度，避免打断已处理批次；仅当 AI 显式传 `_restart: true` 或切换到不同文档时才重置）。
+
+> **Issue #229 补充（同批重试放行）**：若本批 `proofreadBasic` 连续失败（COM 超时等），治理层允许**重新获取当前批段落**（请求范围与本批实际请求范围一致即放行，不再被 P2/P12/P18 当作"回卷/不连续/未完成"拦截，CR R3-1），避免死锁。你可在 `getDocumentParagraphs` 失败或本批校对失败后，用**相同的 `start_paragraph`/`end_paragraph`** 重试本批。但**跨批推进（取下一批）仍要求本批走完** `proofreadBasic → confirmBatchAiProofread → replaceInParagraph` 完整链条。**注意：同批重试有上限（CR R11-1，最多 3 次）**——超过上限后同范围重取将不再被放行。若输出持续截断导致 3 次重试仍无法补齐，请改用更小的批次（如 50 段/批）获取，或检查 `getDocumentParagraphs` 的返回格式。
+
+> **Issue #229 补充（批次边界以请求参数为准）**：治理层以你请求的 `end_paragraph` 作为本批逻辑结束，而非输出文本的实际段数——即使输出被 MCP 截断，批次连续性校验仍按请求的段落范围推进，避免"后续批次起始判断错乱"。**因此务必在每次 `getDocumentParagraphs` 中显式传对 `start_paragraph`/`end_paragraph`**，并保证批次严格连续（上一批 end+1 = 本批 start）。当输出被截断（返回段数 < 请求段数）时，治理层会标记本批输出不完整（CR R1-1 `batchTruncated`）并引导你用**相同的 start/end 重试同批**补齐段落，再继续校对——请务必在拿到完整段落后再进入 `proofreadBasic`，避免段落被静默漏检。
+
+> **Issue #229 补充（proofreadHadIssues 三态化）**：`proofreadBasic` 返回的 JSON 若因截断/格式异常解析失败，治理层按"未知"处理（不再误判为"无问题"），P15/P16 均放行，避免合法修复被误拦截。**注意：JSON 解析失败（null 态）时 P15 的"无问题限流"和 P16 的"交叉校验"均不生效**——AI 可自由修复，不受次数限制，也不校验是否与已知 issue 匹配。此时请 AI 自行审慎判断，尽量不做过多的额外替换。但**请尽量让 `proofreadBasic` 的返回 JSON 完整**（每批 ≤200 段、优先 100 段），以便 P16 交叉校验正常生效。
+
+> **Issue #229 补充（总段数兜底）**：当 `getActiveDocument` 走 launcher 回退返回"总段数: 未知"时，治理层会从 `getDocumentParagraphs` 输出的"共 N 段"兜底提取文档总段数，确保覆盖全文判定与收尾报告完整性门禁可用。
+
+> **Issue #229 补充（会话状态按文档隔离）**：治理层跟踪当前活动文档路径（`getActiveDocument` 输出中的「路径」字段）。**同一对话中切换到不同文档**（路径变化）时，治理层**自动完整重置**所有批次/校对状态（`lastBatchParaIndex`/`batchStarted`/`batchStartOffset`/`proofreadCalledThisBatch`/`assignedRanges`/`reportGenerated` 等全部清零），确保新文档的批次从第 1 段开始，不被上一文档的进度误拦截。**在同一文档内**多次调用 `getActiveDocument` 不会打断已处理进度（路径相同不触发重置）。**文档切换或 `_restart` 后同批重试计数（CR R11-1）重置为 0**。若 AI 需要在**同一文档内显式重新开始**整个校对（如覆盖全文后重跑、报告失败后重来），请在 `getActiveDocument` 调用中传 `_restart: true`，治理层会完整重置批次进度并允许从第 1 段重新开始（CR R2-1）。此外会话上限淘汰策略已从 FIFO 优化为 LRU（最久未访问优先淘汰），避免进行中的校对会话被新会话挤掉导致批次追踪状态丢失。
 
 **P22 说明**（Issue #151 遗留修复）：每次 `proofreadAccumulate` 必须携带 `_processed_to_paragraph`（本批已校对到的最末段落索引）。服务端据此追踪真实覆盖进度，`generateProofreadReport` 的**硬性完整性门禁**据此判断是否允许生成报告——未覆盖全文（含编排模式有未完成批次、串行模式进度不足）时直接拒绝生成，杜绝"中途结束就假装完成"。规划 agent 初始化登记（带 `_batch_allocations` 且无 issues）豁免。
 
 **P23 说明**（Issue #223 问题 P0-2/P0-3）：① **首次实际累加（非规划初始化）必须携带 `doc_info`**（含 `fileName`/`filePath`/**`totalParagraphs`（正整数，文档总段数）**）。服务端据此建立校对会话上下文；缺 `doc_info` 时本批携带的 issues 会被丢弃（真实会话中因此丢失 7 条）；**缺 `totalParagraphs` 时全文覆盖判定与 P24 收尾报告强制将失效**，故 `totalParagraphs` 同样为强制项（可先 `getActiveDocument` 获取）。② **禁止用空 `issues` 上报进度**：携带 `_processed_to_paragraph` 上报进度却 `issues` 为空数组，属于"报了进度但丢了数据"的进度造假（真实会话中 AI 为绕过单批增量上限把合并大批拆成 4 次空上报，丢失 74 条）。如本批确有问题，必须真实放入 issues 后再累加。
 
-**P24 说明**（Issue #223 问题 P0-4）：文档覆盖全文（累计 `_processed_to_paragraph` ≥ `totalParagraphs`）后，若尚未调用 `generateProofreadReport` 生成收尾报告，任何继续推进校对流程的工具（`getDocumentParagraphs`/`proofreadBasic`/`confirmBatchAiProofread`/`replaceInParagraph`）都会被拦截，强制先生成报告。**最后一批 `proofreadAccumulate` 上报到覆盖全文后，应紧接着调用 `generateProofreadReport` 收尾，中间不要再穿插其他校对操作**。若报告生成失败后需重新开始校对，先 `getActiveDocument` 重置会话（会同时重置覆盖标记与累加计数，避免死锁）。防止"覆盖全文后忘了生成报告就直接结束"（真实会话中 AI 空上报到全文后未生成报告就结束，用户拿到的只是 AI 编造的内容）。
+**P24 说明**（Issue #223 问题 P0-4）：文档覆盖全文（累计 `_processed_to_paragraph` ≥ `totalParagraphs`）后，若尚未调用 `generateProofreadReport` 生成收尾报告，任何继续推进校对流程的工具（`getDocumentParagraphs`/`proofreadBasic`/`confirmBatchAiProofread`/`replaceInParagraph`）都会被拦截，强制先生成报告。**最后一批 `proofreadAccumulate` 上报到覆盖全文后，应紧接着调用 `generateProofreadReport` 收尾，中间不要再穿插其他校对操作**。若报告生成失败后需重新开始校对，先调用 `getActiveDocument` 并传 `_restart: true` 重置会话（会同时重置覆盖标记与累加计数、批次进度，避免死锁，CR R2-1）。防止"覆盖全文后忘了生成报告就直接结束"（真实会话中 AI 空上报到全文后未生成报告就结束，用户拿到的只是 AI 编造的内容）。
 
 **规则 2a 说明**：首次 `getDocumentParagraphs` 必须从第 1 段开始。若 `lastBatchParaIndex === 0` 时 `start_paragraph !== 1`，插件直接拒绝。这是为了防止从文档中间开始校对导致遗漏。
 

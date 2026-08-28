@@ -54,11 +54,7 @@ test('P16 补充：findText 含截断标记即拦截', function () {
   assertContains(govSource, 'hasTruncationMarker', '应定义截断检测函数');
   assertContains(govSource, 'ellipsisPattern', '应定义省略号正则');
   assertContains(govSource, 'hasTruncation', '应检测是否含截断标记');
-  assertContains(
-    govSource,
-    '含截断标记（.../…/……）',
-    '应输出含截断标记的拦截提示'
-  );
+  assertContains(govSource, '含截断标记（.../…/……）', '应输出含截断标记的拦截提示');
   assertContains(
     govSource,
     '请改用 proofreadBasic / getDocumentParagraphs 返回的完整 original 原文',
@@ -89,14 +85,25 @@ test('P16 补充：截断检测逻辑正确（白盒，精确判定）', functio
   // 正常原文（省略号后紧跟中文，为正文合法省略号）→ false，不误拦
   assertTrue(!hasTruncationMarker('省公共资源交易平台'), '正常原文不应判定为截断');
   assertTrue(!hasTruncationMarker('一致的'), '短原文不应误判');
-  assertTrue(!hasTruncationMarker('我们一致地……认真执行'), '省略号后紧跟中文（正文省略号）不应误拦');
+  assertTrue(
+    !hasTruncationMarker('我们一致地……认真执行'),
+    '省略号后紧跟中文（正文省略号）不应误拦'
+  );
 });
 
 test('P16 补充：截断标记但匹配 issue.original 时放行（R8-1）', function () {
   // R8-1：修复省略号问题（findText=真实 original）不应被截断拦截误伤。
   // 治理实现：截断拦截条件为 hasTruncation && !matchesIssue（matchesIssue=findText 匹配已知 issue.original）。
-  assertContains(govSource, 'if (hasTruncation && !matchesIssue)', '截断拦截应仅在 不匹配任何 known issue 时触发');
-  assertContains(govSource, '若 findText 匹配已知 issue.original（即使含省略号，如合法省略号修复），则放行不误拦', '应说明省略号修复放行语义');
+  assertContains(
+    govSource,
+    'if (hasTruncation && !matchesIssue)',
+    '截断拦截应仅在 不匹配任何 known issue 时触发'
+  );
+  assertContains(
+    govSource,
+    '若 findText 匹配已知 issue.original（即使含省略号，如合法省略号修复），则放行不误拦',
+    '应说明省略号修复放行语义'
+  );
 
   // 白盒验证：findText=含省略号的真实 original（如修复中英混排标点），能匹配 issue.original → 不拦截
   function shouldBlockForTruncation(findText, issueOriginals, hasTruncationFn) {
@@ -133,11 +140,19 @@ test('P16 补充：截断标记但匹配 issue.original 时放行（R8-1）', fu
 
 test('P23：首次累加强制 doc_info 逻辑存在', function () {
   assertContains(govSource, 'accumulateCount', '应跟踪累加次数以判断首次');
-  assertContains(govSource, '首次 proofreadAccumulate 必须携带 doc_info', '应输出首次必带 doc_info 提示');
+  assertContains(
+    govSource,
+    '首次 proofreadAccumulate 必须携带 doc_info',
+    '应输出首次必带 doc_info 提示'
+  );
   assertContains(govSource, 'innerArgs.doc_info.fileName', '应校验 fileName');
   assertContains(govSource, 'innerArgs.doc_info.filePath', '应校验 filePath');
   assertContains(govSource, 'hasTotalParagraphs', '应校验 totalParagraphs');
-  assertContains(govSource, 'totalParagraphs（正整数，文档总段数）', '应强制 totalParagraphs 为正整数');
+  assertContains(
+    govSource,
+    'totalParagraphs（正整数，文档总段数）',
+    '应强制 totalParagraphs 为正整数'
+  );
 });
 
 test('P23：禁止空 issues 上报进度逻辑存在', function () {
@@ -152,9 +167,7 @@ test('P23：空 issues 上报判定逻辑正确（白盒）', function () {
     var issuesArg = innerArgs.issues;
     var hasIssuesArg = Array.isArray(issuesArg) && issuesArg.length > 0;
     return (
-      innerArgs._processed_to_paragraph !== undefined &&
-      !hasIssuesArg &&
-      !isFirstRealAccumulate
+      innerArgs._processed_to_paragraph !== undefined && !hasIssuesArg && !isFirstRealAccumulate
     );
   }
   // 空 issues 上报进度 → 造假
@@ -164,7 +177,10 @@ test('P23：空 issues 上报判定逻辑正确（白盒）', function () {
   );
   // 有 issues 上报 → 正常
   assertTrue(
-    !isFakeProgress({ _processed_to_paragraph: 2400, issues: [{ original: 'a', suggestion: 'b' }] }, false),
+    !isFakeProgress(
+      { _processed_to_paragraph: 2400, issues: [{ original: 'a', suggestion: 'b' }] },
+      false
+    ),
     '有 issues 上报应为正常'
   );
   // 首次累加（带 doc_info）空 issues → 豁免（初始化场景）
@@ -181,7 +197,11 @@ test('P23：首次累加失败重试后 doc_info 强制不失效（R4-1）', fun
   // 若首次累加因缺 doc_info 被拦截，accumulateCount 保持 0，重试时 isFirstRealAccumulate 仍为 true，
   // 继续强制 doc_info，不会被"失败重试"绕过。
   assertContains(govSource, 'R4-1', '应标注 R4-1 修复');
-  assertContains(govSource, 'isFirstRealAccumulate = (st.accumulateCount || 0) === 0', '首次判定应基于成功累加计数为 0');
+  assertContains(
+    govSource,
+    'isFirstRealAccumulate = (st.accumulateCount || 0) === 0',
+    '首次判定应基于成功累加计数为 0'
+  );
   assertContains(govSource, '全部校验通过后才递增成功累加计数', '应在校验通过后递增计数');
 
   // 白盒验证时序：模拟失败重试——首次因缺 doc_info 被拦，accumulateCount 不应递增
@@ -193,7 +213,11 @@ test('P23：首次累加失败重试后 doc_info 强制不失效（R4-1）', fun
   }
   // 首次失败（缺 doc_info）→ 抛错，计数不变
   var failed = false;
-  try { attemptAccumulate({}, false); } catch (e) { failed = true; }
+  try {
+    attemptAccumulate({}, false);
+  } catch (e) {
+    failed = true;
+  }
   assertTrue(failed, '首次缺 doc_info 应被拦截');
   assertTrue(accumulateCount === 0, '失败后 accumulateCount 不应递增（保持 0）');
   // 重试成功（补上 doc_info）→ 计数+1
@@ -233,8 +257,7 @@ test('P24：覆盖全文判定逻辑正确（白盒）', function () {
     totalParagraphs > 0 && maxReportedParagraph >= totalParagraphs && !reportGeneratedTrue;
   assertTrue(!fullCoverageReportedDone, '已生成报告不应再强制拦截');
   // 未覆盖全文（进度不足）→ 不标记
-  var notFullCoverage =
-    totalParagraphs > 0 && 2300 >= totalParagraphs && !reportGenerated;
+  var notFullCoverage = totalParagraphs > 0 && 2300 >= totalParagraphs && !reportGenerated;
   assertTrue(!notFullCoverage, '未覆盖全文不应标记');
 });
 
@@ -254,37 +277,34 @@ test('P24：拦截范围覆盖全部校对推进工具（排除收尾/报告类�
   });
   function shouldBlock(toolName, reportGenerated, fullCoverageReached) {
     return (
-      PROOFREAD_ADVANCE_TOOLS.indexOf(toolName) !== -1 &&
-      !reportGenerated &&
-      fullCoverageReached
+      PROOFREAD_ADVANCE_TOOLS.indexOf(toolName) !== -1 && !reportGenerated && fullCoverageReached
     );
   }
   // 场景1：覆盖全文 + 未生成报告 → 所有推进工具都应被拦截
   PROOFREAD_ADVANCE_TOOLS.forEach(function (tool) {
-    assertTrue(
-      shouldBlock(tool, false, true),
-      '覆盖全文+未报告：推进工具 ' + tool + ' 应被拦截'
-    );
+    assertTrue(shouldBlock(tool, false, true), '覆盖全文+未报告：推进工具 ' + tool + ' 应被拦截');
   });
   // 场景2：覆盖全文 + 未生成报告 → 报告/收尾/上报类不应被拦
-  ['proofreadAccumulate', 'generateProofreadReport', 'getActiveDocument', 'enableTrackChanges', 'getTrackChangesStatus', 'save'].forEach(
-    function (tool) {
-      assertTrue(
-        !shouldBlock(tool, false, true),
-        '覆盖全文+未报告：收尾/报告类 ' + tool + ' 不应被拦截'
-      );
-    }
-  );
+  [
+    'proofreadAccumulate',
+    'generateProofreadReport',
+    'getActiveDocument',
+    'enableTrackChanges',
+    'getTrackChangesStatus',
+    'save',
+  ].forEach(function (tool) {
+    assertTrue(
+      !shouldBlock(tool, false, true),
+      '覆盖全文+未报告：收尾/报告类 ' + tool + ' 不应被拦截'
+    );
+  });
   // 场景3：覆盖全文 + 已生成报告 → 推进工具不再拦截
   assertTrue(
     !shouldBlock('getDocumentParagraphs', true, true),
     '覆盖全文+已报告：推进工具不应再拦截'
   );
   // 场景4：未覆盖全文（fullCoverageReached=false）→ 不拦截
-  assertTrue(
-    !shouldBlock('getDocumentParagraphs', false, false),
-    '未覆盖全文：不应拦截'
-  );
+  assertTrue(!shouldBlock('getDocumentParagraphs', false, false), '未覆盖全文：不应拦截');
 });
 
 // ==================== 汇总 ====================
