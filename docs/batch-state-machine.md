@@ -250,6 +250,9 @@ proofreadHadIssues: null   // null = 未知，true = 有问题，false = 无问�
 | P22 | proofreadAccumulate 必须上报 `_processed_to_paragraph` |
 | P23 | 首次 proofreadAccumulate 强制 doc_info + 覆盖追踪 |
 | P24 | 覆盖全文后强制生成收尾报告 |
+| P25 | `_processed_to_paragraph` 不得超过本批实际返回末段（`batchActualEndParaIndex`，防假进度） |
+| P25b | `_processed_to_paragraph` 不得回退（会话内单调推进，防重复上报旧批次） |
+| P26 | issue `paragraphIndex` 必须落在当前批窗口（`batchActualStartParaIndex .. batchActualEndParaIndex`，防陈旧 issue 填充） |
 
 ---
 

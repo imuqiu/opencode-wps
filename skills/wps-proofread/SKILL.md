@@ -990,6 +990,7 @@ COM 超时已从 30s 增加到 60s（#116 问题八，MCP v1.1.1 起），200 �
 | **P24** | **覆盖全文后强制生成报告**                      | `getDocumentParagraphs`/`proofreadBasic`/`confirmBatchAiProofread`/`replaceInParagraph` | 已覆盖全文（进度≥totalParagraphs）但尚未 `generateProofreadReport`，继续推进校对流程即拦截  |
 | **P25** | **进度不得超实际获取段落**                     | `proofreadAccumulate`                          | `_processed_to_paragraph` > `batchActualEndParaIndex`（本批实际返回末段；没获取到 N 段却宣称校对到 N 段 = 假进度） |
 | **P26** | **issues 必须属于当前批窗口**                  | `proofreadAccumulate`                          | 上报的 issue `paragraphIndex` 不在本批窗口（复用其它批次陈旧 issue 填充 = 假进度）                               |
+| **P25b** | **进度不得回退**                            | `proofreadAccumulate`                          | `_processed_to_paragraph` < 本会话已上报的最大进度（重复上报更早批次，破坏全文覆盖单调判定）                     |
 
 ### 通用执行规则（G1-G7，始终生效）
 
@@ -1035,7 +1036,9 @@ COM 超时已从 30s 增加到 60s（#116 问题八，MCP v1.1.1 起），200 �
 
 **P25 说明**（Issue #229 问题：假进度/假装校对）：`proofreadAccumulate` 上报的 `_processed_to_paragraph` **不得超过本批实际通过 `getDocumentParagraphs` 获取到的段落数**（`batchActualEndParaIndex`，即本批实际返回末段；区别于 `lastBatchParaIndex` 逻辑请求末段——截断/超界时逻辑末段可能大于实际返回末段）。真实会话中 AI 在只获取到 800 段的情况下，用跳跃式 `_processed_to_paragraph`（800→1500→2500→3500→4468）宣称已校对到全文，再生成虚假报告——P25 直接拦截：**没取到 N 段就不能宣称校对到 N 段**。请逐批真实获取（每批 ≤200 段）并逐批上报，进度必须与已获取段落严格一致。**与超界/截断治理联动：**当批次被截断（如请求 1-100 只返回 80 段）或超界（请求 1-200 文档仅 150 段）时，基准取实际返回末段（80/150），杜绝「宣称校对到未实际获取段落」的假进度。
 
-**P26 说明**（Issue #229 问题：陈旧 issue 填充伪装进度）：本批 `proofreadAccumulate` 上报的每条 issue，其 `paragraphIndex` **必须落在当前批窗口**（`batchRequestedStart .. batchActualEndParaIndex`，窗口末段取本批实际返回末段）内。真实会话中 AI 为绕过「禁止空 issues 报进度」的 P23 校验，把第 644/899 段的陈旧 issue 反复塞进每一批上报，伪造成「每批都有校对」——P26 直接拦截：**只能上报本批真实发现、且属于本批段落范围的 issue**。每批应独立走完 `getDocumentParagraphs → proofreadBasic → confirmBatchAiProofread → replaceInParagraph → proofreadAccumulate` 完整链条。
+**P25b 说明**（R5-1）：`proofreadAccumulate` 上报的 `_processed_to_paragraph` **不得小于本会话此前已上报的最大进度**（进度单调不回退）。同批重试（失败后重报同一批）会上报相同值，不受影响；仅拦截「重新上报更早批次」导致的进度回退，避免破坏 P24 全文覆盖判定（`fullCoverageReached` 依赖 `maxReportedParagraph` 单调推进）。
+
+**P26 说明**（Issue #229 问题：陈旧 issue 填充伪装进度）：本批 `proofreadAccumulate` 上报的每条 issue，其 `paragraphIndex` **必须落在当前批窗口**（`batchActualStartParaIndex .. batchActualEndParaIndex`，即本批**实际返回**的首段..末段；R4-1 起窗口下界取实际返回首段，避免起始截断时放行未实际返回段落的陈旧 issue）内。真实会话中 AI 为绕过「禁止空 issues 报进度」的 P23 校验，把第 644/899 段的陈旧 issue 反复塞进每一批上报，伪造成「每批都有校对」——P26 直接拦截：**只能上报本批真实发现、且属于本批段落范围的 issue**。每批应独立走完 `getDocumentParagraphs → proofreadBasic → confirmBatchAiProofread → replaceInParagraph → proofreadAccumulate` 完整链条。
 
 **🔥 铁律 6：必须从头至尾逐批完整校对（Issue #229 用户强制要求）**：
 - 从第 1 批（段落 1 起）开始，**逐批**（每批 ≤200 段，推荐 100 段）完整走完链条，**严禁中途停止、严禁突然跳过多批、严禁一次性把剩余全部跳过**。
