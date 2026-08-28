@@ -1338,5 +1338,41 @@ describe('governance CR R14：totalParagraphs 一致性（Issue #229）', () => 
       );
       expect(retryOk).toBe(true);
     });
+it('复盘R3-1：total未知 + 超界请求(1,200) + 部分返回(100/150) → 兜底提取total=150，同批重试放行，allBatchesComplete不误置位', async () => {
+      const plugin = await loadGovernancePlugin()();
+      const after = plugin['tool.execute.after'];
+
+      // 总段数未知（launcher 回退），文档实际 150 段，请求 (1,200) 超界但只返回 100 段
+      await after(execInput('pf-r3-sess', 'c0', 'getActiveDocument'), {
+        output: '当前文档: t.docx\\n路径: C:\\\\t.docx\\n类型: docx\\n总段数: 未知\\n字数: 3000',
+        isError: false,
+      });
+      await after(
+        execInput('pf-r3-sess', 'c1', 'getDocumentParagraphs', {
+          start_paragraph: 1,
+          end_paragraph: 200,
+        }),
+        { output: buildParaOutput(150, 100), isError: false }
+      );
+      // 同批重试 (1,200) 应放行（batchRequestedEnd 记录原始 200；allBatchesComplete 未误置位）
+      const retryOk = await expectNoIntercept(
+        plugin,
+        execInput('pf-r3-sess', 'c2', 'getDocumentParagraphs', {
+          start_paragraph: 1,
+          end_paragraph: 200,
+        })
+      );
+      expect(retryOk).toBe(true);
+      // 且 proofreadBasic 在 batchTruncated 下仍被拦截（要求先补齐）——确认真截断被识别
+      const blocked = await expectIntercept(
+        plugin,
+        execInput('pf-r3-sess', 'c3', 'proofreadBasic', {
+          text: '这是未知总段数部分返回的校对文本内容共二十字以上',
+          startOffset: 0,
+        }),
+        'batchTruncated'
+      );
+      expect(blocked).toBe(true);
+    });
   });
 });
