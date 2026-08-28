@@ -3,7 +3,7 @@
  *
  * 测试 scripts/upload-wiki.js 的落地页逻辑：
  *  - buildCategoryIndex：正常生成索引页、未知分类抛错、Wiki 链接中文编码
- *  - collectEntries：总条目数（22 文档 + 4 落地页）、落地页内容正确性
+ *  - collectEntries：总条目数（23 文档 + 4 落地页）、落地页内容正确性
  *  - 同名文档缺失时回退为索引页（P7 健壮性）
  *  - 复用同名文档的落地页顶部含「分类入口页」说明（P6）
  */
@@ -129,9 +129,9 @@ test('buildCategoryIndex 未知分类抛出明确错误', function () {
 
 // --- collectEntries：条目数量与结构 ---
 
-test('collectEntries 总条目 = 22 文档 + 4 落地页', function () {
+test('collectEntries 总条目 = 23 文档 + 4 落地页', function () {
   const entries = collectEntries();
-  assertEqual(entries.length, 26, '应有 26 条（22 文档 + 4 落地页）');
+  assertEqual(entries.length, 27, '应有 27 条（23 文档 + 4 落地页）');
 });
 
 test('collectEntries 生成 4 个落地页且带 content', function () {

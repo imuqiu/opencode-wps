@@ -76,6 +76,7 @@ const WIKI_MENU = [
       'POWERSHELL_COM.md',
       'SECURITY.md',
       'NPC_TEAM.md',
+      'batch-state-machine.md',
       'HISTORY.md',
     ],
   },
@@ -107,6 +108,7 @@ const WIKI_NAME_MAP = {
   'POWERSHELL_COM.md': 'PowerShell 桥接.md',
   'SECURITY.md': '安全模型.md',
   'NPC_TEAM.md': 'NPC Team.md',
+  'batch-state-machine.md': '分批处理状态机.md',
   'HISTORY.md': '演进历史.md',
 };
 

@@ -49,6 +49,7 @@
 | [NPC_TEAM.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/NPC_TEAM.md) | NPC Team 总指挥（**CNB 平台开发辅助工具**，零积分全流程，7 位专家含🔬研究员 RES，12 阶段含 PR 合并⏸CP3 确认 + 发布四要素，⚠️ 与 WPS 插件无关） |
 | [I18N_PLAN.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/I18N_PLAN.md) | 国际化 (i18n) 支持规划（未来规划） |
 | [proofread-fluency-conciseness-design.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/proofread-fluency-conciseness-design.md) | Word 校对通顺度/简洁度技术设计文档 |
+| [batch-state-machine.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/batch-state-machine.md) | **分批处理状态机设计规范**（设计模式沉淀，Issue #229，供未来批处理功能参考） |
 | [FEATURES.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/FEATURES.md) | 文档校对/模板填写功能说明（含校对 subagent 组已弃用存档，Issue #151） |
 | [HISTORY.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/HISTORY.md) | 演进历史与致谢 |
 | [superpowers/specs/](https://cnb.cool/lnxsun/opencode-wps/-/tree/main/docs/superpowers/specs/) | 设计规格存档：[端口杀进程设计](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/superpowers/specs/2026-05-05-port-kill-design.md) · [MCP 渐进式加载设计](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/superpowers/specs/2026-05-08-mcp-progressive-loading-design.md) |
