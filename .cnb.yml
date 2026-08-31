@@ -236,6 +236,30 @@ main:
           npm -v 2>$null
           if ($LASTEXITCODE -ne 0) { Write-Output "npm 未安装或不在 PATH" }
           Write-Output "===== 运行环境探测结束 ====="
+      # 检查本机 opencode / node / proxy 进程与端口（Issue #242 用户诉求：云端看不到本机 opencode 进程）
+      - name: check local opencode process
+        script: |
+          Write-Output "===== 本机 opencode 相关进程检查 ====="
+          Write-Output "---- 按名称匹配进程（opencode / node / node.exe） ----"
+          Get-Process -Name opencode,node -ErrorAction SilentlyContinue | Select-Object Id, ProcessName, Path, StartTime | Format-Table -AutoSize
+          Write-Output "---- 进程 ID（如存在） ----"
+          $ps = Get-Process -Name opencode,node -ErrorAction SilentlyContinue
+          if ($ps) { $ps | Select-Object Id, ProcessName | Format-Table -AutoSize } else { Write-Output "未检测到 opencode/node 进程" }
+          Write-Output "---- 监听端口探测（14096 OpenCode / 14097 Launcher / 14098 CORS Proxy） ----"
+          $ports = 14096,14097,14098
+          foreach ($port in $ports) {
+            $conn = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
+            if ($conn) {
+              $owner = Get-Process -Id $conn.OwningProcess -ErrorAction SilentlyContinue
+              Write-Output "[端口 $port 已监听] PID=$($conn.OwningProcess) 进程=$($owner.ProcessName)"
+            } else {
+              Write-Output "[端口 $port 未监听]"
+            }
+          }
+          Write-Output "---- 进程命令行（opencode / opencode-proxy / launcher） ----"
+          Get-CimInstance Win32_Process -Filter "Name='node.exe' OR Name='opencode.exe' OR Name='opencode-proxy.exe'" -ErrorAction SilentlyContinue |
+            Select-Object ProcessId, Name, @{N='CommandLine';E={$_.CommandLine}} | Format-List
+          Write-Output "===== opencode 进程检查结束 ====="
 
 # NPC 任务（Issue/PR 评论触发 NPC）
 # 可通过 options.model 指定模型 ID（如 GLM/Kimi/混元等国内模型，不指定则用平台默认）
