@@ -5,6 +5,83 @@
 # ============================================================
 
 # 构建 NPC 运行镜像并推送到 CNB 制品库
+
+# ============================================================
+.local_runner_task: &local_runner_task
+  runner:
+    namespace: group          # 用当前根组织自托管节点（必需）
+    tags: windows             # 匹配本地 Windows 节点标签（与创建 Runner 时一致）
+  stages:
+      # 采集本机环境信息（云端 NPC 通过构建日志即可看到本地环境）
+      - name: collect local environment info
+        script: |
+          Write-Output "===== 本机环境信息采集 ====="
+          Write-Output "主机名: $env:COMPUTERNAME"
+          Write-Output "用户名: $env:USERNAME"
+          Write-Output "系统目录: $env:SystemRoot"
+          Write-Output "---- OS 版本 ----"
+          Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, OSArchitecture, TotalVisibleMemorySize | Format-List
+          Write-Output "---- PowerShell 版本 ----"
+          $PSVersionTable.PSVersion
+          Write-Output "---- 本机 IPv4 ----"
+          Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254*' } | Select-Object IPAddress, InterfaceAlias | Format-Table -AutoSize
+          Write-Output "===== 本机环境信息采集结束 ====="
+      # 探测本机 WPS 部署情况（贴合本项目 opencode-wps）
+      - name: detect local WPS deployment
+        script: |
+          Write-Output "===== 探测本机 WPS 安装 ====="
+          $wpsPaths = @(
+            "$env:APPDATA\kingsoft\wps",
+            "$env:LOCALAPPDATA\kingsoft\wps",
+            "C:\Program Files\Kingsoft\WPS Office"
+          )
+          foreach ($p in $wpsPaths) {
+            if (Test-Path $p) {
+              Write-Output "[存在] $p"
+              Get-ChildItem $p -ErrorAction SilentlyContinue | Select-Object -First 10 Name | Format-Table -HideTableHeaders
+            } else {
+              Write-Output "[不存在] $p"
+            }
+          }
+          Write-Output "---- opencode-wps 插件目录 ----"
+          $addinDir = "$env:APPDATA\kingsoft\wps\jsaddons\opencode-wps_"
+          Write-Output (Test-Path $addinDir ? "存在: $addinDir" : "不存在: $addinDir")
+          Write-Output "===== WPS 探测结束 ====="
+      # 本机 Node.js 环境（opencode-wps 依赖）
+      - name: check local nodejs runtime
+        script: |
+          Write-Output "===== Node.js 环境 ====="
+          node -v 2>$null
+          if ($LASTEXITCODE -ne 0) { Write-Output "node 未安装或不在 PATH" }
+          npm -v 2>$null
+          if ($LASTEXITCODE -ne 0) { Write-Output "npm 未安装或不在 PATH" }
+          Write-Output "===== 运行环境探测结束 ====="
+      # 检查本机 opencode / node / proxy 进程与端口（Issue #242 用户诉求：云端看不到本机 opencode 进程）
+      - name: check local opencode process
+        script: |
+          Write-Output "===== 本机 opencode 相关进程检查 ====="
+          Write-Output "---- 按名称匹配进程（opencode / node / node.exe） ----"
+          Get-Process -Name opencode,node -ErrorAction SilentlyContinue | Select-Object Id, ProcessName, Path, StartTime | Format-Table -AutoSize
+          Write-Output "---- 进程 ID（如存在） ----"
+          $ps = Get-Process -Name opencode,node -ErrorAction SilentlyContinue
+          if ($ps) { $ps | Select-Object Id, ProcessName | Format-Table -AutoSize } else { Write-Output "未检测到 opencode/node 进程" }
+          Write-Output "---- 监听端口探测（14096 OpenCode / 14097 Launcher / 14098 CORS Proxy） ----"
+          $ports = 14096,14097,14098
+          foreach ($port in $ports) {
+            $conn = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
+            if ($conn) {
+              $owner = Get-Process -Id $conn.OwningProcess -ErrorAction SilentlyContinue
+              Write-Output "[端口 $port 已监听] PID=$($conn.OwningProcess) 进程=$($owner.ProcessName)"
+            } else {
+              Write-Output "[端口 $port 未监听]"
+            }
+          }
+          Write-Output "---- 进程命令行（opencode / opencode-proxy / launcher） ----"
+          Get-CimInstance Win32_Process -Filter "Name='node.exe' OR Name='opencode.exe' OR Name='opencode-proxy.exe'" -ErrorAction SilentlyContinue |
+            Select-Object ProcessId, Name, @{N='CommandLine';E={$_.CommandLine}} | Format-List
+          Write-Output "===== opencode 进程检查结束 ====="
+
+
 main:
   push:
     # 知识库入库：将仓库 docs/ 等文档切片、分词、向量化写入仓库知识库
@@ -49,6 +126,7 @@ main:
             docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:latest
             docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:${CNB_COMMIT_SHORT}
 
+    - *local_runner_task          # 本地自托管 Windows 节点：环境/WPS/Node/opencode 检测（Issue #242）
   # ============================================================
   # 微信群二维码定期更新提醒（Issue #103 周期性自动执行）
   # 每天 09:30 定时触发一次：检查当前 docs/assets/wechat-group.png 对应的二维码
@@ -184,83 +262,8 @@ main:
 #   - Windows 节点无 Docker 构建环境 → 不能用 docker.image，stage 走 PowerShell
 #   - runner.cpus 在无 Docker 节点无效，资源由宿主机决定
 #
-# 触发方式：在任何 Issue/PR 评论中 @CodeBuddy 并说明「在本地执行」，
-#   命中下方 issue.comment@npc / pull_request.comment@npc 事件即触发。
-# ============================================================
-.local_runner_task: &local_runner_task
-  runner:
-    namespace: group          # 用当前根组织自托管节点（必需）
-    tags: windows             # 匹配本地 Windows 节点标签（与创建 Runner 时一致）
-  stages:
-      # 采集本机环境信息（云端 NPC 通过构建日志即可看到本地环境）
-      - name: collect local environment info
-        script: |
-          Write-Output "===== 本机环境信息采集 ====="
-          Write-Output "主机名: $env:COMPUTERNAME"
-          Write-Output "用户名: $env:USERNAME"
-          Write-Output "系统目录: $env:SystemRoot"
-          Write-Output "---- OS 版本 ----"
-          Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, OSArchitecture, TotalVisibleMemorySize | Format-List
-          Write-Output "---- PowerShell 版本 ----"
-          $PSVersionTable.PSVersion
-          Write-Output "---- 本机 IPv4 ----"
-          Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254*' } | Select-Object IPAddress, InterfaceAlias | Format-Table -AutoSize
-          Write-Output "===== 本机环境信息采集结束 ====="
-      # 探测本机 WPS 部署情况（贴合本项目 opencode-wps）
-      - name: detect local WPS deployment
-        script: |
-          Write-Output "===== 探测本机 WPS 安装 ====="
-          $wpsPaths = @(
-            "$env:APPDATA\kingsoft\wps",
-            "$env:LOCALAPPDATA\kingsoft\wps",
-            "C:\Program Files\Kingsoft\WPS Office"
-          )
-          foreach ($p in $wpsPaths) {
-            if (Test-Path $p) {
-              Write-Output "[存在] $p"
-              Get-ChildItem $p -ErrorAction SilentlyContinue | Select-Object -First 10 Name | Format-Table -HideTableHeaders
-            } else {
-              Write-Output "[不存在] $p"
-            }
-          }
-          Write-Output "---- opencode-wps 插件目录 ----"
-          $addinDir = "$env:APPDATA\kingsoft\wps\jsaddons\opencode-wps_"
-          Write-Output (Test-Path $addinDir ? "存在: $addinDir" : "不存在: $addinDir")
-          Write-Output "===== WPS 探测结束 ====="
-      # 本机 Node.js 环境（opencode-wps 依赖）
-      - name: check local nodejs runtime
-        script: |
-          Write-Output "===== Node.js 环境 ====="
-          node -v 2>$null
-          if ($LASTEXITCODE -ne 0) { Write-Output "node 未安装或不在 PATH" }
-          npm -v 2>$null
-          if ($LASTEXITCODE -ne 0) { Write-Output "npm 未安装或不在 PATH" }
-          Write-Output "===== 运行环境探测结束 ====="
-      # 检查本机 opencode / node / proxy 进程与端口（Issue #242 用户诉求：云端看不到本机 opencode 进程）
-      - name: check local opencode process
-        script: |
-          Write-Output "===== 本机 opencode 相关进程检查 ====="
-          Write-Output "---- 按名称匹配进程（opencode / node / node.exe） ----"
-          Get-Process -Name opencode,node -ErrorAction SilentlyContinue | Select-Object Id, ProcessName, Path, StartTime | Format-Table -AutoSize
-          Write-Output "---- 进程 ID（如存在） ----"
-          $ps = Get-Process -Name opencode,node -ErrorAction SilentlyContinue
-          if ($ps) { $ps | Select-Object Id, ProcessName | Format-Table -AutoSize } else { Write-Output "未检测到 opencode/node 进程" }
-          Write-Output "---- 监听端口探测（14096 OpenCode / 14097 Launcher / 14098 CORS Proxy） ----"
-          $ports = 14096,14097,14098
-          foreach ($port in $ports) {
-            $conn = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
-            if ($conn) {
-              $owner = Get-Process -Id $conn.OwningProcess -ErrorAction SilentlyContinue
-              Write-Output "[端口 $port 已监听] PID=$($conn.OwningProcess) 进程=$($owner.ProcessName)"
-            } else {
-              Write-Output "[端口 $port 未监听]"
-            }
-          }
-          Write-Output "---- 进程命令行（opencode / opencode-proxy / launcher） ----"
-          Get-CimInstance Win32_Process -Filter "Name='node.exe' OR Name='opencode.exe' OR Name='opencode-proxy.exe'" -ErrorAction SilentlyContinue |
-            Select-Object ProcessId, Name, @{N='CommandLine';E={$_.CommandLine}} | Format-List
-          Write-Output "===== opencode 进程检查结束 ====="
-
+# 触发方式：main 分支 push 时自动调度到本地 Windows 节点执行检测，
+#   结果（环境/WPS/Node/opencode 进程）进构建日志，云端 NPC 可读取。
 # NPC 任务（Issue/PR 评论触发 NPC）
 # 可通过 options.model 指定模型 ID（如 GLM/Kimi/混元等国内模型，不指定则用平台默认）
 # 模型 ID 可在 NPC 选择器或云原生开发 Agent 设置中查看可选列表
@@ -282,8 +285,8 @@ main:
 
 # 兜底事件（仓库级别事件在此处理）
 $:
-  issue.comment@npc: [*npc_task, *local_runner_task]
-  pull_request.comment@npc: [*npc_task, *local_runner_task]
+  issue.comment@npc: [*npc_task]
+  pull_request.comment@npc: [*npc_task]
 
   # Code Wiki：打 tag 时自动读取仓库代码 + docs/ 现有文档，生成项目 Wiki
   # 生成后仓库首页出现 Wiki 入口，并自动入库知识库（knowledge_enabled: true，可被 AI 问答引用）
