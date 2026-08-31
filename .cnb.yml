@@ -169,29 +169,97 @@ main:
             echo "  cnb issues list-comments --repo lnxsun/opencode-wps --issue-id 103 | head -5"
             echo "查看 Issue #103 最新一条评论的发表时间是否与本次 cron 触发时间吻合。"
 
+# ============================================================
+# 本地自托管 Runner 任务（打通「本地↔云端」，Issue #242）
+# 用途：让云端 NPC 通过 @CodeBuddy 评论触发后，将任务调度到本地
+#       自托管 Windows 节点执行，从而云端能监测到本机部署、执行、报错。
+#
+# 前提（已由用户完成）：在「根组织/组织设置/构建节点」新增 Windows Runner，
+#   SELF_HOSTED_ID = f8a58804-ae57-40c3-acb1-1cd18dfe2a8a，并已在本地 PC
+#   执行连接脚本，节点状态变为「在线」。
+#
+# 调度要点（Windows 自托管节点约束）：
+#   - runner.namespace: group  → 使用当前根组织下自托管节点（必需）
+#   - runner.tags: windows     → 匹配节点标签（与创建 Runner 时填的标签一致，可改）
+#   - Windows 节点无 Docker 构建环境 → 不能用 docker.image，stage 走 PowerShell
+#   - runner.cpus 在无 Docker 节点无效，资源由宿主机决定
+#
+# 触发方式：在任何 Issue/PR 评论中 @CodeBuddy 并说明「在本地执行」，
+#   命中下方 issue.comment@npc / pull_request.comment@npc 事件即触发。
+# ============================================================
+.local_runner_task: &local_runner_task
+  runner:
+    namespace: group          # 用当前根组织自托管节点（必需）
+    tags: windows             # 匹配本地 Windows 节点标签（与创建 Runner 时一致）
+  stages:
+      # 采集本机环境信息（云端 NPC 通过构建日志即可看到本地环境）
+      - name: collect local environment info
+        script: |
+          Write-Output "===== 本机环境信息采集 ====="
+          Write-Output "主机名: $env:COMPUTERNAME"
+          Write-Output "用户名: $env:USERNAME"
+          Write-Output "系统目录: $env:SystemRoot"
+          Write-Output "---- OS 版本 ----"
+          Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, OSArchitecture, TotalVisibleMemorySize | Format-List
+          Write-Output "---- PowerShell 版本 ----"
+          $PSVersionTable.PSVersion
+          Write-Output "---- 本机 IPv4 ----"
+          Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254*' } | Select-Object IPAddress, InterfaceAlias | Format-Table -AutoSize
+          Write-Output "===== 本机环境信息采集结束 ====="
+      # 探测本机 WPS 部署情况（贴合本项目 opencode-wps）
+      - name: detect local WPS deployment
+        script: |
+          Write-Output "===== 探测本机 WPS 安装 ====="
+          $wpsPaths = @(
+            "$env:APPDATA\kingsoft\wps",
+            "$env:LOCALAPPDATA\kingsoft\wps",
+            "C:\Program Files\Kingsoft\WPS Office"
+          )
+          foreach ($p in $wpsPaths) {
+            if (Test-Path $p) {
+              Write-Output "[存在] $p"
+              Get-ChildItem $p -ErrorAction SilentlyContinue | Select-Object -First 10 Name | Format-Table -HideTableHeaders
+            } else {
+              Write-Output "[不存在] $p"
+            }
+          }
+          Write-Output "---- opencode-wps 插件目录 ----"
+          $addinDir = "$env:APPDATA\kingsoft\wps\jsaddons\opencode-wps_"
+          Write-Output (Test-Path $addinDir ? "存在: $addinDir" : "不存在: $addinDir")
+          Write-Output "===== WPS 探测结束 ====="
+      # 本机 Node.js 环境（opencode-wps 依赖）
+      - name: check local nodejs runtime
+        script: |
+          Write-Output "===== Node.js 环境 ====="
+          node -v 2>$null
+          if ($LASTEXITCODE -ne 0) { Write-Output "node 未安装或不在 PATH" }
+          npm -v 2>$null
+          if ($LASTEXITCODE -ne 0) { Write-Output "npm 未安装或不在 PATH" }
+          Write-Output "===== 运行环境探测结束 ====="
+
 # NPC 任务（Issue/PR 评论触发 NPC）
 # 可通过 options.model 指定模型 ID（如 GLM/Kimi/混元等国内模型，不指定则用平台默认）
 # 模型 ID 可在 NPC 选择器或云原生开发 Agent 设置中查看可选列表
 .npc_task: &npc_task
-  - docker:
-      image: ${CNB_DOCKER_REGISTRY}/${CNB_NPC_SLUG_LOWERCASE}:latest
-    stages:
-      - name: npc go
-        type: npc:go
-        options:
-          # 指定模型 ID（取消注释并填入实际模型 ID 即可生效）
-          # 模型 ID 可在 NPC 选择器或云原生开发 Agent 设置中查看可选列表
-          # DeepSeek V4 Flash（npc:go 的模型，非 opencode-wps agent 模型）
-          model: deepseek-v4-flash
-          # model: hy3    # ✅ 免费模型（混元 3），不消耗 AI Credits 账单
-          # model: glm-5  # GLM 模型
-          # model: kimi   # Kimi 模型
-          # model: hunyuan # 混元模型
+  docker:
+    image: ${CNB_DOCKER_REGISTRY}/${CNB_NPC_SLUG_LOWERCASE}:latest
+  stages:
+    - name: npc go
+      type: npc:go
+      options:
+        # 指定模型 ID（取消注释并填入实际模型 ID 即可生效）
+        # 模型 ID 可在 NPC 选择器或云原生开发 Agent 设置中查看可选列表
+        # DeepSeek V4 Flash（npc:go 的模型，非 opencode-wps agent 模型）
+        model: deepseek-v4-flash
+        # model: hy3    # ✅ 免费模型（混元 3），不消耗 AI Credits 账单
+        # model: glm-5  # GLM 模型
+        # model: kimi   # Kimi 模型
+        # model: hunyuan # 混元模型
 
 # 兜底事件（仓库级别事件在此处理）
 $:
-  issue.comment@npc: *npc_task
-  pull_request.comment@npc: *npc_task
+  issue.comment@npc: [*npc_task, *local_runner_task]
+  pull_request.comment@npc: [*npc_task, *local_runner_task]
 
   # Code Wiki：打 tag 时自动读取仓库代码 + docs/ 现有文档，生成项目 Wiki
   # 生成后仓库首页出现 Wiki 入口，并自动入库知识库（knowledge_enabled: true，可被 AI 问答引用）
