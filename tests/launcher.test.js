@@ -557,6 +557,165 @@ test('/status: 存在 isPortListening 端口回退探测（launcher 重启后仍
   assertTrue(/const OPENCODE_PORT = 14096;/.test(src), '应定义 OPENCODE_PORT=14096 常量');
 });
 
+// --- Issue #243 R1/R2：findOpenCodeBin 缓存稳定化 + 失败探测节流 ---
+console.log('\n--- Issue #243 R1/R2：findOpenCodeBin 缓存与失败节流 ---');
+
+// 构造可控的探测场景：BUN_INSTALL 指向含 opencode.exe 的临时目录，使探测优先命中该目录
+function makeFakeBinDir() {
+  // getOpenCodeBinDirs 对 BUN_INSTALL 会探测 <BUN_INSTALL>/bin 下的 opencode
+  var dir = path.join(os.tmpdir(), 'opencode-test-bin-' + Date.now());
+  var binDir = path.join(dir, 'bin');
+  fs.mkdirSync(binDir, { recursive: true });
+  var exePath = path.join(binDir, 'opencode.exe');
+  fs.writeFileSync(exePath, 'fake binary placeholder');
+  return { dir: dir, exePath: exePath };
+}
+
+function cleanupFakeBinDir(dir) {
+  try {
+    fs.rmSync(dir, { recursive: true, force: true });
+  } catch (e) {}
+}
+
+test('R3-1: 缓存路径文件失效后应失效重探（config 显式路径被删除）', function () {
+  // 构造 config 显式 opencodePath 场景：USERPROFILE 下写入 config.json 指向临时 exe
+  var homeDir = path.join(os.tmpdir(), 'opencode-test-home-' + Date.now());
+  var cfgDir = path.join(homeDir, '.config', 'opencode');
+  fs.mkdirSync(cfgDir, { recursive: true });
+  var exePath = path.join(os.tmpdir(), 'opencode-config-exe-' + Date.now() + '.exe');
+  fs.writeFileSync(exePath, 'fake');
+  fs.writeFileSync(path.join(cfgDir, 'opencode.json'), JSON.stringify({ opencodePath: exePath }));
+  var oldUser = process.env.USERPROFILE;
+  process.env.USERPROFILE = homeDir;
+  launcher.resetOpenCodeBinCache();
+  try {
+    var first = findOpenCodeBin();
+    assertEqual(first, exePath, '首次应命中 config 显式路径');
+    // 删除该 exe 文件，再次调用应失效重探（不再返回失效路径）
+    fs.unlinkSync(exePath);
+    var second = findOpenCodeBin();
+    // config 路径已失效，应走兜底（bin 目录/PATH/裸命令），不应返回已删除的 exePath
+    assertTrue(second !== exePath, '缓存路径文件失效后不应返回失效路径');
+  } finally {
+    if (oldUser === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = oldUser;
+    try {
+      fs.rmSync(homeDir, { recursive: true, force: true });
+    } catch (e) {}
+    try {
+      fs.unlinkSync(exePath);
+    } catch (e) {}
+    launcher.resetOpenCodeBinCache();
+  }
+});
+
+test('R1-A1: findOpenCodeBin 首次探测后缓存复用，同一会话内返回相同路径', function () {
+  var fake = makeFakeBinDir();
+  var oldBun = process.env.BUN_INSTALL;
+  var oldUser = process.env.USERPROFILE;
+  process.env.BUN_INSTALL = fake.dir;
+  // 隔离真实 config：临时覆盖 USERPROFILE 指向空目录，使 loadOpenCodeConfig 找不到
+  // config 文件、返回默认 {opencodePath:'opencode'}，避免真实用户 config 干扰探测
+  // （注：OPENCODE_CONFIG_PATH 对 loadOpenCodeConfig 无效，故不用它隔离）。
+  var emptyHome = path.join(os.tmpdir(), 'opencode-test-home-' + Date.now());
+  fs.mkdirSync(emptyHome, { recursive: true });
+  process.env.USERPROFILE = emptyHome;
+  launcher.resetOpenCodeBinCache();
+  try {
+    // spy console.log 捕获探测日志（如 [launcher] Found:），验证缓存命中时不重新执行探测
+    var origLog = console.log;
+    var logs = [];
+    console.log = function () {
+      logs.push(Array.prototype.join.call(arguments, ' '));
+    };
+    var first = findOpenCodeBin();
+    assertEqual(first, fake.exePath, '首次探测应命中 fake bin 的 opencode.exe');
+    var foundLogsAfterFirst = logs.filter(function (l) {
+      return l.indexOf('[launcher] Found:') >= 0;
+    }).length;
+    // 第二次调用：应命中缓存返回相同路径，且不重新执行探测（不新增 Found 日志）
+    var second = findOpenCodeBin();
+    assertEqual(second, first, '缓存复用：第二次调用应返回相同路径');
+    var foundLogsAfterSecond = logs.filter(function (l) {
+      return l.indexOf('[launcher] Found:') >= 0;
+    }).length;
+    assertEqual(
+      foundLogsAfterSecond,
+      foundLogsAfterFirst,
+      '缓存命中时不应重新执行探测（Found 日志数不变）'
+    );
+  } finally {
+    // 确保异常/断言失败时也恢复 console.log，避免污染后续测试日志收集（R5-1）
+    if (typeof origLog === 'function') console.log = origLog;
+    if (oldBun === undefined) delete process.env.BUN_INSTALL;
+    else process.env.BUN_INSTALL = oldBun;
+    if (oldUser === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = oldUser;
+    cleanupFakeBinDir(fake.dir);
+    try {
+      fs.rmSync(emptyHome, { recursive: true, force: true });
+    } catch (e) {}
+    launcher.resetOpenCodeBinCache();
+  }
+});
+
+test('R1-A2: resetOpenCodeBinCache 清空缓存后重新探测', function () {
+  var fake = makeFakeBinDir();
+  var oldBun = process.env.BUN_INSTALL;
+  var oldUser = process.env.USERPROFILE;
+  process.env.BUN_INSTALL = fake.dir;
+  var emptyHome = path.join(os.tmpdir(), 'opencode-test-home-' + Date.now());
+  fs.mkdirSync(emptyHome, { recursive: true });
+  process.env.USERPROFILE = emptyHome;
+  launcher.resetOpenCodeBinCache();
+  try {
+    var first = findOpenCodeBin();
+    assertEqual(first, fake.exePath, '首次探测应命中 fake bin');
+    launcher.resetOpenCodeBinCache();
+    var afterReset = findOpenCodeBin();
+    assertEqual(afterReset, fake.exePath, '清空缓存后应重新探测并仍命中同一路径');
+  } finally {
+    if (oldBun === undefined) delete process.env.BUN_INSTALL;
+    else process.env.BUN_INSTALL = oldBun;
+    if (oldUser === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = oldUser;
+    cleanupFakeBinDir(fake.dir);
+    try {
+      fs.rmSync(emptyHome, { recursive: true, force: true });
+    } catch (e) {}
+    launcher.resetOpenCodeBinCache();
+  }
+});
+
+test('R2-A3: 探测全部失败后缓存失败标记，TTL 内直接返回裸命令不重复探测', function () {
+  // 构造所有探测路径都失败的场景：BUN_INSTALL 指向空目录 + USERPROFILE 隔离真实 config
+  var emptyDir = path.join(os.tmpdir(), 'opencode-test-empty-' + Date.now());
+  fs.mkdirSync(emptyDir, { recursive: true });
+  var oldBun = process.env.BUN_INSTALL;
+  var oldUser = process.env.USERPROFILE;
+  process.env.BUN_INSTALL = emptyDir;
+  var emptyHome = path.join(os.tmpdir(), 'opencode-test-home-' + Date.now());
+  fs.mkdirSync(emptyHome, { recursive: true });
+  process.env.USERPROFILE = emptyHome;
+  launcher.resetOpenCodeBinCache();
+  try {
+    var result = findOpenCodeBin();
+    assertEqual(result, 'opencode', '探测全部失败应回退到裸命令');
+  } finally {
+    if (oldBun === undefined) delete process.env.BUN_INSTALL;
+    else process.env.BUN_INSTALL = oldBun;
+    if (oldUser === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = oldUser;
+    try {
+      fs.rmSync(emptyDir, { recursive: true, force: true });
+    } catch (e) {}
+    try {
+      fs.rmSync(emptyHome, { recursive: true, force: true });
+    } catch (e) {}
+    launcher.resetOpenCodeBinCache();
+  }
+});
+
 // ==================== 测试结果汇总 ====================
 
 console.log('\n========== 测试结果 ==========');

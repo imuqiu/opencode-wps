@@ -40,6 +40,15 @@ let stateLock = false;
 // opencode serve 服务端日志写流（模块级持有，便于 stop/exit 时统一关闭，避免资源泄漏）
 let opencodeLogStream = null;
 
+// opencode 二进制探测结果缓存（Issue #243 R1）：
+// 同一会话内 findOpenCodeBin() 首次探测成功后缓存路径，后续调用直接返回缓存，
+// 避免 launcher 在同一会话内反复探测出不同二进制（npm shim / .bun）导致
+// serve 进程被反复杀/重启（churn，Issue #164 发现）。config.opencodePath 变更时
+// 由 resetOpenCodeBinCache() 手动失效（见 loadOpenCodeConfig 调用方 / startOpenCode）。
+let opencodeBinCache = null;
+// R2 失败探测节流 TTL：探测全部失败后在此窗口内直接返回裸命令，不重复完整探测（避免 churn）。
+let BIN_PROBE_FAILURE_TTL_MS = 30 * 1000;
+
 // 关闭并释放 opencode serve 日志写流（幂等，可安全重复调用）
 // 注意：用 end() 会先 flush 缓冲区再关闭 fd，避免 destroy() 丢弃未落盘数据；
 // 由于写流只被子进程 stdout/stderr 使用，子进程退出后这里即可安全关闭。
@@ -782,17 +791,54 @@ function parseWhereOutput(output) {
  * @returns {string} 找到的 opencode 可执行路径；未找到时返回裸 'opencode'（依赖运行期 PATH）
  */
 function findOpenCodeBin() {
+  // 缓存命中直接返回（Issue #243 R1）：同一会话内不再反复探测出不同二进制路径，
+  // 避免 serve 进程因二进制切换被反复杀/重启（churn）。
+  // 缓存时记录当时 config.opencodePath；若配置显式指定路径且有变更，则失效重探。
+  if (opencodeBinCache && opencodeBinCache.path) {
+    // 权衡说明：此处每次读取 config 以检测 opencodePath 显式变更（正确性优先）。
+    // 命中高频调用时确有轻微文件 I/O 开销，但 config 文件极小、读取代价可忽略，
+    // 且换来的"配置变更即时失效"语义必要，故保留。
+    var cfg = loadOpenCodeConfig();
+    // 归一化：默认 'opencode'（loadOpenCodeConfig 的 defaultConfig）视为"未显式指定"，
+    // 等效 null，避免默认值与探测缓存（cfgPath=null）误判为配置变化导致缓存永远失效。
+    var rawCfgPath = cfg && cfg.opencodePath ? cfg.opencodePath : null;
+    var cfgPath = rawCfgPath === 'opencode' ? null : rawCfgPath;
+    if (
+      (!cfgPath && !opencodeBinCache.cfgPath) ||
+      (cfgPath && cfgPath === opencodeBinCache.cfgPath)
+    ) {
+      // 配置未变化（或都未显式指定）。校验缓存路径文件仍存在：
+      // 无论路径来自 config 显式（cfgPath 非空，R3-1）还是 bin 目录/PATH 探测
+      // （cfgPath=null，R4-2），若文件被删除/失效都应失效重探——否则会持续用失效
+      // 路径启动 serve 失败且不自愈（如 npm/bun 全局安装被卸载）。
+      if (!fs.existsSync(opencodeBinCache.path)) {
+        console.log('[launcher] Cached opencode path no longer exists, resetting bin cache');
+        opencodeBinCache = null;
+      } else {
+        // 复用缓存
+        return opencodeBinCache.path;
+      }
+    } else {
+      // 显式配置路径发生变化：缓存失效，重新探测
+      console.log('[launcher] opencodePath config changed, resetting bin cache');
+      opencodeBinCache = null;
+    }
+  }
+
   // 1. 从配置读取（有防御性检查）
   var config = loadOpenCodeConfig();
-  if (config.opencodePath) {
-    if (config.opencodePath === 'opencode' || fs.existsSync(config.opencodePath)) {
+  // 仅当用户显式指定了非默认的 opencodePath 才采用（默认 'opencode' 视为未显式配置，
+  // 不短路 bin 目录探测——否则默认配置下永远走裸命令、探测不到 npm/bun 全局安装的真实
+  // 二进制，造成依赖薄 PATH 而 ENOENT，见 Issue #134/#243）。
+  if (config.opencodePath && config.opencodePath !== 'opencode') {
+    if (fs.existsSync(config.opencodePath)) {
       // 校验路径是可执行文件且文件名合理（防 config.json 被篡改指向任意 exe）
       var p = config.opencodePath;
-      var isFile = p !== 'opencode' ? fs.statSync(p).isFile() : true;
-      var nameOk =
-        /opencode/i.test(path.basename(p)) || p === 'opencode' || /\.(exe|cmd|ps1)$/i.test(p);
+      var isFile = fs.statSync(p).isFile();
+      var nameOk = /opencode/i.test(path.basename(p)) || /\.(exe|cmd|ps1)$/i.test(p);
       if (isFile && nameOk) {
         console.log('[launcher] Using config path: ' + config.opencodePath);
+        opencodeBinCache = { path: config.opencodePath, cfgPath: config.opencodePath };
         return config.opencodePath;
       }
       console.log(
@@ -807,12 +853,15 @@ function findOpenCodeBin() {
     var found = findOpenCodeInDir(dirs[di]);
     if (found) {
       console.log('[launcher] Found: ' + found);
+      opencodeBinCache = { path: found, cfgPath: null };
       return found;
     }
   }
 
   // 3. 用 `where opencode` 从 PATH 解析真实路径（where 依赖本进程运行期 PATH，
-  //    计划任务/VBS 拉起的 launcher 目录探测无法覆盖时，靠 where 兜底）
+  //    计划任务/VBS 拉起的 launcher 目录探测无法覆盖时，靠 where 兜底）。
+  //    稳定性权衡：命中结果会被 R1 缓存，后续 PATH 更新了更好的 opencode 版本不会
+  //    自动切换（稳定性优先于时效性）；如需切换到新版本，可 reset 缓存或重启 launcher。
   try {
     var execSync = hiddenExecSync;
     var out = execSync('where opencode', {
@@ -824,16 +873,40 @@ function findOpenCodeBin() {
     var viaWhere = parseWhereOutput(out);
     if (viaWhere) {
       console.log('[launcher] Found via PATH: ' + viaWhere);
+      opencodeBinCache = { path: viaWhere, cfgPath: null };
       return viaWhere;
     }
   } catch (e) {
     /* where 未命中或命令失败，继续回退 */
   }
 
-  // 4. 回退到裸 'opencode'（依赖运行期 PATH，最后手段）
+  // 4. 回退到裸 'opencode'（依赖运行期 PATH，最后手段）。
+  //    Issue #243 R2：探测全部失败时缓存一个带 TTL 的失败标记，TTL 内直接返回裸
+  //    'opencode'，不再重复完整探测（含阻塞的 `where opencode` 5s 超时）。这避免
+  //    同一会话内因探测不稳定而高频反复 spawn 不同二进制（serve 进程 churn）。
+  //    TTL 过后自然失效，重新探测，以便 PATH / 安装状态更新后能命中。
+  //    权衡：TTL 内若用户新安装/更新 opencode 无法及时感知（持续用裸命令），
+  //    属节流设计意图；可等 TTL 过期或重启 launcher 后生效。
+  if (
+    opencodeBinCache &&
+    opencodeBinCache.failedAt &&
+    Date.now() - opencodeBinCache.failedAt < BIN_PROBE_FAILURE_TTL_MS
+  ) {
+    return 'opencode';
+  }
   console.log('[launcher] ⚠️ OpenCode not found in known paths/PATH');
   console.log('[launcher] Tip: ensure opencode is installed or run install-addons.js');
+  opencodeBinCache = { failedAt: Date.now() };
   return 'opencode';
+}
+
+/**
+ * 手动清空 opencode 二进制探测缓存（Issue #243 R1）。
+ * 仅供测试隔离与外部显式失效场景调用（生产代码中缓存失效由 findOpenCodeBin
+ * 内部读取 config 比对 opencodePath 显式变更自动处理，无需主动调用本函数）。
+ */
+function resetOpenCodeBinCache() {
+  opencodeBinCache = null;
 }
 
 /**
@@ -1327,6 +1400,7 @@ if (require.main === module) {
 module.exports = {
   parseWhereOutput: parseWhereOutput,
   findOpenCodeBin: findOpenCodeBin,
+  resetOpenCodeBinCache: resetOpenCodeBinCache,
   findOpenCodeInDir: findOpenCodeInDir,
   getOpenCodeBinDirs: getOpenCodeBinDirs,
   isBunShimPath: isBunShimPath,
