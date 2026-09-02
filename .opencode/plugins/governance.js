@@ -849,225 +849,14 @@ export const WpsGovernancePlugin = async () => {
           return;
         }
         if (toolName === 'proofreadAccumulate') {
-          // 记录会话 ID（用于识别校对流程会话），即便未生成报告也便于 P17 判断在校对流程中
+          // 【Issue #229 架构修复】所有输入校验（P20/P22/P23/P25/P25b/P26/P27/P28）已在
+          // tool.execute.before 钩子中完成——校验失败时直接拦截，MCP Server 根本不会处理该调用，
+          // 避免「MCP 已更新 session.progress 而治理层拒绝」导致的双层状态失同步。
+          // after hook 仅记录调用成功后的会话 ID 与状态更新。
           st.reportSessionId = innerArgs.session_id || st.reportSessionId || '';
-          // P20（Issue #151 校对重构，决策 5）：逐步凭证落盘防幻觉——
-          // 执行 agent 在并行校对中调用 proofreadAccumulate 时，若携带了 _batch_id 声明批次，
-          // 则必须同时携带 _steps_log（本批逐步执行凭证），供管理 agent 审计完整步骤链，
-          // 防止"大模型假装批量校对"（缺任何一步即判定该批未完成并重新派发）。
-          // R8-2：校验 _steps_log 为非空数组（空数组/缺数组均拦截，避免用空凭证绕过 P20）。
-          const hasStepsLog =
-            Array.isArray(innerArgs._steps_log) && innerArgs._steps_log.length > 0;
-          if (innerArgs._batch_id && !hasStepsLog) {
-            throw new Error(
-              `【执行治理】【P20】本批 ${innerArgs._batch_id} 缺少逐步执行凭证（_steps_log 需为非空数组）。\n` +
-                `执行 agent 必须在校对过程中逐步落盘凭证，完整覆盖标准步骤链：\n` +
-                `getDocumentParagraphs → getDocumentTextByRange → proofreadBasic → ` +
-                `confirmBatchAiProofread → replaceInParagraph → proofreadAccumulate。\n` +
-                `缺少任一步即视为本批未完成，将重新派发。请补充非空的 _steps_log 后再累加。`
-            );
-          }
-          // R4-2：校验 _steps_log 的 step 名合法性——必须落在标准步骤链内，杜绝编造任意步骤名
-          // （如谎报"aiDeepScan"这类不存在的步骤名绕过步骤链完整性判定）。
-          // R11-1：对 step 名 trim 后校验，避免执行 agent 提交带空白步骤名被误拦。
-          if (innerArgs._batch_id && hasStepsLog) {
-            const illegalStep = innerArgs._steps_log.find(function (r) {
-              const s = typeof r.step === 'string' ? r.step.trim() : '';
-              return s === '' || PROOFREAD_STEP_CHAIN.indexOf(s) === -1;
-            });
-            if (illegalStep) {
-              throw new Error(
-                `【执行治理】【P20】本批 ${innerArgs._batch_id} 的 _steps_log 含非法步骤名 "${String(illegalStep && illegalStep.step)}"。\n` +
-                  `标准步骤链：${PROOFREAD_STEP_CHAIN.join(' → ')}。`
-              );
-            }
-          }
-          // P22（Issue #151 遗留问题彻底修复）：
-          // 串行/并行 proofreadAccumulate 必须上报 _processed_to_paragraph（本批已校对到的最末段落），
-          // 否则服务端无法追踪真实覆盖进度，报告硬性完整性门禁无法生效（防"中途结束就假装完成"）。
-          // 豁免：规划 agent 初始化 session 时的首次登记（无 issues 且带 _batch_allocations），
-          // 此时尚无实际校对，不必上报进度。
           const isPlannerInit = isPlannerInitAccumulate(innerArgs, st);
-          if (
-            !isPlannerInit &&
-            (typeof innerArgs._processed_to_paragraph !== 'number' ||
-              !Number.isFinite(innerArgs._processed_to_paragraph) ||
-              innerArgs._processed_to_paragraph < 1)
-          ) {
-            throw new Error(
-              `【执行治理】【P22】proofreadAccumulate 必须携带 _processed_to_paragraph（本批已校对到的最末段落索引，≥1）。\n` +
-                `服务端据此追踪文档覆盖进度；缺此字段则无法判定校对是否覆盖全文，` +
-                `generateProofreadReport 将因完整性门禁拒绝生成报告。\n` +
-                `请在本批校对完成后，将实际处理到的段落索引作为 _processed_to_paragraph 传入。`
-            );
-          }
-          // P23（Issue #223 实际校对问题 P0-2/P0-3）：
-          // 1) 首次实际累加（非规划初始化）必须携带 doc_info（fileName/filePath/totalParagraphs），
-          //    否则服务端无法建立会话上下文，携带的 issues 会被丢弃（真实会话中前两批 7 条因此丢失）。
-          // 2) 携带了 _processed_to_paragraph 上报进度却 issues 为空数组：说明 AI 在"报了进度但丢了数据"
-          //    （为绕过单批 200 段上限把合并大批拆成多次空 issues 上报），直接拦截防进度造假。
-          const issuesArg = innerArgs.issues;
-          const hasIssuesArg = Array.isArray(issuesArg) && issuesArg.length > 0;
           if (!isPlannerInit) {
-            // R4-1（Issue #223 评审）：accumulateCount 只在「全部校验通过后」递增，
-            // 避免首次累加因缺 doc_info / totalParagraphs 被拦截后，重试时 isFirstRealAccumulate
-            // 已变 false 导致 doc_info 强制被跳过（P0-2 可被“失败重试”绕过）。
-            const isFirstRealAccumulate = (st.accumulateCount || 0) === 0;
-            if (isFirstRealAccumulate) {
-              const hasDocInfo =
-                innerArgs.doc_info &&
-                typeof innerArgs.doc_info === 'object' &&
-                innerArgs.doc_info.fileName &&
-                innerArgs.doc_info.filePath;
-              const hasTotalParagraphs =
-                innerArgs.doc_info &&
-                typeof innerArgs.doc_info === 'object' &&
-                typeof innerArgs.doc_info.totalParagraphs === 'number' &&
-                Number.isFinite(innerArgs.doc_info.totalParagraphs) &&
-                innerArgs.doc_info.totalParagraphs > 0;
-              if (!hasDocInfo) {
-                throw new Error(
-                  `【执行治理】【P23】首次 proofreadAccumulate 必须携带 doc_info（{ fileName, filePath, totalParagraphs }）。\n` +
-                    `服务端据此建立校对会话上下文；缺 doc_info 时本批携带的 issues 会被丢弃（真实会话中因此丢失 7 条）。\n` +
-                    `请在首次实际累加时补齐 doc_info 后再调用。`
-                );
-              }
-              if (!hasTotalParagraphs) {
-                throw new Error(
-                  `【执行治理】【P23】首次 proofreadAccumulate 的 doc_info 必须携带 totalParagraphs（正整数，文档总段数）。\n` +
-                    `服务端据此判定全文覆盖进度；缺 totalParagraphs 时覆盖全文判定无法生效，` +
-                    `P24 收尾报告强制将失效（P0-4）。请先 getActiveDocument 获取总段数后携带。`
-                );
-              }
-              // 记录文档总段数（用于后续判定是否覆盖全文并强制收尾报告 P0-4）
-              // CR R14-1：若 st.totalParagraphs 已通过 getActiveDocument 或 getDocumentParagraphs
-              // 的「共N段」确定，则校验 doc_info.totalParagraphs 是否一致——AI 传入的总段数
-              // 若与已知文档总段数不符，说明 AI 编造/写错了 doc_info，会导致覆盖判定错乱
-              // （fullCoverageReached 提前触发、段落被 P24 错误拦截）。
-              if (
-                st.totalParagraphs > 0 &&
-                st.totalParagraphs !== innerArgs.doc_info.totalParagraphs
-              ) {
-                throw new Error(
-                  `【执行治理】【P23】doc_info.totalParagraphs=${innerArgs.doc_info.totalParagraphs} ` +
-                    `与已确认的文档总段数 ${st.totalParagraphs} 不一致。\n` +
-                    `请从 getActiveDocument 获取正确的总段数后重试。`
-                );
-              }
-              st.totalParagraphs = innerArgs.doc_info.totalParagraphs;
-            }
-            if (
-              innerArgs._processed_to_paragraph !== undefined &&
-              !hasIssuesArg &&
-              !isFirstRealAccumulate
-            ) {
-              throw new Error(
-                `【执行治理】【P23】proofreadAccumulate 上报了 _processed_to_paragraph=${innerArgs._processed_to_paragraph} 但 issues 为空数组。\n` +
-                  `这属于"报了进度但丢了数据"的进度造假（为绕过单批增量上限把大批拆成多次空上报）。\n` +
-                  `禁止用空 issues 填充进度。请把本批真实发现的校对问题放入 issues 后再累加；` +
-                  `若本批确实无问题，请核对是否有未修复/未累加的 issue。`
-              );
-            }
-            // ── P25/P26（Issue #229 实际校对问题：假装校对 / 假进度 / 提前出报告）──
-            // 根因回顾：真实会话中 AI 对第 13 批及之后（1201-4468 段）仅 getDocumentParagraphs
-            // 视觉扫描、不调 proofreadBasic 就跳过；又用「空 issues」+ 跳跃式 _processed_to_paragraph
-            // （100→600→800→1500→2500→3500→4468）上报假进度，并反复塞入第 644/899 段的陈旧 issue
-            // 填充 issues 数组绕过 P23 空数组拦截，最终伪造覆盖全文并生成虚假报告。此处强制：
-            //  P25：_processed_to_paragraph 不得超过本批实际获取到的段落（batchActualEndParaIndex），
-            //       杜绝「没取到 N 段却宣称校对到 N 段」的假进度。
-            //  P26：本批上报的 issues 其 paragraphIndex 必须落在「当前批窗口」内
-            //       （batchRequestedStart .. batchActualEndParaIndex），禁止复用旧批次的陈旧 issue 来
-            //       填充 issues 数组以绕过 P23 空数组校验（假进度）。
-            // 串行模式才做这两项严格校验（并行模式由 P19 区间归属 + P20 凭证兜底）。
-            // 【联动修复】基准用 batchActualEndParaIndex（本批**实际返回**末段）而非 lastBatchParaIndex
-            // （逻辑请求末段）——截断/超界时 lastBatchParaIndex 可能大于实际返回末段，若以其为基准
-            // 会放行「宣称校对到未实际获取段落」的假进度（与超界/截断治理 PR233 联动的一致基准）。
-            const isParallelBatch = !!innerArgs._batch_id;
-            if (!isParallelBatch) {
-              const actualEndParaIndex = st.batchActualEndParaIndex || st.lastBatchParaIndex || 0;
-              // P25：进度不得超实际获取段落
-              if (
-                innerArgs._processed_to_paragraph !== undefined &&
-                actualEndParaIndex > 0 &&
-                innerArgs._processed_to_paragraph > actualEndParaIndex
-              ) {
-                throw new Error(
-                  `【执行治理】【P25】_processed_to_paragraph=${innerArgs._processed_to_paragraph} ` +
-                    `超过本批实际获取到的段落 ${actualEndParaIndex}。\n` +
-                    `你尚未通过 getDocumentParagraphs 获取到段落 ${innerArgs._processed_to_paragraph}，` +
-                    `不能宣称已校对到该段落（假进度）。请逐批真实获取并校对，本批进度应 ≤ ${actualEndParaIndex}。`
-                );
-              }
-              // P25b（R5-1）：进度不得回退（会话内单调不减）。本批上报的 _processed_to_paragraph
-              // 若小于本会话此前已上报的最大进度，说明 AI 在重新上报旧批次/乱序上报，会破坏 P24
-              // 全文覆盖判定（fullCoverageReached 依赖 maxReportedParagraph 单调推进）。
-              // 同批重试（失败后重报同一批）会上报相同值，不受影响；仅拦截「回退到更小值」。
-              if (
-                innerArgs._processed_to_paragraph !== undefined &&
-                (st.maxReportedParagraph || 0) > 0 &&
-                innerArgs._processed_to_paragraph < st.maxReportedParagraph
-              ) {
-                throw new Error(
-                  `【执行治理】【P25b】_processed_to_paragraph=${innerArgs._processed_to_paragraph} ` +
-                    `小于本会话已上报的最大进度 ${st.maxReportedParagraph}（进度回退）。\n` +
-                    `请按批次顺序逐批推进进度，禁止重新上报更早批次的旧进度（会破坏全文覆盖判定）。`
-                );
-              }
-              // P28（Issue #229 实际校对问题：批次跳跃式假进度）：
-              // 本批上报的 _processed_to_paragraph 相对上次成功上报的最大进度，必须逐批连续推进
-              // （跳变 ≤ 单批上限 200 段）。真实会话（ses_fb8c）中 AI 在最后阶段从 1400 直接
-              // 跳到 5550（跳变 4150 段），宣称已校对全文——即使中间批次调用了 getDocumentParagraphs
-              // 获取过段落但从未调用 proofreadBasic 校对，也属于假进度。P28 强制：进度只能
-              // 逐批（≤200 段/批）连续推进，禁止一次跳过多个批次。
-              // 豁免：首次上报（maxReportedParagraph=0）时允许任意值（这是第一批）；同批重试
-              // 上报相同值不受影响（P25b 已覆盖回退拦截）。
-              if (
-                innerArgs._processed_to_paragraph !== undefined &&
-                (st.maxReportedParagraph || 0) > 0 &&
-                innerArgs._processed_to_paragraph - (st.maxReportedParagraph || 0) >
-                  MAX_PARAGRAPHS_PER_BATCH
-              ) {
-                throw new Error(
-                  `【执行治理】【P28】_processed_to_paragraph=${innerArgs._processed_to_paragraph} ` +
-                    `相对上次上报的最大进度 ${st.maxReportedParagraph} 跳变 ` +
-                    `${innerArgs._processed_to_paragraph - st.maxReportedParagraph} 段，超过单批上限 ${MAX_PARAGRAPHS_PER_BATCH}。\n` +
-                    `进度必须逐批连续推进，禁止跳过中间批次。请先获取并校对中间批次段落 ` +
-                    `（每批 ≤${MAX_PARAGRAPHS_PER_BATCH} 段，调用 getDocumentParagraphs → proofreadBasic 完整走链），再逐批上报。`
-                );
-              }
-              // P26：issues 必须属于当前批窗口（防复用陈旧 issue 填充）
-              if (Array.isArray(issuesArg) && issuesArg.length > 0 && actualEndParaIndex > 0) {
-                // 批窗口下界：以本批**实际返回**的首段（batchActualStartParaIndex）为准，
-                // 使窗口 = [实际返回首段 .. 实际返回末段]，与 P25 的末段基准一致。
-                // （R4-1：不要用 batchRequestedStart——若本批实际返回从更靠后的段落开始，
-                //  用请求起始段为下界会放行「未实际返回段落」的陈旧 issue。）
-                const winStart =
-                  st.batchActualStartParaIndex > 0
-                    ? st.batchActualStartParaIndex
-                    : st.batchRequestedStart || actualEndParaIndex;
-                for (const it of issuesArg) {
-                  const pid =
-                    it &&
-                    (typeof it.paragraphIndex === 'number'
-                      ? it.paragraphIndex
-                      : typeof it.paragraph_index === 'number'
-                        ? it.paragraph_index
-                        : undefined);
-                  if (pid !== undefined && (pid < winStart || pid > actualEndParaIndex)) {
-                    throw new Error(
-                      `【执行治理】【P26】本批上报的 issue 段落索引 ${pid} 不在当前批窗口 ` +
-                        `（段落 ${winStart}..${actualEndParaIndex}）内。\n` +
-                        `禁止复用其它批次的陈旧 issue 填充 issues 数组来伪装本批进度。` +
-                        `请只上报本批真实发现的校对问题。`
-                    );
-                  }
-                }
-              }
-            }
-            // P23 补充（Issue #223 实际校对问题 P0-4）：跟踪最大上报段落。
-            // 放在 P25/P26 全部校验通过之后更新，确保 maxReportedParagraph 只反映
-            // **校验通过**的进度——被 P25/P26 拦截的上报不得计入，避免污染 P25b 的
-            // 单调回退基准（R5-1：被 P25 拦截的首次上报若计入 max，会误伤合法重试）。
+            // 更新最大上报段落（仅反映已成功通过 MCP 的进度，与 MCP session.progress 一致）
             if (typeof innerArgs._processed_to_paragraph === 'number') {
               if (innerArgs._processed_to_paragraph > (st.maxReportedParagraph || 0)) {
                 st.maxReportedParagraph = innerArgs._processed_to_paragraph;
@@ -1080,7 +869,7 @@ export const WpsGovernancePlugin = async () => {
                 st.fullCoverageReached = true;
               }
             }
-            // 全部校验通过后才递增成功累加计数（保证失败重试时首次判定不失效）
+            // 成功调用后递增累加计数
             st.accumulateCount = (st.accumulateCount || 0) + 1;
           }
           return;
@@ -1613,23 +1402,29 @@ export const WpsGovernancePlugin = async () => {
         return;
       }
 
-      // ── 规则 P27：proofreadAccumulate 必须先调 proofreadBasic（Issue #229 实际校对问题）──
-      // 根因回顾：真实会话（ses_fb8c）中 AI 对大量批次仅 getDocumentParagraphs 视觉扫描
-      // （不调 proofreadBasic 就跳过），直接 proofreadAccumulate 上报进度——P22/P23/P25/P26
-      // 虽拦截空 issues 和跳跃式进度，但**没有任何规则要求「每批必须先调 proofreadBasic」**。
-      // 于是 AI 可以：视觉扫描 → 直接 proofreadAccumulate（带窗口内 issue 绕过 P23/P26）→
-      // 全程从不真校对但进度一路推进。此处强制：串行模式下 proofreadAccumulate 之前
-      // 必须本批已调用过 proofreadBasic（proofreadCalledThisBatch=true）。
-      // 豁免：规划 agent 初始化 session 时的首次登记（带 _batch_allocations 且无 issues），
-      // 此时尚无实际校对，不需要 proofreadBasic。并行模式由 P20 凭证兜底，不在此强制。
+      // ── 规则 P27 等 proofreadAccumulate 全部校验（before hook 统一执行）──
+      // 【Issue #229 架构修复】将 P20/P22/P23/P25/P25b/P26/P27/P28 全部移到 before hook，
+      // 在 MCP Server 处理前拦截非法调用。原实现位于 after hook：校验失败时 MCP 已成功处理
+      // 并更新 session.progress，但治理层状态未同步——双层状态失同步导致 AI 无论报什么进度
+      // 都会被其中一层拦截而卡死（真实会话 ses_f9f0/ses_f9eb 最终因此无法完成校对）。
+      // before hook 拦截后 MCP 根本不会处理，两层状态始终保持一致。
+      //
+      // 规则清单：
+      //  P20（并行模式凭证）：带 _batch_id 必须有非空 _steps_log，step 名必须合法
+      //  P22（进度必填）：串行/并行必须携带 _processed_to_paragraph（≥1）
+      //  P23（doc_info/空 issues）：首次累加须带 doc_info；空 issues 仅当本批确无问题（proofreadCalledThisBatch && proofreadHadIssues===false）时放行
+      //  P25（进度不超实际获取段）：_processed_to_paragraph ≤ batchActualEndParaIndex
+      //  P25b（进度不回退/重复）：_processed_to_paragraph ≤ maxReportedParagraph 即拒（与 MCP '<=' 对齐）
+      //  P26（issue 窗口）：issues 的 paragraphIndex 必须在当前批窗口内
+      //  P27（必须先调 proofreadBasic）：串行模式上报进度前本批必须已调过 proofreadBasic
+      //  P28（批次连续）：相对上次成功进度跳变 ≤ MAX_PARAGRAPHS_PER_BATCH
       if (toolName === 'proofreadAccumulate') {
         const isParallelBatchAccumulate = !!innerArgs._batch_id;
         const isPlannerInit = isPlannerInitAccumulate(innerArgs, st);
-        // R3-1（Issue #229 PR238）：P27 不仅在有批次（batchStarted）时要求先调 proofreadBasic，
-        // 也在「上报了进度（_processed_to_paragraph）却从未开始批次 / 未调 proofreadBasic」时拦截。
-        // 修复绕过路径：AI 不调 getDocumentParagraphs（batchStarted=false）时，P25/P26/P27 原本
-        // 全部因 batchStarted 守卫短路而跳过，可凭伪造 doc_info + issue 一次上报整篇假进度。
-        // 现：串行模式上报进度（_processed_to_paragraph 存在）且非规划初始化时，必须已调 proofreadBasic。
+        const issuesArg = innerArgs.issues;
+        const hasIssuesArg = Array.isArray(issuesArg) && issuesArg.length > 0;
+
+        // ── P27：必须先调 proofreadBasic ──
         const reportingProgress = innerArgs._processed_to_paragraph !== undefined;
         if (
           !isParallelBatchAccumulate &&
@@ -1650,6 +1445,191 @@ export const WpsGovernancePlugin = async () => {
               `请先 getActiveDocument → getDocumentParagraphs 获取本批段落，再对本批调用 proofreadBasic ` +
               `完成基础校对后再累加进度。`
           );
+        }
+
+        // ── P20：并行模式步骤凭证 ──
+        if (innerArgs._batch_id) {
+          const hasStepsLog =
+            Array.isArray(innerArgs._steps_log) && innerArgs._steps_log.length > 0;
+          if (!hasStepsLog) {
+            throw new Error(
+              `【执行治理】【P20】本批 ${innerArgs._batch_id} 缺少逐步执行凭证（_steps_log 需为非空数组）。\n` +
+                `执行 agent 必须在校对过程中逐步落盘凭证，完整覆盖标准步骤链：\n` +
+                `getDocumentParagraphs → getDocumentTextByRange → proofreadBasic → ` +
+                `confirmBatchAiProofread → replaceInParagraph → proofreadAccumulate。\n` +
+                `缺少任一步即视为本批未完成，将重新派发。请补充非空的 _steps_log 后再累加。`
+            );
+          }
+          const illegalStep = innerArgs._steps_log.find(function (r) {
+            const s = typeof r.step === 'string' ? r.step.trim() : '';
+            return s === '' || PROOFREAD_STEP_CHAIN.indexOf(s) === -1;
+          });
+          if (illegalStep) {
+            throw new Error(
+              `【执行治理】【P20】本批 ${innerArgs._batch_id} 的 _steps_log 含非法步骤名 "${String(illegalStep && illegalStep.step)}"。\n` +
+                `标准步骤链：${PROOFREAD_STEP_CHAIN.join(' → ')}。`
+            );
+          }
+        }
+
+        // ── P22：必须携带 _processed_to_paragraph ──
+        if (
+          !isPlannerInit &&
+          (typeof innerArgs._processed_to_paragraph !== 'number' ||
+            !Number.isFinite(innerArgs._processed_to_paragraph) ||
+            innerArgs._processed_to_paragraph < 1)
+        ) {
+          throw new Error(
+            `【执行治理】【P22】proofreadAccumulate 必须携带 _processed_to_paragraph（本批已校对到的最末段落索引，≥1）。\n` +
+              `服务端据此追踪文档覆盖进度；缺此字段则无法判定校对是否覆盖全文，` +
+              `generateProofreadReport 将因完整性门禁拒绝生成报告。\n` +
+              `请在本批校对完成后，将实际处理到的段落索引作为 _processed_to_paragraph 传入。`
+          );
+        }
+
+        if (!isPlannerInit) {
+          // ── P23：首次必须携带 doc_info ──
+          const isFirstRealAccumulate = (st.accumulateCount || 0) === 0;
+          if (isFirstRealAccumulate) {
+            const hasDocInfo =
+              innerArgs.doc_info &&
+              typeof innerArgs.doc_info === 'object' &&
+              innerArgs.doc_info.fileName &&
+              innerArgs.doc_info.filePath;
+            const hasTotalParagraphs =
+              innerArgs.doc_info &&
+              typeof innerArgs.doc_info === 'object' &&
+              typeof innerArgs.doc_info.totalParagraphs === 'number' &&
+              Number.isFinite(innerArgs.doc_info.totalParagraphs) &&
+              innerArgs.doc_info.totalParagraphs > 0;
+            if (!hasDocInfo) {
+              throw new Error(
+                `【执行治理】【P23】首次 proofreadAccumulate 必须携带 doc_info（{ fileName, filePath, totalParagraphs }）。\n` +
+                  `服务端据此建立校对会话上下文；缺 doc_info 时本批携带的 issues 会被丢弃（真实会话中因此丢失 7 条）。\n` +
+                  `请在首次实际累加时补齐 doc_info 后再调用。`
+              );
+            }
+            if (!hasTotalParagraphs) {
+              throw new Error(
+                `【执行治理】【P23】首次 proofreadAccumulate 的 doc_info 必须携带 totalParagraphs（正整数，文档总段数）。\n` +
+                  `服务端据此判定全文覆盖进度；缺 totalParagraphs 时覆盖全文判定无法生效，` +
+                  `P24 收尾报告强制将失效（P0-4）。请先 getActiveDocument 获取总段数后携带。`
+              );
+            }
+            if (
+              st.totalParagraphs > 0 &&
+              st.totalParagraphs !== innerArgs.doc_info.totalParagraphs
+            ) {
+              throw new Error(
+                `【执行治理】【P23】doc_info.totalParagraphs=${innerArgs.doc_info.totalParagraphs} ` +
+                  `与已确认的文档总段数 ${st.totalParagraphs} 不一致。\n` +
+                  `请从 getActiveDocument 获取正确的总段数后重试。`
+              );
+            }
+            st.totalParagraphs = innerArgs.doc_info.totalParagraphs;
+          }
+
+          // ── P23 空 issues 检查（Fix C：允许本批确无问题时放行空 issues）──
+          // 原逻辑：携带进度但 issues 为空即拦截（防进度造假）。但若 proofreadBasic 已真实调用
+          // 且返回无问题（proofreadHadIssues===false），空 issues 是合法的——该批确实没有校对
+          // 问题需要上报。Fix C 放宽：proofreadCalledThisBatch 已由 P27 强制保证（未调 proofreadBasic
+          // 根本无法走到这里），proofreadHadIssues===false 表示基础校对确认无问题。
+          const batchGenuinelyClean =
+            st.proofreadCalledThisBatch === true && st.proofreadHadIssues === false;
+          if (
+            innerArgs._processed_to_paragraph !== undefined &&
+            !hasIssuesArg &&
+            !isFirstRealAccumulate &&
+            !batchGenuinelyClean
+          ) {
+            throw new Error(
+              `【执行治理】【P23】proofreadAccumulate 上报了 _processed_to_paragraph=${innerArgs._processed_to_paragraph} 但 issues 为空数组。\n` +
+                `这属于"报了进度但丢了数据"的进度造假（为绕过单批增量上限把大批拆成多次空上报）。\n` +
+                `禁止用空 issues 填充进度。请把本批真实发现的校对问题放入 issues 后再累加；` +
+                `若本批确实无问题（proofreadBasic 返回无 issues），可以空 issues 上报。`
+            );
+          }
+
+          // ── P25/P25b/P26/P28：串行模式严格校验 ──
+          if (!isParallelBatchAccumulate) {
+            const actualEndParaIndex = st.batchActualEndParaIndex || st.lastBatchParaIndex || 0;
+
+            // P25：进度不得超实际获取段落
+            if (
+              innerArgs._processed_to_paragraph !== undefined &&
+              actualEndParaIndex > 0 &&
+              innerArgs._processed_to_paragraph > actualEndParaIndex
+            ) {
+              throw new Error(
+                `【执行治理】【P25】_processed_to_paragraph=${innerArgs._processed_to_paragraph} ` +
+                  `超过本批实际获取到的段落 ${actualEndParaIndex}。\n` +
+                  `你尚未通过 getDocumentParagraphs 获取到段落 ${innerArgs._processed_to_paragraph}，` +
+                  `不能宣称已校对到该段落（假进度）。请逐批真实获取并校对，本批进度应 ≤ ${actualEndParaIndex}。`
+              );
+            }
+
+            // P25b：进度不得回退或重复（与 MCP 服务端串行 `新值 <= 已上报` 口径对齐）
+            // 【Issue #229 PR#245 第2轮评审修复】原实现用 `<`（仅拦严格回退、放行相等值），但治理层
+            // maxReportedParagraph 仅在 MCP 成功（after hook）后更新——maxReportedParagraph == N 即代表
+            // MCP 已接受进度 N，此时再报 N 必然被 MCP 以「新值 <= 已上报」拒绝。治理层放行相等值会造成
+            // 「治理层放行、MCP 拒绝」的双层不一致（与 Fix A『治理层校验通过则 MCP 必不拒绝』承诺不符）。
+            // 改为 `<=` 后：治理层在 before hook 提前拦截相等/回退值，与 MCP 完全对齐。
+            // 合法「同批重试」仅指首次上报被治理层拦截（MCP 未接受，maxReportedParagraph < N）时的重报，
+            // 此时 N > maxReportedParagraph，不受 `<=` 影响，仍可正常重试（见 R2-1b / R4 测试）。
+            if (
+              innerArgs._processed_to_paragraph !== undefined &&
+              (st.maxReportedParagraph || 0) > 0 &&
+              innerArgs._processed_to_paragraph <= st.maxReportedParagraph
+            ) {
+              throw new Error(
+                `【执行治理】【P25b】_processed_to_paragraph=${innerArgs._processed_to_paragraph} ` +
+                  `小于或等于本会话已上报的最大进度 ${st.maxReportedParagraph}（进度重复或回退）。\n` +
+                  `请按批次顺序逐批推进进度，禁止重复上报同值或重新上报更早批次的旧进度` +
+                  `（会破坏全文覆盖判定；同批重试仅在 MCP 尚未接受该批进度时有效）。`
+              );
+            }
+
+            // P28：批次跳跃式假进度拦截
+            if (
+              innerArgs._processed_to_paragraph !== undefined &&
+              (st.maxReportedParagraph || 0) > 0 &&
+              innerArgs._processed_to_paragraph - (st.maxReportedParagraph || 0) >
+                MAX_PARAGRAPHS_PER_BATCH
+            ) {
+              throw new Error(
+                `【执行治理】【P28】_processed_to_paragraph=${innerArgs._processed_to_paragraph} ` +
+                  `相对上次上报的最大进度 ${st.maxReportedParagraph} 跳变 ` +
+                  `${innerArgs._processed_to_paragraph - st.maxReportedParagraph} 段，超过单批上限 ${MAX_PARAGRAPHS_PER_BATCH}。\n` +
+                  `进度必须逐批连续推进，禁止跳过中间批次。请先获取并校对中间批次段落 ` +
+                  `（每批 ≤${MAX_PARAGRAPHS_PER_BATCH} 段，调用 getDocumentParagraphs → proofreadBasic 完整走链），再逐批上报。`
+              );
+            }
+
+            // P26：issues 必须属于当前批窗口
+            if (Array.isArray(issuesArg) && issuesArg.length > 0 && actualEndParaIndex > 0) {
+              const winStart =
+                st.batchActualStartParaIndex > 0
+                  ? st.batchActualStartParaIndex
+                  : st.batchRequestedStart || actualEndParaIndex;
+              for (const it of issuesArg) {
+                const pid =
+                  it &&
+                  (typeof it.paragraphIndex === 'number'
+                    ? it.paragraphIndex
+                    : typeof it.paragraph_index === 'number'
+                      ? it.paragraph_index
+                      : undefined);
+                if (pid !== undefined && (pid < winStart || pid > actualEndParaIndex)) {
+                  throw new Error(
+                    `【执行治理】【P26】本批上报的 issue 段落索引 ${pid} 不在当前批窗口 ` +
+                      `（段落 ${winStart}..${actualEndParaIndex}）内。\n` +
+                      `禁止复用其它批次的陈旧 issue 填充 issues 数组来伪装本批进度。` +
+                      `请只上报本批真实发现的校对问题。`
+                  );
+                }
+              }
+            }
+          }
         }
       }
 

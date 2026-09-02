@@ -248,13 +248,40 @@ proofreadHadIssues: null   // null = 未知，true = 有问题，false = 无问�
 | P18 | 禁止回卷重复扫描已处理段落 |
 | P19-P21 | 并行批次归属 / 凭证落盘 / 区间重叠检测 |
 | P22 | proofreadAccumulate 必须上报 `_processed_to_paragraph` |
-| P23 | 首次 proofreadAccumulate 强制 doc_info + 覆盖追踪 |
+| P23 | 首次 proofreadAccumulate 强制 doc_info + 覆盖追踪（空 issues 仅在本批确无问题时放行） |
 | P24 | 覆盖全文后强制生成收尾报告 |
 | P25 | `_processed_to_paragraph` 不得超过本批实际返回末段（`batchActualEndParaIndex`，防假进度） |
-| P25b | `_processed_to_paragraph` 不得回退（会话内单调推进，防重复上报旧批次） |
+| P25b | `_processed_to_paragraph` 不得回退/重复（严格递增；与 MCP「新值≤已上报即拒」口径一致，见 9.5） |
 | P26 | issue `paragraphIndex` 必须落在当前批窗口（`batchActualStartParaIndex .. batchActualEndParaIndex`，防陈旧 issue 填充） |
 | P27 | proofreadAccumulate 前必须先调 proofreadBasic，且未获取批次段落即上报进度同样拦截（防只视觉扫描/防不获取段落伪造整篇进度）；仅首次规划登记豁免，伪造 `_batch_allocations` 无法绕过 |
 | P28 | 进度必须逐批连续推进（跳变 ≤ 200 段/批，防跳跃式假进度）；仅串行模式生效 |
+
+---
+
+## 9.5 Hook 架构：校验在 before、状态更新在 after
+
+**Issue #229 架构修复（重要设计原则）**：
+
+- 所有输入校验（P20/P22/P23/P25/P25b/P26/P27/P28）统一在 **`tool.execute.before`** 钩子中执行。
+  校验失败时直接拦截抛出，**MCP Server 根本不会处理该调用**——避免「MCP 已更新 session.progress
+  而治理层拒绝」导致的双层状态失同步（真实会话 ses_f9f0/ses_f9eb 中 AI 最终因双层状态冲突而卡死）。
+- `tool.execute.after` 钩子**仅记录成功调用的状态更新**（accumulateCount/maxReportedParagraph/
+  fullCoverageReached），不执行校验逻辑。
+- 状态同步保障：治理层拒绝的调用从不到达 MCP，MCP 拒绝的调用返回 `isError: true` 使 after hook 跳过
+  → 两层状态的每次变化都保持一致。
+
+**对 before hook 中 proofreadAccumulate 校验的调用顺序**（自上而下，任一规则拦截即停止）：
+
+```
+P27（必须先调 proofreadBasic）→ P20（并行凭证）→ P22（必须带进度）→
+P23（首次 doc_info + 空 issues 例外）→ P25（不超实际获取段）→
+P25b（不回退/重复，严格递增）→ P28（不跳跃）→ P26（issue 窗口）
+```
+
+> **P25b 与 MCP 口径一致（PR#245 第2轮评审已落码）**：治理层 P25b 已与 MCP 服务端串行模式对齐为
+> 「`新值 <= 已上报` 即拒绝」——每批必须上报**严格递增**的进度（新值 > 上一次 MCP 成功接受的
+> `maxReportedParagraph`）。「同批重试上报相同进度」仅在前一次上报被**治理层拦截（MCP 尚未接受，
+> `maxReportedParagraph` 仍 < N）**时有效；MCP 已接受的批次不能原值重报。
 
 ---
 

@@ -1045,17 +1045,25 @@ describe('governance CR R14：totalParagraphs 一致性（Issue #229）', () => 
       }),
       { output: '[1] (正文) [0-99]\n[100] (正文) [9999-10000]', isError: false }
     );
+    // 先调 proofreadBasic（P27 要求每批必须先调 proofreadBasic 才能上报进度）
+    await after(
+      execInput('cr14-sess', 'c2', 'proofreadBasic', { startOffset: 0, text: 'x'.repeat(40) }),
+      {
+        output: JSON.stringify({ issues: [] }),
+        isError: false,
+      }
+    );
     // proofreadAccumulate 携带 doc_info.totalParagraphs=250（与 300 不一致）
-    // 注意：P22/P23 在 after hook 中执行校验（P23 在 after hook 中 throw）
+    // 【Issue #229 架构修复】P23 校验已在 before hook 中执行
     let notBlocked = false;
     try {
-      await after(
+      await plugin['tool.execute.before'](
         execInput('cr14-sess', 'c2', 'proofreadAccumulate', {
           issues: [],
           _processed_to_paragraph: 100,
           doc_info: { fileName: 'd.docx', filePath: '/d.docx', totalParagraphs: 250 },
         }),
-        { output: 'OK', isError: false }
+        {}
       );
       notBlocked = true;
     } catch (e: any) {
@@ -1572,7 +1580,10 @@ describe('governance P25/P26：防假校对/假进度（Issue #229，PR232）', 
     return `文档段落结构（共${total}段，返回${returned}段）：\n${paras.join('\n')}`;
   }
 
-  // 发起一次 proofreadAccumulate（after hook 校验 P25/P26）
+  // 发起一次 proofreadAccumulate（before hook 校验 P25/P26 等，通过后 after hook 更新状态）
+  // 【Issue #229 架构修复】P25/P26/P28 校验已从 after hook 迁移至 before hook，
+  // 在 MCP 处理前拦截。通过后需模拟 MCP 成功返回并调用 after hook 更新会话状态。
+  // 同时自动先调 proofreadBasic（模拟返回无问题），满足 P27 每批必须先调 proofreadBasic 的要求。
   async function accumulate(
     plugin: any,
     session: string,
@@ -1580,14 +1591,21 @@ describe('governance P25/P26：防假校对/假进度（Issue #229，PR232）', 
     issues: Array<Record<string, unknown>>,
     total = 300
   ) {
-    return plugin['tool.execute.after'](
-      execInput(session, 'c-acc', 'proofreadAccumulate', {
-        _processed_to_paragraph: processedTo,
-        issues,
-        doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: total },
-      }),
-      { output: 'OK', isError: false }
+    const after = plugin['tool.execute.after'];
+    // 先模拟调用 proofreadBasic（返回无问题），满足 P27 要求
+    await after(
+      execInput(session, 'c-pb', 'proofreadBasic', { startOffset: 0, text: 'x'.repeat(40) }),
+      { output: JSON.stringify({ issues: [] }), isError: false }
     );
+    const input = execInput(session, 'c-acc', 'proofreadAccumulate', {
+      _processed_to_paragraph: processedTo,
+      issues,
+      doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: total },
+    });
+    // before hook 执行全部 P22/P23/P25/P25b/P26/P27/P28 校验
+    await plugin['tool.execute.before'](input, {});
+    // before 通过 → 模拟 MCP 成功，after hook 更新会话状态
+    await plugin['tool.execute.after'](input, { output: 'OK', isError: false });
   }
 
   it('P25-1：截断场景下 _processed_to_paragraph 超过实际返回末段被拦截（防假进度）', async () => {
@@ -1833,14 +1851,20 @@ describe('governance P25/P26：防假校对/假进度（Issue #229，PR232）', 
     expect(ok).toBe(true);
   });
 
-  it('P25b（R7-1）：同批重试上报相同进度不被拦截（仅拦回退）', async () => {
+  it('P25b（R7-1）：MCP 已接受的同值重报被拦截；仅治理层拦截过的可同值重试（PR245 评审问题4）', async () => {
+    // 【PR#245 第2轮评审修复】P25b 与 MCP 对齐为 `<=`：
+    //  场景A：首次累加 MCP 已接受 100（maxReportedParagraph=100）后，再原值重报 100
+    //         → 治理层 P25b 应拦截（与真实 MCP「新值<=已上报」一致，防重复/回退）。
+    //  场景B：首次上报被治理层拦截（P26 issue 越窗），MCP 未接受（maxReportedParagraph 仍 < N），
+    //         修正后以同值 N 重试 → 治理层应放行（maxReportedParagraph < N，不受 `<=` 影响）。
     const plugin = await loadGovernancePlugin()();
     const after = plugin['tool.execute.after'];
+    const before = plugin['tool.execute.before'];
     await after(execInput('p25d-sess', 'c0', 'getActiveDocument'), {
       output: '总段数: 200',
       isError: false,
     });
-    // 请求 (1,100) 完整返回，首次上报进度 100
+    // 请求 (1,100) 完整返回
     await after(
       execInput('p25d-sess', 'c1', 'getDocumentParagraphs', {
         start_paragraph: 1,
@@ -1852,27 +1876,98 @@ describe('governance P25/P26：防假校对/假进度（Issue #229，PR232）', 
       execInput('p25d-sess', 'c2', 'proofreadBasic', { startOffset: 0, text: 'x'.repeat(40) }),
       { output: JSON.stringify({ issues: [] }), isError: false }
     );
-    await accumulate(
-      plugin,
-      'p25d-sess',
-      100,
-      [{ paragraphIndex: 50, text: '问题', suggestion: '修复' }],
-      200
-    );
-    // 同批重试（失败后重报同一批），进度仍为 100（相同值）→ 放行（不误伤）
-    let ok = true;
+
+    // 场景A：首次累加 100 → MCP 接受（模拟成功）→ maxReportedParagraph=100
+    let firstOk = false;
     try {
-      await accumulate(
-        plugin,
-        'p25d-sess',
-        100,
-        [{ paragraphIndex: 50, text: '问题', suggestion: '修复' }],
-        200
+      await before(
+        execInput('p25d-sess', 'c3', 'proofreadAccumulate', {
+          _processed_to_paragraph: 100,
+          issues: [{ paragraphIndex: 50, text: '问题', suggestion: '修复' }],
+          doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 200 },
+        }),
+        {}
       );
+      await after(
+        execInput('p25d-sess', 'c3', 'proofreadAccumulate', {
+          _processed_to_paragraph: 100,
+          issues: [{ paragraphIndex: 50, text: '问题', suggestion: '修复' }],
+          doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 200 },
+        }),
+        { output: 'OK', isError: false }
+      );
+      firstOk = true;
     } catch {
-      ok = false;
+      firstOk = false;
     }
-    expect(ok).toBe(true);
+    expect(firstOk).toBe(true);
+
+    // 再原值重报 100 → 应被 P25b 拦截（MCP 已接受过，重复上报）
+    let sameValBlocked = false;
+    try {
+      await before(
+        execInput('p25d-sess', 'c4', 'proofreadAccumulate', {
+          _processed_to_paragraph: 100,
+          issues: [{ paragraphIndex: 50, text: '问题', suggestion: '修复' }],
+          doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 200 },
+        }),
+        {}
+      );
+    } catch (e: any) {
+      sameValBlocked = String(e.message).indexOf('【P25b】') !== -1;
+    }
+    expect(sameValBlocked).toBe(true);
+
+    // 场景B：新会话——首次上报被治理层 P26 拦截（issue 越窗），MCP 未接受 → 修正后同值重试放行
+    const plugin2 = await loadGovernancePlugin()();
+    const after2 = plugin2['tool.execute.after'];
+    const before2 = plugin2['tool.execute.before'];
+    await after2(execInput('p25d2-sess', 's0', 'getActiveDocument'), {
+      output: '总段数: 200',
+      isError: false,
+    });
+    await after2(
+      execInput('p25d2-sess', 's1', 'getDocumentParagraphs', {
+        start_paragraph: 1,
+        end_paragraph: 100,
+      }),
+      { output: buildParaOutput(200, 100), isError: false }
+    );
+    await after2(
+      execInput('p25d2-sess', 's2', 'proofreadBasic', { startOffset: 0, text: 'x'.repeat(40) }),
+      { output: JSON.stringify({ issues: [] }), isError: false }
+    );
+    // 首次上报带越窗 issue（paragraphIndex=150 > 本批末段 100）→ P26 拦截
+    let p26Blocked = false;
+    try {
+      await before2(
+        execInput('p25d2-sess', 's3', 'proofreadAccumulate', {
+          _processed_to_paragraph: 100,
+          issues: [{ paragraphIndex: 150, text: '问题', suggestion: '修复' }],
+          doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 200 },
+        }),
+        {}
+      );
+    } catch (e: any) {
+      p26Blocked = String(e.message).indexOf('【P26】') !== -1;
+    }
+    expect(p26Blocked).toBe(true); // MCP 未接受，maxReportedParagraph 仍为 0
+    // 修正 issue 后同值 100 重试 → 放行（不受 P25b `<=` 影响，因 maxReportedParagraph=0）
+    let retryOk = false;
+    try {
+      await before2(
+        execInput('p25d2-sess', 's4', 'proofreadAccumulate', {
+          _processed_to_paragraph: 100,
+          issues: [{ paragraphIndex: 50, text: '问题', suggestion: '修复' }],
+          doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 200 },
+        }),
+        {}
+      );
+      retryOk = true;
+    } catch (e: any) {
+      retryOk = false;
+    }
+    expect(retryOk).toBe(true);
   });
 
   it('P25b（R8-1）：覆盖全文的末批正常推进不被 P25b 误伤', async () => {
@@ -2008,26 +2103,19 @@ describe('governance P25/P26：防假校对/假进度（Issue #229，PR232）', 
       execInput('p25g-sess', 'c4', 'proofreadBasic', { startOffset: 400, text: 'x'.repeat(40) }),
       { output: JSON.stringify({ issues: [] }), isError: false }
     );
-    // 批2窗口应为 101..200：上报 issue 在 101（下界）与 200（上界）均放行
-    let okLow = true;
+    // 批2窗口应为 101..200：单次累加携带 101（下界）与 200（上界）两个 issue 均放行
+    // 【PR#245 第2轮评审修复】进度必须严格递增，批2 只上报一次 progress=200（不能同值重报两次），
+    // 故将两个边界 issue 放入同一次累加，同时验证 P26 窗口下界(101)与上界(200)均合法。
+    let ok = true;
     try {
       await accumulate(plugin, 'p25g-sess', 200, [
         { paragraphIndex: 101, text: '问题', suggestion: '修复' },
-      ]);
-    } catch {
-      okLow = false;
-    }
-    expect(okLow).toBe(true);
-    // 上报 200（上界）放行
-    let okHigh = true;
-    try {
-      await accumulate(plugin, 'p25g-sess', 200, [
         { paragraphIndex: 200, text: '问题', suggestion: '修复' },
       ]);
     } catch {
-      okHigh = false;
+      ok = false;
     }
-    expect(okHigh).toBe(true);
+    expect(ok).toBe(true);
   });
 });
 
@@ -2042,7 +2130,8 @@ describe('governance P27/P28：防假校对/防跳跃进度（Issue #229，PR234
     return `文档段落结构（共${total}段，返回${returned}段）：\n${paras.join('\n')}`;
   }
 
-  // 发起 proofreadAccumulate（after hook 校验）
+  // 发起 proofreadAccumulate（before hook 校验 + after hook 状态更新）
+  // 【Issue #229 架构修复】校验已迁移至 before hook。同时先调 proofreadBasic 满足 P27。
   async function accumulateP27P28(
     plugin: any,
     session: string,
@@ -2050,14 +2139,18 @@ describe('governance P27/P28：防假校对/防跳跃进度（Issue #229，PR234
     issues: Array<Record<string, unknown>> = [],
     total = 300
   ) {
-    return plugin['tool.execute.after'](
-      execInput(session, 'c-acc', 'proofreadAccumulate', {
-        _processed_to_paragraph: processedTo,
-        issues,
-        doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: total },
-      }),
-      { output: 'OK', isError: false }
+    const after = plugin['tool.execute.after'];
+    await after(
+      execInput(session, 'c-pb', 'proofreadBasic', { startOffset: 0, text: 'x'.repeat(40) }),
+      { output: JSON.stringify({ issues: [] }), isError: false }
     );
+    const input = execInput(session, 'c-acc', 'proofreadAccumulate', {
+      _processed_to_paragraph: processedTo,
+      issues,
+      doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: total },
+    });
+    await plugin['tool.execute.before'](input, {});
+    await plugin['tool.execute.after'](input, { output: 'OK', isError: false });
   }
 
   it('P27-1：未调 proofreadBasic 直接 proofreadAccumulate 被拦截（仅视觉扫描不真校对）', async () => {
@@ -2136,6 +2229,118 @@ describe('governance P27/P28：防假校对/防跳跃进度（Issue #229，PR234
     expect(passed).toBe(true);
   });
 
+  it('P23 FixC：本批确无问题（proofreadHadIssues=false）时空 issues 上报放行（PR245 评审问题2）', async () => {
+    // 验证 Fix C：proofreadBasic 真实调用且返回空 issues（本批确无问题）→
+    // 空 issues + progress 上报应被治理层放行（不被 P23 拦为"进度造假"）。
+    const plugin = await loadGovernancePlugin()();
+    const after = plugin['tool.execute.after'];
+    const before = plugin['tool.execute.before'];
+    await after(execInput('p23fixc-sess', 'c0', 'getActiveDocument'), {
+      output: '总段数: 300',
+      isError: false,
+    });
+    await after(
+      execInput('p23fixc-sess', 'c1', 'getDocumentParagraphs', {
+        start_paragraph: 1,
+        end_paragraph: 100,
+      }),
+      { output: buildParaOutputP27P28(300, 100), isError: false }
+    );
+    // proofreadBasic 真实返回空 issues（本批确无问题）
+    await after(
+      execInput('p23fixc-sess', 'c2', 'proofreadBasic', { startOffset: 0, text: 'x'.repeat(40) }),
+      { output: JSON.stringify({ issues: [] }), isError: false }
+    );
+    // 空 issues + progress 上报 → 应放行（Fix C 例外，且非首次累加需 doc_info 已带）
+    let cleanPassed = false;
+    try {
+      await before(
+        execInput('p23fixc-sess', 'c3', 'proofreadAccumulate', {
+          _processed_to_paragraph: 100,
+          issues: [],
+          doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 300 },
+        }),
+        {}
+      );
+      cleanPassed = true;
+    } catch (e: any) {
+      cleanPassed = false;
+    }
+    expect(cleanPassed).toBe(true);
+
+    // 对照：本批 proofreadBasic 返回了 issues（proofreadHadIssues=true）时，
+    // AI 却空 issues 上报进度 → 必须被 P23 拦截（非"确无问题"，属进度造假）。
+    // 注意：P23 空 issues 检查对「首次实际累加」（accumulateCount===0）豁免（R4-1 保护 doc_info 重试），
+    // 故需先完成一次真实累加使 accumulateCount>0，再用第二批验证 dirty 空 issues 被拦。
+    const plugin2 = await loadGovernancePlugin()();
+    const after2 = plugin2['tool.execute.after'];
+    const before2 = plugin2['tool.execute.before'];
+    await after2(execInput('p23fixc2-sess', 'd0', 'getActiveDocument'), {
+      output: '总段数: 300',
+      isError: false,
+    });
+    // 批1：(1,100) 真实累加成功（proofreadBasic 返回空 issues → 空 issues 上报放行）
+    await after2(
+      execInput('p23fixc2-sess', 'd1', 'getDocumentParagraphs', {
+        start_paragraph: 1,
+        end_paragraph: 100,
+      }),
+      { output: buildParaOutputP27P28(300, 100), isError: false }
+    );
+    await after2(
+      execInput('p23fixc2-sess', 'd2', 'proofreadBasic', { startOffset: 0, text: 'x'.repeat(40) }),
+      { output: JSON.stringify({ issues: [] }), isError: false }
+    );
+    await before2(
+      execInput('p23fixc2-sess', 'd3', 'proofreadAccumulate', {
+        _processed_to_paragraph: 100,
+        issues: [],
+        doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 300 },
+      }),
+      {}
+    );
+    await after2(
+      execInput('p23fixc2-sess', 'd4', 'proofreadAccumulate', {
+        _processed_to_paragraph: 100,
+        issues: [],
+        doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 300 },
+      }),
+      { output: 'OK', isError: false }
+    );
+    // 批2：(101,200) proofreadBasic 返回有 issues，AI 却空 issues 上报 → P23 应拦
+    await after2(
+      execInput('p23fixc2-sess', 'd5', 'getDocumentParagraphs', {
+        start_paragraph: 101,
+        end_paragraph: 200,
+      }),
+      { output: buildParaOutputP27P28(300, 100, 101), isError: false }
+    );
+    await after2(
+      execInput('p23fixc2-sess', 'd6', 'proofreadBasic', {
+        startOffset: 400,
+        text: 'x'.repeat(40),
+      }),
+      {
+        output: JSON.stringify({ issues: [{ original: '错字', suggestion: '正确' }] }),
+        isError: false,
+      }
+    );
+    let dirtyBlocked = false;
+    try {
+      await before2(
+        execInput('p23fixc2-sess', 'd7', 'proofreadAccumulate', {
+          _processed_to_paragraph: 200,
+          issues: [], // 本批有 issue 却空 issues 上报 → P23 应拦
+          doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 300 },
+        }),
+        {}
+      );
+    } catch (e: any) {
+      dirtyBlocked = String(e.message).indexOf('【P23】') !== -1;
+    }
+    expect(dirtyBlocked).toBe(true);
+  });
+
   it('P28-1：批次跳跃式进度（从 200 跳到 600）被拦截', async () => {
     const plugin = await loadGovernancePlugin()();
     const after = plugin['tool.execute.after'];
@@ -2197,10 +2402,14 @@ describe('governance P27/P28：防假校对/防跳跃进度（Issue #229，PR234
     expect(blocked).toBe(true);
   });
 
-  it('P28-2：同批重试上报相同进度不被 P28 拦截', async () => {
+  it('P28-2：同值重报被 P25b 拦截（非 P28 跳变）；合法跨批推进不被 P28 误拦', async () => {
+    // 【PR#245 第3轮评审】P25b 对齐 MCP 为 `<=` 后，MCP 已接受的同值重报先被 P25b 拦（不入 P28），
+    // 原 P28-2『同值不被 P28 拦』场景已被 P25b 前置拦截，无法到达 P28，测试原为空转。现改为：
+    //  场景A：MCP 已接受 200 后原值重报 200 → 被 P25b 拦截（错误含 P25b，与真实 MCP 重复拒绝一致）。
+    //  场景B：合法跨批推进 200→400（增量 200=上限，非跳变）不被 P28 拦 → P28 真正被验证。
     const plugin = await loadGovernancePlugin()();
     const after = plugin['tool.execute.after'];
-    // 初始化文档
+    const before = plugin['tool.execute.before'];
     await after(execInput('p28b-sess', 'c0', 'getActiveDocument'), {
       output: '总段数: 300',
       isError: false,
@@ -2220,20 +2429,74 @@ describe('governance P27/P28：防假校对/防跳跃进度（Issue #229，PR234
         isError: false,
       }
     );
-    // 第一次上报 200
-    await accumulateP27P28(plugin, 'p28b-sess', 200, [
-      { paragraphIndex: 1, text: '问题', suggestion: '修复' },
-    ]);
-    // 重试同批，再次上报 200（相同值，不是回退也不是跳跃）
-    let passed = true;
+    // 第一次上报 200（MCP 接受）
+    let firstOk = false;
     try {
-      await accumulateP27P28(plugin, 'p28b-sess', 200, [
-        { paragraphIndex: 1, text: '问题', suggestion: '修复' },
-      ]);
+      await before(
+        execInput('p28b-sess', 'c3', 'proofreadAccumulate', {
+          _processed_to_paragraph: 200,
+          issues: [{ paragraphIndex: 1, text: '问题', suggestion: '修复' }],
+          doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 300 },
+        }),
+        {}
+      );
+      await after(
+        execInput('p28b-sess', 'c3', 'proofreadAccumulate', {
+          _processed_to_paragraph: 200,
+          issues: [{ paragraphIndex: 1, text: '问题', suggestion: '修复' }],
+          doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 300 },
+        }),
+        { output: 'OK', isError: false }
+      );
+      firstOk = true;
     } catch (e: any) {
-      passed = String(e.message).indexOf('【P28】') === -1;
+      firstOk = false;
     }
-    expect(passed).toBe(true);
+    expect(firstOk).toBe(true);
+
+    // 场景A：原值重报 200 → P25b 拦截（MCP 已接受过，重复上报）
+    let sameValBlockedP25b = false;
+    try {
+      await before(
+        execInput('p28b-sess', 'c4', 'proofreadAccumulate', {
+          _processed_to_paragraph: 200,
+          issues: [{ paragraphIndex: 1, text: '问题', suggestion: '修复' }],
+          doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 300 },
+        }),
+        {}
+      );
+    } catch (e: any) {
+      sameValBlockedP25b = String(e.message).indexOf('【P25b】') !== -1;
+    }
+    expect(sameValBlockedP25b).toBe(true);
+
+    // 场景B：跨批推进到批2 (201,300)（文档共 300 段）上报 300（增量 100，非跳变）→ P28 不拦
+    await after(
+      execInput('p28b-sess', 'c5', 'getDocumentParagraphs', {
+        start_paragraph: 201,
+        end_paragraph: 300,
+      }),
+      { output: buildParaOutputP27P28(300, 100, 201), isError: false }
+    );
+    await after(
+      execInput('p28b-sess', 'c6', 'proofreadBasic', { startOffset: 200, text: 'x'.repeat(40) }),
+      { output: JSON.stringify({ issues: [] }), isError: false }
+    );
+    let advanceOk = false;
+    try {
+      await before(
+        execInput('p28b-sess', 'c7', 'proofreadAccumulate', {
+          _processed_to_paragraph: 300,
+          issues: [{ paragraphIndex: 300, text: '问题', suggestion: '修复' }],
+          doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 300 },
+        }),
+        {}
+      );
+      advanceOk = true;
+    } catch (e: any) {
+      advanceOk = false;
+    }
+    expect(advanceOk).toBe(true);
   });
 
   it('P28-3：连续批次正常推进（200 → 400）不被 P28 拦截', async () => {
@@ -2377,7 +2640,7 @@ describe('governance R2：P28/P27 边界与文档切换隔离（Issue #229，PR2
     }
     return `文档段落结构（共${total}段，返回${returned}段）：\n${rows.join('\n')}`;
   }
-  // R5-1：用 after hook 执行 proofreadAccumulate，使 P25/P25b/P26/P28（after hook）真正被触发并更新状态。
+  // 【Issue #229 架构修复】校验已移至 before hook。先调 before（校验），通过后调 after（更新状态）。
   async function accAfter(
     plugin: any,
     sess: string,
@@ -2387,15 +2650,15 @@ describe('governance R2：P28/P27 边界与文档切换隔离（Issue #229，PR2
     total: number,
     fname: string
   ) {
+    const before = plugin['tool.execute.before'];
     const after = plugin['tool.execute.after'];
-    await after(
-      execInput(sess, cid, 'proofreadAccumulate', {
-        _processed_to_paragraph: processedTo,
-        issues,
-        doc_info: { fileName: fname, filePath: `C:\\${fname}`, totalParagraphs: total },
-      }),
-      { output: 'OK', isError: false }
-    );
+    const input = execInput(sess, cid, 'proofreadAccumulate', {
+      _processed_to_paragraph: processedTo,
+      issues,
+      doc_info: { fileName: fname, filePath: `C:\\${fname}`, totalParagraphs: total },
+    });
+    await before(input, {});
+    await after(input, { output: 'OK', isError: false });
   }
 
   it('R2-1a：小文档（total<200）单批覆盖全文，首次上报到 total 不被 P28 拦截', async () => {
@@ -2677,16 +2940,17 @@ describe('governance R4：P28 批量上限边界（Issue #229，PR238）', () =>
       execInput('r4b-sess', 'c5', 'proofreadBasic', { startOffset: 2000, text: 'x'.repeat(40) }),
       { output: JSON.stringify({ issues: [] }), isError: false }
     );
-    // diff=201 > 200 → P28 拦截（P28 在 after hook 校验）
+    // diff=201 > 200 → P28 拦截（P28 已在 before hook 校验）
+    const before = plugin['tool.execute.before'];
     let blocked = false;
     try {
-      await after(
+      await before(
         execInput('r4b-sess', 'c6', 'proofreadAccumulate', {
           _processed_to_paragraph: 401,
           issues: [{ paragraphIndex: 201 }],
           doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 1000 },
         }),
-        { output: 'OK', isError: false }
+        {}
       );
     } catch (e: any) {
       blocked = String(e.message).indexOf('【P28】') !== -1;
@@ -2730,15 +2994,16 @@ describe('governance R7：P25 兜底 P28 首次豁免（Issue #229，PR238）', 
       { output: JSON.stringify({ issues: [] }), isError: false }
     );
     // 上报 200：跳变 200（P28 首次豁免不拦），但 200 > 实际获取末段 100 → P25 拦截
+    const before = plugin['tool.execute.before'];
     let blocked = false;
     try {
-      await after(
+      await before(
         execInput('r7a-sess', 'c3', 'proofreadAccumulate', {
           _processed_to_paragraph: 200,
           issues: [{ paragraphIndex: 1 }],
           doc_info: { fileName: 't.docx', filePath: 'C:\\t.docx', totalParagraphs: 500 },
         }),
-        { output: 'OK', isError: false }
+        {}
       );
     } catch (e: any) {
       blocked = String(e.message).indexOf('【P25】') !== -1;

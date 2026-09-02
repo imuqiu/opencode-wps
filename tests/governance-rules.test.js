@@ -202,7 +202,7 @@ test('P23：首次累加失败重试后 doc_info 强制不失效（R4-1）', fun
     'isFirstRealAccumulate = (st.accumulateCount || 0) === 0',
     '首次判定应基于成功累加计数为 0'
   );
-  assertContains(govSource, '全部校验通过后才递增成功累加计数', '应在校验通过后递增计数');
+  assertContains(govSource, '成功调用后递增累加计数', '应在校验通过后递增计数');
 
   // 白盒验证时序：模拟失败重试——首次因缺 doc_info 被拦，accumulateCount 不应递增
   var accumulateCount = 0;
