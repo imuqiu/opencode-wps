@@ -1,6 +1,6 @@
 {
   "name": "opencode-wps-linux",
-  "version": "1.9.16",
+  "version": "1.9.17",
   "description": "OpenCode AI - Linux WPS Plugin Addon (Reverse Polling Bridge)",
   "private": true
 }

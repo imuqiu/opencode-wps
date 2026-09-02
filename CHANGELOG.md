@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.17] - 2026-09-02
+
+### Fixed
+
+- **修复后端 serve 进程不稳定拉起（churn）（Issue #243，PR #244）** — 承接 Issue #164 日志分析发现的现象：launcher 在同一会话内反复探测出 4 个不同 opencode 二进制路径，每次切换都杀/重启 serve 进程，导致后端服务启动不稳定。根因与修复：①**R1 探测结果缓存稳定化**——`findOpenCodeBin()` 无缓存导致同一会话内探测结果在不同二进制间摇摆；新增模块级缓存，首次探测成功后缓存路径、后续直接复用，config 显式变更时失效重探，避免反复切换；②**R2 失败探测节流**——探测全部失败时缓存带 TTL（30s）的失败标记，避免高频反复执行阻塞探测；③附带修复默认 config 的 `opencodePath=opencode` 短路 bin 目录探测的问题（否则默认配置下永远探测不到 npm/bun 全局安装的真实二进制，依赖薄 PATH 而 ENOENT）。经 10 轮评审-修复循环清零，launcher 42/42 + taskpane-healthcheck 32/32 + 全部根单元测试通过，`validate-versions` 校验通过。
+
+### Changed
+
+- **版本号升级至 1.9.17** — 根 `package.json` / `package-lock.json` / `opencode-wps/`（package.json、config.js、manifest.xml）/ `opencode-wps-linux/`（package.json、manifest.xml）/ `wps-office-mcp/`（package.json、package-lock.json）版本一致升级至 1.9.17，`validate-versions` 校验通过。
+
+
 ## [1.9.16] - 2026-08-28
 
 ### Fixed
