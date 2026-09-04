@@ -13,6 +13,7 @@ const fs = require('fs');
 const fsEx = require('fs-extra');
 const path = require('path');
 const { execSync } = require('child_process');
+const { deriveSkillDocs } = require(path.join(__dirname, 'scripts', 'lib', 'derive-skill-docs.js'));
 
 const rootDir = __dirname;
 const homeDir = process.env.HOME || require('os').homedir();
@@ -287,6 +288,21 @@ if (fsEx.existsSync(skillsSrcDir)) {
       fsEx.copySync(path.join(skillsSrcDir, name), path.join(opencodeSkillsDir, name), {
         overwrite: true,
       });
+      // 单一来源方案 C：从根 docs/ 派生 skill 引用的 docs（消除 B2 镜像漂移）
+      const dr = deriveSkillDocs({
+        rootDir,
+        skillSrcDir: path.join(skillsSrcDir, name),
+        skillDestDir: path.join(opencodeSkillsDir, name),
+      });
+      if (dr.unmet.length > 0) {
+        handleError(
+          'derive_skill_docs',
+          name +
+            ' 的 SKILL.md 引用 [' +
+            dr.unmet.join(', ') +
+            '] 无法从根 docs/ 派生，安装后 skill 将断链，请先补充根 docs/ 源文件'
+        );
+      }
       console.log('  已安装: ' + name);
     });
     console.log('  Skills 目录: ' + opencodeSkillsDir);

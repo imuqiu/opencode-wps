@@ -260,6 +260,11 @@ AI 识别：使用 wps-ppt skill
 
 > ⚠️ 校对**必须**按 铁律 3.0 严格执行（proofread → confirm → fix），禁止跳批/编造。详见 [FEATURES.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/FEATURES.md)。
 
+> 📚 **设计文档单一来源**：wps-proofread 的详细设计（分批状态机、流畅性/简洁性评分卡）见根目录
+> [docs/batch-state-machine.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/batch-state-machine.md) 与
+> [docs/proofread-fluency-conciseness-design.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/proofread-fluency-conciseness-design.md)，
+> 由安装脚本在安装期派生进 skill 的 docs/（单一来源，git 层不保留双份）。
+
 > ⚠️ ~~🧩 大文档 Subagent 组协同（Issue #151 重构，**已弃用**）~~：~~4 个校对 subagent（planner/manager/executor/reporter）协同~~ 经 Issue #179 真实会话实证在 opencode 上**触发不可靠**，已改为**单 agent 顺序执行 + 服务端强制**（分批/进度/门禁全部下沉 MCP 服务端，见 `skills/wps-proofread/SKILL.md`「校对执行模型」）。subagent 定义文件已删除（历史存档见 git 历史，Issue #189 清理）。
 
 ---
@@ -347,9 +352,16 @@ node install-addons.js
 
 ### 验证同步状态
 
+> ⚠️ wps-proofread 的 SKILL.md 引用 `docs/xxx.md` 设计文档，采用**单一来源（方案 C）**：
+> 唯一事实源是根目录 `docs/`，安装期由 `install-addons*.js` 经
+> `scripts/lib/derive-skill-docs.js` 派生进 `~/.opencode/skills/wps-proofread/docs/`。
+> 因此安装目录会比 git 源 `skills/wps-proofread/` 多出派生 docs/ 子目录——属**预期**，非漂移。
+
 ```bash
-# 对比源文件和安装后的文件
-diff -r skills/ ~/.opencode/skills/
+# 对比源文件和安装后的文件（排除安装期派生的 docs/ 子目录）
+diff -r --exclude=docs skills/ ~/.opencode/skills/
+# 校验派生 docs 引用是否全部命中根 docs/ 单一来源
+node scripts/validate-skill-docs.js
 ```
 
 ---

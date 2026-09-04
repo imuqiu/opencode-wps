@@ -36,6 +36,7 @@ npm run validate:toolcounts     # 工具数量校验（12/240/257）
 npm run validate:npc-team       # NPC_TEAM 提示词双源一致性校验
 npm run validate:versions       # 版本号一致性校验
 npm run validate:settings       # .cnb settings 校验
+npm run validate:skill-docs    # skill 文档引用命中根 docs 单一来源校验
 ```
 
 **Order matters**: Edit source → `node install-addons.js` → restart WPS / OpenCode service.
@@ -56,6 +57,9 @@ wps-office-mcp/            # MCP server (TypeScript, ~257 COM Actions + 12 built
       linux-poll-server.ts # Linux poll server (injects Linux wps-auto.sh path)
     utils/path-safety.ts   # Path validation (validateFilePath/validateImagePath/isAllowedUrl)
 skills/                    # 5 OpenCode Skills (wps-excel/word/ppt/office/proofread)
+  # 单一来源方案 C：skill 的 SKILL.md 以 docs/xxx.md 引用设计文档时，根 docs/ 为唯一事实源，
+  # 安装期 install-addons*.js 从根 docs/ 派生（见 scripts/lib/derive-skill-docs.js），git 层不保留双份。
+  # 校验：npm run validate:skill-docs
   README.md                # MUST READ before modifying skills
 agents/                    # 4 agent definitions (wps-expert, wps-word, wps-excel, wps-ppt)
 .opencode/
