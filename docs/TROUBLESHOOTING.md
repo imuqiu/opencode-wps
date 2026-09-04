@@ -118,8 +118,8 @@ WPS 的 taskpane 是特殊的运行环境，document 对象和浏览器不一致
    ```
 
 2. **验证方法**
-   - 打开侧边栏后，按 F12 打开开发者工具
-   - 检查 Network 面板，看 taskpane.html 是否返回 200
+   - 检查插件目录下 `taskpane.html` 是否已正确复制：`%APPDATA%\kingsoft\wps\jsaddons\opencode-wps_\taskpane.html`
+   - 确认 `GetUrlPath()` 返回的路径与插件实际安装路径一致（本地安装模式不开放 F12 开发者工具，仅 `wpsjs debug` 开发模式可用 F12）
 
 ---
 
@@ -294,7 +294,7 @@ WPS 加载项的内置浏览器是基于 **Chromium 103/104**（2022 年版本�
 | **Fetch/CORS 限制** | 跨域请求更严格 | 调用外部 API 可能失败 |
 | **ES Module 限制** | 部分场景下 module 加载失败 | 模块化代码可能不工作 |
 | **文件系统访问限制** | 无法通过文件路径让服务端读取文件 | 文件上传必须转 Base64（最大 100MB） |
-| **调试困难** | F12 开发者工具功能有限 | 问题排查困难 |
+| **调试困难** | 本地安装模式下 WPS 不开放 F12；仅 `wpsjs debug` 开发模式可用 | 前端改 `wpsjs debug` + F12 调试（见「十五」）；后端查 `opencode-serve.log` |
 
 ### 版本信息示例
 
@@ -524,7 +524,7 @@ if (result === -1) {
 | 是否需要跨域请求？ | CORS 策略更严格 | 需后端支持或代理 |
 
 **验证步骤**：
-1. 在 WPS 中按 F12 打开 Console（或 ALT+F12）
+1. 在 `wpsjs debug` 开发调试模式下按 F12 打开 Console 观察（本地安装模式看不到前端 console，须用调试模式）
 2. 执行 `console.log(typeof fetch)` 确认 API 存在性
 3. 测试核心路径（如 `fetch('http://127.0.0.1:14096/global/health')`）是否返回 Promise 并 resolve
 4. 测试完成后，**再决定是否集成**该库
@@ -546,7 +546,7 @@ if (result === -1) {
 1. 确认 `manifest.xml` 在正确的插件目录
 2. WPS for Mac 功能区 → 配置工具 → 加载项管理 — 确认插件已启用
 3. 重启 WPS（完全退出，不是关闭窗口）
-4. 检查 Console 日志（WPS 中按 F12）
+4. 前端报错排查：开发调试模式（`wpsjs debug`）下按 F12 打开 Console；本地模式前端 console 不可见。launcher 自身输出日志见 `~/Library/Logs/opencode-launcher.log`（由 LaunchAgent 重定向，见 docs/MAC.md）
 
 ### MCP 不连接
 
@@ -692,3 +692,67 @@ codewiki 将仓库 `docs/` 文档生成到 Wiki 平台时，**不会重写文档
 
 - 是相对链接未改写 → 按上文第 1、2 步处理；
 - 是平台侧 Wiki 渲染问题（改写为 blob 绝对链接后仍 404）→ 向 CNB 平台反馈。
+
+---
+
+## 十五、WPS 宿主 TaskPane 视口 bug（侧边栏头部遮挡，Issue #164 血泪教训）
+
+> 适用于：WPS 文字（Writer）侧边栏 ChatUI **首次打开**时头部（topbar/session-header）被遮挡、且压扁「开始/插入」功能区顶部标签；**仅 WPS 文字出问题，PPT/Excel 正常**；「新建 WPS 标签窗口再切回」可临时恢复。
+
+### 问题现象
+
+- 打开 WPS 文字 → 点击插件「打开面板」→ 侧边栏 ChatUI 顶部被 WPS 功能区盖住
+- 首次打开**必现**（单显示器 + 最大化时）
+- 打开文档/切换到 opencode-wps 插件选项卡时正常，**一点击「打开面板」就遮挡**
+- PPT/Excel 中点击「打开面板」**正常**，仅 WPS 文字异常
+- 「新建一个 WPS 标签窗口再切回」后遮挡消失（宿主重算窗格几何纠正）
+
+### 根因
+
+经 10+ 轮排查（Issue #78 → #164，共涉及 PR #165/#166/#169/#170/#173/#174/#240）与 **DIAG 日志实测取证**确认：
+
+**WPS 文字（实测版本 12.1.0.28022）宿主在首次显示任务窗格（`Visible=true`）时，把 WebView 视口定位到了"整窗高度"而非"功能区下方可用高度"，差值恰为功能区高度（实测 `innerHeight=751` vs 正常 `634`，差 117px ≈ 功能区高度）。** 页面头部正好落在这被盖住的 117px 里，被功能区遮挡。
+
+关键事实：
+- **前端页面布局无 bug**：`messages.offsetTop` 恒为 98px，flex 高度链数学上不可能把头部顶出可视区
+- **宿主侧任何 API 都无法纠正**：`DockPosition` / `Visible=false→true` / `Width/Height` 微调 / `ActiveWindow.UsableHeight` 设 Height —— **全部实测无效**，WPS 文字把 `innerHeight` 锁死为整窗高，不随任何宿主属性变更
+- **WPS 官方升级后自动消失**（用户在 2026-09-03 确认），证实为 WPS 旧版本宿主 bug，非插件代码问题
+
+### 如何避坑 / 排查
+
+**第一步：先确认是不是 WPS 版本 bug（优先升级 WPS）**
+
+遇到「仅 WPS 文字首开遮挡、PPT/Excel 正常」这类布局问题时，**先检查 WPS 版本并尝试升级**，不要急于改插件代码。本案例中，WPS 从 12.1.0.28022 升级后问题自动消失。
+
+**第二步：确认前端是否真的有问题（DIAG 取证）**
+
+在 `taskpane.html` 中加入诊断日志（`window.innerHeight / document.documentElement.clientHeight / .app.offsetHeight / messages.offsetTop`），对比「异常 vs 新建标签切回后」两组数据：
+
+| 实测 | 结论 | 修法 |
+|------|------|------|
+| 异常与恢复时 `messages.offsetTop` 恒定、仅 `innerHeight` 不同 | 前端布局无 bug，是宿主视口定位 bug | 升级 WPS / 反馈 WPS 官方 |
+| `innerHeight` 正常、但页面布局错 | 页面 bug | 直接改页面 CSS/JS |
+
+**第三步：若确认为宿主 bug，不要叠插件侧补丁**
+
+历史上已尝试并**全部实测无效**的手段（不要重蹈覆辙）：
+
+| 手段 | 为什么无效 |
+|------|-----------|
+| 页面内 reflow/redraw 自愈 | 页面内测不到宿主视口偏移 |
+| `DockPosition` 方向切换/再断言 | 只决定停靠侧，不控制视口高度 |
+| `Visible=false→true` 重排 | 宿主重算仍沿用错误整窗高度 |
+| `Width`/`Height` +2/-2 微调 | 宿主不接受尺寸变更触发视口重算 |
+| `ActiveWindow.UsableHeight` 设 `tskpane.Height` | 实测 `innerHeight` 仍为整窗高 |
+
+**插件侧如何采集前端 DIAG 数据**
+
+本地安装模式下 WPS **不开放 F12 开发者工具**，前端 `console.log` 无法直接查看。请改用 **`wpsjs debug` 开发调试模式**运行插件，并按 F12 在 Console 查看 DIAG 输出。
+
+若需采集前端布局数据，可临时在 `taskpane.html` 注入采集 `window.innerHeight / document.documentElement.clientHeight / .app.offsetHeight / messages.offsetTop` 的 `console.log`，于 `wpsjs debug` 模式 Console 中观察；采集完成后移除临时代码。
+
+### 判定要点
+
+- **是 WPS 版本 bug** → 前端 DIAG 数据正常、`innerHeight` 异常、升级 WPS 后消失 → **不是插件代码问题**，不要改插件代码，反馈 WPS 官方
+- **是页面 bug** → 前端 DIAG 数据异常（`offsetTop`/`offsetHeight` 异常）→ 直接在页面 CSS/JS 修复
+- **「新建标签切回可恢复」是一个诊断信号，不是修复手段**：它证明宿主在窗格切换时会重算几何，但插件侧**没有可靠接口**能触发同等的重算
