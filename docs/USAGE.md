@@ -233,6 +233,12 @@ MCP 服务端 **write 类操作**（含校对报告 `generateProofreadReport` �
 （先在底部工具栏切换到 wps-excel）帮我统计 A 列的总和
 ```
 
+#### 4.1.1 Agent 工具可见性说明
+
+4 个 WPS agent **均不设 `tools:` 白名单**（front-matter 里没有 `tools` 字段），即 agent 对全部工具可见（含 MCP 注册的 `wps-office_*` 工具，运行时以带 `wps-office_` 前缀的真实名暴露）。这是有意的设计——agent 调用的收敛靠 MCP 网关（`wps_office_search` / `wps_office_execute`），而非 agent 白名单。
+
+> ⚠️ **不要给 agent front-matter 添加裸名 `tools:` 白名单**（如 `wps_office_execute: true`）。opencode 按 `wps-office_wps_office_execute` 这种带 server 前缀的真名注册工具，裸名白名单会匹配 0 个工具，导致该 agent 调不到任何 WPS-MCP 工具（曾致校对 agent「调不到 wps_office_execute」故障，见 Issue #247）。如需收敛某 agent 的工具，应依赖 MCP 网关层而非 front-matter 白名单。
+
 ### 4.2 各 Agent 能力一览
 
 **wps-word（Word）**：

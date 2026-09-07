@@ -9,6 +9,7 @@
     "mcp:install": "cd wps-office-mcp && npm install",
     "mcp:clean": "cd wps-office-mcp && rm -rf dist node_modules",
     "install:addons": "node install-addons.js",
+    "validate:agent-no-tools": "node scripts/validate-agent-no-tools.js",
     "validate:settings": "node scripts/validate-settings.js",
     "validate:npc-team": "node scripts/validate-npc-team-prompt.js",
     "validate:versions": "node scripts/validate-versions.js",
@@ -20,7 +21,7 @@
     "test": "node scripts/run-root-tests.js",
     "test:e2e": "node tests/e2e.test.js",
     "lint": "node scripts/lint-js.js",
-    "preflight": "npm run validate:settings && npm run validate:versions && npm run validate:toolcounts && npm run validate:npc-team && npm run validate:skill-docs && npm run validate:wikilinks && npm run format:check && npm run lint && (cd wps-office-mcp && npm run lint) && npm run test && npm run test:e2e"
+    "preflight": "npm run validate:settings && npm run validate:agent-no-tools && npm run validate:versions && npm run validate:toolcounts && npm run validate:npc-team && npm run validate:skill-docs && npm run validate:wikilinks && npm run format:check && npm run lint && (cd wps-office-mcp && npm run lint) && npm run test && npm run test:e2e"
   },
   "keywords": [
     "opencode",

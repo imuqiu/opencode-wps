@@ -33,6 +33,7 @@ npm run format:check            # Check formatting
 
 # CI 门禁本地预检
 npm run validate:toolcounts     # 工具数量校验（12/240/257）
+npm run validate:agent-no-tools # agent 不带 tools 白名单校验（防 Issue #247 根因复发）
 npm run validate:npc-team       # NPC_TEAM 提示词双源一致性校验
 npm run validate:versions       # 版本号一致性校验
 npm run validate:settings       # .cnb settings 校验
@@ -62,6 +63,7 @@ skills/                    # 5 OpenCode Skills (wps-excel/word/ppt/office/proofr
   # 校验：npm run validate:skill-docs
   README.md                # MUST READ before modifying skills
 agents/                    # 4 agent definitions (wps-expert, wps-word, wps-excel, wps-ppt)
+  # 约束：agent front-matter 不设 tools 白名单——MCP 工具运行时带 wps-office_ 前缀，裸名白名单会匹 0 个工具致调不到。
 .opencode/
   plugins/governance.js    # Execution governance plugin (G1-G7 + P1-P16 + T1-T11 rules)
   opencode.jsonc           # OpenCode config template (merged into ~/.config/opencode/opencode.json)

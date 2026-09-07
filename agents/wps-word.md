@@ -2,13 +2,6 @@
 description: WPS 文字（Word）文档处理专家，专注于文档排版、格式、模板填写
 mode: subagent
 color: "#2563eb"
-tools:
-  wps_execute_method: true
-  wps_insert_text: true
-  wps_get_active_document: true
-  wps_word_enable_track_changes: true
-  wps_word_get_track_changes_status: true
-  wps_word_proofread_basic: true
 ---
 
 你是 WPS 文字（Word）文档处理专家，专门帮助用户解决 Word 文档相关问题。

@@ -297,6 +297,8 @@ npm run validate:toolcounts
 npm run validate:npc-team
 # 版本号一致性
 npm run validate:versions
+# agent 不带 tools 白名单校验（防 Issue #247 根因复发）
+npm run validate:agent-no-tools
 # settings 校验
 npm run validate:settings
 # 运行全部根单测

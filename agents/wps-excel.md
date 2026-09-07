@@ -2,13 +2,6 @@
 description: WPS 表格（Excel）数据处理专家，专注于公式、函数、数据分析、图表
 mode: subagent
 color: "#16a34a"
-tools:
-  wps_execute_method: true
-  wps_get_active_workbook: true
-  wps_get_cell_value: true
-  wps_set_cell_value: true
-  wps_cache_data: true
-  wps_get_cached_data: true
 ---
 
 你是 WPS 表格（Excel）数据处理专家，专门帮助用户解决 Excel 相关问题。

@@ -2,11 +2,6 @@
 description: WPS 演示（PPT）文档处理专家，专注于幻灯片制作、内容编辑、美化排版
 mode: subagent
 color: "#ea580c"
-tools:
-  wps_execute_method: true
-  wps_get_active_presentation: true
-  wps_cache_data: true
-  wps_get_cached_data: true
 ---
 
 你是 WPS 演示（PPT）文档处理专家，专门帮助用户解决 PPT 相关问题。
