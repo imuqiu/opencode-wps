@@ -193,14 +193,9 @@ function sendJSON(req, res, statusCode, data) {
 
 function startOpenCode(cwd, port) {
   console.log('[launcher] startOpenCode called with cwd: ' + cwd + ' port: ' + port);
-  if (opencodeProcess) {
-    return { success: false, error: 'already running' };
-  }
-  if (!cwd) {
-    return { success: false, error: 'cwd is undefined' };
-  }
-  // 端口校验（与 stopOpenCodeByPort 同一套规则）：body.port 可被外部控制，
-  // 非法值（非数字/越界/含 shell 元字符）直接拒绝，防止污染 --port 启动参数
+  // 端口校验前置（与 stopOpenCodeByPort 同一套规则）：body.port 可被外部控制，
+  // 非法值（非数字/越界/含 shell 元字符）直接拒绝，防止污染 --port 启动参数。
+  // 必须先于端口占用判定解析出合法 finalPort，孤儿清理与 spawn 都要用它。
   var parsedPort = parseInt(port, 10);
   if (
     port !== undefined &&
@@ -208,6 +203,25 @@ function startOpenCode(cwd, port) {
     (isNaN(parsedPort) || parsedPort < 1 || parsedPort > 65535)
   ) {
     return { success: false, error: 'invalid port' };
+  }
+  var finalPort = parsedPort || OPENCODE_PORT;
+  if (opencodeProcess) {
+    return { success: false, error: 'already running' };
+  }
+  // Issue #247 回归根因：launcher 重启后 opencodeProcess 引用复位为 null，
+  // 但历次拉起没清干净的孤儿 opencode serve 仍占着 finalPort。此时直接 spawn 新 serve
+  // 必然 bind 冲突抛 ServeError（用户手动前台 opencode serve 实测坐实）。
+  // 故守卫不能只看内存引用，还要在 spawn 前把端口上非本进程跟踪的孤儿 serve 清掉，杜绝 churn 复发。
+  //   仅当 opencodeProcess === null（确无本 launcher 跟踪的合法子进程）时才清理，
+  //   避免误杀正在被自己管理的运行中 serve（那种情况已被上面的 already running 拦截）。
+  if (isPortListening(finalPort)) {
+    console.log(
+      '[launcher] Port ' + finalPort + ' occupied by stale serve, cleaning up before start'
+    );
+    killProcessOnPort(finalPort);
+  }
+  if (!cwd) {
+    return { success: false, error: 'cwd is undefined' };
   }
   // 验证工作目录安全性
   var validation = validateCwd(cwd);
@@ -231,7 +245,6 @@ function startOpenCode(cwd, port) {
   // Issue #134 回归：startOpenCode 此前自行复制一套 isPs1/isExe 分支，且 .ps1 分支
   // 误走 `hiddenSpawn(bin, args)` 直接 spawn .ps1 文件——Node 的 spawn 无法直接执行
   // .ps1 脚本（无解释器关联），必然 ENOENT 失败，导致用户 .ps1 场景启动必失败。
-  var finalPort = parsedPort || 14096;
   var spawnCmd = buildSpawnCommand(opencodeBin, finalPort);
   var opencodeArgs = spawnCmd.args;
   var needShell = spawnCmd.needShell;
@@ -445,15 +458,30 @@ function startOpenCode(cwd, port) {
   }
 }
 
-function stopOpenCodeByPort(port) {
-  // 端口必须是 1-65535 的整数：body.port 可被外部控制，
-  // 未校验会拼进 netstat/findstr 命令造成命令注入（如 port="14096 & calc"）
+/**
+ * 按端口精确终止占用该端口的 OpenCode/Node 孤儿进程（Issue #247 自愈核心）。
+ *
+ * 逐行扫描 netstat 监听/连接该端口的 PID，先验证进程名确为 opencode.exe / node.exe
+ * 才 taskkill —— 避免误杀占用同一端口的其他合法程序（如用户自起的其他服务）。
+ * 命中至少一个即返回 { killed: true }；端口无占用/非 OpenCode 进程则返回 killed: false。
+ *
+ * 供两处复用：
+ *   1) stopOpenCode() 停止服务时按 14096 兜底清理（原 stopOpenCodeByPort 逻辑）；
+ *   2) startOpenCode() spawn 新 serve 前，清掉 launcher 重启后残留、占着端口的
+ *      孤儿 opencode serve，从源头杜绝 bind 冲突 ServeError。
+ *
+ * @param {number} port - 目标端口（1-65535）
+ * @returns {{ success: boolean, killed: boolean, error?: string }}
+ */
+function killProcessOnPort(port) {
+  // 端口必须是 1-65535 的整数：外部可控值未校验会拼进 netstat/findstr 造成命令注入
+  //（如 port="14096 & calc"），故强制整数化 + 范围校验。
   port = parseInt(port, 10);
   if (isNaN(port) || port < 1 || port > 65535) {
     console.log('[launcher] Invalid port rejected: ' + port);
-    return { success: false, error: 'invalid port' };
+    return { success: false, error: 'invalid port', killed: false };
   }
-  console.log('[launcher] stopOpenCodeByPort called for port: ' + port);
+  console.log('[launcher] killProcessOnPort called for port: ' + port);
 
   try {
     var execSync = hiddenExecSync;
@@ -547,6 +575,14 @@ function stopOpenCodeByPort(port) {
     console.log('[launcher] Port-based shutdown failed: ' + e.message);
   }
 
+  return { success: true, killed: killed };
+}
+
+function stopOpenCodeByPort(port) {
+  var result = killProcessOnPort(port);
+  if (result && result.error) {
+    return result;
+  }
   return { success: true };
 }
 

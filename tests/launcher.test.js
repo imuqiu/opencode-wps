@@ -557,6 +557,30 @@ test('/status: 存在 isPortListening 端口回退探测（launcher 重启后仍
   assertTrue(/const OPENCODE_PORT = 14096;/.test(src), '应定义 OPENCODE_PORT=14096 常量');
 });
 
+// --- Issue #247 回归：startOpenCode spawn 前自愈孤儿 opencode serve 占用端口 ---
+test('/startOpenCode: 守卫升级为「内存引用 + 端口实占孤儿自愈」，spawn 前清理孤儿 serve', function () {
+  var src = fs.readFileSync(path.join(__dirname, '..', 'opencode-wps', 'launcher.js'), 'utf-8');
+  // 1) 抽象出按端口终止 OpenCode 孤儿进程的可复用清理函数（startOpenCode / stopOpenCodeByPort 共用）
+  assertTrue(/function killProcessOnPort\s*\(/.test(src), '应定义 killProcessOnPort 端口清理函数');
+  // 2) startOpenCode 内应先用 killProcessOnPort 清理孤儿，而非直接 spawn
+  assertTrue(
+    /killProcessOnPort\(finalPort\)/.test(src),
+    'startOpenCode 应在 spawn 前调用 killProcessOnPort 清理孤儿 serve'
+  );
+  // 3) 清理受端口实占探测守卫触发（isPortListening(finalPort) 为真才清理，避免空跑 netstat）
+  assertTrue(
+    /if \(isPortListening\(finalPort\)\)/.test(src),
+    '孤儿清理应以 isPortListening(finalPort) 为触发条件'
+  );
+  // 4) 内存引用守卫仍在（opencodeProcess 非空即 already running，不重复清理/启动）
+  assertTrue(/if \(opencodeProcess\)/.test(src), 'startOpenCode 应保留内存引用守卫');
+  // 5) stopOpenCodeByPort 委托复用 killProcessOnPort，保持单点逻辑不重复实现
+  assertTrue(
+    /function stopOpenCodeByPort\s*\([^)]*\)[\s\S]{0,200}?killProcessOnPort\(port\)/.test(src),
+    'stopOpenCodeByPort 应委托 killProcessOnPort 复用清理逻辑'
+  );
+});
+
 // --- Issue #243 R1/R2：findOpenCodeBin 缓存稳定化 + 失败探测节流 ---
 console.log('\n--- Issue #243 R1/R2：findOpenCodeBin 缓存与失败节流 ---');
 
