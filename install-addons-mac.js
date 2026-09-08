@@ -261,7 +261,7 @@ if (fsEx.existsSync(mcpEntryPath)) {
 
   if (!config.mcp) config.mcp = {};
   config.mcp[mcpServer.name] = {
-    command: ['node', mcpEntryPath],
+    command: [process.execPath, mcpEntryPath],
     type: 'local',
   };
 

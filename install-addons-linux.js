@@ -407,7 +407,7 @@ if (fsEx.existsSync(mcpEntryPath)) {
     );
   } else {
     config.mcp[mcpServer.name] = {
-      command: ['node', mcpEntryPath],
+      command: [process.execPath, mcpEntryPath],
       type: 'local',
     };
   }

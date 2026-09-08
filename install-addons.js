@@ -434,7 +434,7 @@ if (fsEx.existsSync(mcpEntryPath)) {
       ? existingMcpEntry.env
       : undefined;
   config.mcp[mcpServer.name] = {
-    command: ['node', mcpEntryForward],
+    command: [process.execPath, mcpEntryForward],
     type: 'local',
     ...(existingMcpEnv ? { env: { ...existingMcpEnv } } : {}),
   };

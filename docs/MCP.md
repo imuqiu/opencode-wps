@@ -129,11 +129,16 @@ MCP 使用 JSON-RPC 2.0 消息格式：
   "mcp": {
     "wps-office": {
       "type": "local",
-      "command": ["node", "D:/code/opencode-wps/wps-office-mcp/dist/index.js"]
+      "command": ["C:\\Program Files\\nodejs\\node.exe", "D:/code/opencode-wps/wps-office-mcp/dist/index.js"]
     }
   }
 }
 ```
+
+> ⚠️ **command 首元素必须用 node 的绝对路径（`process.execPath`），不能写裸 `node`。**
+> 原因：`opencode serve` 拉起 MCP server 时，是用它**自己继承的 PATH** 去解析 `command` 里的可执行名的。而 serve 由插件 launcher 从 **WPS 进程环境** spawn（WPS 靠绝对路径拉起 launcher，该环境 PATH 里未必有 node 目录），裸 `node` 会 ENOENT 解析不到 → MCP server 静默拉不起来 → 会话里看不到任何 `wps-office_*` 工具。
+> 而你在**交互式 shell**里跑 `opencode mcp list` 时 PATH 有 node，所以 CLI 显示 connected——这就是「CLI 连得上、serve 会话看不到工具」矛盾的根因。
+> install-addons 安装时已用 `process.execPath` 写绝对路径，无需手工改；仅手动配置时注意。
 
 ### 本项目的 MCP 工具
 
