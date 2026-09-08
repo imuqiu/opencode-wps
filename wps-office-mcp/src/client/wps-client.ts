@@ -13,6 +13,7 @@
 import { spawn } from 'child_process';
 import * as path from 'path';
 import * as os from 'os';
+import * as fs from 'fs';
 import {
   WpsEndpointConfig,
   WpsApiRequest,
@@ -41,6 +42,34 @@ function getWpsChannel(): WpsChannel {
 
 // PowerShell脚本路径 (Windows)
 const PS_SCRIPT_PATH = path.join(__dirname, '../../scripts/wps-com.ps1');
+
+/**
+ * 解析 Windows PowerShell 可执行文件绝对路径。
+ * 背景：serve 进程由 launcher 从 WPS 进程环境 spawn，其继承的 PATH 未必包含 powershell 所在目录，
+ * 直接 spawn('powershell') 会报 ENOENT（Issue #247 会话 ses_f806 实证），与 #256 裸 node 同源。
+ * 因此改为探测 Windows PowerShell 5.x 系统自带路径（SystemRoot\System32\WindowsPowerShell\v1.0\），
+ * 存在即用绝对路径；探测不到才回退裸命令，交由 PATH 兜底。
+ * 仅 Windows 平台返回绝对路径，Mac/Linux 走轮询通道不受影响。
+ */
+export function resolvePowerShellPath(
+  platform: NodeJS.Platform = process.platform,
+  existsFn: (p: string) => boolean = fs.existsSync
+): string {
+  if (platform === 'win32') {
+    const systemRoot = process.env.SystemRoot || process.env.windir || 'C:\\Windows';
+    // Windows PowerShell 5.x 系统自带路径。用显式反斜杠拼接（不用 path.join），
+    // 保证在任意运行环境下都产出合法的 Windows 路径分隔符。
+    // 候选 2（Sysnative）供 32 位 Node 进程访问 64 位系统目录时使用。
+    const candidates = [
+      systemRoot + '\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+      systemRoot + '\\Sysnative\\WindowsPowerShell\\v1.0\\powershell.exe',
+    ];
+    for (const candidate of candidates) {
+      if (existsFn(candidate)) return candidate;
+    }
+  }
+  return 'powershell';
+}
 
 // 轮询服务器端口（Mac/Linux 共用同一反向轮询协议）
 const POLL_PORT = 58891;
@@ -120,9 +149,11 @@ function spawnPowerShell(
     paramsJson,
   ];
 
-  log.debug('Executing PowerShell', { action, params });
+  // 用绝对路径解析 powershell，避免 serve 由 WPS 进程环境拉起时继承的 PATH 不含 System32 而 ENOENT
+  const psBin = resolvePowerShellPath();
+  log.debug('Executing PowerShell', { action, params, psBin });
 
-  const ps = spawn('powershell', args, {
+  const ps = spawn(psBin, args, {
     windowsHide: true,
     stdio: ['pipe', 'pipe', 'pipe'],
   });

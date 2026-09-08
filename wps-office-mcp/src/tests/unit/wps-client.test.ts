@@ -74,7 +74,7 @@ jest.mock('../../utils/error', () => ({
   },
 }));
 
-import { WpsClient } from '../../client/wps-client';
+import { WpsClient, resolvePowerShellPath } from '../../client/wps-client';
 import { WpsAppType, WpsApiRequest } from '../../types/wps';
 import * as os from 'os';
 import * as child_process from 'child_process';
@@ -540,5 +540,31 @@ describe('WpsClient', () => {
       expect(mockedSpawn).not.toHaveBeenCalled();
       jest.useRealTimers();
     });
+  });
+});
+
+describe('resolvePowerShellPath 路径解析（Issue #247 spawn powershell ENOENT）', () => {
+  it('非 win32 平台（如 CI/Linux/Mac）返回裸 powershell，不改历史行为', () => {
+    expect(resolvePowerShellPath('linux', () => true)).toBe('powershell');
+    expect(resolvePowerShellPath('darwin', () => true)).toBe('powershell');
+  });
+
+  it('win32 且 SystemRoot 下 System32 存在 powershell.exe 时返回绝对路径', () => {
+    process.env.SystemRoot = 'C:\\Windows';
+    try {
+      const result = resolvePowerShellPath(
+        'win32',
+        p =>
+          typeof p === 'string' && p.includes('System32\\WindowsPowerShell\\v1.0\\powershell.exe')
+      );
+      expect(result).toBe('C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');
+      expect(result).not.toBe('powershell');
+    } finally {
+      delete process.env.SystemRoot;
+    }
+  });
+
+  it('win32 且探测不到任何 powershell.exe 时回退裸 powershell（PATH 兜底）', () => {
+    expect(resolvePowerShellPath('win32', () => false)).toBe('powershell');
   });
 });
