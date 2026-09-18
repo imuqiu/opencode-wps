@@ -42,6 +42,9 @@ function Test-WpsReleasePackage {
         [int]$StableReadDelayMilliseconds = 200
     )
 
+    # 哈希计算是只读操作。调用者使用 -WhatIf 时，不能让偏好变量阻止 provider 读取。
+    $WhatIfPreference = $false
+
     $errors = New-Object System.Collections.Generic.List[string]
     $checkedFiles = 0
     $stable = $null
