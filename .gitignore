@@ -75,3 +75,14 @@ opencode-wps/wps-addon-publish/
 
 # CodeBuddy 本地权限配置（含本地绝对路径，不入库）
 .codebuddy/settings.local.json
+
+# WPS-AI 多电脑部署：仅本机或敏感状态
+machine.env
+*.key
+secrets/
+cache/
+backups/
+state/
+*.old
+docinfo.cache.json
+proofread-sessions/

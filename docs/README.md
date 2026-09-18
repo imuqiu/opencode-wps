@@ -26,6 +26,16 @@
 | [INSTALL_SCRIPT.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/INSTALL_SCRIPT.md) | 安装脚本实现说明（install-addons*.js / wpsjs publish） |
 | [SKILLS.md](https://cnb.cool/lnxsun/opencode-wps/-/blob/main/docs/SKILLS.md) | **Wiki 级 Skills 文档**（内置工具/网关规范/各 Skill 详细能力/开发规范） |
 
+### 个人 Fork：三台 Windows 电脑统一部署
+
+| 文档 | 说明 |
+|------|------|
+| [phase-1-official-project-analysis.md](phase-1-official-project-analysis.md) | 官方项目路径、配置、覆盖范围与多机部署边界的实证分析 |
+| [phase-2-implementation-design.md](phase-2-implementation-design.md) | WPS 同步根、稳定 commit、事务更新、回滚和验收设计 |
+| [wps-membership-cloud-github-deployment-report.md](wps-membership-cloud-github-deployment-report.md) | WPS 大会员、云同步与 GitHub 分工的综合可行性报告 |
+
+对应的个人部署实现位于仓库根目录 `deploy/` 和 `custom/`；这些内容属于 `my-deploy` 分支，不应合入保持上游镜像状态的 `main`。
+
 ## 🖥️ 平台专题
 
 | 文档 | 说明 |
