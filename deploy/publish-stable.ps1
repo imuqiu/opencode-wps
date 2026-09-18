@@ -36,7 +36,8 @@ try {
         @{ Source = (Join-Path $RepositoryRoot 'custom\agents'); Destination = (Join-Path $root.Path 'common\agents'); Class = 'opencode-agent' },
         @{ Source = (Join-Path $RepositoryRoot 'custom\prompts'); Destination = (Join-Path $root.Path 'common\prompts'); Class = 'opencode-prompt' },
         @{ Source = (Join-Path $RepositoryRoot 'custom\templates'); Destination = (Join-Path $root.Path 'common\templates'); Class = 'office-template' },
-        @{ Source = (Join-Path $RepositoryRoot 'custom\config'); Destination = (Join-Path $root.Path 'common\config'); Class = 'managed-config' }
+        @{ Source = (Join-Path $RepositoryRoot 'custom\config'); Destination = (Join-Path $root.Path 'common\config'); Class = 'managed-config' },
+        @{ Source = (Join-Path $RepositoryRoot 'custom\docs'); Destination = (Join-Path $root.Path 'docs'); Class = 'user-documentation' }
     )
     $entries = @()
     foreach ($mapping in $mappings) {

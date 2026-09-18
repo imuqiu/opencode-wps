@@ -116,3 +116,5 @@ pwsh.exe -NoProfile -File .\tests\run-tests.ps1
 - 已存在的 `machine.env` 默认不覆盖；
 - 当前预检和健康检查不会修改注册表、计划任务或现有 WPS/OpenCode 配置；
 - 请勿把 Codex 自带的 Git/Node 路径当作系统运行环境。
+
+面向最终用户的日常使用说明和三机部署步骤位于 `custom/docs/`。primary 发布稳定版本时，它们会自动复制到 WPS 同步根的 `docs/` 目录并纳入 SHA-256 manifest。
