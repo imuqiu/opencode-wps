@@ -534,7 +534,7 @@ WPS 云同步目录（每机绝对路径可不同）
 2. `OFFICE-PC`：第二台安装，观察至少一个工作日。
 3. `SHOP-PC`：使用最频繁，最后安装，只接受已经在前两台通过的稳定 SHA。
 
-办公室电脑和店铺电脑只需要先完成四件事：安装并登录同一 WPS 账号、把云端已有的 `WPS-AI` 同步到一个普通本地目录、等待 `ROOT_ID.txt` 与 `versions/stable-version.txt` 完整出现、用各自设备名生成本机 `C:\WPS-AI\machine.env`。之后从同步目录运行 `scripts\preflight.cmd` 和 `scripts\install.cmd`；安装完成后运行 `scripts\health-check.cmd`。
+办公室电脑和店铺电脑只需要先完成四件事：安装并登录同一 WPS 账号、把云端已有的 `WPS-AI` 同步到一个普通本地目录、等待 `ROOT_ID.txt` 与 `versions/stable-version.txt` 完整出现、用各自设备名生成本机 `C:\WPS-AI\machine.env`。系统依赖缺失时先运行 `scripts\bootstrap-dependencies.cmd`；之后从同步目录运行 `scripts\preflight.cmd` 和 `scripts\install.cmd`，安装完成后运行 `scripts\health-check.cmd`。
 
 依赖审计目前报告 10 个传递依赖问题（1 低、4 中、5 高、0 严重），主要位于 MCP 的开发/间接依赖树。由于直接执行 `npm audit fix` 可能改写官方 lockfile 并破坏可复现性，本方案不在三台生产机上原地自动修复；应在 `my-deploy` 独立分支升级、构建、测试后再发布新的稳定 SHA。Launcher 和 OpenCode 仅监听 `127.0.0.1`，这会降低外部网络暴露，但不能替代后续依赖升级。
 

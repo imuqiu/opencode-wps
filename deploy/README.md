@@ -28,6 +28,16 @@
 
 ## 当前入口
 
+### 0. 新电脑准备系统依赖
+
+先安装并登录 WPS，关联同一个云端同步文件夹。随后运行：
+
+```powershell
+.\bootstrap-dependencies.ps1
+```
+
+脚本只补装缺失的 Git for Windows、Node.js LTS 和官方 `opencode-ai` npm 包；已存在的组件不会被重复安装。它不会代替 WPS 登录、会员设备授权或同步文件夹关联。
+
 ### 1. 家里电脑初始化公共同步根
 
 先在 WPS 客户端中建立或关联一个空的 `WPS-AI` 同步文件夹，再运行：
