@@ -54,9 +54,9 @@ function New-DeploymentBackup {
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     $backup = Join-Path $LocalRoot "backups\$stamp"
     New-Item -ItemType Directory -Path $backup -Force | Out-Null
-    $home = [Environment]::GetFolderPath('UserProfile')
+    $userProfilePath = [Environment]::GetFolderPath('UserProfile')
     $items = [ordered]@{
-        'opencode.json' = (Join-Path $home '.config\opencode\opencode.json')
+        'opencode.json' = (Join-Path $userProfilePath '.config\opencode\opencode.json')
         'addon' = (Join-Path $env:APPDATA 'kingsoft\wps\jsaddons\opencode-wps_')
         'publish.xml' = (Join-Path $env:APPDATA 'kingsoft\wps\jsaddons\publish.xml')
         'jsplugins.xml' = (Join-Path $env:APPDATA 'kingsoft\wps\jsaddons\jsplugins.xml')
@@ -115,13 +115,28 @@ function Set-RuntimeMachinePolicy {
     $original = [IO.File]::ReadAllText($configPath, [Text.Encoding]::UTF8)
     $mode = [string]$Config.PERMISSION_MODE
     if (-not $mode) { $mode = 'manual' }
-    $root = ([string]$Config.WPS_SYNC_ROOT).Replace('\', '\\').Replace("'", "\'")
     $modeRegex = New-Object Text.RegularExpressions.Regex("mode:\s*'(auto|manual)'")
-    $rootsRegex = New-Object Text.RegularExpressions.Regex("allowedWriteRoots:\s*'[^']*'")
     $patched = $modeRegex.Replace($original, "mode: '$mode'", 1)
-    $patched = $rootsRegex.Replace($patched, "allowedWriteRoots: '$root'", 1)
     [IO.File]::WriteAllText($configPath, $patched, (New-Object Text.UTF8Encoding($false)))
     return $original
+}
+
+function Set-OpenCodeWriteRoots {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][System.Collections.IDictionary]$Config,
+        [string]$ConfigPath
+    )
+    if (-not $ConfigPath) {
+        $userProfilePath = [Environment]::GetFolderPath('UserProfile')
+        $ConfigPath = Join-Path $userProfilePath '.config\opencode\opencode.json'
+    }
+    $json = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if (-not $json.mcp -or -not $json.mcp.'wps-office') { throw 'OpenCode 配置缺少 mcp.wps-office。' }
+    $server = $json.mcp.'wps-office'
+    if (-not $server.env) { $server | Add-Member -MemberType NoteProperty -Name env -Value ([pscustomobject]@{}) }
+    $server.env | Add-Member -MemberType NoteProperty -Name OPCODE_ALLOWED_ROOTS -Value ([string]$Config.WPS_SYNC_ROOT) -Force
+    [IO.File]::WriteAllText($ConfigPath, ($json | ConvertTo-Json -Depth 30) + "`n", (New-Object Text.UTF8Encoding($false)))
 }
 
 function Save-InstallationState {
@@ -138,4 +153,4 @@ function Save-InstallationState {
     $state | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $StateRoot 'last-good.json') -Encoding UTF8
 }
 
-Export-ModuleMember -Function Set-DeploymentPath, Enter-DeploymentLock, Exit-DeploymentLock, New-DeploymentBackup, Restore-DeploymentBackup, Set-RuntimeMachinePolicy, Save-InstallationState
+Export-ModuleMember -Function Set-DeploymentPath, Enter-DeploymentLock, Exit-DeploymentLock, New-DeploymentBackup, Restore-DeploymentBackup, Set-RuntimeMachinePolicy, Set-OpenCodeWriteRoots, Save-InstallationState

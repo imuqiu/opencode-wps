@@ -8,7 +8,7 @@ $ErrorActionPreference = 'Stop'
 $lib = Join-Path $PSScriptRoot 'lib'
 Import-Module (Join-Path $lib 'Integrity.psm1') -Force
 $localRoot = Split-Path -Parent $MachineConfigPath
-$home = [Environment]::GetFolderPath('UserProfile')
+$userProfilePath = [Environment]::GetFolderPath('UserProfile')
 $targets = @(
     (Join-Path $env:APPDATA 'kingsoft\wps\jsaddons\opencode-wps_')
 )
@@ -52,7 +52,7 @@ if (Test-Path -LiteralPath $managedPath) {
         }
     }
 }
-$opencodeConfig = Join-Path $home '.config\opencode\opencode.json'
+$opencodeConfig = Join-Path $userProfilePath '.config\opencode\opencode.json'
 if (Test-Path -LiteralPath $opencodeConfig) {
     $json = Get-Content -LiteralPath $opencodeConfig -Raw -Encoding UTF8 | ConvertFrom-Json
     if ($json.mcp -and $json.mcp.'wps-office' -and $PSCmdlet.ShouldProcess($opencodeConfig, '移除 mcp.wps-office')) {

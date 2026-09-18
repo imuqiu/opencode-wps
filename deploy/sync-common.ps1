@@ -12,7 +12,7 @@ $root = Resolve-WpsAiSyncRoot -ExplicitPath $config.WPS_SYNC_ROOT -MachineConfig
 $integrity = Test-WpsReleasePackage -SyncRoot $root.Path
 if (-not $integrity.IsValid) { throw (($integrity.Errors) -join '；') }
 
-$home = [Environment]::GetFolderPath('UserProfile')
+$userProfilePath = [Environment]::GetFolderPath('UserProfile')
 $localRoot = Split-Path -Parent $MachineConfigPath
 $managedRoot = Join-Path $localRoot 'managed\current'
 $owned = @()
@@ -20,9 +20,9 @@ foreach ($entry in @($integrity.Manifest.files)) {
     $source = Join-Path $root.Path ([string]$entry.source).Replace('/', '\')
     $relative = ([string]$entry.source) -replace '^common/[^/]+/', ''
     $targets = switch ([string]$entry.targetClass) {
-        'opencode-skill' { @((Join-Path $home ".config\opencode\skills\$relative"), (Join-Path $home ".opencode\skills\$relative")) }
-        'opencode-agent' { @((Join-Path $home ".config\opencode\agents\$relative"), (Join-Path $home ".opencode\agents\$relative")) }
-        'opencode-prompt' { @((Join-Path $home ".config\opencode\commands\$relative")) }
+        'opencode-skill' { @((Join-Path $userProfilePath ".config\opencode\skills\$relative"), (Join-Path $userProfilePath ".opencode\skills\$relative")) }
+        'opencode-agent' { @((Join-Path $userProfilePath ".config\opencode\agents\$relative"), (Join-Path $userProfilePath ".opencode\agents\$relative")) }
+        'opencode-prompt' { @((Join-Path $userProfilePath ".config\opencode\commands\$relative")) }
         'office-template' { @((Join-Path $managedRoot "templates\$relative")) }
         'managed-config' { @((Join-Path $managedRoot "config\$relative")) }
         default { @() }

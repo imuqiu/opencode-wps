@@ -63,6 +63,7 @@ try {
             [IO.File]::WriteAllText((Join-Path $target 'opencode-wps\config.js'), $originalPolicy, (New-Object Text.UTF8Encoding($false)))
         }
     }
+    Set-OpenCodeWriteRoots -Config $config
     & (Join-Path $PSScriptRoot 'sync-common.ps1') -MachineConfigPath $MachineConfigPath
     if ($LASTEXITCODE -ne 0) { throw '公共配置同步失败。' }
     Save-InstallationState -StateRoot $stateRoot -Commit $stable.COMMIT -Version $stable.VERSION -BackupPath $backup

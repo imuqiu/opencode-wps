@@ -102,8 +102,14 @@ try {
     $policyConfig = [ordered]@{ PERMISSION_MODE = 'manual'; WPS_SYNC_ROOT = 'F:\WPS-AI' }
     $originalPolicy = Set-RuntimeMachinePolicy -RuntimePath (Split-Path -Parent $policyRuntime) -Config $policyConfig
     $patchedPolicy = [IO.File]::ReadAllText($policyPath)
-    Assert-True ($patchedPolicy -match "mode: 'manual'" -and $patchedPolicy -match "F:\\\\WPS-AI") '注入本机权限模式和允许写入根'
+    Assert-True ($patchedPolicy -match "mode: 'manual'") '注入本机权限模式'
     Assert-True ($originalPolicy -match "mode: 'auto'") '保留官方 config.js 原文用于恢复'
+
+    $testOpenCodeConfig = Join-Path $testRoot 'opencode.json'
+    [IO.File]::WriteAllText($testOpenCodeConfig, '{"mcp":{"wps-office":{"env":{}}}}', (New-Object Text.UTF8Encoding($false)))
+    Set-OpenCodeWriteRoots -Config $policyConfig -ConfigPath $testOpenCodeConfig
+    $writtenRoot = (Get-Content -LiteralPath $testOpenCodeConfig -Raw | ConvertFrom-Json).mcp.'wps-office'.env.OPCODE_ALLOWED_ROOTS
+    Assert-True ($writtenRoot -eq 'F:\WPS-AI') '准确保留 Windows 盘符白名单'
 
     $integrationRoot = Join-Path $testRoot '中文 云同步\WPS-AI'
     $integrationMachine = Join-Path $testRoot 'local\machine.env'
