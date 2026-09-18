@@ -31,7 +31,7 @@ foreach ($entry in @($integrity.Manifest.files)) {
         if (-not $PSCmdlet.ShouldProcess($target, '发布受管公共文件')) { continue }
         New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
         Copy-Item -LiteralPath $source -Destination $target -Force
-        if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -ne [string]$entry.sha256) { throw "复制后哈希不一致：$target" }
+        if ((Get-FileSha256 -LiteralPath $target) -ne [string]$entry.sha256) { throw "复制后哈希不一致：$target" }
         $owned += [ordered]@{ path = $target; sha256 = [string]$entry.sha256; source = [string]$entry.source }
     }
 }

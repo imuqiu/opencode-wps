@@ -2,6 +2,19 @@
 
 Import-Module (Join-Path $PSScriptRoot 'Config.psm1')
 
+function Get-FileSha256 {
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)][string]$LiteralPath)
+    $stream = [IO.File]::OpenRead($LiteralPath)
+    try {
+        $algorithm = [Security.Cryptography.SHA256]::Create()
+        try { $bytes = $algorithm.ComputeHash($stream) }
+        finally { $algorithm.Dispose() }
+        return ([BitConverter]::ToString($bytes)).Replace('-', '')
+    }
+    finally { $stream.Dispose() }
+}
+
 function Resolve-SafeChildPath {
     [CmdletBinding()]
     param(
@@ -66,7 +79,7 @@ function Test-WpsReleasePackage {
         if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
             throw "发布 manifest 不存在：$manifestRelative"
         }
-        $manifestHash = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash
+        $manifestHash = Get-FileSha256 -LiteralPath $manifestPath
         if ($manifestHash -ne $stable.MANIFEST_SHA256) {
             throw '发布 manifest 的 SHA-256 与稳定清单不一致。'
         }
@@ -91,7 +104,7 @@ function Test-WpsReleasePackage {
                     $errors.Add("公共文件大小不一致：$($entry.source)")
                     continue
                 }
-                $actualHash = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash
+                $actualHash = Get-FileSha256 -LiteralPath $sourcePath
                 if ($actualHash -ne [string]$entry.sha256) {
                     $errors.Add("公共文件哈希不一致：$($entry.source)")
                     continue
@@ -116,4 +129,4 @@ function Test-WpsReleasePackage {
     }
 }
 
-Export-ModuleMember -Function Resolve-SafeChildPath, Read-StableVersion, Test-WpsReleasePackage
+Export-ModuleMember -Function Get-FileSha256, Resolve-SafeChildPath, Read-StableVersion, Test-WpsReleasePackage

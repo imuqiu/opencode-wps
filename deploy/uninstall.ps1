@@ -5,6 +5,8 @@ param(
 )
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
+$lib = Join-Path $PSScriptRoot 'lib'
+Import-Module (Join-Path $lib 'Integrity.psm1') -Force
 $localRoot = Split-Path -Parent $MachineConfigPath
 $home = [Environment]::GetFolderPath('UserProfile')
 $targets = @(
@@ -44,7 +46,7 @@ if (Test-Path -LiteralPath $managedPath) {
     $managed = Get-Content -LiteralPath $managedPath -Raw -Encoding UTF8 | ConvertFrom-Json
     foreach ($file in @($managed.files)) {
         if ((Test-Path -LiteralPath $file.path -PathType Leaf) -and
-            ((Get-FileHash -LiteralPath $file.path -Algorithm SHA256).Hash -eq $file.sha256) -and
+            ((Get-FileSha256 -LiteralPath $file.path) -eq $file.sha256) -and
             $PSCmdlet.ShouldProcess($file.path, '删除未被用户修改的受管文件')) {
             Remove-Item -LiteralPath $file.path -Force
         }
