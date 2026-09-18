@@ -1,6 +1,6 @@
 # WPS-AI 三机部署工具
 
-当前状态：基础安全层已实现，尚未执行本机安装。
+当前状态：部署工具已实现；稳定版本必须先由 primary 发布，再执行本机安装。
 
 ## 已实现
 
@@ -14,15 +14,16 @@
 - 同时兼容 Windows PowerShell 5.1 与 PowerShell 7；
 - 中文、空格和不同盘符路径测试。
 
-## 尚未实现
+## 已实现的部署事务
 
-- 从 `origin/my-deploy` 获取并构建稳定 commit；
-- 事务式 `install/update/repair/uninstall`；
-- 公共 Skills/Agents/Prompts/Templates 的 manifest 发布与本机 staging；
-- WPS Add-in 注册文件和 OpenCode 配置的保留式合并；
-- 计划任务创建、更新备份和自动回滚。
-
-在这些功能完成并通过测试前，不应在三台正式电脑上安装。
+- primary 发布 `deploy/`、`custom/`、release manifest 和稳定 commit；
+- 按完整 SHA 克隆到 staging，安装依赖并构建 MCP；
+- 更新前备份 OpenCode 配置、WPS Add-in 注册文件和计划任务；
+- 调用官方安装器完成 Add-in、MCP、Skills、Agents 和 Launcher 安装；
+- 按本机策略临时注入 `manual/auto` 权限模式和允许写入根；
+- 失败时恢复配置、计划任务和上一 runtime；
+- 精确卸载受管 MCP、公共文件、Add-in 和注册项；
+- 默认保留 `machine.env`、日志和备份。
 
 ## 当前入口
 
@@ -75,6 +76,27 @@
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\run-tests.ps1
 pwsh.exe -NoProfile -File .\tests\run-tests.ps1
 ```
+
+### 6. primary 发布稳定版本
+
+确保 `my-deploy` 已提交并推送、工作树干净，然后运行：
+
+```powershell
+.\publish-stable.ps1
+```
+
+脚本最后才替换 `versions\stable-version.txt`。其他电脑只有在 manifest 和全部文件哈希通过后才会安装。
+
+### 7. 安装、更新、修复和卸载
+
+```powershell
+.\install.ps1
+.\update.ps1
+.\repair.ps1
+.\uninstall.ps1 -WhatIf
+```
+
+首次运行卸载应先带 `-WhatIf` 查看精确目标。只有明确需要删除 `C:\WPS-AI` 本机状态时才使用 `-PurgeLocalState`；该参数也不会删除 WPS 云同步目录。
 
 ## 安全说明
 

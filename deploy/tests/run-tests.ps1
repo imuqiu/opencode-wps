@@ -8,6 +8,7 @@ $lib = Join-Path (Split-Path -Parent $PSScriptRoot) 'lib'
 Import-Module (Join-Path $lib 'Config.psm1') -Force
 Import-Module (Join-Path $lib 'Discovery.psm1') -Force
 Import-Module (Join-Path $lib 'Integrity.psm1') -Force
+Import-Module (Join-Path $lib 'Deployment.psm1') -Force
 
 $passed = 0
 $failed = 0
@@ -93,6 +94,16 @@ try {
     [System.IO.File]::AppendAllText($contentPath, 'tampered')
     $tampered = Test-WpsReleasePackage -SyncRoot $testRoot -StableReadDelayMilliseconds 0
     Assert-True (-not $tampered.IsValid) '拒绝被篡改或未同步完整的公共文件'
+
+    $policyRuntime = Join-Path $testRoot 'policy-runtime\opencode-wps'
+    New-Item -ItemType Directory -Path $policyRuntime -Force | Out-Null
+    $policyPath = Join-Path $policyRuntime 'config.js'
+    [IO.File]::WriteAllText($policyPath, "var CONFIG={permission:{mode: 'auto'},allowedWriteRoots: ''};", (New-Object Text.UTF8Encoding($false)))
+    $policyConfig = [ordered]@{ PERMISSION_MODE = 'manual'; WPS_SYNC_ROOT = 'F:\WPS-AI' }
+    $originalPolicy = Set-RuntimeMachinePolicy -RuntimePath (Split-Path -Parent $policyRuntime) -Config $policyConfig
+    $patchedPolicy = [IO.File]::ReadAllText($policyPath)
+    Assert-True ($patchedPolicy -match "mode: 'manual'" -and $patchedPolicy -match "F:\\\\WPS-AI") '注入本机权限模式和允许写入根'
+    Assert-True ($originalPolicy -match "mode: 'auto'") '保留官方 config.js 原文用于恢复'
 
     $integrationRoot = Join-Path $testRoot '中文 云同步\WPS-AI'
     $integrationMachine = Join-Path $testRoot 'local\machine.env'

@@ -40,6 +40,24 @@ function Get-ListeningPorts {
     }
 }
 
+function Get-PreferredCommand {
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)][string]$Name)
+
+    $known = @{
+        git      = @('C:\Program Files\Git\cmd\git.exe')
+        node     = @('C:\Program Files\nodejs\node.exe')
+        npm      = @('C:\Program Files\nodejs\npm.cmd')
+        opencode = @((Join-Path $env:APPDATA 'npm\opencode.cmd'))
+    }
+    foreach ($path in @($known[$Name])) {
+        if ($path -and (Test-Path -LiteralPath $path -PathType Leaf)) {
+            return [pscustomobject]@{ Name = $Name; Source = $path; Path = $path }
+        }
+    }
+    return Get-Command $Name -ErrorAction SilentlyContinue | Select-Object -First 1
+}
+
 function Invoke-WpsAiPreflight {
     [CmdletBinding()]
     param(
@@ -61,7 +79,7 @@ function Invoke-WpsAiPreflight {
     }
 
     foreach ($commandName in @('git', 'node', 'npm', 'opencode')) {
-        $command = Get-Command $commandName -ErrorAction SilentlyContinue | Select-Object -First 1
+        $command = Get-PreferredCommand -Name $commandName
         if (-not $command) {
             $results.Add((New-CheckResult $commandName 'FAIL' '当前普通用户 PATH 中未找到' 3))
             continue
@@ -110,4 +128,4 @@ function Invoke-WpsAiPreflight {
     return $results.ToArray()
 }
 
-Export-ModuleMember -Function Find-WpsInstallations, Get-ListeningPorts, Invoke-WpsAiPreflight
+Export-ModuleMember -Function Find-WpsInstallations, Get-ListeningPorts, Get-PreferredCommand, Invoke-WpsAiPreflight
