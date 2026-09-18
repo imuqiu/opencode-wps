@@ -132,9 +132,9 @@ function Set-OpenCodeWriteRoots {
         $ConfigPath = Join-Path $userProfilePath '.config\opencode\opencode.json'
     }
     $json = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    if (-not $json.mcp -or -not $json.mcp.'wps-office') { throw 'OpenCode 配置缺少 mcp.wps-office。' }
+    if (-not $json.PSObject.Properties['mcp'] -or -not $json.mcp.PSObject.Properties['wps-office']) { throw 'OpenCode 配置缺少 mcp.wps-office。' }
     $server = $json.mcp.'wps-office'
-    if (-not $server.env) { $server | Add-Member -MemberType NoteProperty -Name env -Value ([pscustomobject]@{}) }
+    if (-not $server.PSObject.Properties['env']) { $server | Add-Member -MemberType NoteProperty -Name env -Value ([pscustomobject]@{}) }
     $server.env | Add-Member -MemberType NoteProperty -Name OPCODE_ALLOWED_ROOTS -Value ([string]$Config.WPS_SYNC_ROOT) -Force
     [IO.File]::WriteAllText($ConfigPath, ($json | ConvertTo-Json -Depth 30) + "`n", (New-Object Text.UTF8Encoding($false)))
 }
