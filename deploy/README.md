@@ -19,6 +19,7 @@
 - primary 发布 `deploy/`、`custom/`、release manifest 和稳定 commit；
 - 按完整 SHA 克隆到 staging，安装依赖并构建 MCP；
 - 更新前备份 OpenCode 配置、WPS Add-in 注册文件和计划任务；
+- 更新切换前停止旧 OpenCode/Launcher，安装后必须通过 Launcher 健康检查；
 - 调用官方安装器完成 Add-in、MCP、Skills、Agents 和 Launcher 安装；
 - 按本机策略临时注入 `manual/auto` 权限模式和允许写入根；
 - 失败时恢复配置、计划任务和上一 runtime；

@@ -102,7 +102,43 @@ function Restore-DeploymentBackup {
     $taskXml = Join-Path $BackupPath 'OpenCodeLauncher.xml'
     if ($manifest.taskExisted -and (Test-Path -LiteralPath $taskXml)) {
         Register-ScheduledTask -TaskName 'OpenCodeLauncher' -Xml (Get-Content -LiteralPath $taskXml -Raw) -Force | Out-Null
+        Start-ScheduledTask -TaskName 'OpenCodeLauncher' -ErrorAction SilentlyContinue
     }
+}
+
+function Stop-DeploymentServices {
+    [CmdletBinding()]
+    param([int]$LauncherPort = 14097)
+
+    try {
+        Invoke-RestMethod -Method Post -Uri ("http://127.0.0.1:{0}/stop" -f $LauncherPort) -ContentType 'application/json' -Body '{}' -TimeoutSec 5 | Out-Null
+    }
+    catch { }
+
+    Stop-ScheduledTask -TaskName 'OpenCodeLauncher' -ErrorAction SilentlyContinue
+    $listeners = @(Get-NetTCPConnection -State Listen -LocalPort $LauncherPort -ErrorAction SilentlyContinue)
+    foreach ($listener in $listeners) {
+        $process = Get-CimInstance Win32_Process -Filter ("ProcessId={0}" -f $listener.OwningProcess) -ErrorAction SilentlyContinue
+        if ($process -and $process.CommandLine -match '(?i)launcher\.js') {
+            Stop-Process -Id $listener.OwningProcess -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Test-DeploymentLauncher {
+    [CmdletBinding()]
+    param([int]$LauncherPort = 14097, [int]$TimeoutSeconds = 15)
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        try {
+            $response = Invoke-RestMethod -Uri ("http://127.0.0.1:{0}/health" -f $LauncherPort) -TimeoutSec 2
+            if ($response.healthy) { return $true }
+        }
+        catch { }
+        Start-Sleep -Milliseconds 500
+    } while ((Get-Date) -lt $deadline)
+    return $false
 }
 
 function Set-RuntimeMachinePolicy {
@@ -153,4 +189,4 @@ function Save-InstallationState {
     $state | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $StateRoot 'last-good.json') -Encoding UTF8
 }
 
-Export-ModuleMember -Function Set-DeploymentPath, Enter-DeploymentLock, Exit-DeploymentLock, New-DeploymentBackup, Restore-DeploymentBackup, Set-RuntimeMachinePolicy, Set-OpenCodeWriteRoots, Save-InstallationState
+Export-ModuleMember -Function Set-DeploymentPath, Enter-DeploymentLock, Exit-DeploymentLock, New-DeploymentBackup, Restore-DeploymentBackup, Stop-DeploymentServices, Test-DeploymentLauncher, Set-RuntimeMachinePolicy, Set-OpenCodeWriteRoots, Save-InstallationState

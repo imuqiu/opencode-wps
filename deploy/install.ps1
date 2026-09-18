@@ -49,6 +49,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'MCP 构建失败。' }
 
     $backup = New-DeploymentBackup -LocalRoot $localRoot
+    Stop-DeploymentServices -LauncherPort ([int]$config.LAUNCHER_PORT)
     if (Test-Path -LiteralPath $previous) { Remove-Item -LiteralPath $previous -Recurse -Force }
     if (Test-Path -LiteralPath $target) { Move-Item -LiteralPath $target -Destination $previous }
     Move-Item -LiteralPath $staging -Destination $target
@@ -66,12 +67,16 @@ try {
     Set-OpenCodeWriteRoots -Config $config
     & (Join-Path $PSScriptRoot 'sync-common.ps1') -MachineConfigPath $MachineConfigPath
     if ($LASTEXITCODE -ne 0) { throw '公共配置同步失败。' }
+    if (-not (Test-DeploymentLauncher -LauncherPort ([int]$config.LAUNCHER_PORT))) {
+        throw "Launcher 健康检查失败：端口 $($config.LAUNCHER_PORT)"
+    }
     Save-InstallationState -StateRoot $stateRoot -Commit $stable.COMMIT -Version $stable.VERSION -BackupPath $backup
     Write-Host "$Mode 完成：$($stable.VERSION) / $($stable.COMMIT)" -ForegroundColor Green
 }
 catch {
     $failure = $_
     Write-Host "部署失败：$($failure.Exception.Message)" -ForegroundColor Red
+    Stop-DeploymentServices -LauncherPort ([int]$config.LAUNCHER_PORT)
     if ($backup) { Restore-DeploymentBackup -BackupPath $backup }
     if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
     if (Test-Path -LiteralPath $previous) { Move-Item -LiteralPath $previous -Destination $target }

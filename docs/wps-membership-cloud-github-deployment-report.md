@@ -515,6 +515,31 @@ WPS 云同步目录（每机绝对路径可不同）
 
 在这个边界下，WPS 云空间得到充分使用，同时不会成为程序运行、密钥存储或数据库同步层。方案符合“简单优先、稳定优先、可恢复优先、少依赖、兼容官方更新”的目标。
 
+## 十五、已落地状态与三机推广清单（2026-09-18）
+
+方案已经在家里笔记本 `HOME-LAPTOP` 完成首台落地，不再只是设计稿：
+
+- GitHub Fork 为 `imuqiu/opencode-wps`，部署分支为 `my-deploy`；运行版本始终锁定完整 commit SHA。
+- WPS 公共同步根为本机 `F:\WPS-AI`，根 ID 为 `443ec43b-be56-46e1-9fea-abfcbd5a4d70`；其他电脑可以使用不同盘符，但必须同步到同一个根 ID。
+- 系统 Git、Node.js、npm、OpenCode、WPS Add-in、MCP、Launcher 计划任务均已安装。
+- 发布包包含 27 个受 SHA-256 manifest 保护的文件；缺文件、内容被改或根 ID 不符都会拒绝安装。
+- Windows PowerShell 5.1 与 PowerShell 7 的部署测试均为 13/13 通过。
+- OpenCode 1.18.31 的 `/global/health` 返回健康，`wps-office` MCP 显示 connected。
+- WPS Writer、Spreadsheets、Presentation 均通过独立 COM 创建、保存和关闭文件的实机测试。
+- 安装失败演练已两次触发并成功恢复旧 runtime、Add-in 和计划任务；更新流程另包含停服务、staging 切换、Launcher 验活和失败恢复。
+
+推广顺序固定为：
+
+1. `HOME-LAPTOP`：低频使用，承担 primary 发布与先行验收。
+2. `OFFICE-PC`：第二台安装，观察至少一个工作日。
+3. `SHOP-PC`：使用最频繁，最后安装，只接受已经在前两台通过的稳定 SHA。
+
+办公室电脑和店铺电脑只需要先完成四件事：安装并登录同一 WPS 账号、把云端已有的 `WPS-AI` 同步到一个普通本地目录、等待 `ROOT_ID.txt` 与 `versions/stable-version.txt` 完整出现、用各自设备名生成本机 `C:\WPS-AI\machine.env`。之后从同步目录运行 `scripts\preflight.cmd` 和 `scripts\install.cmd`；安装完成后运行 `scripts\health-check.cmd`。
+
+依赖审计目前报告 10 个传递依赖问题（1 低、4 中、5 高、0 严重），主要位于 MCP 的开发/间接依赖树。由于直接执行 `npm audit fix` 可能改写官方 lockfile 并破坏可复现性，本方案不在三台生产机上原地自动修复；应在 `my-deploy` 独立分支升级、构建、测试后再发布新的稳定 SHA。Launcher 和 OpenCode 仅监听 `127.0.0.1`，这会降低外部网络暴露，但不能替代后续依赖升级。
+
+最后仍需由用户在 WPS 客户端完成两项人工验收：三台电脑的同步新增/修改/删除/恢复测试，以及当前大会员账号的容量、设备数和具体 AI 配额记录。这两项属于账号和云端状态，部署器不能代替用户确认。
+
 ## Sources
 
 [^1]: WPS，新会员权益对比页，“[WPS新会员介绍页](https://personal-act.wps.cn/vcl/h5_privilege_list?entrance=guideLogin&from=login&position=0&vcl_cli=android&version=1134)”，访问于 2026-09-13。页面列出超级会员/大会员的功能与 AI 权益类别；具体账号权益以登录后显示为准。
