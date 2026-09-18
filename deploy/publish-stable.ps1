@@ -1,11 +1,12 @@
 ﻿[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
 param(
     [string]$MachineConfigPath = 'C:\WPS-AI\machine.env',
-    [string]$RepositoryRoot = (Split-Path -Parent $PSScriptRoot)
+    [string]$RepositoryRoot
 )
 
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
+if (-not $RepositoryRoot) { $RepositoryRoot = Split-Path -Parent $PSScriptRoot }
 $lib = Join-Path $PSScriptRoot 'lib'
 Import-Module (Join-Path $lib 'Config.psm1') -Force
 Import-Module (Join-Path $lib 'Discovery.psm1') -Force
